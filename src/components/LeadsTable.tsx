@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useLeads } from "@/contexts/LeadContext";
-import { Lead, LeadStage, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit } from "@/types/lead";
+import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit } from "@/types/lead";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const STAGES: LeadStage[] = ["New Lead", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Closed Won", "Closed Lost", "Went Dark"];
@@ -174,10 +175,11 @@ function SelectField({ label, value, options, onChange, placeholder }: { label: 
 }
 
 export function LeadsTable() {
-  const { leads } = useLeads();
+  const { leads, addLead } = useLeads();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [showNewLead, setShowNewLead] = useState(false);
 
   const filtered = leads.filter((l) => {
     const matchSearch = !search || l.name.toLowerCase().includes(search.toLowerCase()) || l.email.toLowerCase().includes(search.toLowerCase()) || l.company.toLowerCase().includes(search.toLowerCase());
@@ -185,12 +187,32 @@ export function LeadsTable() {
     return matchSearch && matchStage;
   });
 
+  const exportCSV = () => {
+    const headers = ["Name","Email","Phone","Company","Role","Source","Date Submitted","Stage","Service Interest","Deal Value","Priority","Assigned To","Meeting Date","Meeting Outcome","Forecast Category","ICP Fit","Days In Stage","Hours To Meeting Set","Close Reason","Won Reason","Lost Reason","Closed Date","Last Contact","Next Follow-up","Notes"];
+    const rows = leads.map((l) => [
+      l.name, l.email, l.phone, l.company, l.role, l.source, l.dateSubmitted, l.stage, l.serviceInterest,
+      l.dealValue || "", l.priority, l.assignedTo, l.meetingDate, l.meetingOutcome, l.forecastCategory,
+      l.icpFit, l.daysInCurrentStage, l.hoursToMeetingSet ?? "", l.closeReason, l.wonReason, l.lostReason,
+      l.closedDate, l.lastContactDate, l.nextFollowUp, `"${(l.notes || "").replace(/"/g, '""')}"`
+    ]);
+    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `leads-export-${new Date().toISOString().split("T")[0]}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
           <p className="text-sm text-muted-foreground mt-1">{filtered.length} of {leads.length} leads</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
+          <Button size="sm" onClick={() => setShowNewLead(true)}>New Lead</Button>
         </div>
       </div>
 
@@ -237,6 +259,48 @@ export function LeadsTable() {
       </div>
 
       <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
+      <NewLeadDialog open={showNewLead} onClose={() => setShowNewLead(false)} onSave={addLead} />
     </div>
+  );
+}
+
+function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (lead: any) => void }) {
+  const [form, setForm] = useState({ name: "", email: "", phone: "", company: "", companyUrl: "", role: "", message: "", dealsPlanned: "0-2" });
+  const update = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
+
+  const handleSave = () => {
+    if (!form.name || !form.email) return;
+    const today = new Date().toISOString().split("T")[0];
+    onSave({
+      name: form.name, email: form.email, phone: form.phone, company: form.company,
+      companyUrl: form.companyUrl, role: form.role, message: form.message, dealsPlanned: form.dealsPlanned,
+      source: "Contact Form" as LeadSource, dateSubmitted: today,
+      stage: "New Lead" as LeadStage, serviceInterest: "TBD" as const, dealValue: 0, assignedTo: "",
+      meetingDate: "", meetingSetDate: "", closeReason: "" as const, closedDate: "", notes: "",
+      lastContactDate: "", nextFollowUp: "", priority: "Medium" as const,
+      meetingOutcome: "" as const, forecastCategory: "" as const, icpFit: "" as const,
+      wonReason: "", lostReason: "", targetCriteria: "", targetRevenue: "", geography: "", currentSourcing: "",
+    });
+    setForm({ name: "", email: "", phone: "", company: "", companyUrl: "", role: "", message: "", dealsPlanned: "0-2" });
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>New Lead</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 mt-2">
+          <Input placeholder="Name *" value={form.name} onChange={(e) => update("name", e.target.value)} />
+          <Input placeholder="Email *" value={form.email} onChange={(e) => update("email", e.target.value)} />
+          <Input placeholder="Phone" value={form.phone} onChange={(e) => update("phone", e.target.value)} />
+          <Input placeholder="Company" value={form.company} onChange={(e) => update("company", e.target.value)} />
+          <Input placeholder="Role" value={form.role} onChange={(e) => update("role", e.target.value)} />
+          <Textarea placeholder="Message / Notes" value={form.message} onChange={(e) => update("message", e.target.value)} rows={3} />
+          <Button onClick={handleSave} className="w-full" disabled={!form.name || !form.email}>Create Lead</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
