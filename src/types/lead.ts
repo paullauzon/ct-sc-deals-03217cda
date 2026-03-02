@@ -31,6 +31,23 @@ export type CloseReason =
   | "Other"
   | "";
 
+export type MeetingOutcome =
+  | "Scheduled"
+  | "Held"
+  | "No-Show"
+  | "Rescheduled"
+  | "Cancelled"
+  | "";
+
+export type ForecastCategory =
+  | "Commit"
+  | "Best Case"
+  | "Pipeline"
+  | "Omit"
+  | "";
+
+export type IcpFit = "Strong" | "Moderate" | "Weak" | "";
+
 export interface Lead {
   id: string;
   name: string;
@@ -59,6 +76,12 @@ export interface Lead {
   lastContactDate: string;
   nextFollowUp: string;
   priority: "High" | "Medium" | "Low";
+  // New fields
+  meetingOutcome: MeetingOutcome;
+  forecastCategory: ForecastCategory;
+  icpFit: IcpFit;
+  wonReason: string;
+  lostReason: string;
   // Target-specific fields
   targetCriteria: string;
   targetRevenue: string;

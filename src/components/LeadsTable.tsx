@@ -1,26 +1,29 @@
 import { useState } from "react";
 import { useLeads } from "@/contexts/LeadContext";
-import { Lead, LeadStage, ServiceInterest, CloseReason } from "@/types/lead";
+import { Lead, LeadStage, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit } from "@/types/lead";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
 
 const STAGES: LeadStage[] = ["New Lead", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Closed Won", "Closed Lost", "Went Dark"];
 const SERVICES: ServiceInterest[] = ["Deal Origination", "Managed Outreach", "Pipeline Building", "Add-on Sourcing", "Custom Campaign", "Other", "TBD"];
 const PRIORITIES = ["High", "Medium", "Low"] as const;
 const CLOSE_REASONS: CloseReason[] = ["Budget", "Timing", "Competitor", "No Fit", "No Response", "Not Qualified", "Champion Left", "Other"];
+const MEETING_OUTCOMES: MeetingOutcome[] = ["Scheduled", "Held", "No-Show", "Rescheduled", "Cancelled"];
+const FORECAST_CATEGORIES: ForecastCategory[] = ["Commit", "Best Case", "Pipeline", "Omit"];
+const ICP_FITS: IcpFit[] = ["Strong", "Moderate", "Weak"];
 
-export function LeadDetail({ lead, open, onClose }: { lead: Lead | null; open: boolean; onClose: () => void }) {
-  const { updateLead } = useLeads();
+export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; open: boolean; onClose: () => void }) {
+  const { leads, updateLead } = useLeads();
+  const lead = leads.find((l) => l.id === leadId) || null;
   if (!lead) return null;
 
   const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">{lead.name}</DialogTitle>
           <p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>
@@ -59,31 +62,26 @@ export function LeadDetail({ lead, open, onClose }: { lead: Lead | null; open: b
           {/* Deal Management */}
           <Section title="Deal Management">
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-muted-foreground uppercase tracking-wider">Stage</label>
-                <Select value={lead.stage} onValueChange={(v) => save({ stage: v as LeadStage })}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>{STAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground uppercase tracking-wider">Service Interest</label>
-                <Select value={lead.serviceInterest} onValueChange={(v) => save({ serviceInterest: v as ServiceInterest })}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>{SERVICES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground uppercase tracking-wider">Priority</label>
-                <Select value={lead.priority} onValueChange={(v) => save({ priority: v as "High" | "Medium" | "Low" })}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>{PRIORITIES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
+              <SelectField label="Stage" value={lead.stage} options={STAGES} onChange={(v) => save({ stage: v as LeadStage })} />
+              <SelectField label="Service Interest" value={lead.serviceInterest} options={SERVICES} onChange={(v) => save({ serviceInterest: v as ServiceInterest })} />
+              <SelectField label="Priority" value={lead.priority} options={[...PRIORITIES]} onChange={(v) => save({ priority: v as "High" | "Medium" | "Low" })} />
+              <SelectField label="Forecast Category" value={lead.forecastCategory || "_none"} options={FORECAST_CATEGORIES} onChange={(v) => save({ forecastCategory: v as ForecastCategory })} placeholder="Select" />
+              <SelectField label="ICP Fit" value={lead.icpFit || "_none"} options={ICP_FITS} onChange={(v) => save({ icpFit: v as IcpFit })} placeholder="Select" />
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider">Deal Value ($)</label>
                 <Input type="number" value={lead.dealValue || ""} onChange={(e) => save({ dealValue: Number(e.target.value) })} className="mt-1" placeholder="0" />
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Assigned To</label>
+                <Input value={lead.assignedTo} onChange={(e) => save({ assignedTo: e.target.value })} className="mt-1" placeholder="Team member" />
+              </div>
+            </div>
+          </Section>
+
+          {/* Meeting Management */}
+          <Section title="Meeting">
+            <div className="grid grid-cols-2 gap-4">
+              <SelectField label="Meeting Outcome" value={lead.meetingOutcome || "_none"} options={MEETING_OUTCOMES} onChange={(v) => save({ meetingOutcome: v as MeetingOutcome })} placeholder="Select" />
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider">Meeting Date</label>
                 <Input type="date" value={lead.meetingDate} onChange={(e) => save({ meetingDate: e.target.value, meetingSetDate: lead.meetingSetDate || new Date().toISOString().split("T")[0] })} className="mt-1" />
@@ -93,20 +91,33 @@ export function LeadDetail({ lead, open, onClose }: { lead: Lead | null; open: b
                 <Input type="date" value={lead.nextFollowUp} onChange={(e) => save({ nextFollowUp: e.target.value })} className="mt-1" />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground uppercase tracking-wider">Assigned To</label>
-                <Input value={lead.assignedTo} onChange={(e) => save({ assignedTo: e.target.value })} className="mt-1" placeholder="Team member" />
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Last Contact</label>
+                <Input type="date" value={lead.lastContactDate} onChange={(e) => save({ lastContactDate: e.target.value })} className="mt-1" />
               </div>
-              {(lead.stage === "Closed Lost" || lead.stage === "Went Dark") && (
-                <div>
-                  <label className="text-xs text-muted-foreground uppercase tracking-wider">Close Reason</label>
-                  <Select value={lead.closeReason} onValueChange={(v) => save({ closeReason: v as CloseReason })}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select reason" /></SelectTrigger>
-                    <SelectContent>{CLOSE_REASONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-              )}
             </div>
           </Section>
+
+          {/* Close Reasons */}
+          {lead.stage === "Closed Won" && (
+            <Section title="Won Details">
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Won Reason</label>
+                <Input value={lead.wonReason} onChange={(e) => save({ wonReason: e.target.value })} className="mt-1" placeholder="Why did we win this deal?" />
+              </div>
+            </Section>
+          )}
+
+          {(lead.stage === "Closed Lost" || lead.stage === "Went Dark") && (
+            <Section title="Lost / Dark Details">
+              <div className="grid grid-cols-2 gap-4">
+                <SelectField label="Close Reason" value={lead.closeReason || "_none"} options={CLOSE_REASONS} onChange={(v) => save({ closeReason: v as CloseReason })} placeholder="Select reason" />
+                <div>
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">Detail</label>
+                  <Input value={lead.lostReason} onChange={(e) => save({ lostReason: e.target.value })} className="mt-1" placeholder="Additional context..." />
+                </div>
+              </div>
+            </Section>
+          )}
 
           {/* Tracking */}
           <Section title="Tracking">
@@ -150,11 +161,23 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function SelectField({ label, value, options, onChange, placeholder }: { label: string; value: string; options: string[]; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <div>
+      <label className="text-xs text-muted-foreground uppercase tracking-wider">{label}</label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="mt-1"><SelectValue placeholder={placeholder || label} /></SelectTrigger>
+        <SelectContent>{options.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 export function LeadsTable() {
   const { leads } = useLeads();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
   const filtered = leads.filter((l) => {
     const matchSearch = !search || l.name.toLowerCase().includes(search.toLowerCase()) || l.email.toLowerCase().includes(search.toLowerCase()) || l.company.toLowerCase().includes(search.toLowerCase());
@@ -193,7 +216,7 @@ export function LeadsTable() {
           </thead>
           <tbody className="divide-y divide-border">
             {filtered.map((lead) => (
-              <tr key={lead.id} onClick={() => setSelectedLead(lead)} className="cursor-pointer hover:bg-secondary/30 transition-colors">
+              <tr key={lead.id} onClick={() => setSelectedLeadId(lead.id)} className="cursor-pointer hover:bg-secondary/30 transition-colors">
                 <td className="px-4 py-3">
                   <div className="font-medium">{lead.name}</div>
                   <div className="text-xs text-muted-foreground">{lead.email}</div>
@@ -213,7 +236,7 @@ export function LeadsTable() {
         </table>
       </div>
 
-      <LeadDetail lead={selectedLead} open={!!selectedLead} onClose={() => setSelectedLead(null)} />
+      <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
     </div>
   );
 }
