@@ -11,7 +11,7 @@ const PIPELINE_STAGES: LeadStage[] = [
 const CLOSED_STAGES: LeadStage[] = ["Closed Won", "Closed Lost", "Went Dark"];
 
 export function Pipeline() {
-  const { getLeadsByStage, updateLead } = useLeads();
+  const { getLeadsByStage, updateLead, leads } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
 
@@ -39,9 +39,15 @@ export function Pipeline() {
 
   return (
     <div className="p-6 max-w-full mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Pipeline</h1>
-        <p className="text-sm text-muted-foreground mt-1">Drag deals between stages</p>
+      <div className="flex items-baseline justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Pipeline</h1>
+          <p className="text-sm text-muted-foreground mt-1">Drag deals between stages</p>
+        </div>
+        <div className="text-right">
+          <p className="text-2xl font-semibold tabular-nums">${leads.reduce((s, l) => s + l.dealValue, 0).toLocaleString()}</p>
+          <p className="text-xs text-muted-foreground">Total pipeline value</p>
+        </div>
       </div>
 
       <div className="flex gap-4 overflow-x-auto pb-4">
@@ -62,7 +68,7 @@ export function Pipeline() {
                 <span className="text-xs text-muted-foreground tabular-nums">{leads.length}</span>
               </div>
               <p className="text-xs text-muted-foreground mb-2 tabular-nums">${totalValue.toLocaleString()}</p>
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[600px] overflow-y-auto">
                 {leads.map((lead) => {
                   const days = computeDaysInStage(lead.stageEnteredDate);
                   return (
@@ -129,10 +135,13 @@ export function Pipeline() {
                       draggable
                       onDragStart={(e) => handleDragStart(e, lead.id)}
                       onClick={() => setSelectedLeadId(lead.id)}
-                      className="text-sm cursor-grab active:cursor-grabbing hover:bg-secondary/30 px-2 py-1.5 rounded transition-colors flex justify-between"
+                      className="text-sm cursor-grab active:cursor-grabbing hover:bg-secondary/30 px-2 py-1.5 rounded transition-colors flex justify-between items-center"
                     >
                       <span>{lead.name}</span>
-                      <span className="text-xs text-muted-foreground">{lead.closeReason || "—"}</span>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {lead.dealValue > 0 && <span className="tabular-nums">${lead.dealValue.toLocaleString()}</span>}
+                        <span>{lead.closeReason || "—"}</span>
+                      </div>
                     </div>
                   ))}
                   {leads.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">None</p>}

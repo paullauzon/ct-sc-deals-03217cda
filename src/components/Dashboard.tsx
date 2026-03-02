@@ -54,7 +54,7 @@ export function Dashboard() {
         <p className="text-sm text-muted-foreground mt-1">Pipeline overview as of today</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {[
           { label: "Total Leads", value: m.totalLeads },
           { label: "Pipeline Value", value: `$${m.totalPipelineValue.toLocaleString()}` },
