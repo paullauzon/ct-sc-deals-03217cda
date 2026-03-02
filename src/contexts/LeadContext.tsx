@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, ReactNode } from "rea
 import { Lead, LeadStage, LeadSource, PipelineMetrics } from "@/types/lead";
 import { getInitialLeads } from "@/data/leadData";
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const LEAD_DEFAULTS: Partial<Lead> = {
   meetingOutcome: "",
@@ -54,8 +54,8 @@ interface LeadContextType {
 const LeadContext = createContext<LeadContextType | null>(null);
 
 const STAGES: LeadStage[] = [
-  "New Lead", "Contacted", "Meeting Set", "Meeting Held",
-  "Proposal Sent", "Negotiation", "Closed Won", "Closed Lost", "Went Dark",
+  "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held",
+  "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Closed Lost", "Went Dark",
 ];
 
 export function LeadProvider({ children }: { children: ReactNode }) {

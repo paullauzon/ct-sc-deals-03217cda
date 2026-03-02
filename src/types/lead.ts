@@ -2,11 +2,13 @@ export type LeadSource = "Contact Form" | "Free Targets Form";
 
 export type LeadStage =
   | "New Lead"
+  | "Qualified"
   | "Contacted"
   | "Meeting Set"
   | "Meeting Held"
   | "Proposal Sent"
   | "Negotiation"
+  | "Contract Sent"
   | "Closed Won"
   | "Closed Lost"
   | "Went Dark";
