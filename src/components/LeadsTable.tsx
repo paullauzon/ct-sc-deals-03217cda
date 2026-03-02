@@ -363,11 +363,11 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>New Lead</DialogTitle>
-        </DialogHeader>
+    <Sheet open={open} onOpenChange={onClose}>
+      <SheetContent side="right" className="sm:max-w-md" aria-describedby={undefined}>
+        <SheetHeader>
+          <SheetTitle>New Lead</SheetTitle>
+        </SheetHeader>
         <div className="space-y-3 mt-2">
           <Input placeholder="Name *" value={form.name} onChange={(e) => update("name", e.target.value)} />
           <Input placeholder="Email *" value={form.email} onChange={(e) => update("email", e.target.value)} />
@@ -377,7 +377,7 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
           <Textarea placeholder="Message / Notes" value={form.message} onChange={(e) => update("message", e.target.value)} rows={3} />
           <Button onClick={handleSave} className="w-full" disabled={!form.name || !form.email}>Create Lead</Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
