@@ -6,7 +6,7 @@ export function Dashboard() {
   const { getMetrics, leads } = useLeads();
   const m = getMetrics();
 
-  const activeStages = ["New Lead", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation"] as const;
+  const activeStages = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"] as const;
 
   const dealsWithValue = leads.filter((l) => l.dealValue > 0 && !["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage));
   const avgDealValue = dealsWithValue.length ? Math.round(dealsWithValue.reduce((s, l) => s + l.dealValue, 0) / dealsWithValue.length) : 0;
