@@ -2,6 +2,7 @@ import { useState, DragEvent } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { LeadStage } from "@/types/lead";
 import { LeadDetail } from "@/components/LeadsTable";
+import { computeDaysInStage } from "@/lib/leadUtils";
 
 const PIPELINE_STAGES: LeadStage[] = [
   "New Lead", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation",
@@ -60,38 +61,39 @@ export function Pipeline() {
                 <span className="text-xs font-medium uppercase tracking-wider">{stage}</span>
                 <span className="text-xs text-muted-foreground tabular-nums">{leads.length}</span>
               </div>
-              {totalValue > 0 && (
-                <p className="text-xs text-muted-foreground mb-2 tabular-nums">${totalValue.toLocaleString()}</p>
-              )}
+              <p className="text-xs text-muted-foreground mb-2 tabular-nums">${totalValue.toLocaleString()}</p>
               <div className="space-y-2">
-                {leads.map((lead) => (
-                  <div
-                    key={lead.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, lead.id)}
-                    onClick={() => setSelectedLeadId(lead.id)}
-                    className="border border-border rounded-md p-3 cursor-grab active:cursor-grabbing hover:bg-secondary/30 transition-colors space-y-1.5"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{lead.name}</p>
-                      <p className="text-xs text-muted-foreground">{lead.company || "—"} · {lead.role}</p>
+                {leads.map((lead) => {
+                  const days = computeDaysInStage(lead.stageEnteredDate);
+                  return (
+                    <div
+                      key={lead.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, lead.id)}
+                      onClick={() => setSelectedLeadId(lead.id)}
+                      className="border border-border rounded-md p-3 cursor-grab active:cursor-grabbing hover:bg-secondary/30 transition-colors space-y-1.5"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{lead.name}</p>
+                        <p className="text-xs text-muted-foreground">{lead.company || "—"} · {lead.role}</p>
+                      </div>
+                      {lead.serviceInterest && lead.serviceInterest !== "TBD" && (
+                        <p className="text-xs text-muted-foreground">{lead.serviceInterest}</p>
+                      )}
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span className="tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</span>
+                        <span>{lead.priority}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span className="tabular-nums">{days}d in stage</span>
+                        {lead.meetingOutcome && <span>{lead.meetingOutcome}</span>}
+                      </div>
+                      {lead.nextFollowUp && (
+                        <p className="text-xs text-muted-foreground">Follow-up: {lead.nextFollowUp}</p>
+                      )}
                     </div>
-                    {lead.serviceInterest && lead.serviceInterest !== "TBD" && (
-                      <p className="text-xs text-muted-foreground">{lead.serviceInterest}</p>
-                    )}
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span className="tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</span>
-                      <span>{lead.priority}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span className="tabular-nums">{lead.daysInCurrentStage}d in stage</span>
-                      {lead.meetingOutcome && <span>{lead.meetingOutcome}</span>}
-                    </div>
-                    {lead.nextFollowUp && (
-                      <p className="text-xs text-muted-foreground">Follow-up: {lead.nextFollowUp}</p>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
                 {leads.length === 0 && (
                   <p className="text-xs text-muted-foreground py-8 text-center">No deals</p>
                 )}
