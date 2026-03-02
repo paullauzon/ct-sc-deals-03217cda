@@ -1,0 +1,219 @@
+import { useState } from "react";
+import { useLeads } from "@/contexts/LeadContext";
+import { Lead, LeadStage, ServiceInterest, CloseReason } from "@/types/lead";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+
+const STAGES: LeadStage[] = ["New Lead", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Closed Won", "Closed Lost", "Went Dark"];
+const SERVICES: ServiceInterest[] = ["Deal Origination", "Managed Outreach", "Pipeline Building", "Add-on Sourcing", "Custom Campaign", "Other", "TBD"];
+const PRIORITIES = ["High", "Medium", "Low"] as const;
+const CLOSE_REASONS: CloseReason[] = ["Budget", "Timing", "Competitor", "No Fit", "No Response", "Not Qualified", "Champion Left", "Other"];
+
+export function LeadDetail({ lead, open, onClose }: { lead: Lead | null; open: boolean; onClose: () => void }) {
+  const { updateLead } = useLeads();
+  if (!lead) return null;
+
+  const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-semibold">{lead.name}</DialogTitle>
+          <p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>
+        </DialogHeader>
+
+        <div className="space-y-6 mt-4">
+          {/* Contact Info */}
+          <Section title="Contact">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <Field label="Email" value={lead.email} />
+              <Field label="Phone" value={lead.phone || "—"} />
+              <Field label="Website" value={lead.companyUrl ? <a href={lead.companyUrl} target="_blank" rel="noreferrer" className="underline">{lead.companyUrl}</a> : "—"} />
+              <Field label="Source" value={lead.source} />
+              <Field label="Submitted" value={lead.dateSubmitted} />
+              <Field label="Deals Planned" value={lead.dealsPlanned} />
+            </div>
+          </Section>
+
+          {/* Message */}
+          <Section title="Original Message">
+            <p className="text-sm leading-relaxed">{lead.message}</p>
+          </Section>
+
+          {/* Target Criteria (if available) */}
+          {lead.targetCriteria && (
+            <Section title="Target Criteria">
+              <p className="text-sm leading-relaxed">{lead.targetCriteria}</p>
+              <div className="grid grid-cols-2 gap-3 text-sm mt-2">
+                <Field label="Revenue Range" value={lead.targetRevenue || "—"} />
+                <Field label="Geography" value={lead.geography || "—"} />
+                <Field label="Current Sourcing" value={lead.currentSourcing || "—"} />
+              </div>
+            </Section>
+          )}
+
+          {/* Deal Management */}
+          <Section title="Deal Management">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Stage</label>
+                <Select value={lead.stage} onValueChange={(v) => save({ stage: v as LeadStage })}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>{STAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Service Interest</label>
+                <Select value={lead.serviceInterest} onValueChange={(v) => save({ serviceInterest: v as ServiceInterest })}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>{SERVICES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Priority</label>
+                <Select value={lead.priority} onValueChange={(v) => save({ priority: v as "High" | "Medium" | "Low" })}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>{PRIORITIES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Deal Value ($)</label>
+                <Input type="number" value={lead.dealValue || ""} onChange={(e) => save({ dealValue: Number(e.target.value) })} className="mt-1" placeholder="0" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Meeting Date</label>
+                <Input type="date" value={lead.meetingDate} onChange={(e) => save({ meetingDate: e.target.value, meetingSetDate: lead.meetingSetDate || new Date().toISOString().split("T")[0] })} className="mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Next Follow-up</label>
+                <Input type="date" value={lead.nextFollowUp} onChange={(e) => save({ nextFollowUp: e.target.value })} className="mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Assigned To</label>
+                <Input value={lead.assignedTo} onChange={(e) => save({ assignedTo: e.target.value })} className="mt-1" placeholder="Team member" />
+              </div>
+              {(lead.stage === "Closed Lost" || lead.stage === "Went Dark") && (
+                <div>
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">Close Reason</label>
+                  <Select value={lead.closeReason} onValueChange={(v) => save({ closeReason: v as CloseReason })}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select reason" /></SelectTrigger>
+                    <SelectContent>{CLOSE_REASONS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          </Section>
+
+          {/* Tracking */}
+          <Section title="Tracking">
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <Field label="Days in Stage" value={lead.daysInCurrentStage} />
+              <Field label="Hours to Meeting Set" value={lead.hoursToMeetingSet !== null ? lead.hoursToMeetingSet : "—"} />
+              <Field label="Stage Entered" value={lead.stageEnteredDate || "—"} />
+            </div>
+          </Section>
+
+          {/* Notes */}
+          <Section title="Notes">
+            <Textarea
+              value={lead.notes}
+              onChange={(e) => save({ notes: e.target.value })}
+              placeholder="Add notes about this lead..."
+              rows={4}
+            />
+          </Section>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider border-b border-border pb-1">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="font-medium">{value}</p>
+    </div>
+  );
+}
+
+export function LeadsTable() {
+  const { leads } = useLeads();
+  const [search, setSearch] = useState("");
+  const [stageFilter, setStageFilter] = useState<string>("all");
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+
+  const filtered = leads.filter((l) => {
+    const matchSearch = !search || l.name.toLowerCase().includes(search.toLowerCase()) || l.email.toLowerCase().includes(search.toLowerCase()) || l.company.toLowerCase().includes(search.toLowerCase());
+    const matchStage = stageFilter === "all" || l.stage === stageFilter;
+    return matchSearch && matchStage;
+  });
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
+          <p className="text-sm text-muted-foreground mt-1">{filtered.length} of {leads.length} leads</p>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <Input placeholder="Search leads..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
+        <Select value={stageFilter} onValueChange={setStageFilter}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="All Stages" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Stages</SelectItem>
+            {STAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="border border-border rounded-md overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border bg-secondary/50">
+              {["Name", "Role", "Stage", "Value", "Days", "Priority", "Date", "Source"].map((h) => (
+                <th key={h} className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {filtered.map((lead) => (
+              <tr key={lead.id} onClick={() => setSelectedLead(lead)} className="cursor-pointer hover:bg-secondary/30 transition-colors">
+                <td className="px-4 py-3">
+                  <div className="font-medium">{lead.name}</div>
+                  <div className="text-xs text-muted-foreground">{lead.email}</div>
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">{lead.role}</td>
+                <td className="px-4 py-3">
+                  <span className="text-xs px-2 py-0.5 border border-border rounded">{lead.stage}</span>
+                </td>
+                <td className="px-4 py-3 tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</td>
+                <td className="px-4 py-3 tabular-nums text-muted-foreground">{lead.daysInCurrentStage}d</td>
+                <td className="px-4 py-3 text-xs">{lead.priority}</td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{lead.dateSubmitted}</td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{lead.source === "Contact Form" ? "CF" : "TF"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <LeadDetail lead={selectedLead} open={!!selectedLead} onClose={() => setSelectedLead(null)} />
+    </div>
+  );
+}
