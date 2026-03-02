@@ -1,10 +1,27 @@
 import { useLeads } from "@/contexts/LeadContext";
+import { ForecastCategory, IcpFit } from "@/types/lead";
 
 export function Dashboard() {
   const { getMetrics, leads } = useLeads();
   const m = getMetrics();
 
   const activeStages = ["New Lead", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation"] as const;
+
+  // Forecast breakdown
+  const forecastData: { label: ForecastCategory; value: number; count: number }[] = (["Commit", "Best Case", "Pipeline", "Omit"] as ForecastCategory[]).map((cat) => {
+    const inCat = leads.filter((l) => l.forecastCategory === cat);
+    return { label: cat, value: inCat.reduce((s, l) => s + l.dealValue, 0), count: inCat.length };
+  });
+
+  // ICP Fit distribution
+  const icpData: { label: IcpFit; count: number }[] = (["Strong", "Moderate", "Weak"] as IcpFit[]).map((fit) => ({
+    label: fit, count: leads.filter((l) => l.icpFit === fit).length,
+  }));
+
+  // Meeting outcomes
+  const meetingOutcomes = ["Scheduled", "Held", "No-Show", "Rescheduled", "Cancelled"].map((o) => ({
+    label: o, count: leads.filter((l) => l.meetingOutcome === o).length,
+  }));
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8">
@@ -46,6 +63,46 @@ export function Dashboard() {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Forecast Category */}
+      <div>
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Forecast</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {forecastData.map((f) => (
+            <div key={f.label} className="border border-border rounded-md p-3">
+              <p className="text-xs text-muted-foreground">{f.label}</p>
+              <p className="text-lg font-semibold tabular-nums">{f.count}</p>
+              {f.value > 0 && <p className="text-xs text-muted-foreground tabular-nums">${f.value.toLocaleString()}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ICP Fit + Meeting Outcomes */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">ICP Fit</h2>
+          <div className="grid grid-cols-3 gap-3">
+            {icpData.map((d) => (
+              <div key={d.label} className="border border-border rounded-md p-3">
+                <p className="text-xs text-muted-foreground">{d.label}</p>
+                <p className="text-lg font-semibold tabular-nums">{d.count}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Meeting Outcomes</h2>
+          <div className="grid grid-cols-3 gap-3">
+            {meetingOutcomes.filter((o) => o.count > 0 || ["Scheduled", "Held", "No-Show"].includes(o.label)).map((o) => (
+              <div key={o.label} className="border border-border rounded-md p-3">
+                <p className="text-xs text-muted-foreground">{o.label}</p>
+                <p className="text-lg font-semibold tabular-nums">{o.count}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
