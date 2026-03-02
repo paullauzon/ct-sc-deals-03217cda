@@ -31,6 +31,14 @@ export default {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
@@ -56,6 +64,15 @@ export default {
           "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
+        },
+        stage: {
+          new: "hsl(var(--stage-new))",
+          contacted: "hsl(var(--stage-contacted))",
+          meeting: "hsl(var(--stage-meeting))",
+          proposal: "hsl(var(--stage-proposal))",
+          negotiation: "hsl(var(--stage-negotiation))",
+          won: "hsl(var(--stage-won))",
+          lost: "hsl(var(--stage-lost))",
         },
       },
       borderRadius: {
