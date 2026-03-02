@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, ReactNode } from "rea
 import { Lead, LeadStage, LeadSource, PipelineMetrics } from "@/types/lead";
 import { getInitialLeads } from "@/data/leadData";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const LEAD_DEFAULTS: Partial<Lead> = {
   meetingOutcome: "",
@@ -18,6 +18,14 @@ const LEAD_DEFAULTS: Partial<Lead> = {
   currentSourcing: "",
 };
 
+const SERVICE_MIGRATION: Record<string, string> = {
+  "Deal Origination": "Off-Market Email Origination",
+  "Managed Outreach": "Direct Calling",
+  "Pipeline Building": "Full Platform (All 3)",
+  "Add-on Sourcing": "Off-Market Email Origination",
+  "Custom Campaign": "Full Platform (All 3)",
+};
+
 function migrateLeads(leads: Lead[]): Lead[] {
   return leads.map((l) => {
     const migrated = { ...l };
@@ -25,6 +33,10 @@ function migrateLeads(leads: Lead[]): Lead[] {
       if ((migrated as any)[key] === undefined) {
         (migrated as any)[key] = defaultVal;
       }
+    }
+    // Migrate old service interest names
+    if (SERVICE_MIGRATION[migrated.serviceInterest]) {
+      migrated.serviceInterest = SERVICE_MIGRATION[migrated.serviceInterest] as any;
     }
     return migrated;
   });

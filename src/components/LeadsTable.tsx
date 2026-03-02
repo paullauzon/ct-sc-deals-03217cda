@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const STAGES: LeadStage[] = ["New Lead", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Closed Won", "Closed Lost", "Went Dark"];
-const SERVICES: ServiceInterest[] = ["Deal Origination", "Managed Outreach", "Pipeline Building", "Add-on Sourcing", "Custom Campaign", "Other", "TBD"];
+const SERVICES: ServiceInterest[] = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "Other", "TBD"];
 const PRIORITIES = ["High", "Medium", "Low"] as const;
 const CLOSE_REASONS: CloseReason[] = ["Budget", "Timing", "Competitor", "No Fit", "No Response", "Not Qualified", "Champion Left", "Other"];
 const MEETING_OUTCOMES: MeetingOutcome[] = ["Scheduled", "Held", "No-Show", "Rescheduled", "Cancelled"];

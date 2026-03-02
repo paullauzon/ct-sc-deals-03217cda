@@ -12,11 +12,10 @@ export type LeadStage =
   | "Went Dark";
 
 export type ServiceInterest =
-  | "Deal Origination"
-  | "Managed Outreach"
-  | "Pipeline Building"
-  | "Add-on Sourcing"
-  | "Custom Campaign"
+  | "Off-Market Email Origination"
+  | "Direct Calling"
+  | "Banker/Broker Coverage"
+  | "Full Platform (All 3)"
   | "Other"
   | "TBD";
 

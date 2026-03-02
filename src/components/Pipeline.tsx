@@ -70,14 +70,26 @@ export function Pipeline() {
                     draggable
                     onDragStart={(e) => handleDragStart(e, lead.id)}
                     onClick={() => setSelectedLeadId(lead.id)}
-                    className="border border-border rounded-md p-3 cursor-grab active:cursor-grabbing hover:bg-secondary/30 transition-colors"
+                    className="border border-border rounded-md p-3 cursor-grab active:cursor-grabbing hover:bg-secondary/30 transition-colors space-y-1.5"
                   >
-                    <p className="text-sm font-medium">{lead.name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{lead.role}</p>
-                    <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                      <span className="tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</span>
-                      <span className="tabular-nums">{lead.daysInCurrentStage}d in stage</span>
+                    <div>
+                      <p className="text-sm font-medium">{lead.name}</p>
+                      <p className="text-xs text-muted-foreground">{lead.company || "—"} · {lead.role}</p>
                     </div>
+                    {lead.serviceInterest && lead.serviceInterest !== "TBD" && (
+                      <p className="text-xs text-muted-foreground">{lead.serviceInterest}</p>
+                    )}
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</span>
+                      <span>{lead.priority}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="tabular-nums">{lead.daysInCurrentStage}d in stage</span>
+                      {lead.meetingOutcome && <span>{lead.meetingOutcome}</span>}
+                    </div>
+                    {lead.nextFollowUp && (
+                      <p className="text-xs text-muted-foreground">Follow-up: {lead.nextFollowUp}</p>
+                    )}
                   </div>
                 ))}
                 {leads.length === 0 && (
