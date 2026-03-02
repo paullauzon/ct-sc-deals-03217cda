@@ -77,7 +77,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
               <ClearableSelectField label="ICP Fit" value={lead.icpFit} options={ICP_FITS} onChange={(v) => save({ icpFit: v as IcpFit })} />
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider">Deal Value ($)</label>
-                <Input type="number" value={lead.dealValue || ""} onChange={(e) => save({ dealValue: Number(e.target.value) })} className="mt-1" placeholder="0" />
+                <Input type="number" value={lead.dealValue || ""} onChange={(e) => save({ dealValue: Number(e.target.value) || 0 })} className="mt-1" placeholder="Enter deal value" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider">Assigned To</label>
