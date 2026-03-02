@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit } from "@/types/lead";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -30,12 +30,12 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
   const days = computeDaysInStage(lead.stageEnteredDate);
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold">{lead.name}</DialogTitle>
+    <Sheet open={open} onOpenChange={onClose}>
+      <SheetContent side="right" className="overflow-y-auto" aria-describedby={undefined}>
+        <SheetHeader>
+          <SheetTitle className="text-lg font-semibold">{lead.name}</SheetTitle>
           <p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>
-        </DialogHeader>
+        </SheetHeader>
 
         <div className="space-y-6 mt-4">
           {/* Contact Info */}
@@ -146,8 +146,8 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             />
           </Section>
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 
