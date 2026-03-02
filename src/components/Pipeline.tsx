@@ -42,18 +42,15 @@ export function Pipeline() {
 
   return (
     <div className="p-6 max-w-full mx-auto space-y-6">
-      <div className="flex items-baseline justify-between">
-        <div>
+      <div>
+        <div className="flex items-baseline gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">Pipeline</h1>
-          <p className="text-sm text-muted-foreground mt-1">Drag deals between stages</p>
+          <span className="text-sm text-muted-foreground tabular-nums">${leads.reduce((s, l) => s + l.dealValue, 0).toLocaleString()} total value</span>
         </div>
-        <div className="text-right">
-          <p className="text-2xl font-semibold tabular-nums">${leads.reduce((s, l) => s + l.dealValue, 0).toLocaleString()}</p>
-          <p className="text-xs text-muted-foreground">Total pipeline value</p>
-        </div>
+        <p className="text-sm text-muted-foreground mt-1">Drag deals between stages</p>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-4 scroll-smooth">
+      <div className="flex gap-4 overflow-x-auto pb-4 scroll-smooth snap-x snap-mandatory">
         {ALL_STAGES.map((stage) => {
           const stageLeads = getLeadsByStage(stage);
           const totalValue = stageLeads.reduce((s, l) => s + l.dealValue, 0);
@@ -62,7 +59,7 @@ export function Pipeline() {
           return (
             <div
               key={stage}
-              className={`min-w-[260px] flex-shrink-0 rounded-md p-2 transition-colors ${closed ? "bg-muted/30" : ""} ${isOver ? "bg-secondary/50 ring-1 ring-foreground/20" : ""}`}
+              className={`min-w-[280px] flex-shrink-0 snap-start rounded-md p-2 transition-colors ${closed ? "bg-muted/30" : ""} ${isOver ? "bg-secondary/50 ring-1 ring-foreground/20" : ""}`}
               onDragOver={(e) => handleDragOver(e, stage)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, stage)}
@@ -108,7 +105,7 @@ export function Pipeline() {
                   );
                 })}
                 {stageLeads.length === 0 && (
-                  <p className="text-xs text-muted-foreground py-8 text-center">No deals</p>
+                  <p className="text-xs text-muted-foreground/60 py-4 text-center">No deals</p>
                 )}
               </div>
             </div>

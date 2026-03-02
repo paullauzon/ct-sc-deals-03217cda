@@ -37,7 +37,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           <p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>
         </SheetHeader>
 
-        <div className="space-y-6 mt-4">
+        <div className="space-y-8 mt-4">
           {/* Contact Info */}
           <Section title="Contact">
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -154,7 +154,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider border-b border-border pb-1">{title}</h3>
+      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b border-border pb-1">{title}</h3>
       {children}
     </div>
   );
@@ -321,7 +321,7 @@ export function LeadsTable() {
                 <td className="px-4 py-3 text-muted-foreground">{lead.company || "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{lead.role}</td>
                 <td className="px-4 py-3">
-                  <span className="text-xs px-2 py-0.5 border border-border rounded">{lead.stage}</span>
+                  <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
                 </td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{lead.serviceInterest !== "TBD" ? lead.serviceInterest : "—"}</td>
                 <td className="px-4 py-3 tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</td>

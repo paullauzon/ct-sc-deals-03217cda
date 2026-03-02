@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { ForecastCategory, IcpFit, ServiceInterest } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
+import { LeadDetail } from "@/components/LeadsTable";
 
 export function Dashboard() {
   const { getMetrics, leads } = useLeads();
   const m = getMetrics();
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
   const activeStages = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"] as const;
 
@@ -73,9 +76,9 @@ export function Dashboard() {
           { label: "Pipeline Value", value: `$${m.totalPipelineValue.toLocaleString()}` },
           { label: "Win Rate", value: `${m.conversionRate}%` },
         ].map((stat) => (
-          <div key={stat.label} className="border border-border rounded-lg px-6 py-6">
+          <div key={stat.label} className="border border-border border-t-2 border-t-foreground rounded-lg px-6 py-5">
             <p className="text-xs text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-            <p className="text-4xl font-semibold tabular-nums mt-2">{stat.value}</p>
+            <p className="text-3xl font-semibold tabular-nums mt-1">{stat.value}</p>
           </div>
         ))}
       </div>
@@ -86,10 +89,10 @@ export function Dashboard() {
         <div className="space-y-2">
           {stageFunnel.map((s) => (
             <div key={s.label} className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground w-28 shrink-0 text-right">{s.label}</span>
+              <span className="text-xs text-muted-foreground w-32 shrink-0 text-right">{s.label}</span>
               <div className="flex-1 h-6 bg-secondary/50 rounded overflow-hidden">
                 <div
-                  className="h-full bg-foreground/15 rounded transition-all"
+                  className="h-full bg-foreground/20 rounded transition-all"
                   style={{ width: `${Math.max((s.count / maxStageCount) * 100, 2)}%` }}
                 />
               </div>
@@ -100,11 +103,11 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Tier 3: Secondary Metrics Strip */}
-      <div className="border border-border rounded-lg flex divide-x divide-border">
+      {/* Tier 3: Secondary Metrics Grid */}
+      <div className="grid grid-cols-3 gap-4">
         {secondaryMetrics.map((stat) => (
-          <div key={stat.label} className="flex-1 px-4 py-3 min-w-0">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider truncate">{stat.label}</p>
+          <div key={stat.label} className="border border-border rounded-lg px-4 py-3">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">{stat.label}</p>
             <p className="text-lg font-semibold tabular-nums mt-0.5">{stat.value}</p>
           </div>
         ))}
@@ -189,7 +192,11 @@ export function Dashboard() {
         <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Recent Leads</h2>
         <div className="border border-border rounded-md divide-y divide-border">
           {leads.slice(0, 10).map((lead) => (
-            <div key={lead.id} className="flex items-center justify-between px-4 py-3 text-sm">
+            <div
+              key={lead.id}
+              onClick={() => setSelectedLeadId(lead.id)}
+              className="flex items-center justify-between px-4 py-3 text-sm cursor-pointer hover:bg-secondary/30 transition-colors"
+            >
               <div className="flex-1 min-w-0">
                 <span className="font-medium">{lead.name}</span>
                 <span className="text-muted-foreground ml-2">{lead.company || lead.role}</span>
@@ -197,12 +204,14 @@ export function Dashboard() {
               <div className="flex items-center gap-4 text-muted-foreground">
                 <span className="text-xs tabular-nums">{computeDaysInStage(lead.stageEnteredDate)}d</span>
                 <span className="text-xs">{lead.dateSubmitted}</span>
-                <span className="text-xs px-2 py-0.5 border border-border rounded">{lead.stage}</span>
+                <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
               </div>
             </div>
           ))}
         </div>
       </div>
+
+      <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
     </div>
   );
 }

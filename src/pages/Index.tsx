@@ -13,18 +13,18 @@ const Index = () => {
     <LeadProvider>
       <div className="min-h-screen bg-background">
         {/* Navigation */}
-        <nav className="border-b border-border">
-          <div className="max-w-7xl mx-auto px-6 flex items-center h-12 gap-8">
-            <span className="text-sm font-semibold tracking-tight">CAPTARGET</span>
+        <nav className="border-b border-border shadow-sm">
+          <div className="max-w-7xl mx-auto px-6 flex items-center h-14 gap-8">
+            <span className="text-sm font-bold tracking-tight">CAPTARGET</span>
             <div className="flex gap-1">
               {(["dashboard", "leads", "pipeline"] as View[]).map((v) => (
                 <button
                   key={v}
                   onClick={() => setView(v)}
-                  className={`px-3 py-1.5 text-sm rounded transition-colors ${
+                  className={`px-3 py-1.5 text-sm transition-colors border-b-2 ${
                     view === v
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "border-foreground text-foreground font-medium"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {v.charAt(0).toUpperCase() + v.slice(1)}
