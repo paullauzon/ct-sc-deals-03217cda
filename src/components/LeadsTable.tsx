@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit } from "@/types/lead";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { computeDaysInStage } from "@/lib/leadUtils";
 
 const STAGES: LeadStage[] = ["New Lead", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Closed Won", "Closed Lost", "Went Dark"];
 const SERVICES: ServiceInterest[] = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "Other", "TBD"];
@@ -15,12 +16,18 @@ const MEETING_OUTCOMES: MeetingOutcome[] = ["Scheduled", "Held", "No-Show", "Res
 const FORECAST_CATEGORIES: ForecastCategory[] = ["Commit", "Best Case", "Pipeline", "Omit"];
 const ICP_FITS: IcpFit[] = ["Strong", "Moderate", "Weak"];
 
+type SortKey = "name" | "company" | "stage" | "dealValue" | "days" | "priority" | "dateSubmitted" | "source" | "serviceInterest" | "role";
+type SortDir = "asc" | "desc";
+
+const PRIORITY_ORDER: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
+
 export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; open: boolean; onClose: () => void }) {
   const { leads, updateLead } = useLeads();
   const lead = leads.find((l) => l.id === leadId) || null;
   if (!lead) return null;
 
   const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
+  const days = computeDaysInStage(lead.stageEnteredDate);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -66,8 +73,8 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
               <SelectField label="Stage" value={lead.stage} options={STAGES} onChange={(v) => save({ stage: v as LeadStage })} />
               <SelectField label="Service Interest" value={lead.serviceInterest} options={SERVICES} onChange={(v) => save({ serviceInterest: v as ServiceInterest })} />
               <SelectField label="Priority" value={lead.priority} options={[...PRIORITIES]} onChange={(v) => save({ priority: v as "High" | "Medium" | "Low" })} />
-              <SelectField label="Forecast Category" value={lead.forecastCategory || "_none"} options={FORECAST_CATEGORIES} onChange={(v) => save({ forecastCategory: v as ForecastCategory })} placeholder="Select" />
-              <SelectField label="ICP Fit" value={lead.icpFit || "_none"} options={ICP_FITS} onChange={(v) => save({ icpFit: v as IcpFit })} placeholder="Select" />
+              <ClearableSelectField label="Forecast Category" value={lead.forecastCategory} options={FORECAST_CATEGORIES} onChange={(v) => save({ forecastCategory: v as ForecastCategory })} />
+              <ClearableSelectField label="ICP Fit" value={lead.icpFit} options={ICP_FITS} onChange={(v) => save({ icpFit: v as IcpFit })} />
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider">Deal Value ($)</label>
                 <Input type="number" value={lead.dealValue || ""} onChange={(e) => save({ dealValue: Number(e.target.value) })} className="mt-1" placeholder="0" />
@@ -82,7 +89,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           {/* Meeting Management */}
           <Section title="Meeting">
             <div className="grid grid-cols-2 gap-4">
-              <SelectField label="Meeting Outcome" value={lead.meetingOutcome || "_none"} options={MEETING_OUTCOMES} onChange={(v) => save({ meetingOutcome: v as MeetingOutcome })} placeholder="Select" />
+              <ClearableSelectField label="Meeting Outcome" value={lead.meetingOutcome} options={MEETING_OUTCOMES} onChange={(v) => save({ meetingOutcome: v as MeetingOutcome })} />
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider">Meeting Date</label>
                 <Input type="date" value={lead.meetingDate} onChange={(e) => save({ meetingDate: e.target.value, meetingSetDate: lead.meetingSetDate || new Date().toISOString().split("T")[0] })} className="mt-1" />
@@ -111,7 +118,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           {(lead.stage === "Closed Lost" || lead.stage === "Went Dark") && (
             <Section title="Lost / Dark Details">
               <div className="grid grid-cols-2 gap-4">
-                <SelectField label="Close Reason" value={lead.closeReason || "_none"} options={CLOSE_REASONS} onChange={(v) => save({ closeReason: v as CloseReason })} placeholder="Select reason" />
+                <ClearableSelectField label="Close Reason" value={lead.closeReason} options={CLOSE_REASONS} onChange={(v) => save({ closeReason: v as CloseReason })} />
                 <div>
                   <label className="text-xs text-muted-foreground uppercase tracking-wider">Detail</label>
                   <Input value={lead.lostReason} onChange={(e) => save({ lostReason: e.target.value })} className="mt-1" placeholder="Additional context..." />
@@ -123,7 +130,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           {/* Tracking */}
           <Section title="Tracking">
             <div className="grid grid-cols-3 gap-3 text-sm">
-              <Field label="Days in Stage" value={lead.daysInCurrentStage} />
+              <Field label="Days in Stage" value={days} />
               <Field label="Hours to Meeting Set" value={lead.hoursToMeetingSet !== null ? lead.hoursToMeetingSet : "—"} />
               <Field label="Stage Entered" value={lead.stageEnteredDate || "—"} />
             </div>
@@ -174,25 +181,71 @@ function SelectField({ label, value, options, onChange, placeholder }: { label: 
   );
 }
 
+/** Select with a "None" clearable option for optional fields */
+function ClearableSelectField({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className="text-xs text-muted-foreground uppercase tracking-wider">{label}</label>
+      <Select value={value || "__none__"} onValueChange={(v) => onChange(v === "__none__" ? "" : v)}>
+        <SelectTrigger className="mt-1"><SelectValue placeholder={`Select ${label.toLowerCase()}`} /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__none__">— None —</SelectItem>
+          {options.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 export function LeadsTable() {
   const { leads, addLead } = useLeads();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [showNewLead, setShowNewLead] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("dateSubmitted");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  const filtered = leads.filter((l) => {
-    const matchSearch = !search || l.name.toLowerCase().includes(search.toLowerCase()) || l.email.toLowerCase().includes(search.toLowerCase()) || l.company.toLowerCase().includes(search.toLowerCase());
-    const matchStage = stageFilter === "all" || l.stage === stageFilter;
-    return matchSearch && matchStage;
-  });
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const sorted = useMemo(() => {
+    const filtered = leads.filter((l) => {
+      const matchSearch = !search || l.name.toLowerCase().includes(search.toLowerCase()) || l.email.toLowerCase().includes(search.toLowerCase()) || l.company.toLowerCase().includes(search.toLowerCase());
+      const matchStage = stageFilter === "all" || l.stage === stageFilter;
+      return matchSearch && matchStage;
+    });
+
+    return [...filtered].sort((a, b) => {
+      const dir = sortDir === "asc" ? 1 : -1;
+      switch (sortKey) {
+        case "name": return dir * a.name.localeCompare(b.name);
+        case "company": return dir * (a.company || "").localeCompare(b.company || "");
+        case "role": return dir * a.role.localeCompare(b.role);
+        case "stage": return dir * STAGES.indexOf(a.stage) - STAGES.indexOf(b.stage) * (dir > 0 ? 1 : -1) || 0;
+        case "dealValue": return dir * (a.dealValue - b.dealValue);
+        case "days": return dir * (computeDaysInStage(a.stageEnteredDate) - computeDaysInStage(b.stageEnteredDate));
+        case "priority": return dir * ((PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1));
+        case "dateSubmitted": return dir * a.dateSubmitted.localeCompare(b.dateSubmitted);
+        case "source": return dir * a.source.localeCompare(b.source);
+        case "serviceInterest": return dir * a.serviceInterest.localeCompare(b.serviceInterest);
+        default: return 0;
+      }
+    });
+  }, [leads, search, stageFilter, sortKey, sortDir]);
 
   const exportCSV = () => {
     const headers = ["Name","Email","Phone","Company","Role","Source","Date Submitted","Stage","Service Interest","Deal Value","Priority","Assigned To","Meeting Date","Meeting Outcome","Forecast Category","ICP Fit","Days In Stage","Hours To Meeting Set","Close Reason","Won Reason","Lost Reason","Closed Date","Last Contact","Next Follow-up","Notes"];
     const rows = leads.map((l) => [
       l.name, l.email, l.phone, l.company, l.role, l.source, l.dateSubmitted, l.stage, l.serviceInterest,
       l.dealValue || "", l.priority, l.assignedTo, l.meetingDate, l.meetingOutcome, l.forecastCategory,
-      l.icpFit, l.daysInCurrentStage, l.hoursToMeetingSet ?? "", l.closeReason, l.wonReason, l.lostReason,
+      l.icpFit, computeDaysInStage(l.stageEnteredDate), l.hoursToMeetingSet ?? "", l.closeReason, l.wonReason, l.lostReason,
       l.closedDate, l.lastContactDate, l.nextFollowUp, `"${(l.notes || "").replace(/"/g, '""')}"`
     ]);
     const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
@@ -203,12 +256,25 @@ export function LeadsTable() {
     URL.revokeObjectURL(url);
   };
 
+  const columns: { key: SortKey; label: string }[] = [
+    { key: "name", label: "Name" },
+    { key: "company", label: "Company" },
+    { key: "role", label: "Role" },
+    { key: "stage", label: "Stage" },
+    { key: "serviceInterest", label: "Service" },
+    { key: "dealValue", label: "Value" },
+    { key: "days", label: "Days" },
+    { key: "priority", label: "Priority" },
+    { key: "dateSubmitted", label: "Date" },
+    { key: "source", label: "Source" },
+  ];
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
-          <p className="text-sm text-muted-foreground mt-1">{filtered.length} of {leads.length} leads</p>
+          <p className="text-sm text-muted-foreground mt-1">{sorted.length} of {leads.length} leads</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
@@ -231,24 +297,35 @@ export function LeadsTable() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-secondary/50">
-              {["Name", "Role", "Stage", "Value", "Days", "Priority", "Date", "Source"].map((h) => (
-                <th key={h} className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">{h}</th>
+              {columns.map((col) => (
+                <th
+                  key={col.key}
+                  onClick={() => toggleSort(col.key)}
+                  className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground select-none transition-colors"
+                >
+                  {col.label}
+                  {sortKey === col.key && (
+                    <span className="ml-1">{sortDir === "asc" ? "↑" : "↓"}</span>
+                  )}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {filtered.map((lead) => (
+            {sorted.map((lead) => (
               <tr key={lead.id} onClick={() => setSelectedLeadId(lead.id)} className="cursor-pointer hover:bg-secondary/30 transition-colors">
                 <td className="px-4 py-3">
                   <div className="font-medium">{lead.name}</div>
                   <div className="text-xs text-muted-foreground">{lead.email}</div>
                 </td>
+                <td className="px-4 py-3 text-muted-foreground">{lead.company || "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{lead.role}</td>
                 <td className="px-4 py-3">
                   <span className="text-xs px-2 py-0.5 border border-border rounded">{lead.stage}</span>
                 </td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{lead.serviceInterest !== "TBD" ? lead.serviceInterest : "—"}</td>
                 <td className="px-4 py-3 tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</td>
-                <td className="px-4 py-3 tabular-nums text-muted-foreground">{lead.daysInCurrentStage}d</td>
+                <td className="px-4 py-3 tabular-nums text-muted-foreground">{computeDaysInStage(lead.stageEnteredDate)}d</td>
                 <td className="px-4 py-3 text-xs">{lead.priority}</td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{lead.dateSubmitted}</td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{lead.source === "Contact Form" ? "CF" : "TF"}</td>
