@@ -1,10 +1,39 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
-import { Lead, LeadStage, PipelineMetrics } from "@/types/lead";
+import { Lead, LeadStage, LeadSource, PipelineMetrics } from "@/types/lead";
 import { getInitialLeads } from "@/data/leadData";
+
+const SCHEMA_VERSION = 2;
+
+const LEAD_DEFAULTS: Partial<Lead> = {
+  meetingOutcome: "",
+  forecastCategory: "",
+  icpFit: "",
+  wonReason: "",
+  lostReason: "",
+  closeReason: "",
+  closedDate: "",
+  targetCriteria: "",
+  targetRevenue: "",
+  geography: "",
+  currentSourcing: "",
+};
+
+function migrateLeads(leads: Lead[]): Lead[] {
+  return leads.map((l) => {
+    const migrated = { ...l };
+    for (const [key, defaultVal] of Object.entries(LEAD_DEFAULTS)) {
+      if ((migrated as any)[key] === undefined) {
+        (migrated as any)[key] = defaultVal;
+      }
+    }
+    return migrated;
+  });
+}
 
 interface LeadContextType {
   leads: Lead[];
   updateLead: (id: string, updates: Partial<Lead>) => void;
+  addLead: (lead: Omit<Lead, "id" | "daysInCurrentStage" | "stageEnteredDate" | "hoursToMeetingSet">) => void;
   getMetrics: () => PipelineMetrics;
   getLeadsByStage: (stage: LeadStage) => Lead[];
   searchLeads: (query: string) => Lead[];
@@ -19,9 +48,20 @@ const STAGES: LeadStage[] = [
 
 export function LeadProvider({ children }: { children: ReactNode }) {
   const [leads, setLeads] = useState<Lead[]>(() => {
+    const ver = localStorage.getItem("captarget-schema-version");
     const saved = localStorage.getItem("captarget-leads");
-    if (saved) return JSON.parse(saved);
-    return getInitialLeads();
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      const migrated = migrateLeads(parsed);
+      if (ver !== String(SCHEMA_VERSION)) {
+        localStorage.setItem("captarget-leads", JSON.stringify(migrated));
+        localStorage.setItem("captarget-schema-version", String(SCHEMA_VERSION));
+      }
+      return migrated;
+    }
+    const initial = getInitialLeads();
+    localStorage.setItem("captarget-schema-version", String(SCHEMA_VERSION));
+    return initial;
   });
 
   const updateLead = useCallback((id: string, updates: Partial<Lead>) => {
@@ -33,6 +73,12 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         if (updates.stage && updates.stage !== l.stage) {
           updated.stageEnteredDate = new Date().toISOString().split("T")[0];
           updated.daysInCurrentStage = 0;
+          // Auto-set closedDate
+          if (["Closed Won", "Closed Lost", "Went Dark"].includes(updates.stage)) {
+            updated.closedDate = new Date().toISOString().split("T")[0];
+          } else {
+            updated.closedDate = "";
+          }
         }
         // Auto-calculate hours to meeting set
         if (updates.meetingSetDate && !l.meetingSetDate) {
@@ -42,6 +88,22 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         }
         return updated;
       });
+      localStorage.setItem("captarget-leads", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const addLead = useCallback((leadData: Omit<Lead, "id" | "daysInCurrentStage" | "stageEnteredDate" | "hoursToMeetingSet">) => {
+    setLeads((prev) => {
+      const today = new Date().toISOString().split("T")[0];
+      const newLead: Lead = {
+        ...leadData,
+        id: `CT-${String(prev.length + 1).padStart(3, "0")}`,
+        daysInCurrentStage: 0,
+        stageEnteredDate: today,
+        hoursToMeetingSet: null,
+      };
+      const next = [newLead, ...prev];
       localStorage.setItem("captarget-leads", JSON.stringify(next));
       return next;
     });
@@ -111,7 +173,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <LeadContext.Provider value={{ leads, updateLead, getMetrics, getLeadsByStage, searchLeads }}>
+    <LeadContext.Provider value={{ leads, updateLead, addLead, getMetrics, getLeadsByStage, searchLeads }}>
       {children}
     </LeadContext.Provider>
   );
