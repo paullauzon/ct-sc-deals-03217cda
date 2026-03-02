@@ -5,7 +5,7 @@ import { LeadDetail } from "@/components/LeadsTable";
 import { computeDaysInStage } from "@/lib/leadUtils";
 
 const PIPELINE_STAGES: LeadStage[] = [
-  "New Lead", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation",
+  "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
 ];
 
 const CLOSED_STAGES: LeadStage[] = ["Closed Won", "Closed Lost", "Went Dark"];
