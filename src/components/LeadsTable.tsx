@@ -264,7 +264,12 @@ function EnrichmentSection({ enrichment, onEnrich, enriching }: { enrichment?: L
         {enrichment.keyInsights && (
           <EnrichField label="Key Insights" value={enrichment.keyInsights} />
         )}
-        <p className="text-[10px] text-muted-foreground">Enriched {new Date(enrichment.enrichedAt).toLocaleDateString()}</p>
+        <div className="pt-1 border-t border-border/50 space-y-0.5">
+          <p className="text-[10px] text-muted-foreground">Enriched {new Date(enrichment.enrichedAt).toLocaleDateString()}</p>
+          {enrichment.dataSources && (
+            <p className="text-[10px] text-muted-foreground">Sources: {enrichment.dataSources}</p>
+          )}
+        </div>
       </div>
     </div>
   );

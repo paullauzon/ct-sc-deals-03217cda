@@ -136,6 +136,7 @@ export interface LeadEnrichment {
   decisionMakers: string;
   competitorTools: string;
   keyInsights: string;
+  dataSources?: string;
   enrichedAt: string;
 }
 
