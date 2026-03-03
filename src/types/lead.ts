@@ -58,6 +58,18 @@ export type ForecastCategory =
 
 export type IcpFit = "Strong" | "Moderate" | "Weak" | "";
 
+export interface Meeting {
+  id: string;
+  date: string;
+  title: string;
+  firefliesId?: string;
+  firefliesUrl: string;
+  transcript: string;
+  summary: string;
+  nextSteps: string;
+  addedAt: string;
+}
+
 export interface Lead {
   id: string;
   brand: Brand;
@@ -104,7 +116,9 @@ export interface Lead {
   hearAboutUs: string;
   acquisitionStrategy: string;
   buyerType: string;
-  // Fireflies meeting recording
+  // Multi-meeting support
+  meetings: Meeting[];
+  // Legacy fields (kept for migration)
   firefliesUrl: string;
   firefliesTranscript: string;
   firefliesSummary: string;
