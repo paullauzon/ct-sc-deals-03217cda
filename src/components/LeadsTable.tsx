@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
+import { useProcessing } from "@/contexts/ProcessingContext";
 import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency, SuggestedUpdates, SuggestedFieldUpdate, Submission } from "@/types/lead";
 import { toast } from "sonner";
 import { MeetingsSection } from "@/components/MeetingsSection";
@@ -81,9 +82,11 @@ function DealProgressBar({ currentStage }: { currentStage: LeadStage }) {
 
 export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; open: boolean; onClose: () => void }) {
   const { leads, updateLead } = useLeads();
+  const { leadJobs, acceptLeadSuggestion, dismissLeadSuggestion, acceptAllLeadSuggestions, dismissLeadJob } = useProcessing();
   const lead = leads.find((l) => l.id === leadId) || null;
   const [enriching, setEnriching] = useState(false);
   if (!lead) return null;
+  const autoFindJob = leadJobs[lead.id];
 
   const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
   const days = computeDaysInStage(lead.stageEnteredDate);
@@ -203,6 +206,62 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
 
           {/* Deal Progress Bar */}
           <DealProgressBar currentStage={lead.stage} />
+
+          {/* Auto-Find Inline Suggestions */}
+          {autoFindJob && (autoFindJob.searching || autoFindJob.pendingSuggestions.length > 0) && (
+            <div className="rounded-md border-2 border-primary/30 bg-primary/5 p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-primary uppercase tracking-wider">
+                  <Zap className="h-3.5 w-3.5" />
+                  {autoFindJob.searching ? "Searching Meetings..." : `Meeting-Based Suggestions (${autoFindJob.pendingSuggestions.length})`}
+                </div>
+                {!autoFindJob.searching && autoFindJob.pendingSuggestions.length > 0 && (
+                  <Button variant="ghost" size="sm" className="h-6 text-[10px] text-primary hover:text-primary"
+                    onClick={() => acceptAllLeadSuggestions(lead.id)}>
+                    Accept All
+                  </Button>
+                )}
+              </div>
+              {autoFindJob.searching && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                  <span>Processing meetings for {autoFindJob.leadName}...</span>
+                </div>
+              )}
+              {!autoFindJob.searching && autoFindJob.pendingSuggestions.length > 0 && (
+                <div className="space-y-1.5">
+                  {autoFindJob.pendingSuggestions.map((s) => (
+                    <div key={s.field} className="rounded border border-border bg-background p-2 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                          <span className="text-xs font-medium">{s.label}</span>
+                          <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                          <Badge variant="default" className="text-[10px] shrink-0">{String(s.value)}</Badge>
+                        </div>
+                        <div className="flex gap-0.5 shrink-0 ml-2">
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                            onClick={() => acceptLeadSuggestion(lead.id, s.field, s.value)}>
+                            <Check className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => dismissLeadSuggestion(lead.id, s.field)}>
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">{s.evidence}</p>
+                    </div>
+                  ))}
+                  <div className="flex justify-end pt-1">
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px] text-muted-foreground"
+                      onClick={() => dismissLeadJob(lead.id)}>
+                      Skip All
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* AI Enrichment */}
           <EnrichmentSection enrichment={lead.enrichment} onEnrich={handleEnrich} enriching={enriching} lead={lead} onAcceptSuggestion={(field, value) => {
