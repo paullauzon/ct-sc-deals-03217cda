@@ -140,7 +140,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     }
 
     // Mark as acknowledged in DB
-    supabase.from("processing_jobs").update({ acknowledged: true }).eq("id", job.id).then();
+    (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
   }, []);
 
   // ─── Realtime subscription + hydration on mount ───
@@ -179,7 +179,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
               delete copy[job.lead_id];
               return copy;
             });
-            supabase.from("processing_jobs").update({ acknowledged: true }).eq("id", job.id).then();
+            (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
           }
         }
       )
@@ -187,8 +187,8 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
     // Hydrate from any unacknowledged jobs on mount (survives tab close!)
     (async () => {
-      const { data: activeJobs } = await supabase
-        .from("processing_jobs")
+      const { data: activeJobs } = await (supabase
+        .from("processing_jobs") as any)
         .select("*")
         .eq("acknowledged", false)
         .order("created_at", { ascending: true });
@@ -209,7 +209,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             }));
           } else if (job.status === "failed") {
             toast.error(`Auto-find failed for ${job.lead_name}: ${job.error || "Unknown error"}`);
-            supabase.from("processing_jobs").update({ acknowledged: true }).eq("id", job.id).then();
+            (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
           }
         }
       }
