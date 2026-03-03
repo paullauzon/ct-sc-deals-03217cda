@@ -11,3 +11,9 @@ verify_jwt = false
 
 [functions.enrich-lead]
 verify_jwt = false
+
+[functions.generate-meeting-prep]
+verify_jwt = false
+
+[functions.draft-followup]
+verify_jwt = false
