@@ -393,12 +393,13 @@ export async function runBulkProcessing(
           updates.lastContactDate = latestDate;
         }
         // Extract next follow-up from intelligence
+        const today = new Date().toISOString().split("T")[0];
         const nextStepDates = addedMeetings
           .flatMap(m => m.intelligence?.nextSteps || [])
-          .filter(ns => ns.deadline)
+          .filter(ns => ns.deadline && ns.deadline >= today)
           .map(ns => ns.deadline)
           .sort();
-        if (nextStepDates.length > 0 && (!lead.nextFollowUp || nextStepDates[0] < lead.nextFollowUp)) {
+        if (nextStepDates.length > 0 && (!lead.nextFollowUp || nextStepDates[0] > today)) {
           updates.nextFollowUp = nextStepDates[0];
         }
         updateLead(leadId, updates);
