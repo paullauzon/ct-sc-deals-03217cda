@@ -33,11 +33,25 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
   const handleAutoFind = async () => {
     setSearching(true);
     try {
+      // Extract company domain from email, skip generic providers
+      const genericDomains = new Set([
+        "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com",
+        "icloud.com", "mail.com", "protonmail.com", "live.com", "msn.com",
+      ]);
+      const searchDomains: string[] = [];
+      if (lead.email) {
+        const domain = lead.email.split("@")[1]?.toLowerCase();
+        if (domain && !genericDomains.has(domain)) {
+          searchDomains.push(domain);
+        }
+      }
+
       const { data, error } = await supabase.functions.invoke("fetch-fireflies", {
         body: {
           searchEmails: [lead.email],
           searchNames: [lead.name],
-          limit: 50,
+          searchDomains,
+          limit: 100,
           summarize: false,
           brand: lead.brand,
         },
