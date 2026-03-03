@@ -468,8 +468,7 @@ function DealHealthAlerts({ lead }: { lead: Lead }) {
     </div>
   );
 }
-
-
+const SUGGESTION_LABELS: Record<string, string> = {
   stage: "Stage", priority: "Priority", forecastCategory: "Forecast",
   icpFit: "ICP Fit", nextFollowUp: "Next Follow-up", dealValue: "Deal Value",
   serviceInterest: "Service Interest", meetingOutcome: "Meeting Outcome",
