@@ -128,6 +128,8 @@ export interface Meeting {
   intelligence?: MeetingIntelligence;
 }
 
+export type BillingFrequency = "Monthly" | "Quarterly" | "Annually" | "";
+
 export interface Lead {
   id: string;
   brand: Brand;
@@ -163,6 +165,11 @@ export interface Lead {
   icpFit: IcpFit;
   wonReason: string;
   lostReason: string;
+  // Revenue & Contract fields
+  subscriptionValue: number;
+  billingFrequency: BillingFrequency;
+  contractStart: string;
+  contractEnd: string;
   // Target-specific fields
   targetCriteria: string;
   targetRevenue: string;
@@ -195,6 +202,16 @@ export interface LeadEnrichment {
   keyInsights: string;
   dataSources?: string;
   enrichedAt: string;
+  // New holistic deal intelligence fields
+  objectionsSummary?: string;
+  dealRiskAssessment?: string;
+  recommendedNextActions?: string;
+  competitiveLandscape?: string;
+  relationshipMap?: string;
+  dealHealthScore?: string;
+  engagementTrend?: string;
+  likelihoodToClose?: string;
+  sentimentAnalysis?: string;
 }
 
 export interface PipelineMetrics {
