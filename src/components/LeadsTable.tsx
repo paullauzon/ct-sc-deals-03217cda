@@ -890,6 +890,7 @@ export function LeadsTable() {
       <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
       <NewLeadDialog open={showNewLead} onClose={() => setShowNewLead(false)} onSave={addLead} />
       <FirefliesImportDialog open={showFireflies} onOpenChange={setShowFireflies} />
+      <BulkProcessingDialog open={showBulkProcess} onOpenChange={setShowBulkProcess} />
     </div>
   );
 }
