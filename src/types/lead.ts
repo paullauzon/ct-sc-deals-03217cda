@@ -104,6 +104,11 @@ export interface Lead {
   hearAboutUs: string;
   acquisitionStrategy: string;
   buyerType: string;
+  // Fireflies meeting recording
+  firefliesUrl: string;
+  firefliesTranscript: string;
+  firefliesSummary: string;
+  firefliesNextSteps: string;
 }
 
 export interface PipelineMetrics {

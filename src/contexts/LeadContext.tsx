@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, ReactNode } from "rea
 import { Lead, LeadStage, LeadSource, PipelineMetrics } from "@/types/lead";
 import { getInitialLeads } from "@/data/leadData";
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const LEAD_DEFAULTS: Partial<Lead> = {
   meetingOutcome: "",
@@ -22,6 +22,10 @@ const LEAD_DEFAULTS: Partial<Lead> = {
   hearAboutUs: "",
   acquisitionStrategy: "",
   buyerType: "",
+  firefliesUrl: "",
+  firefliesTranscript: "",
+  firefliesSummary: "",
+  firefliesNextSteps: "",
 };
 
 const SERVICE_MIGRATION: Record<string, string> = {

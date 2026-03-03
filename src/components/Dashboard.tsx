@@ -3,6 +3,7 @@ import { useLeads } from "@/contexts/LeadContext";
 import { Lead, LeadSource, Brand } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { LeadDetail } from "@/components/LeadsTable";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, Legend,
@@ -222,6 +223,8 @@ export function Dashboard() {
     };
   }, [leads, m]);
 
+  const [moreOpen, setMoreOpen] = useState(false);
+
   const secondaryMetrics = [
     { label: "This Week", value: analytics.leadsThisWeek },
     { label: "This Month", value: analytics.leadsThisMonth },
@@ -232,13 +235,13 @@ export function Dashboard() {
   ];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8">
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">Analytics overview · {leads.length} total leads</p>
+        <p className="text-sm text-muted-foreground mt-1">{leads.length} leads · Pipeline health & deal intelligence</p>
       </div>
 
-      {/* Hero Metrics */}
+      {/* Row 1: Hero Metrics */}
       <div className="grid grid-cols-4 gap-4">
         {[
           { label: "Total Leads", value: String(m.totalLeads) },
@@ -253,7 +256,7 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* Secondary Metrics */}
+      {/* Row 2: Action Strip */}
       <div className="grid grid-cols-6 gap-3">
         {secondaryMetrics.map((stat) => (
           <div key={stat.label} className="border border-border rounded-lg px-4 py-3">
@@ -266,66 +269,7 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* Brand Comparison */}
-      <div>
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Brand Comparison</h2>
-        <div className="grid grid-cols-2 gap-4">
-          {[
-            { brand: "Captarget", data: analytics.ctLeads, abbr: "CT" },
-            { brand: "SourceCo", data: analytics.scLeads, abbr: "SC" },
-          ].map(({ brand, data, abbr }) => (
-            <div key={brand} className="border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-xs font-mono px-1.5 py-0.5 border border-border rounded">{abbr}</span>
-                <span className="text-sm font-medium">{brand}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                <div><p className="text-xs text-muted-foreground">Total</p><p className="font-semibold tabular-nums">{data.length}</p></div>
-                <div><p className="text-xs text-muted-foreground">Pipeline $</p><p className="font-semibold tabular-nums">${data.filter((l) => !["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)).reduce((s, l) => s + l.dealValue, 0).toLocaleString()}</p></div>
-                <div><p className="text-xs text-muted-foreground">Won</p><p className="font-semibold tabular-nums">{data.filter((l) => l.stage === "Closed Won").length}</p></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Lead Volume — Stacked Area Chart */}
-      <div>
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Lead Volume Over Time (16 weeks)</h2>
-        <div className="border border-border rounded-lg p-4">
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={analytics.weeklyData}>
-              <defs>
-                <linearGradient id="gradCT" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(0,0%,15%)" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="hsl(0,0%,15%)" stopOpacity={0.05} />
-                </linearGradient>
-                <linearGradient id="gradSC" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(0,0%,55%)" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="hsl(0,0%,55%)" stopOpacity={0.05} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
-              <XAxis dataKey="week" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-              <YAxis yAxisId="left" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} stroke="hsl(0,0%,75%)" />
-              <Tooltip
-                contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", background: "hsl(0,0%,100%)", borderRadius: 6 }}
-                formatter={(value: number, name: string) => {
-                  const labels: Record<string, string> = { CT: "Captarget", SC: "SourceCo", cumulative: "Cumulative Total" };
-                  return [value, labels[name] || name];
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Area yAxisId="left" type="monotone" dataKey="CT" stackId="1" stroke="hsl(0,0%,15%)" fill="url(#gradCT)" strokeWidth={2} name="Captarget" />
-              <Area yAxisId="left" type="monotone" dataKey="SC" stackId="1" stroke="hsl(0,0%,55%)" fill="url(#gradSC)" strokeWidth={2} name="SourceCo" />
-              <Line yAxisId="right" type="monotone" dataKey="cumulative" stroke="hsl(0,0%,40%)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} name="Cumulative" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Pipeline Funnel + Conversion by Brand */}
+      {/* Row 3: Pipeline Funnel + Owner Workload */}
       <div className="grid grid-cols-2 gap-6">
         <div>
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Pipeline Funnel</h2>
@@ -350,110 +294,74 @@ export function Dashboard() {
           </div>
         </div>
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Stage Distribution by Brand</h2>
-          <div className="border border-border rounded-lg p-4">
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={analytics.conversionByBrand} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
-                <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-                <YAxis dataKey="stage" type="category" tick={{ fontSize: 9 }} stroke="hsl(0,0%,60%)" width={85} />
-                <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
-                <Bar dataKey="CT" fill="hsl(0,0%,20%)" radius={[0, 3, 3, 0]} name="Captarget" />
-                <Bar dataKey="SC" fill="hsl(0,0%,65%)" radius={[0, 3, 3, 0]} name="SourceCo" />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-              </BarChart>
-            </ResponsiveContainer>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Owner Workload</h2>
+          <div className="border border-border rounded-md overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/50">
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Owner</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Active</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Pipeline $</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Won</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {analytics.ownerData.map((o) => (
+                  <tr key={o.owner}>
+                    <td className="px-4 py-2.5 font-medium flex items-center gap-2">
+                      {o.owner !== "Unassigned" ? (
+                        <span className="w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">{o.owner[0]}</span>
+                      ) : (
+                        <span className="w-6 h-6 rounded-full border border-dashed border-muted-foreground/40 flex items-center justify-center text-[10px] text-muted-foreground/50 shrink-0">?</span>
+                      )}
+                      {o.owner}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{o.count}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">${o.value.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{o.won}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
 
-      {/* Stale Leads Alert */}
-      {analytics.staleLeads.length > 0 && (
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
-            ⚠ Stale Leads <span className="text-xs font-normal ml-1">({analytics.staleLeads.length} leads stuck &gt;14 days)</span>
-          </h2>
-          <div className="border border-border border-l-2 border-l-foreground/40 rounded-md divide-y divide-border">
-            {analytics.staleLeads.slice(0, 8).map((lead) => (
-              <div
-                key={lead.id}
-                onClick={() => setSelectedLeadId(lead.id)}
-                className="flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer hover:bg-secondary/30 transition-colors"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
-                  <span className="font-medium">{lead.name}</span>
-                  <span className="text-muted-foreground truncate text-xs">{lead.company}</span>
-                </div>
-                <div className="flex items-center gap-3 text-muted-foreground shrink-0">
-                  <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
-                  <span className="text-xs tabular-nums font-medium">{computeDaysInStage(lead.stageEnteredDate)}d</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Source Form Breakdown + How SC Found Us */}
+      {/* Row 4: Stale Leads + Forecast */}
       <div className="grid grid-cols-2 gap-6">
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Source Breakdown</h2>
-          <div className="border border-border rounded-lg p-4">
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={analytics.sourceBreakdown} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
-                <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-                <YAxis dataKey="source" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={80} />
-                <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
-                <Bar dataKey="count" fill="hsl(0,0%,25%)" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-        {analytics.hearData.length > 0 && (
+        {analytics.staleLeads.length > 0 ? (
           <div>
-            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">How SC Leads Found Us</h2>
-            <div className="border border-border rounded-lg p-4">
-              <ResponsiveContainer width="100%" height={Math.max(180, analytics.hearData.length * 32)}>
-                <BarChart data={analytics.hearData} layout="vertical" margin={{ left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
-                  <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-                  <YAxis dataKey="channel" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={90} />
-                  <Tooltip
-                    contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }}
-                    formatter={(value: number, _: string, props: any) => [`${value} (${props.payload.pct}%)`, "Leads"]}
-                  />
-                  <Bar dataKey="count" fill="hsl(0,0%,45%)" radius={[0, 4, 4, 0]}>
-                    {analytics.hearData.map((_, i) => (
-                      <Cell key={i} fill={`hsl(0,0%,${25 + i * 5}%)`} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
+              ⚠ Stale Leads <span className="text-xs font-normal ml-1">({analytics.staleLeads.length} stuck &gt;14d)</span>
+            </h2>
+            <div className="border border-border border-l-2 border-l-foreground/40 rounded-md divide-y divide-border max-h-[280px] overflow-y-auto">
+              {analytics.staleLeads.slice(0, 10).map((lead) => (
+                <div
+                  key={lead.id}
+                  onClick={() => setSelectedLeadId(lead.id)}
+                  className="flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer hover:bg-secondary/30 transition-colors"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
+                    <span className="font-medium">{lead.name}</span>
+                    <span className="text-muted-foreground truncate text-xs">{lead.company}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-muted-foreground shrink-0">
+                    <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
+                    <span className="text-xs tabular-nums font-medium">{computeDaysInStage(lead.stageEnteredDate)}d</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Stale Leads</h2>
+            <div className="border border-border rounded-md px-4 py-8 text-center">
+              <p className="text-sm text-muted-foreground">✓ No stale leads — all deals are moving</p>
             </div>
           </div>
         )}
-      </div>
-
-      {/* Service Interest by Brand + Forecast Summary */}
-      <div className="grid grid-cols-2 gap-6">
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Service Interest by Brand</h2>
-          <div className="border border-border rounded-lg p-4">
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={analytics.serviceByBrand} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
-                <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-                <YAxis dataKey="service" type="category" tick={{ fontSize: 9 }} stroke="hsl(0,0%,60%)" width={85} />
-                <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
-                <Bar dataKey="CT" fill="hsl(0,0%,20%)" radius={[0, 3, 3, 0]} name="Captarget" />
-                <Bar dataKey="SC" fill="hsl(0,0%,65%)" radius={[0, 3, 3, 0]} name="SourceCo" />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
         <div>
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Forecast Summary</h2>
           {analytics.forecastData.length > 0 ? (
@@ -475,194 +383,279 @@ export function Dashboard() {
           ) : (
             <div className="border border-border rounded-md px-4 py-8 text-center">
               <p className="text-sm text-muted-foreground">No forecast categories assigned yet</p>
-              <p className="text-xs text-muted-foreground mt-1">Set forecast categories on individual leads to see projections here</p>
+              <p className="text-xs text-muted-foreground mt-1">Set forecast categories on individual leads</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Owner Workload */}
+      {/* Row 5: Lead Volume */}
       <div>
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Owner Workload</h2>
-        <div className="grid grid-cols-4 gap-4">
-          {analytics.ownerData.map((o) => (
-            <div key={o.owner} className="border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-3">
-                {o.owner !== "Unassigned" ? (
-                  <span className="w-7 h-7 rounded-full bg-foreground text-background flex items-center justify-center text-xs font-semibold">{o.owner[0]}</span>
-                ) : (
-                  <span className="w-7 h-7 rounded-full border border-dashed border-muted-foreground/40 flex items-center justify-center text-xs text-muted-foreground/50">?</span>
-                )}
-                <span className="text-sm font-medium">{o.owner}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-sm">
-                <div><p className="text-xs text-muted-foreground">Active</p><p className="font-semibold tabular-nums">{o.count}</p></div>
-                <div><p className="text-xs text-muted-foreground">Pipeline</p><p className="font-semibold tabular-nums">${o.value.toLocaleString()}</p></div>
-                <div><p className="text-xs text-muted-foreground">Won</p><p className="font-semibold tabular-nums">{o.won}</p></div>
-              </div>
-            </div>
-          ))}
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Lead Volume (16 weeks)</h2>
+        <div className="border border-border rounded-lg p-4">
+          <ResponsiveContainer width="100%" height={240}>
+            <AreaChart data={analytics.weeklyData}>
+              <defs>
+                <linearGradient id="gradCT" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(0,0%,15%)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(0,0%,15%)" stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="gradSC" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(0,0%,55%)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(0,0%,55%)" stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+              <XAxis dataKey="week" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+              <YAxis yAxisId="left" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} stroke="hsl(0,0%,75%)" />
+              <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", background: "hsl(0,0%,100%)", borderRadius: 6 }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Area yAxisId="left" type="monotone" dataKey="CT" stackId="1" stroke="hsl(0,0%,15%)" fill="url(#gradCT)" strokeWidth={2} name="Captarget" />
+              <Area yAxisId="left" type="monotone" dataKey="SC" stackId="1" stroke="hsl(0,0%,55%)" fill="url(#gradSC)" strokeWidth={2} name="SourceCo" />
+              <Line yAxisId="right" type="monotone" dataKey="cumulative" stroke="hsl(0,0%,40%)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} name="Cumulative" />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Role Distribution + Priority Distribution */}
+      {/* Row 6: Brand Comparison + Service by Brand */}
       <div className="grid grid-cols-2 gap-6">
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Role / Buyer Type</h2>
-          <div className="border border-border rounded-md divide-y divide-border max-h-[240px] overflow-y-auto">
-            {analytics.roleData.map((r) => (
-              <div key={r.role} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span className="text-muted-foreground truncate">{r.role}</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium tabular-nums">{r.count}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">{Math.round((r.count / leads.length) * 100)}%</span>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Brand Comparison</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { brand: "Captarget", data: analytics.ctLeads, abbr: "CT" },
+              { brand: "SourceCo", data: analytics.scLeads, abbr: "SC" },
+            ].map(({ brand, data, abbr }) => (
+              <div key={brand} className="border border-border rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-mono px-1.5 py-0.5 border border-border rounded">{abbr}</span>
+                  <span className="text-sm font-medium">{brand}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <div><p className="text-xs text-muted-foreground">Total</p><p className="font-semibold tabular-nums">{data.length}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Pipeline</p><p className="font-semibold tabular-nums">${data.filter((l) => !["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)).reduce((s, l) => s + l.dealValue, 0).toLocaleString()}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Won</p><p className="font-semibold tabular-nums">{data.filter((l) => l.stage === "Closed Won").length}</p></div>
                 </div>
               </div>
             ))}
           </div>
         </div>
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Active Pipeline by Priority</h2>
-          <div className="border border-border rounded-md divide-y divide-border">
-            {analytics.priorityData.map((p) => {
-              const total = analytics.priorityData.reduce((s, x) => s + x.count, 0);
-              return (
-                <div key={p.priority} className="flex items-center justify-between px-4 py-3 text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${p.priority === "High" ? "bg-foreground" : p.priority === "Medium" ? "bg-foreground/50" : "bg-foreground/20"}`} />
-                    <span className="font-medium">{p.priority}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-24 h-3 bg-secondary/50 rounded overflow-hidden">
-                      <div className="h-full bg-foreground/20 rounded" style={{ width: `${total > 0 ? (p.count / total) * 100 : 0}%` }} />
-                    </div>
-                    <span className="tabular-nums font-medium w-8 text-right">{p.count}</span>
-                    <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">{total > 0 ? Math.round((p.count / total) * 100) : 0}%</span>
-                  </div>
-                </div>
-              );
-            })}
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Service Interest by Brand</h2>
+          <div className="border border-border rounded-lg p-4">
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={analytics.serviceByBrand} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                <YAxis dataKey="service" type="category" tick={{ fontSize: 9 }} stroke="hsl(0,0%,60%)" width={85} />
+                <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
+                <Bar dataKey="CT" fill="hsl(0,0%,20%)" radius={[0, 3, 3, 0]} name="Captarget" />
+                <Bar dataKey="SC" fill="hsl(0,0%,65%)" radius={[0, 3, 3, 0]} name="SourceCo" />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* Company Leaderboard */}
-      <div>
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Company Leaderboard (Top 15)</h2>
-        <div className="border border-border rounded-md overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-secondary/50">
-                <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Company</th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Leads</th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Deal Value</th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Sources</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {analytics.companyLeaderboard.map((c) => (
-                <tr key={c.company} className="hover:bg-secondary/30 transition-colors">
-                  <td className="px-4 py-2 font-medium">{c.company}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{c.count}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{c.value ? `$${c.value.toLocaleString()}` : "—"}</td>
-                  <td className="px-4 py-2 text-right text-xs text-muted-foreground">{c.sources}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* More Analytics (Collapsible) */}
+      <Collapsible open={moreOpen} onOpenChange={setMoreOpen}>
+        <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+          <span>{moreOpen ? "▾" : "▸"}</span>
+          <span className="uppercase tracking-wider font-medium text-xs">More Analytics</span>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-6 mt-4">
+          {/* Stage Distribution by Brand */}
+          <div>
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Stage Distribution by Brand</h2>
+            <div className="border border-border rounded-lg p-4">
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={analytics.conversionByBrand} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                  <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                  <YAxis dataKey="stage" type="category" tick={{ fontSize: 9 }} stroke="hsl(0,0%,60%)" width={85} />
+                  <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
+                  <Bar dataKey="CT" fill="hsl(0,0%,20%)" radius={[0, 3, 3, 0]} name="Captarget" />
+                  <Bar dataKey="SC" fill="hsl(0,0%,65%)" radius={[0, 3, 3, 0]} name="SourceCo" />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
-      {/* Service Interest + Deals Planned + Day of Week */}
-      <div className="grid grid-cols-3 gap-6">
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Service Interest (All)</h2>
-          <div className="border border-border rounded-md divide-y divide-border">
-            {analytics.serviceData.map((s) => (
-              <div key={s.label} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                <span className="text-muted-foreground truncate">{s.label}</span>
-                <span className="font-medium tabular-nums">{s.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Deals Planned</h2>
-          <div className="border border-border rounded-md divide-y divide-border">
-            {analytics.dealsData.map((d) => (
-              <div key={d.range} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                <span className="text-muted-foreground">{d.range}</span>
-                <span className="font-medium tabular-nums">{d.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Submissions by Day</h2>
-          <div className="border border-border rounded-md divide-y divide-border">
-            {analytics.dayOfWeek.map((d) => (
-              <div key={d.day} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span className="text-muted-foreground">{d.day}</span>
-                <div className="flex items-center gap-2">
-                  <div className="w-16 h-3 bg-secondary/50 rounded overflow-hidden">
-                    <div className="h-full bg-foreground/20 rounded" style={{ width: `${(d.count / Math.max(...analytics.dayOfWeek.map((x) => x.count), 1)) * 100}%` }} />
-                  </div>
-                  <span className="font-medium tabular-nums text-xs w-6 text-right">{d.count}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Duplicates */}
-      <div>
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
-          Cross-Brand Duplicates <span className="text-xs font-normal ml-1">({analytics.duplicatePairs.length} pairs)</span>
-        </h2>
-        {analytics.duplicatePairs.length > 0 ? (
-          <div className="border border-border rounded-md divide-y divide-border max-h-[300px] overflow-y-auto">
-            {analytics.duplicatePairs.map((pair, i) => (
-              <div key={i} className="px-4 py-2.5 text-sm space-y-0.5">
-                <p className="font-medium">{pair.ctLead.name}</p>
-                <p className="text-xs text-muted-foreground">{pair.ctLead.email}</p>
-                <div className="flex gap-2 text-xs">
-                  <span className="px-1 py-0.5 border border-border rounded">CT: {pair.ctLead.source.replace("CT ", "")}</span>
-                  <span className="px-1 py-0.5 border border-border rounded">SC: {pair.scLead.source.replace("SC ", "")}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No cross-brand duplicates found</p>
-        )}
-      </div>
-
-      {/* Recent Leads */}
-      <div>
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Recent Leads</h2>
-        <div className="border border-border rounded-md divide-y divide-border">
-          {leads.slice(0, 15).map((lead) => (
-            <div
-              key={lead.id}
-              onClick={() => setSelectedLeadId(lead.id)}
-              className="flex items-center justify-between px-4 py-3 text-sm cursor-pointer hover:bg-secondary/30 transition-colors"
-            >
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded shrink-0">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
-                <span className="font-medium">{lead.name}</span>
-                <span className="text-muted-foreground truncate">{lead.company || lead.role}</span>
-                {lead.isDuplicate && <span className="text-[10px] px-1 py-0.5 bg-secondary rounded">DUP</span>}
-              </div>
-              <div className="flex items-center gap-4 text-muted-foreground shrink-0">
-                <span className="text-xs tabular-nums">{computeDaysInStage(lead.stageEnteredDate)}d</span>
-                <span className="text-xs">{lead.dateSubmitted}</span>
-                <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
+          {/* Source + How SC Found Us */}
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Source Breakdown</h2>
+              <div className="border border-border rounded-lg p-4">
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={analytics.sourceBreakdown} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                    <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                    <YAxis dataKey="source" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={80} />
+                    <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
+                    <Bar dataKey="count" fill="hsl(0,0%,25%)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
+            {analytics.hearData.length > 0 && (
+              <div>
+                <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">How SC Leads Found Us</h2>
+                <div className="border border-border rounded-lg p-4">
+                  <ResponsiveContainer width="100%" height={Math.max(180, analytics.hearData.length * 32)}>
+                    <BarChart data={analytics.hearData} layout="vertical" margin={{ left: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                      <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                      <YAxis dataKey="channel" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={90} />
+                      <Tooltip
+                        contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }}
+                        formatter={(value: number, _: string, props: any) => [`${value} (${props.payload.pct}%)`, "Leads"]}
+                      />
+                      <Bar dataKey="count" fill="hsl(0,0%,45%)" radius={[0, 4, 4, 0]}>
+                        {analytics.hearData.map((_, i) => (
+                          <Cell key={i} fill={`hsl(0,0%,${25 + i * 5}%)`} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Priority + Role */}
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Active Pipeline by Priority</h2>
+              <div className="border border-border rounded-md divide-y divide-border">
+                {analytics.priorityData.map((p) => {
+                  const total = analytics.priorityData.reduce((s, x) => s + x.count, 0);
+                  return (
+                    <div key={p.priority} className="flex items-center justify-between px-4 py-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${p.priority === "High" ? "bg-foreground" : p.priority === "Medium" ? "bg-foreground/50" : "bg-foreground/20"}`} />
+                        <span className="font-medium">{p.priority}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-24 h-3 bg-secondary/50 rounded overflow-hidden">
+                          <div className="h-full bg-foreground/20 rounded" style={{ width: `${total > 0 ? (p.count / total) * 100 : 0}%` }} />
+                        </div>
+                        <span className="tabular-nums font-medium w-8 text-right">{p.count}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Role / Buyer Type</h2>
+              <div className="border border-border rounded-md divide-y divide-border max-h-[200px] overflow-y-auto">
+                {analytics.roleData.map((r) => (
+                  <div key={r.role} className="flex items-center justify-between px-4 py-2 text-sm">
+                    <span className="text-muted-foreground truncate">{r.role}</span>
+                    <span className="font-medium tabular-nums">{r.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Service Interest + Deals + Day of Week */}
+          <div className="grid grid-cols-3 gap-6">
+            <div>
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Service Interest (All)</h2>
+              <div className="border border-border rounded-md divide-y divide-border">
+                {analytics.serviceData.map((s) => (
+                  <div key={s.label} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                    <span className="text-muted-foreground truncate">{s.label}</span>
+                    <span className="font-medium tabular-nums">{s.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Deals Planned</h2>
+              <div className="border border-border rounded-md divide-y divide-border">
+                {analytics.dealsData.map((d) => (
+                  <div key={d.range} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                    <span className="text-muted-foreground">{d.range}</span>
+                    <span className="font-medium tabular-nums">{d.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Submissions by Day</h2>
+              <div className="border border-border rounded-md divide-y divide-border">
+                {analytics.dayOfWeek.map((d) => (
+                  <div key={d.day} className="flex items-center justify-between px-4 py-2 text-sm">
+                    <span className="text-muted-foreground">{d.day}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-16 h-3 bg-secondary/50 rounded overflow-hidden">
+                        <div className="h-full bg-foreground/20 rounded" style={{ width: `${(d.count / Math.max(...analytics.dayOfWeek.map((x) => x.count), 1)) * 100}%` }} />
+                      </div>
+                      <span className="font-medium tabular-nums text-xs w-6 text-right">{d.count}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Company Leaderboard */}
+          <div>
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Company Leaderboard (Top 15)</h2>
+            <div className="border border-border rounded-md overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-secondary/50">
+                    <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Company</th>
+                    <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Leads</th>
+                    <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Deal Value</th>
+                    <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Sources</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {analytics.companyLeaderboard.map((c) => (
+                    <tr key={c.company} className="hover:bg-secondary/30 transition-colors">
+                      <td className="px-4 py-2 font-medium">{c.company}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{c.count}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{c.value ? `$${c.value.toLocaleString()}` : "—"}</td>
+                      <td className="px-4 py-2 text-right text-xs text-muted-foreground">{c.sources}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Duplicates */}
+          <div>
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
+              Cross-Brand Duplicates <span className="text-xs font-normal ml-1">({analytics.duplicatePairs.length} pairs)</span>
+            </h2>
+            {analytics.duplicatePairs.length > 0 ? (
+              <div className="border border-border rounded-md divide-y divide-border max-h-[240px] overflow-y-auto">
+                {analytics.duplicatePairs.map((pair, i) => (
+                  <div key={i} className="px-4 py-2.5 text-sm space-y-0.5">
+                    <p className="font-medium">{pair.ctLead.name}</p>
+                    <p className="text-xs text-muted-foreground">{pair.ctLead.email}</p>
+                    <div className="flex gap-2 text-xs">
+                      <span className="px-1 py-0.5 border border-border rounded">CT: {pair.ctLead.source.replace("CT ", "")}</span>
+                      <span className="px-1 py-0.5 border border-border rounded">SC: {pair.scLead.source.replace("SC ", "")}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No cross-brand duplicates found</p>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
     </div>

@@ -1,0 +1,4 @@
+project_id = "qlvlftqzctywlrsdlyty"
+
+[functions.summarize-meeting]
+verify_jwt = false

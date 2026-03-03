@@ -163,6 +163,10 @@ function parseTargetLeads(): Lead[] {
     hearAboutUs: "",
     acquisitionStrategy: "",
     buyerType: "",
+    firefliesUrl: "",
+    firefliesTranscript: "",
+    firefliesSummary: "",
+    firefliesNextSteps: "",
   }));
 }
 
@@ -231,6 +235,10 @@ function createLead(r: { date: string; name: string; phone: string; email: strin
     hearAboutUs: "",
     acquisitionStrategy: "",
     buyerType: "",
+    firefliesUrl: "",
+    firefliesTranscript: "",
+    firefliesSummary: "",
+    firefliesNextSteps: "",
   };
 }
 
