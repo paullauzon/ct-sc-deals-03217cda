@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lead, Meeting, MeetingIntelligence } from "@/types/lead";
+import { Lead, Meeting, MeetingIntelligence, DealIntelligence } from "@/types/lead";
 import { useLeads } from "@/contexts/LeadContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -149,11 +149,48 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
       }
       updateLead(lead.id, updates);
       toast.success(`Found and processed ${addedMeetings.length} new meeting${addedMeetings.length !== 1 ? "s" : ""} from Fireflies`);
+
+      // Auto-trigger deal intelligence synthesis if we have meetings with intelligence
+      const meetingsWithIntel = updatedMeetings.filter(m => m.intelligence);
+      if (meetingsWithIntel.length > 0) {
+        synthesizeDealIntelligence(updatedMeetings, lead);
+      }
     } catch (e: any) {
       console.error("Auto-find error:", e);
       toast.error(e.message || "Failed to search Fireflies");
     } finally {
       setSearching(false);
+    }
+  };
+
+  const synthesizeDealIntelligence = async (allMeetings: Meeting[], currentLead: Lead) => {
+    try {
+      toast.info("Synthesizing deal intelligence across all meetings...");
+      const sortedMeetings = [...allMeetings].sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+      const { data, error } = await supabase.functions.invoke("synthesize-deal-intelligence", {
+        body: {
+          meetings: sortedMeetings,
+          leadFields: {
+            name: currentLead.name,
+            company: currentLead.company,
+            role: currentLead.role,
+            stage: currentLead.stage,
+            priority: currentLead.priority,
+            dealValue: currentLead.dealValue,
+            serviceInterest: currentLead.serviceInterest,
+          },
+        },
+      });
+      if (error) throw error;
+      if (data?.dealIntelligence) {
+        updateLead(currentLead.id, { dealIntelligence: data.dealIntelligence });
+        toast.success("Deal intelligence synthesized from all meetings");
+      }
+    } catch (e: any) {
+      console.error("Deal intelligence synthesis error:", e);
+      toast.error("Failed to synthesize deal intelligence");
     }
   };
 
@@ -203,7 +240,15 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
         lead={lead}
         existingMeetings={meetings}
         onAdd={(meeting) => {
-          updateLead(lead.id, { meetings: [...meetings, meeting] });
+          const updatedMeetings = [...meetings, meeting];
+          updateLead(lead.id, { meetings: updatedMeetings });
+          // Auto-trigger synthesis if the new meeting has intelligence
+          if (meeting.intelligence) {
+            const meetingsWithIntel = updatedMeetings.filter(m => m.intelligence);
+            if (meetingsWithIntel.length > 0) {
+              synthesizeDealIntelligence(updatedMeetings, lead);
+            }
+          }
         }}
       />
     </div>

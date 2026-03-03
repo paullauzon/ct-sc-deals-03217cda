@@ -70,6 +70,8 @@ serve(async (req) => {
       leadDaysInStage, leadStageEnteredDate,
       // Aggregated meeting intelligence
       meetingIntelligence,
+      // Accumulated deal intelligence
+      dealIntelligence,
     } = body;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -133,6 +135,30 @@ serve(async (req) => {
       if (mi.actionItems?.length) meetingIntelStr.push(`Outstanding Actions: ${mi.actionItems.slice(0, 10).join("; ")}`);
     }
 
+    // Step 4b: Accumulated deal intelligence
+    const dealIntelStr: string[] = [];
+    if (dealIntelligence) {
+      const di = dealIntelligence;
+      if (di.dealNarrative) dealIntelStr.push(`Deal Narrative: ${di.dealNarrative}`);
+      if (di.momentumSignals?.momentum) dealIntelStr.push(`Momentum: ${di.momentumSignals.momentum} (frequency: ${di.momentumSignals.meetingFrequencyDays}d, completion: ${di.momentumSignals.completionRate}%)`);
+      if (di.buyingCommittee) {
+        const bc = di.buyingCommittee;
+        dealIntelStr.push(`Buying Committee: DM=${bc.decisionMaker || "Unknown"}, Champion=${bc.champion || "None"}, Blockers=${bc.blockers?.join(", ") || "None"}`);
+      }
+      if (di.objectionTracker?.length) {
+        const open = di.objectionTracker.filter((o: any) => o.status === "Open" || o.status === "Recurring");
+        if (open.length) dealIntelStr.push(`Open/Recurring Objections: ${open.map((o: any) => o.objection).join("; ")}`);
+      }
+      if (di.riskRegister?.length) {
+        const critical = di.riskRegister.filter((r: any) => r.severity === "Critical" || r.severity === "High");
+        if (critical.length) dealIntelStr.push(`High/Critical Risks: ${critical.map((r: any) => `${r.risk} (${r.mitigationStatus})`).join("; ")}`);
+      }
+      if (di.dealStageEvidence) dealIntelStr.push(`Stage Evidence: ${di.dealStageEvidence}`);
+      if (di.stakeholderMap?.length) {
+        dealIntelStr.push(`Key Stakeholders: ${di.stakeholderMap.map((s: any) => `${s.name} (${s.stance}, ${s.influence})`).join("; ")}`);
+      }
+    }
+
     // Step 5: Source inventory
     const sourceInventory = [
       `- Website content: ${websiteContent ? "YES" : "NO"}`,
@@ -141,6 +167,7 @@ serve(async (req) => {
       `- Web search results: ${webSearchContent ? `YES (${webSearchUrls.length})` : "NO"}`,
       `- Deal fields: ${dealFields.length > 0 ? "YES" : "NO"}`,
       `- Meeting intelligence (aggregated): ${meetingIntelStr.length > 0 ? "YES" : "NO"}`,
+      `- Deal intelligence (cross-meeting synthesis): ${dealIntelStr.length > 0 ? "YES" : "NO"}`,
       `- Notes: ${leadNotes ? "YES" : "NO"}`,
     ].join("\n");
 
@@ -153,6 +180,7 @@ serve(async (req) => {
     if (companyUrl) contextParts.push(`Website: ${companyUrl}`);
     if (dealFields.length) contextParts.push(`DEAL FIELDS:\n${dealFields.join("\n")}`);
     if (meetingIntelStr.length) contextParts.push(`AGGREGATED MEETING INTELLIGENCE:\n${meetingIntelStr.join("\n")}`);
+    if (dealIntelStr.length) contextParts.push(`ACCUMULATED DEAL INTELLIGENCE (cross-meeting synthesis):\n${dealIntelStr.join("\n")}`);
     if (leadMessage) contextParts.push(`Original Form Submission:\n${leadMessage}`);
     if (leadNotes) contextParts.push(`Internal Notes:\n${leadNotes}`);
     if (websiteContent) contextParts.push(`Company Website Content:\n${websiteContent}`);

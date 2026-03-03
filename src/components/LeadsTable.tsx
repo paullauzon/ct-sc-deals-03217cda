@@ -3,6 +3,7 @@ import { useLeads } from "@/contexts/LeadContext";
 import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency, SuggestedUpdates, SuggestedFieldUpdate } from "@/types/lead";
 import { toast } from "sonner";
 import { MeetingsSection } from "@/components/MeetingsSection";
+import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -155,6 +156,8 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           leadStageEnteredDate: lead.stageEnteredDate,
           // Aggregated meeting intelligence
           meetingIntelligence: meetingIntel,
+          // Accumulated deal intelligence
+          dealIntelligence: lead.dealIntelligence || null,
         },
       });
       if (error) throw error;
@@ -321,6 +324,11 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
 
           {/* Meetings (Multi-meeting with AI processing) */}
           <MeetingsSection lead={lead} />
+
+          {/* Deal Intelligence (Cross-Meeting Synthesis) */}
+          {lead.dealIntelligence && (
+            <DealIntelligencePanel intel={lead.dealIntelligence} />
+          )}
 
           {/* Close Reasons */}
           {lead.stage === "Closed Won" && (
