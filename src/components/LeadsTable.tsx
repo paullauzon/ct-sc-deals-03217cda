@@ -813,6 +813,7 @@ export function LeadsTable() {
           <p className="text-sm text-muted-foreground mt-1">{sorted.length} of {leads.length} leads</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowBulkProcess(true)}><Zap className="w-4 h-4" /> Process All Leads</Button>
           <Button variant="outline" size="sm" onClick={() => setShowFireflies(true)}><img src="/fireflies-icon.svg" alt="" className="w-4 h-4" /> Import Fireflies</Button>
           <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
           <Button size="sm" onClick={() => setShowNewLead(true)}>New Lead</Button>
