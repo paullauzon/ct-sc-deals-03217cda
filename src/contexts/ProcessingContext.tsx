@@ -14,12 +14,16 @@ export interface LeadJobState {
 }
 
 export interface BulkJobState {
-  phase: "idle" | "fetching" | "matching" | "running" | "done";
+  phase: "idle" | "running" | "done";
   totalJobs: number;
   completedJobs: number;
   failedJobs: number;
+  foundMeetings: number;
+  currentLeadIndex: number;
+  currentLeadName: string;
   progressMessage: string;
   bulkJobIds: string[];
+  cancelled: boolean;
 }
 
 interface ProcessingContextType {
@@ -37,23 +41,24 @@ interface ProcessingContextType {
 
 const ProcessingContext = createContext<ProcessingContextType | null>(null);
 
-const INITIAL_BULK: BulkJobState = { phase: "idle", totalJobs: 0, completedJobs: 0, failedJobs: 0, progressMessage: "", bulkJobIds: [] };
+const INITIAL_BULK: BulkJobState = {
+  phase: "idle", totalJobs: 0, completedJobs: 0, failedJobs: 0, foundMeetings: 0,
+  currentLeadIndex: 0, currentLeadName: "", progressMessage: "", bulkJobIds: [], cancelled: false,
+};
 
 export function ProcessingProvider({ children }: { children: ReactNode }) {
   const { leads, updateLead } = useLeads();
   const [bulkJob, setBulkJob] = useState<BulkJobState>(INITIAL_BULK);
   const [leadJobs, setLeadJobs] = useState<Record<string, LeadJobState>>({});
 
-  // Refs for stable access in callbacks
   const leadsRef = useRef(leads);
   leadsRef.current = leads;
   const updateLeadRef = useRef(updateLead);
   updateLeadRef.current = updateLead;
   const bulkJobRef = useRef(bulkJob);
   bulkJobRef.current = bulkJob;
-
-  // Track applied job IDs to prevent double-applying
   const appliedJobsRef = useRef(new Set<string>());
+  const cancelledRef = useRef(false);
 
   // ─── Apply completed job results to lead ───
 
@@ -104,10 +109,6 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           });
         }
       }
-
-      toast.success(`Found ${newMeetings.length} new meeting${newMeetings.length !== 1 ? "s" : ""} for ${job.lead_name}`);
-    } else {
-      toast.info(`No new meetings found for ${job.lead_name}`);
     }
 
     // Merge pending suggestions into leadJobs for inline display
@@ -121,7 +122,6 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           leadName: job.lead_name,
         },
       }));
-      toast.info(`${job.lead_name}: ${pendingSuggestions.length} suggestion${pendingSuggestions.length !== 1 ? "s" : ""} to review`);
     } else {
       setLeadJobs(prev => {
         const copy = { ...prev };
@@ -132,27 +132,6 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
     // Mark as acknowledged
     (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
-  }, []);
-
-  // ─── Track bulk job completion ───
-
-  const handleBulkJobUpdate = useCallback((jobId: string, status: string) => {
-    setBulkJob(prev => {
-      if (!prev.bulkJobIds.includes(jobId)) return prev;
-      if (status === "completed" || status === "failed") {
-        const newCompleted = status === "completed" ? prev.completedJobs + 1 : prev.completedJobs;
-        const newFailed = status === "failed" ? prev.failedJobs + 1 : prev.failedJobs;
-        const totalDone = newCompleted + newFailed;
-        return {
-          ...prev,
-          completedJobs: newCompleted,
-          failedJobs: newFailed,
-          progressMessage: `${totalDone}/${prev.totalJobs} leads processed`,
-          phase: totalDone >= prev.totalJobs ? "done" : prev.phase,
-        };
-      }
-      return prev;
-    });
   }, []);
 
   // ─── Realtime subscription + hydration ───
@@ -166,6 +145,14 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         (payload) => {
           const job = payload.new as any;
           if (job.acknowledged) return;
+
+          // For bulk jobs during sequential processing, update the progress message in real-time
+          if (job.job_type === "bulk" && job.status === "processing" && job.progress_message) {
+            setBulkJob(prev => {
+              if (prev.phase !== "running") return prev;
+              return { ...prev, progressMessage: job.progress_message };
+            });
+          }
 
           if (job.status === "processing") {
             setLeadJobs(prev => ({
@@ -181,9 +168,6 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
           if (job.status === "completed") {
             applyCompletedJob(job);
-            if (job.job_type === "bulk") {
-              handleBulkJobUpdate(job.id, "completed");
-            }
           }
 
           if (job.status === "failed") {
@@ -194,9 +178,6 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
               return copy;
             });
             (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
-            if (job.job_type === "bulk") {
-              handleBulkJobUpdate(job.id, "failed");
-            }
           }
         }
       )
@@ -211,59 +192,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         .order("created_at", { ascending: true });
 
       if (activeJobs && activeJobs.length > 0) {
-        // Check for bulk jobs that need re-invocation
-        const bulkJobs = activeJobs.filter((j: any) => j.job_type === "bulk");
-        if (bulkJobs.length > 0) {
-          const queuedBulk = bulkJobs.filter((j: any) => j.status === "queued");
-          const completedBulk = bulkJobs.filter((j: any) => j.status === "completed");
-          const failedBulk = bulkJobs.filter((j: any) => j.status === "failed");
-          const processingBulk = bulkJobs.filter((j: any) => j.status === "processing");
-
-          // Re-invoke queued bulk jobs
-          for (const job of queuedBulk) {
-            setLeadJobs(prev => ({
-              ...prev,
-              [job.lead_id]: { searching: true, pendingSuggestions: [], leadId: job.lead_id, leadName: job.lead_name },
-            }));
-            supabase.functions.invoke("run-lead-job", {
-              body: { jobId: job.id, lead: job.lead_data },
-            }).catch(e => console.error("Re-invoke failed:", e));
-          }
-
-          // Show processing state for in-progress bulk jobs
-          for (const job of processingBulk) {
-            setLeadJobs(prev => ({
-              ...prev,
-              [job.lead_id]: { searching: true, pendingSuggestions: [], leadId: job.lead_id, leadName: job.lead_name },
-            }));
-          }
-
-          // Apply completed bulk jobs
-          for (const job of completedBulk) {
-            applyCompletedJob(job);
-          }
-
-          // Acknowledge failed bulk jobs
-          for (const job of failedBulk) {
-            toast.error(`Processing failed for ${job.lead_name}: ${job.error || "Unknown error"}`);
-            (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
-          }
-
-          const stillRunning = queuedBulk.length + processingBulk.length;
-          if (stillRunning > 0) {
-            setBulkJob({
-              phase: "running",
-              totalJobs: bulkJobs.length,
-              completedJobs: completedBulk.length,
-              failedJobs: failedBulk.length,
-              progressMessage: `${completedBulk.length + failedBulk.length}/${bulkJobs.length} leads processed`,
-              bulkJobIds: bulkJobs.map((j: any) => j.id),
-            });
-          }
-        }
-
-        // Handle individual jobs
-        for (const job of activeJobs.filter((j: any) => j.job_type !== "bulk")) {
+        for (const job of activeJobs) {
           if (job.status === "completed") {
             applyCompletedJob(job);
           } else if (job.status === "queued" || job.status === "processing") {
@@ -272,7 +201,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
               [job.lead_id]: { searching: true, pendingSuggestions: [], leadId: job.lead_id, leadName: job.lead_name },
             }));
           } else if (job.status === "failed") {
-            toast.error(`Auto-find failed for ${job.lead_name}: ${job.error || "Unknown error"}`);
+            toast.error(`Processing failed for ${job.lead_name}: ${job.error || "Unknown error"}`);
             (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
           }
         }
@@ -282,23 +211,83 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [applyCompletedJob, handleBulkJobUpdate]);
+  }, [applyCompletedJob]);
 
-  // ─── Bulk Processing (backend-powered) ───
+  // ─── Wait for a single job to reach terminal state ───
+
+  const waitForJobCompletion = useCallback((jobId: string): Promise<{ status: string; newMeetingsCount: number }> => {
+    return new Promise((resolve) => {
+      const channelName = `job-wait-${jobId}`;
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "processing_jobs", filter: `id=eq.${jobId}` },
+          (payload) => {
+            const job = payload.new as any;
+            if (job.status === "completed" || job.status === "failed") {
+              supabase.removeChannel(channel);
+              const meetingsCount = (job.new_meetings || []).length;
+              resolve({ status: job.status, newMeetingsCount: meetingsCount });
+            }
+          }
+        )
+        .subscribe();
+
+      // Safety timeout: 5 minutes
+      setTimeout(() => {
+        supabase.removeChannel(channel);
+        resolve({ status: "failed", newMeetingsCount: 0 });
+      }, 5 * 60 * 1000);
+    });
+  }, []);
+
+  // ─── Bulk Processing: Strictly Sequential, One at a Time ───
 
   const startBulkProcessing = useCallback(() => {
     if (bulkJobRef.current.phase !== "idle" && bulkJobRef.current.phase !== "done") return;
+    cancelledRef.current = false;
 
-    setBulkJob({ phase: "running", totalJobs: 0, completedJobs: 0, failedJobs: 0, progressMessage: "Creating jobs for all leads...", bulkJobIds: [] });
+    const currentLeads = leadsRef.current;
+    const total = currentLeads.length;
+
+    if (total === 0) {
+      toast.info("No leads to process.");
+      return;
+    }
+
+    setBulkJob({
+      phase: "running", totalJobs: total, completedJobs: 0, failedJobs: 0, foundMeetings: 0,
+      currentLeadIndex: 0, currentLeadName: currentLeads[0]?.name || "",
+      progressMessage: `[1/${total}] Starting...`, bulkJobIds: [], cancelled: false,
+    });
+
+    toast.info(`Starting sequential processing of ${total} leads...`);
 
     (async () => {
-      try {
-        const currentLeads = leadsRef.current;
+      let completedCount = 0;
+      let failedCount = 0;
+      let foundMeetingsTotal = 0;
 
-        // Create a run-lead-job for every lead — each job fetches its own transcripts via targeted search
-        const jobQueue: Array<{ jobId: string; leadId: string; leadName: string; leadPayload: any }> = [];
+      for (let i = 0; i < currentLeads.length; i++) {
+        if (cancelledRef.current) {
+          toast.info("Bulk processing cancelled.");
+          setBulkJob(prev => ({ ...prev, phase: "done", progressMessage: "Cancelled" }));
+          return;
+        }
 
-        for (const lead of currentLeads) {
+        const lead = currentLeads[i];
+        const label = `[${i + 1}/${total}]`;
+
+        setBulkJob(prev => ({
+          ...prev,
+          currentLeadIndex: i,
+          currentLeadName: lead.name,
+          progressMessage: `${label} Searching for ${lead.name}...`,
+        }));
+
+        try {
+          // Build lead payload
           const existingMeetingIds = (lead.meetings || []).map(m => m.firefliesId).filter(Boolean);
           const existingMeetings = (lead.meetings || []).map(m => ({
             ...m,
@@ -306,99 +295,85 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           }));
 
           const leadPayload = {
-            id: lead.id,
-            name: lead.name,
-            email: lead.email,
-            company: lead.company,
-            companyUrl: lead.companyUrl,
-            role: lead.role,
-            stage: lead.stage,
-            priority: lead.priority,
-            dealValue: lead.dealValue,
-            serviceInterest: lead.serviceInterest,
-            existingMeetingIds,
-            existingMeetings,
+            id: lead.id, name: lead.name, email: lead.email, company: lead.company,
+            companyUrl: lead.companyUrl, role: lead.role, stage: lead.stage,
+            priority: lead.priority, dealValue: lead.dealValue, serviceInterest: lead.serviceInterest,
+            existingMeetingIds, existingMeetings,
           };
 
+          // Create job row
           const { data: jobRow, error: insertError } = await (supabase
             .from("processing_jobs") as any)
             .insert({
-              lead_id: lead.id,
-              lead_name: lead.name,
-              job_type: "bulk",
-              status: "queued",
-              lead_data: leadPayload,
+              lead_id: lead.id, lead_name: lead.name,
+              job_type: "bulk", status: "queued", lead_data: leadPayload,
             })
             .select("id")
             .single();
 
           if (insertError || !jobRow) {
-            console.error(`Failed to create bulk job for ${lead.name}:`, insertError);
+            console.error(`Failed to create job for ${lead.name}:`, insertError);
+            failedCount++;
+            setBulkJob(prev => ({ ...prev, failedJobs: failedCount }));
             continue;
           }
 
-          jobQueue.push({ jobId: jobRow.id, leadId: lead.id, leadName: lead.name, leadPayload });
-        }
+          // Set up completion listener BEFORE invoking
+          const completionPromise = waitForJobCompletion(jobRow.id);
 
-        if (jobQueue.length === 0) {
-          toast.info("No leads to process.");
-          setBulkJob(INITIAL_BULK);
-          return;
-        }
-
-        const jobIds = jobQueue.map(j => j.jobId);
-
-        setBulkJob({
-          phase: "running",
-          totalJobs: jobIds.length,
-          completedJobs: 0,
-          failedJobs: 0,
-          progressMessage: `0/${jobIds.length} leads processed`,
-          bulkJobIds: jobIds,
-        });
-
-        toast.info(`Started processing ${jobIds.length} leads in background`);
-
-        // Sequential invocation with concurrency limit of 2
-        const CONCURRENCY = 2;
-        const invokeJob = async (item: typeof jobQueue[0]) => {
-          setLeadJobs(prev => ({
-            ...prev,
-            [item.leadId]: { searching: true, pendingSuggestions: [], leadId: item.leadId, leadName: item.leadName },
-          }));
-          try {
-            const { error } = await supabase.functions.invoke("run-lead-job", {
-              body: { jobId: item.jobId, lead: item.leadPayload },
-            });
-            if (error) {
-              console.error(`Edge function error for ${item.leadName}:`, error);
-              await (supabase.from("processing_jobs") as any)
-                .update({ status: "failed", error: error.message || "Invocation failed" })
-                .eq("id", item.jobId);
-            }
-          } catch (e: any) {
-            console.error(`Failed to invoke run-lead-job for ${item.leadName}:`, e);
+          // Invoke edge function (fire-and-forget on the HTTP level, but job runs server-side)
+          supabase.functions.invoke("run-lead-job", {
+            body: { jobId: jobRow.id, lead: leadPayload },
+          }).catch(async (e: any) => {
+            console.error(`Edge function error for ${lead.name}:`, e);
             await (supabase.from("processing_jobs") as any)
               .update({ status: "failed", error: e.message || "Invocation failed" })
-              .eq("id", item.jobId);
-          }
-        };
+              .eq("id", jobRow.id);
+          });
 
-        // Process queue with concurrency limit
-        for (let i = 0; i < jobQueue.length; i += CONCURRENCY) {
-          const batch = jobQueue.slice(i, i + CONCURRENCY);
-          await Promise.all(batch.map(invokeJob));
+          // Wait for this job to finish
+          const result = await completionPromise;
+
+          if (result.status === "completed") {
+            completedCount++;
+            foundMeetingsTotal += result.newMeetingsCount;
+          } else {
+            failedCount++;
+          }
+
+          setBulkJob(prev => ({
+            ...prev,
+            completedJobs: completedCount,
+            failedJobs: failedCount,
+            foundMeetings: foundMeetingsTotal,
+            progressMessage: `${label} ${lead.name}: ${result.status === "completed" ? (result.newMeetingsCount > 0 ? `Found ${result.newMeetingsCount} meeting(s)` : "No new meetings") : "Failed"}`,
+          }));
+
+          // Cool-down between leads
+          if (i < currentLeads.length - 1) {
+            await new Promise(r => setTimeout(r, 1500));
+          }
+
+        } catch (e: any) {
+          console.error(`Error processing ${lead.name}:`, e);
+          failedCount++;
+          setBulkJob(prev => ({ ...prev, failedJobs: failedCount }));
         }
-      } catch (e: any) {
-        console.error("Bulk processing setup error:", e);
-        toast.error(`Bulk processing failed: ${e.message || "Unknown error"}`);
-        setBulkJob(INITIAL_BULK);
       }
+
+      // Done
+      setBulkJob(prev => ({
+        ...prev,
+        phase: "done",
+        progressMessage: `Complete — ${foundMeetingsTotal} meetings found across ${completedCount} leads`,
+      }));
+      toast.success(`Bulk processing complete: ${completedCount} processed, ${failedCount} failed, ${foundMeetingsTotal} meetings found`);
     })();
-  }, []);
+  }, [waitForJobCompletion]);
 
   const cancelBulk = useCallback(() => {
-    setBulkJob(INITIAL_BULK);
+    cancelledRef.current = true;
+    setBulkJob(prev => ({ ...prev, cancelled: true, progressMessage: "Cancelling..." }));
   }, []);
 
   const dismissBulk = useCallback(() => {
@@ -422,28 +397,17 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         }));
 
         const leadPayload = {
-          id: lead.id,
-          name: lead.name,
-          email: lead.email,
-          company: lead.company,
-          companyUrl: lead.companyUrl,
-          role: lead.role,
-          stage: lead.stage,
-          priority: lead.priority,
-          dealValue: lead.dealValue,
-          serviceInterest: lead.serviceInterest,
-          existingMeetingIds,
-          existingMeetings,
+          id: lead.id, name: lead.name, email: lead.email, company: lead.company,
+          companyUrl: lead.companyUrl, role: lead.role, stage: lead.stage,
+          priority: lead.priority, dealValue: lead.dealValue, serviceInterest: lead.serviceInterest,
+          existingMeetingIds, existingMeetings,
         };
 
         const { data: jobRow, error: insertError } = await (supabase
           .from("processing_jobs") as any)
           .insert({
-            lead_id: lead.id,
-            lead_name: lead.name,
-            job_type: "individual",
-            status: "queued",
-            lead_data: leadPayload,
+            lead_id: lead.id, lead_name: lead.name,
+            job_type: "individual", status: "queued", lead_data: leadPayload,
           })
           .select("id")
           .single();

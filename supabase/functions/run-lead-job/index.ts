@@ -63,7 +63,7 @@ serve(async (req) => {
     // Update status to processing
     await supabase.from("processing_jobs").update({
       status: "processing",
-      progress_message: prefetchedMeetings ? "Processing pre-matched meetings..." : "Fetching meetings from Fireflies...",
+      progress_message: prefetchedMeetings ? "Processing pre-matched meetings..." : "Searching Fireflies (Captarget)...",
       updated_at: new Date().toISOString(),
     }).eq("id", jobId);
 
@@ -111,8 +111,14 @@ serve(async (req) => {
         body: JSON.stringify({ ...searchBody, brand: "Captarget" }),
       });
 
-      // Small delay between brands to respect rate limits
-      await new Promise((r) => setTimeout(r, 2000));
+      // Update progress message for second brand
+      await supabase.from("processing_jobs").update({
+        progress_message: "Searching Fireflies (SourceCo)...",
+        updated_at: new Date().toISOString(),
+      }).eq("id", jobId);
+
+      // Longer delay between brands to respect rate limits
+      await new Promise((r) => setTimeout(r, 3000));
 
       const scRes = await fetch(`${funcUrl}/fetch-fireflies`, {
         method: "POST",
@@ -164,7 +170,7 @@ serve(async (req) => {
 
     // Process each new meeting through AI
     await supabase.from("processing_jobs").update({
-      progress_message: `Processing ${newMeetings.length} new meeting(s)...`,
+      progress_message: `Found ${newMeetings.length} meeting(s), analyzing with AI...`,
       updated_at: new Date().toISOString(),
     }).eq("id", jobId);
 
@@ -184,7 +190,7 @@ serve(async (req) => {
       if (transcript.length > 20) {
         try {
           await supabase.from("processing_jobs").update({
-            progress_message: `AI analyzing meeting ${i + 1}/${newMeetings.length}: "${m.title || "Untitled"}"...`,
+            progress_message: `AI analyzing meeting ${i + 1}/${newMeetings.length}: "${(m.title || "Untitled").substring(0, 40)}"`,
             updated_at: new Date().toISOString(),
           }).eq("id", jobId);
 
