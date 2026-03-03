@@ -197,6 +197,15 @@ export function Pipeline() {
                         <span className="tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</span>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.priority === "High" ? "bg-foreground/10 font-medium" : ""}`}>{lead.priority}</span>
                       </div>
+                      {/* Row 4.5: Closing insight */}
+                      {(() => {
+                        const insight = getClosingInsight(lead);
+                        return insight ? (
+                          <p className="text-[10px] text-muted-foreground italic truncate" title={insight.text}>
+                            {insight.icon} {insight.text}
+                          </p>
+                        ) : null;
+                      })()}
                       {/* Row 5: Days in stage + meeting outcome */}
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className={`tabular-nums ${days > 14 ? "text-foreground font-medium" : ""}`}>{days}d in stage</span>
