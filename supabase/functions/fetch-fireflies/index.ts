@@ -167,19 +167,25 @@ serve(async (req) => {
     // Filter by search criteria if provided
     if (searchEmails.length > 0 || searchNames.length > 0) {
       const lowerEmails = searchEmails.map((e: string) => e.toLowerCase());
-      const lowerNames = searchNames.map((n: string) => n.toLowerCase().split(" ").pop() || "");
+      // Extract both first and last name parts for matching
+      const lowerNameParts = searchNames.flatMap((n: string) =>
+        n.toLowerCase().split(/\s+/).filter((part: string) => part.length >= 3)
+      );
 
       transcripts = transcripts.filter((t: any) => {
         const participants = (t.participants || []).map((p: string) => p.toLowerCase());
-        // Check email match
+        const organizerEmail = (t.organizer_email || "").toLowerCase();
+        const firefliesUsers = (t.fireflies_users || []).map((u: string) => u.toLowerCase());
+        const allEmailFields = [...participants, organizerEmail, ...firefliesUsers];
+
+        // Check email match against participants, organizer, and fireflies_users
         for (const email of lowerEmails) {
-          if (participants.some((p: string) => p.includes(email))) return true;
+          if (allEmailFields.some((f: string) => f.includes(email))) return true;
         }
-        // Check name match in title or participants
-        for (const name of lowerNames) {
-          if (name.length < 3) continue;
-          if (t.title?.toLowerCase().includes(name)) return true;
-          if (participants.some((p: string) => p.includes(name))) return true;
+        // Check name match (first AND last) in title, participants, organizer, fireflies_users
+        for (const namePart of lowerNameParts) {
+          if (t.title?.toLowerCase().includes(namePart)) return true;
+          if (allEmailFields.some((f: string) => f.includes(namePart))) return true;
         }
         return false;
       });
@@ -196,8 +202,11 @@ serve(async (req) => {
       const attendees = t.participants || [];
       const attendeeEmails = attendees.map((p: string) => p.toLowerCase());
 
-      let summary = t.summary?.overview || "";
-      let nextSteps = t.summary?.action_items || "";
+      // Always keep native Fireflies summary as fallback
+      const nativeSummary = t.summary?.overview || "";
+      const nativeNextSteps = t.summary?.action_items || "";
+      let summary = nativeSummary;
+      let nextSteps = nativeNextSteps;
 
       // If we should summarize with AI and have transcript text
       if (summarize && fullTranscript.length > 50) {
