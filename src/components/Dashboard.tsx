@@ -316,6 +316,66 @@ export function Dashboard() {
         ))}
       </div>
 
+      {/* Row 2b: Intelligence & Revenue Metrics */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">MRR (Won)</p>
+          <p className="text-2xl font-semibold tabular-nums mt-1">${Math.round(analytics.totalMRR).toLocaleString()}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">ARR: ${Math.round(analytics.totalMRR * 12).toLocaleString()}</p>
+        </div>
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Intelligence Coverage</p>
+          <div className="flex items-baseline gap-2 mt-1">
+            <p className="text-2xl font-semibold tabular-nums">{analytics.leadsWithMeetings}</p>
+            <span className="text-xs text-muted-foreground">w/ meetings</span>
+          </div>
+          <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
+            <span>{analytics.leadsWithIntel} processed</span>
+            <span>{analytics.leadsWithDealIntel} synthesized</span>
+          </div>
+        </div>
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Deal Momentum</p>
+          <div className="flex items-center gap-2 mt-2">
+            {Object.entries(analytics.momentumDist).map(([key, val]) => val > 0 && (
+              <span key={key} className={`text-xs px-1.5 py-0.5 rounded ${
+                key === "Accelerating" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
+                key === "Stalling" || key === "Stalled" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
+                "bg-secondary text-muted-foreground"
+              }`}>
+                {val} {key}
+              </span>
+            ))}
+            {Object.values(analytics.momentumDist).every(v => v === 0) && (
+              <span className="text-xs text-muted-foreground">No data yet</span>
+            )}
+          </div>
+        </div>
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Deal Health</p>
+          <div className="flex items-center gap-2 mt-2">
+            {analytics.criticalAlerts > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                {analytics.criticalAlerts} critical
+              </span>
+            )}
+            {analytics.warningAlerts > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                {analytics.warningAlerts} warning
+              </span>
+            )}
+            {analytics.cleanDeals > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                {analytics.cleanDeals} healthy
+              </span>
+            )}
+          </div>
+          {analytics.avgTalkRatio !== null && (
+            <p className="text-xs text-muted-foreground mt-1">Avg talk ratio: {analytics.avgTalkRatio}%</p>
+          )}
+        </div>
+      </div>
+
       {/* Row 3: Pipeline Funnel + Owner Workload */}
       <div className="grid grid-cols-2 gap-6">
         <div>
