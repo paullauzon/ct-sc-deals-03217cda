@@ -107,8 +107,42 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
   const [followUpEmail, setFollowUpEmail] = useState("");
   const [followUpMeetingId, setFollowUpMeetingId] = useState<string | null>(null);
   const [generatingFollowUp, setGeneratingFollowUp] = useState(false);
+  const [pendingSuggestions, setPendingSuggestions] = useState<Array<{ field: string; label: string; value: string | number; evidence: string }>>([]);
+  const [showSuggestionsDialog, setShowSuggestionsDialog] = useState(false);
 
   const meetings = lead.meetings || [];
+
+  /** Process AI suggestions: auto-apply certain, show dialog for likely */
+  const handleSuggestedUpdates = (allSuggestions: SuggestedLeadUpdates[]) => {
+    const mergedApplied: string[] = [];
+    const mergedPending: Array<{ field: string; label: string; value: string | number; evidence: string }> = [];
+
+    for (const suggestions of allSuggestions) {
+      const { applied, pending } = processSuggestedUpdates(suggestions, lead.id, updateLead);
+      mergedApplied.push(...applied);
+      mergedPending.push(...pending);
+    }
+
+    // Deduplicate pending by field (keep latest)
+    const seen = new Set<string>();
+    const uniquePending = mergedPending.reverse().filter(p => {
+      if (seen.has(p.field)) return false;
+      seen.add(p.field);
+      return true;
+    }).reverse();
+
+    if (mergedApplied.length > 0) {
+      toast.success(`Auto-updated ${mergedApplied.length} field${mergedApplied.length !== 1 ? "s" : ""} from transcript`, {
+        description: mergedApplied.join(" · "),
+        duration: 6000,
+      });
+    }
+
+    if (uniquePending.length > 0) {
+      setPendingSuggestions(uniquePending);
+      setShowSuggestionsDialog(true);
+    }
+  };
 
   const handleAutoFind = async () => {
     setSearching(true);
