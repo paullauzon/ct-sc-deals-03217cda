@@ -18,6 +18,13 @@ export interface FailedLead {
   error: string;
 }
 
+export interface ProcessedLead {
+  name: string;
+  status: "found" | "no_meetings" | "failed";
+  meetingsCount?: number;
+  error?: string;
+}
+
 export interface BulkJobState {
   phase: "idle" | "running" | "paused" | "done";
   totalJobs: number;
@@ -32,6 +39,7 @@ export interface BulkJobState {
   cancelled: boolean;
   paused: boolean;
   failedLeads: FailedLead[];
+  processedLeads: ProcessedLead[];
 }
 
 interface ProcessingContextType {
@@ -54,7 +62,7 @@ const ProcessingContext = createContext<ProcessingContextType | null>(null);
 const INITIAL_BULK: BulkJobState = {
   phase: "idle", totalJobs: 0, completedJobs: 0, failedJobs: 0, foundMeetings: 0, noMeetings: 0,
   currentLeadIndex: 0, currentLeadName: "", progressMessage: "", bulkJobIds: [], cancelled: false,
-  paused: false, failedLeads: [],
+  paused: false, failedLeads: [], processedLeads: [],
 };
 
 export function ProcessingProvider({ children }: { children: ReactNode }) {
@@ -283,7 +291,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
       phase: "running", totalJobs: total, completedJobs: 0, failedJobs: 0, foundMeetings: 0, noMeetings: 0,
       currentLeadIndex: 0, currentLeadName: currentLeads[0]?.name || "",
       progressMessage: `[1/${total}] Starting...`, bulkJobIds: [], cancelled: false,
-      paused: false, failedLeads: [],
+      paused: false, failedLeads: [], processedLeads: [],
     });
 
     toast.info(`Starting sequential processing of ${total} leads...`);
@@ -342,7 +350,10 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             console.error(`Failed to create job for ${lead.name}:`, insertError);
             failedCount++;
             failedLeadsList.push({ name: lead.name, error: errMsg });
-            setBulkJob(prev => ({ ...prev, failedJobs: failedCount, failedLeads: [...failedLeadsList] }));
+            setBulkJob(prev => ({
+              ...prev, failedJobs: failedCount, failedLeads: [...failedLeadsList],
+              processedLeads: [...prev.processedLeads, { name: lead.name, status: "failed", error: errMsg }],
+            }));
             continue;
           }
 
@@ -360,15 +371,21 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           const result = await completionPromise;
 
           let noMeetingsCount = 0;
+          let processedEntry: ProcessedLead;
           if (result.status === "completed") {
             completedCount++;
             foundMeetingsTotal += result.newMeetingsCount;
             if (result.newMeetingsCount === 0) {
               noMeetingsCount = 1;
+              processedEntry = { name: lead.name, status: "no_meetings" };
+            } else {
+              processedEntry = { name: lead.name, status: "found", meetingsCount: result.newMeetingsCount };
             }
           } else {
             failedCount++;
-            failedLeadsList.push({ name: lead.name, error: result.error || "Unknown error" });
+            const errMsg = result.error || "Unknown error";
+            failedLeadsList.push({ name: lead.name, error: errMsg });
+            processedEntry = { name: lead.name, status: "failed", error: errMsg };
           }
 
           setBulkJob(prev => ({
@@ -378,6 +395,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             foundMeetings: foundMeetingsTotal,
             noMeetings: prev.noMeetings + noMeetingsCount,
             failedLeads: [...failedLeadsList],
+            processedLeads: [...prev.processedLeads, processedEntry],
             progressMessage: `${label} ${lead.name}: ${result.status === "completed" ? (result.newMeetingsCount > 0 ? `Found ${result.newMeetingsCount} meeting(s)` : "No new meetings") : "Failed"}`,
           }));
 
@@ -388,8 +406,12 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         } catch (e: any) {
           console.error(`Error processing ${lead.name}:`, e);
           failedCount++;
-          failedLeadsList.push({ name: lead.name, error: e.message || "Unknown error" });
-          setBulkJob(prev => ({ ...prev, failedJobs: failedCount, failedLeads: [...failedLeadsList] }));
+          const errMsg = e.message || "Unknown error";
+          failedLeadsList.push({ name: lead.name, error: errMsg });
+          setBulkJob(prev => ({
+            ...prev, failedJobs: failedCount, failedLeads: [...failedLeadsList],
+            processedLeads: [...prev.processedLeads, { name: lead.name, status: "failed", error: errMsg }],
+          }));
         }
       }
 

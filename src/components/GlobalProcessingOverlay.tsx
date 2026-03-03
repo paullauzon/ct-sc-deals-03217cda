@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useProcessing } from "@/contexts/ProcessingContext";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Zap, Loader2, Check, X, Search, Brain, AlertTriangle, Circle, Pause, Play, ChevronDown, ChevronUp } from "lucide-react";
+import { Zap, Loader2, Check, X, Search, Brain, AlertTriangle, Circle, Pause, Play, ChevronDown, ChevronUp, List } from "lucide-react";
 
 export function GlobalProcessingOverlay() {
   const { bulkJob, leadJobs, cancelBulk, dismissBulk, pauseBulk, resumeBulk } = useProcessing();
   const [showErrors, setShowErrors] = useState(false);
+  const [showLog, setShowLog] = useState(false);
 
   const searchingLeadJobs = Object.values(leadJobs).filter(j => j.searching);
   const bulkActive = bulkJob.phase === "running";
@@ -85,6 +86,37 @@ export function GlobalProcessingOverlay() {
             )}
           </div>
 
+          {/* Processed leads log (live) */}
+          {bulkJob.processedLeads.length > 0 && (
+            <div className="border border-border rounded p-2 space-y-1">
+              <button
+                onClick={() => setShowLog(!showLog)}
+                className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground w-full text-left"
+              >
+                <List className="h-3 w-3" />
+                {bulkJob.processedLeads.length} processed — click to {showLog ? "hide" : "see"} details
+                {showLog ? <ChevronUp className="h-3 w-3 ml-auto" /> : <ChevronDown className="h-3 w-3 ml-auto" />}
+              </button>
+              {showLog && (
+                <div className="space-y-0.5 max-h-40 overflow-y-auto">
+                  {bulkJob.processedLeads.map((pl, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5 text-[10px]">
+                      {pl.status === "found" && <Check className="h-3 w-3 text-primary shrink-0" />}
+                      {pl.status === "no_meetings" && <Circle className="h-3 w-3 text-muted-foreground shrink-0" />}
+                      {pl.status === "failed" && <X className="h-3 w-3 text-destructive shrink-0" />}
+                      <span className={`truncate ${pl.status === "failed" ? "text-destructive" : "text-foreground"}`}>
+                        {pl.name}
+                        {pl.status === "found" && pl.meetingsCount ? ` (${pl.meetingsCount} meeting${pl.meetingsCount > 1 ? "s" : ""})` : ""}
+                        {pl.status === "no_meetings" ? " (no meetings)" : ""}
+                        {pl.status === "failed" && pl.error ? ` — ${pl.error}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Pause / Resume / Cancel */}
           <div className="flex justify-end gap-1">
             {bulkPaused ? (
@@ -141,6 +173,37 @@ export function GlobalProcessingOverlay() {
           <div className="text-[10px] text-muted-foreground">
             {bulkJob.foundMeetings} total meetings discovered
           </div>
+
+          {/* Full processed leads log */}
+          {bulkJob.processedLeads.length > 0 && (
+            <div className="border border-border rounded p-2 space-y-1">
+              <button
+                onClick={() => setShowLog(!showLog)}
+                className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground w-full text-left"
+              >
+                <List className="h-3 w-3" />
+                {bulkJob.processedLeads.length} leads — click to {showLog ? "hide" : "see"} details
+                {showLog ? <ChevronUp className="h-3 w-3 ml-auto" /> : <ChevronDown className="h-3 w-3 ml-auto" />}
+              </button>
+              {showLog && (
+                <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                  {bulkJob.processedLeads.map((pl, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5 text-[10px]">
+                      {pl.status === "found" && <Check className="h-3 w-3 text-primary shrink-0" />}
+                      {pl.status === "no_meetings" && <Circle className="h-3 w-3 text-muted-foreground shrink-0" />}
+                      {pl.status === "failed" && <X className="h-3 w-3 text-destructive shrink-0" />}
+                      <span className={`truncate ${pl.status === "failed" ? "text-destructive" : "text-foreground"}`}>
+                        {pl.name}
+                        {pl.status === "found" && pl.meetingsCount ? ` (${pl.meetingsCount} meeting${pl.meetingsCount > 1 ? "s" : ""})` : ""}
+                        {pl.status === "no_meetings" ? " (no meetings)" : ""}
+                        {pl.status === "failed" && pl.error ? ` — ${pl.error}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Expandable error list */}
           {bulkJob.failedLeads.length > 0 && (
