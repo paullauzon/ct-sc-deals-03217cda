@@ -443,9 +443,8 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
         onOpenChange={setShowAddDialog}
         lead={lead}
         existingMeetings={meetings}
-        onAdd={(meeting) => {
+        onAdd={(meeting, suggestedUpdates) => {
           const updatedMeetings = [...meetings, meeting];
-          // Update lastContactDate if this meeting is more recent
           const updates: Partial<typeof lead> = { meetings: updatedMeetings };
           if (meeting.date && (!lead.lastContactDate || meeting.date > lead.lastContactDate)) {
             updates.lastContactDate = meeting.date;
@@ -457,6 +456,10 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
               synthesizeDealIntelligence(updatedMeetings, lead);
             }
           }
+          // Apply AI-suggested CRM updates from manual add
+          if (suggestedUpdates) {
+            handleSuggestedUpdates([suggestedUpdates]);
+          }
         }}
       />
 
@@ -465,6 +468,15 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
 
       {/* Follow-Up Email Dialog */}
       <FollowUpDialog open={showFollowUpDialog} onOpenChange={setShowFollowUpDialog} email={followUpEmail} loading={generatingFollowUp} />
+
+      {/* Suggested CRM Updates Dialog */}
+      <SuggestedUpdatesDialog
+        open={showSuggestionsDialog}
+        onOpenChange={setShowSuggestionsDialog}
+        suggestions={pendingSuggestions}
+        leadId={lead.id}
+        updateLead={updateLead}
+      />
     </div>
   );
 }
