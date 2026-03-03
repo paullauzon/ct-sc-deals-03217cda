@@ -7,6 +7,8 @@ const corsHeaders = {
 };
 
 const FIREFLIES_GRAPHQL = "https://api.fireflies.ai/graphql";
+const BATCH_SIZE = 50;
+const MAX_BATCHES = 20; // Safety cap: scan up to 1000 transcripts
 
 // Common nickname map — bidirectional lookup
 const NICKNAME_MAP: Record<string, string[]> = {
@@ -101,7 +103,6 @@ const GENERIC_EMAIL_DOMAINS = new Set([
   "me.com", "mac.com", "googlemail.com", "ymail.com",
 ]);
 
-/** Get all name variants (original + nicknames) for a given first name */
 function getNameVariants(name: string): string[] {
   const lower = name.toLowerCase();
   const variants = [lower];
@@ -110,51 +111,68 @@ function getNameVariants(name: string): string[] {
   return variants;
 }
 
-/** Word-boundary match: checks if `word` appears as a whole word in `text` */
 function wordBoundaryMatch(text: string, word: string): boolean {
   const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`\\b${escaped}\\b`, "i").test(text);
 }
 
-/** Extract domain from an email address */
 function extractDomain(email: string): string | null {
   const at = email.lastIndexOf("@");
   if (at < 0) return null;
   return email.substring(at + 1).toLowerCase();
 }
 
-async function fetchFirefliesTranscripts(apiKey: string, limit: number, since?: string) {
-  const query = `
-    query {
-      transcripts {
-        id
-        title
-        date
-        duration
-        organizer_email
-        fireflies_users
-        participants
-        transcript_url
-        sentences {
-          speaker_name
-          text
-        }
-        summary {
-          overview
-          shorthand_bullet
-          action_items
-        }
+// ── Fireflies API helpers ──
+
+/** Metadata-only query (no sentences — fast) */
+const METADATA_QUERY = `
+  query Transcripts($limit: Int, $skip: Int) {
+    transcripts(limit: $limit, skip: $skip) {
+      id
+      title
+      date
+      duration
+      organizer_email
+      fireflies_users
+      participants
+      transcript_url
+    }
+  }
+`;
+
+/** Full transcript query for a single meeting */
+const FULL_TRANSCRIPT_QUERY = `
+  query Transcript($id: String!) {
+    transcript(id: $id) {
+      id
+      title
+      date
+      duration
+      organizer_email
+      fireflies_users
+      participants
+      transcript_url
+      sentences {
+        speaker_name
+        text
+      }
+      summary {
+        overview
+        shorthand_bullet
+        action_items
       }
     }
-  `;
+  }
+`;
 
+async function firefliesRequest(apiKey: string, query: string, variables: Record<string, any> = {}) {
   const response = await fetch(FIREFLIES_GRAPHQL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, variables }),
   });
 
   if (!response.ok) {
@@ -168,19 +186,180 @@ async function fetchFirefliesTranscripts(apiKey: string, limit: number, since?: 
     console.error("Fireflies GraphQL errors:", data.errors);
     throw new Error(data.errors[0]?.message || "Fireflies GraphQL error");
   }
+  return data.data;
+}
 
-  let transcripts = data.data?.transcripts || [];
+/** Fetch metadata in paginated batches, applying filter function to each batch */
+async function fetchMetadataPaginated(
+  apiKey: string,
+  filterFn: ((t: any) => boolean) | null,
+  maxMatches: number,
+  since?: string,
+): Promise<any[]> {
+  const matches: any[] = [];
+  let skip = 0;
 
-  // Filter by date if provided
-  if (since) {
-    const sinceDate = new Date(since).getTime();
-    transcripts = transcripts.filter((t: any) => {
-      const tDate = t.date ? new Date(t.date).getTime() : 0;
-      return tDate >= sinceDate;
-    });
+  for (let batch = 0; batch < MAX_BATCHES; batch++) {
+    console.log(`Fetching metadata batch ${batch + 1} (skip=${skip}, limit=${BATCH_SIZE})`);
+    const data = await firefliesRequest(apiKey, METADATA_QUERY, { limit: BATCH_SIZE, skip });
+    const transcripts = data?.transcripts || [];
+
+    if (transcripts.length === 0) {
+      console.log("No more transcripts from API, stopping pagination.");
+      break;
+    }
+
+    // Filter by date first
+    let candidates = transcripts;
+    if (since) {
+      const sinceDate = new Date(since).getTime();
+      candidates = candidates.filter((t: any) => {
+        const tDate = t.date ? new Date(t.date).getTime() : 0;
+        return tDate >= sinceDate;
+      });
+    }
+
+    // Apply search filter if provided
+    if (filterFn) {
+      for (const t of candidates) {
+        if (filterFn(t)) {
+          matches.push(t);
+          if (matches.length >= maxMatches) {
+            console.log(`Found ${matches.length} matches, stopping pagination.`);
+            return matches;
+          }
+        }
+      }
+    } else {
+      matches.push(...candidates);
+      if (matches.length >= maxMatches) {
+        return matches.slice(0, maxMatches);
+      }
+    }
+
+    // If this batch was smaller than BATCH_SIZE, we've reached the end
+    if (transcripts.length < BATCH_SIZE) {
+      console.log("Last batch (fewer than BATCH_SIZE), stopping pagination.");
+      break;
+    }
+
+    skip += BATCH_SIZE;
   }
 
-  return transcripts;
+  console.log(`Pagination complete. Total matches: ${matches.length}`);
+  return matches;
+}
+
+/** Fetch full transcript details for a set of matched IDs */
+async function fetchFullTranscripts(apiKey: string, ids: string[]): Promise<any[]> {
+  console.log(`Fetching full transcripts for ${ids.length} matched meetings...`);
+  const results: any[] = [];
+
+  // Fetch in parallel, 5 at a time
+  for (let i = 0; i < ids.length; i += 5) {
+    const batch = ids.slice(i, i + 5);
+    const promises = batch.map((id) =>
+      firefliesRequest(apiKey, FULL_TRANSCRIPT_QUERY, { id })
+        .then((data) => data?.transcript)
+        .catch((e) => {
+          console.error(`Failed to fetch transcript ${id}:`, e);
+          return null;
+        })
+    );
+    const batchResults = await Promise.all(promises);
+    results.push(...batchResults.filter(Boolean));
+  }
+
+  return results;
+}
+
+/** Build a filter function from search criteria */
+function buildSearchFilter(
+  searchEmails: string[],
+  searchNames: string[],
+  searchDomains: string[],
+  searchCompanies: string[],
+): ((t: any) => boolean) | null {
+  if (searchEmails.length === 0 && searchNames.length === 0 && searchDomains.length === 0 && searchCompanies.length === 0) {
+    return null;
+  }
+
+  const lowerEmails = searchEmails.map((e) => e.toLowerCase());
+  const lowerFullNames = searchNames.map((n) => n.toLowerCase().trim());
+  const lowerDomains = searchDomains.map((d) => d.toLowerCase().trim());
+
+  const GENERIC_COMPANY_WORDS = new Set([
+    "group", "capital", "partners", "services", "solutions", "inc", "llc",
+    "corp", "corporation", "company", "co", "the", "and", "of", "for",
+    "holdings", "enterprises", "consulting", "management", "advisors",
+    "associates", "global", "international", "home", "health", "tech",
+    "financial", "investment", "investments", "properties", "fund", "equity",
+  ]);
+  const companyWords: string[] = [];
+  for (const company of searchCompanies) {
+    const words = company.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(
+      (w) => w.length >= 4 && !GENERIC_COMPANY_WORDS.has(w)
+    );
+    companyWords.push(...words);
+  }
+  companyWords.sort((a, b) => b.length - a.length);
+
+  return (t: any) => {
+    const participants = (t.participants || []).map((p: string) => p.toLowerCase());
+    const organizerEmail = (t.organizer_email || "").toLowerCase();
+    const firefliesUsers = (t.fireflies_users || []).map((u: string) => u.toLowerCase());
+    const allEmailFields = [...participants, organizerEmail, ...firefliesUsers].filter(Boolean);
+    const titleLower = (t.title || "").toLowerCase();
+
+    // Signal 1: Direct email match
+    for (const email of lowerEmails) {
+      if (allEmailFields.some((f: string) => f.includes(email))) return true;
+    }
+
+    // Signal 2: Company domain match
+    for (const domain of lowerDomains) {
+      for (const field of allEmailFields) {
+        const fieldDomain = extractDomain(field);
+        if (fieldDomain && fieldDomain === domain) return true;
+      }
+    }
+
+    // Signal 3: Full name match with word-boundary + nicknames
+    for (const fullName of lowerFullNames) {
+      const nameParts = fullName.split(/\s+/).filter((p) => p.length >= 2);
+      if (nameParts.length === 0) continue;
+
+      const firstName = nameParts[0];
+      const firstNameVariants = getNameVariants(firstName);
+      const restParts = nameParts.slice(1);
+
+      const matchesInText = (text: string): boolean => {
+        const hasFirstName = firstNameVariants.some((v) => wordBoundaryMatch(text, v));
+        if (!hasFirstName) return false;
+        return restParts.every((part) => wordBoundaryMatch(text, part));
+      };
+
+      if (matchesInText(titleLower)) return true;
+      for (const field of allEmailFields) {
+        if (matchesInText(field)) return true;
+      }
+
+      // Note: speaker name matching requires sentences (full transcript).
+      // In metadata-first mode, we match on title + participants + emails.
+      // Speaker matching happens if we fall back to non-search mode.
+    }
+
+    // Signal 4: Company name match in title or participants
+    if (companyWords.length > 0) {
+      const distinctiveWord = companyWords[0];
+      if (wordBoundaryMatch(titleLower, distinctiveWord)) return true;
+      for (const field of allEmailFields) {
+        if (wordBoundaryMatch(field, distinctiveWord)) return true;
+      }
+    }
+
+    return false;
+  };
 }
 
 async function summarizeTranscript(transcript: string, lovableApiKey: string): Promise<{ summary: string; nextSteps: string }> {
@@ -268,136 +447,59 @@ serve(async (req) => {
 
     const limit = body.limit || 100;
     const since = body.since || null;
-    const summarize = body.summarize !== false; // default true
+    const summarize = body.summarize !== false;
     const searchEmails: string[] = body.searchEmails || [];
     const searchNames: string[] = body.searchNames || [];
     const searchDomains: string[] = body.searchDomains || [];
     const searchCompanies: string[] = body.searchCompanies || [];
 
-    console.log(`Fetching Fireflies transcripts (limit: ${limit}, since: ${since}, searchEmails: ${searchEmails.length}, searchNames: ${searchNames.length}, searchDomains: ${searchDomains.length}, searchCompanies: ${searchCompanies.length})`);
+    const hasSearchCriteria = searchEmails.length > 0 || searchNames.length > 0 || searchDomains.length > 0 || searchCompanies.length > 0;
 
-    let transcripts = await fetchFirefliesTranscripts(FIREFLIES_API_KEY, limit, since);
+    console.log(`Fetching Fireflies transcripts (limit: ${limit}, since: ${since}, hasSearch: ${hasSearchCriteria}, searchEmails: ${searchEmails.length}, searchNames: ${searchNames.length}, searchDomains: ${searchDomains.length}, searchCompanies: ${searchCompanies.length})`);
 
-    // Filter by search criteria if provided
-    if (searchEmails.length > 0 || searchNames.length > 0 || searchDomains.length > 0 || searchCompanies.length > 0) {
-      const lowerEmails = searchEmails.map((e: string) => e.toLowerCase());
-      const lowerFullNames = searchNames.map((n: string) => n.toLowerCase().trim());
-      const lowerDomains = searchDomains.map((d: string) => d.toLowerCase().trim());
+    let fullTranscripts: any[];
 
-      // Build distinctive company words for matching
-      const GENERIC_COMPANY_WORDS = new Set([
-        "group", "capital", "partners", "services", "solutions", "inc", "llc",
-        "corp", "corporation", "company", "co", "the", "and", "of", "for",
-        "holdings", "enterprises", "consulting", "management", "advisors",
-        "associates", "global", "international", "home", "health", "tech",
-        "financial", "investment", "investments", "properties", "fund", "equity",
-      ]);
-      const companyWords: string[] = [];
-      for (const company of searchCompanies) {
-        const words = company.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(
-          (w: string) => w.length >= 4 && !GENERIC_COMPANY_WORDS.has(w)
+    if (hasSearchCriteria) {
+      // ── Metadata-first approach: paginate metadata, then fetch full transcripts for matches ──
+      const filterFn = buildSearchFilter(searchEmails, searchNames, searchDomains, searchCompanies);
+      const metadataMatches = await fetchMetadataPaginated(FIREFLIES_API_KEY, filterFn, limit, since || undefined);
+      console.log(`Metadata scan found ${metadataMatches.length} matches. Fetching full transcripts...`);
+
+      if (metadataMatches.length === 0) {
+        return new Response(
+          JSON.stringify({ meetings: [], count: 0 }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
-        companyWords.push(...words);
       }
-      // Use the longest (most distinctive) word first
-      companyWords.sort((a, b) => b.length - a.length);
 
-      transcripts = transcripts.filter((t: any) => {
-        const participants = (t.participants || []).map((p: string) => p.toLowerCase());
-        const organizerEmail = (t.organizer_email || "").toLowerCase();
-        const firefliesUsers = (t.fireflies_users || []).map((u: string) => u.toLowerCase());
-        const allEmailFields = [...participants, organizerEmail, ...firefliesUsers].filter(Boolean);
-        const titleLower = (t.title || "").toLowerCase();
-
-        // === Signal 1: Direct email match ===
-        for (const email of lowerEmails) {
-          if (allEmailFields.some((f: string) => f.includes(email))) return true;
-        }
-
-        // === Signal 2: Company domain match ===
-        for (const domain of lowerDomains) {
-          for (const field of allEmailFields) {
-            const fieldDomain = extractDomain(field);
-            if (fieldDomain && fieldDomain === domain) return true;
-          }
-        }
-
-        // === Signal 3: Full name match with word-boundary + nicknames ===
-        for (const fullName of lowerFullNames) {
-          const nameParts = fullName.split(/\s+/).filter((p: string) => p.length >= 2);
-          if (nameParts.length === 0) continue;
-
-          const firstName = nameParts[0];
-          const firstNameVariants = getNameVariants(firstName);
-          const restParts = nameParts.slice(1);
-
-          const matchesInText = (text: string): boolean => {
-            const hasFirstName = firstNameVariants.some((v) => wordBoundaryMatch(text, v));
-            if (!hasFirstName) return false;
-            return restParts.every((part) => wordBoundaryMatch(text, part));
-          };
-
-          if (matchesInText(titleLower)) return true;
-
-          for (const field of allEmailFields) {
-            if (matchesInText(field)) return true;
-          }
-
-          // === Signal 4: Speaker name match in transcript ===
-          const speakers = (t.sentences || []).map((s: any) => (s.speaker_name || "").toLowerCase());
-          const uniqueSpeakers = [...new Set(speakers)];
-          for (const speaker of uniqueSpeakers) {
-            if (matchesInText(speaker as string)) return true;
-          }
-        }
-
-        // === Signal 5: Company name match in title or participants ===
-        if (companyWords.length > 0) {
-          // Check the most distinctive word (longest) against title
-          const distinctiveWord = companyWords[0];
-          if (wordBoundaryMatch(titleLower, distinctiveWord)) return true;
-
-          // Also check against participant names
-          for (const field of allEmailFields) {
-            if (wordBoundaryMatch(field, distinctiveWord)) return true;
-          }
-
-          // Check against speaker names
-          const speakers = (t.sentences || []).map((s: any) => (s.speaker_name || "").toLowerCase());
-          const uniqueSpeakers = [...new Set(speakers)];
-          for (const speaker of uniqueSpeakers) {
-            if (wordBoundaryMatch(speaker as string, distinctiveWord)) return true;
-          }
-        }
-
-        return false;
-      });
+      const matchedIds = metadataMatches.map((t: any) => t.id);
+      fullTranscripts = await fetchFullTranscripts(FIREFLIES_API_KEY, matchedIds);
+    } else {
+      // ── No search criteria: just fetch recent transcripts with full data ──
+      const metadataMatches = await fetchMetadataPaginated(FIREFLIES_API_KEY, null, limit, since || undefined);
+      const matchedIds = metadataMatches.map((t: any) => t.id);
+      fullTranscripts = matchedIds.length > 0
+        ? await fetchFullTranscripts(FIREFLIES_API_KEY, matchedIds)
+        : [];
     }
 
-    // Apply limit after filtering
-    transcripts = transcripts.slice(0, limit);
-
+    // Process transcripts
     const processed = [];
-    for (const t of transcripts) {
-      // Build full transcript text from sentences
+    for (const t of fullTranscripts) {
       const fullTranscript = t.sentences
         ? t.sentences.map((s: any) => `${s.speaker_name}: ${s.text}`).join("\n")
         : "";
 
-      // Extract attendee info
       const attendees = t.participants || [];
       const attendeeEmails = attendees.map((p: string) => p.toLowerCase());
 
-      // Always keep native Fireflies summary as fallback
       const nativeSummary = t.summary?.overview || "";
       const nativeNextSteps = t.summary?.action_items || "";
       let summary = nativeSummary;
       let nextSteps = nativeNextSteps;
 
-      // If we should summarize with AI and have transcript text
       if (summarize && fullTranscript.length > 50) {
         try {
-          // Truncate very long transcripts to ~15k chars for the AI
           const truncated = fullTranscript.length > 15000
             ? fullTranscript.substring(0, 15000) + "\n\n[Transcript truncated...]"
             : fullTranscript;
