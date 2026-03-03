@@ -250,13 +250,14 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
       if (latestDate && (!lead.lastContactDate || latestDate > lead.lastContactDate)) {
         updates.lastContactDate = latestDate;
       }
+      const today = new Date().toISOString().split("T")[0];
       const allNextSteps = addedMeetings
         .flatMap(m => m.intelligence?.nextSteps || [])
-        .filter(ns => ns.deadline)
+        .filter(ns => ns.deadline && ns.deadline >= today)
         .map(ns => ns.deadline)
         .filter(Boolean)
         .sort();
-      if (allNextSteps.length > 0 && (!lead.nextFollowUp || allNextSteps[0] < lead.nextFollowUp)) {
+      if (allNextSteps.length > 0 && (!lead.nextFollowUp || allNextSteps[0] > today)) {
         updates.nextFollowUp = allNextSteps[0];
       }
       updateLead(lead.id, updates);
