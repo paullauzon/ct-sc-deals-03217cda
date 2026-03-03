@@ -258,7 +258,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     }
 
     setBulkJob({
-      phase: "running", totalJobs: total, completedJobs: 0, failedJobs: 0, foundMeetings: 0,
+      phase: "running", totalJobs: total, completedJobs: 0, failedJobs: 0, foundMeetings: 0, noMeetings: 0,
       currentLeadIndex: 0, currentLeadName: currentLeads[0]?.name || "",
       progressMessage: `[1/${total}] Starting...`, bulkJobIds: [], cancelled: false,
     });
