@@ -129,12 +129,27 @@ const INTELLIGENCE_TOOL = {
           type: "string",
           description: "Summary of any pricing, budget, or cost discussions. 'Not discussed' if none.",
         },
+        talkRatio: {
+          type: "number",
+          description: "Estimated percentage (0-100) of time OUR team talked vs the prospect. Lower is better (good listening). Estimate from transcript patterns.",
+        },
+        questionQuality: {
+          type: "string",
+          enum: ["Strong", "Adequate", "Weak"],
+          description: "Did our team ask good discovery/qualifying questions, or just pitch? Strong = probing open-ended questions. Weak = mostly statements/pitching.",
+        },
+        objectionHandling: {
+          type: "string",
+          enum: ["Effective", "Partial", "Missed"],
+          description: "When objections were raised, did our team address them effectively? Effective = acknowledged and provided compelling response. Missed = ignored or deflected.",
+        },
       },
       required: [
         "summary", "attendees", "keyTopics", "nextSteps", "actionItems",
         "decisions", "dealSignals", "priorFollowUps", "relationshipProgression",
         "questionsAsked", "painPoints", "valueProposition", "engagementLevel",
         "talkingPoints", "competitiveIntel", "pricingDiscussion",
+        "talkRatio", "questionQuality", "objectionHandling",
       ],
       additionalProperties: false,
     },

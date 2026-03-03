@@ -1,8 +1,13 @@
 import { useState } from "react";
-import { DealIntelligence } from "@/types/lead";
+import { Lead, Meeting, DealIntelligence } from "@/types/lead";
+import { useLeads } from "@/contexts/LeadContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Users, AlertTriangle, Target, TrendingUp, Shield, Clock, Crosshair, Activity } from "lucide-react";
+import { Users, AlertTriangle, Target, TrendingUp, Shield, Clock, Crosshair, Activity, RefreshCw } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const stanceColors: Record<string, string> = {
   "Champion": "bg-green-500/15 text-green-700 border-green-500/30",
@@ -40,7 +45,73 @@ const severityColors: Record<string, string> = {
   "Low": "bg-muted text-muted-foreground border-border",
 };
 
-export function DealIntelligencePanel({ intel }: { intel: DealIntelligence }) {
+// Map signal strings to numeric values for charting
+const signalToValue: Record<string, number> = {
+  // Sentiment
+  "Very Positive": 5, "Positive": 4, "Neutral": 3, "Cautious": 2, "Negative": 1,
+  // Intent
+  "Strong": 4, "Moderate": 3, "Low": 2, "None detected": 1,
+  // Engagement
+  "Highly Engaged": 4, "Engaged": 3, "Passive": 2, "Disengaged": 1,
+};
+
+export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence; lead?: Lead }) {
+  const context = (() => { try { return useLeads(); } catch { return null; } })();
+  const [reSynthesizing, setReSynthesizing] = useState(false);
+
+  const handleReSynthesize = async () => {
+    if (!lead || !context) return;
+    setReSynthesizing(true);
+    try {
+      toast.info("Re-synthesizing deal intelligence...");
+      const sorted = [...(lead.meetings || [])].sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+      const { data, error } = await supabase.functions.invoke("synthesize-deal-intelligence", {
+        body: {
+          meetings: sorted,
+          leadFields: {
+            name: lead.name,
+            company: lead.company,
+            role: lead.role,
+            stage: lead.stage,
+            priority: lead.priority,
+            dealValue: lead.dealValue,
+            serviceInterest: lead.serviceInterest,
+          },
+        },
+      });
+      if (error) throw error;
+      if (data?.dealIntelligence) {
+        context.updateLead(lead.id, { dealIntelligence: data.dealIntelligence });
+        toast.success("Deal intelligence re-synthesized");
+      }
+    } catch (e: any) {
+      console.error("Re-synthesis error:", e);
+      toast.error("Failed to re-synthesize");
+    } finally {
+      setReSynthesizing(false);
+    }
+  };
+
+  // Build momentum chart data
+  const chartData = (() => {
+    const ms = intel.momentumSignals;
+    if (!ms) return [];
+    const maxLen = Math.max(
+      ms.sentimentTrajectory?.length || 0,
+      ms.intentTrajectory?.length || 0,
+      ms.engagementTrajectory?.length || 0
+    );
+    if (maxLen === 0) return [];
+    return Array.from({ length: maxLen }, (_, i) => ({
+      meeting: `M${i + 1}`,
+      sentiment: signalToValue[ms.sentimentTrajectory?.[i]] || 0,
+      intent: signalToValue[ms.intentTrajectory?.[i]] || 0,
+      engagement: signalToValue[ms.engagementTrajectory?.[i]] || 0,
+    }));
+  })();
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between border-b border-border pb-1">
@@ -48,9 +119,17 @@ export function DealIntelligencePanel({ intel }: { intel: DealIntelligence }) {
           <Activity className="h-3.5 w-3.5" />
           Deal Intelligence
         </h3>
-        <p className="text-[10px] text-muted-foreground">
-          Synthesized {new Date(intel.synthesizedAt).toLocaleDateString()}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-[10px] text-muted-foreground">
+            Synthesized {new Date(intel.synthesizedAt).toLocaleDateString()}
+          </p>
+          {lead && context && (
+            <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 text-muted-foreground" onClick={handleReSynthesize} disabled={reSynthesizing}>
+              <RefreshCw className={`h-3 w-3 ${reSynthesizing ? "animate-spin" : ""}`} />
+              {reSynthesizing ? "Synthesizing..." : "Re-synthesize"}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Deal Narrative */}
@@ -83,6 +162,31 @@ export function DealIntelligencePanel({ intel }: { intel: DealIntelligence }) {
           </div>
         </div>
       </div>
+
+      {/* Momentum Trend Chart */}
+      {chartData.length > 1 && (
+        <div className="rounded-md border border-border bg-secondary/10 p-3 space-y-2">
+          <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <TrendingUp className="h-3 w-3" /> Signal Trends
+          </div>
+          <div className="flex gap-3 text-[10px]">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /> Sentiment</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" /> Intent</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500" /> Engagement</span>
+          </div>
+          <ResponsiveContainer width="100%" height={120}>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="meeting" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+              <YAxis domain={[0, 5]} tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+              <Tooltip contentStyle={{ fontSize: 11, background: "hsl(var(--background))", border: "1px solid hsl(var(--border))" }} />
+              <Line type="monotone" dataKey="sentiment" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="intent" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="engagement" stroke="#a855f7" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       <Tabs defaultValue="stakeholders" className="w-full">
         <TabsList className="w-full justify-start flex-wrap h-auto gap-0.5 p-1">
@@ -220,8 +324,8 @@ export function DealIntelligencePanel({ intel }: { intel: DealIntelligence }) {
             <p className="text-sm leading-relaxed whitespace-pre-line">{intel.dealStageEvidence}</p>
           </div>
 
-          {/* Trajectory Visualization */}
-          {intel.momentumSignals.sentimentTrajectory?.length > 0 && (
+          {/* Trajectory Visualization (text fallback for single meeting) */}
+          {chartData.length <= 1 && intel.momentumSignals.sentimentTrajectory?.length > 0 && (
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Signal Trajectory</label>
               <div className="grid grid-cols-3 gap-2">

@@ -191,6 +191,9 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
         </SheetHeader>
 
         <div className="space-y-8 mt-4">
+          {/* Deal Health Alerts */}
+          <DealHealthAlerts lead={lead} />
+
           {/* Deal Progress Bar */}
           <DealProgressBar currentStage={lead.stage} />
 
@@ -327,7 +330,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
 
           {/* Deal Intelligence (Cross-Meeting Synthesis) */}
           {lead.dealIntelligence && (
-            <DealIntelligencePanel intel={lead.dealIntelligence} />
+            <DealIntelligencePanel intel={lead.dealIntelligence} lead={lead} />
           )}
 
           {/* Close Reasons */}
@@ -376,7 +379,95 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
   );
 }
 
+// ─── Deal Health Alerts ───
 
+function DealHealthAlerts({ lead }: { lead: Lead }) {
+  const alerts: { message: string; severity: "warning" | "critical" }[] = [];
+  const today = new Date();
+
+  // Stalling: no meetings in 14+ days
+  const meetings = lead.meetings || [];
+  if (meetings.length > 0 && !["Closed Won", "Closed Lost", "Went Dark"].includes(lead.stage)) {
+    const latestMeetingDate = meetings.map(m => m.date).filter(Boolean).sort().pop();
+    if (latestMeetingDate) {
+      const daysSince = Math.floor((today.getTime() - new Date(latestMeetingDate).getTime()) / (1000 * 60 * 60 * 24));
+      if (daysSince >= 21) {
+        alerts.push({ message: `Deal stalling: ${daysSince} days since last meeting`, severity: "critical" });
+      } else if (daysSince >= 14) {
+        alerts.push({ message: `${daysSince} days since last meeting`, severity: "warning" });
+      }
+    }
+  }
+
+  // Overdue action items
+  if (lead.dealIntelligence?.actionItemTracker) {
+    const overdue = lead.dealIntelligence.actionItemTracker.filter(a => a.status === "Overdue").length;
+    if (overdue > 0) {
+      alerts.push({ message: `${overdue} overdue action item${overdue !== 1 ? "s" : ""}`, severity: "critical" });
+    }
+    const open = lead.dealIntelligence.actionItemTracker.filter(a => a.status === "Open").length;
+    if (open >= 5) {
+      alerts.push({ message: `${open} open action items`, severity: "warning" });
+    }
+  }
+
+  // Unmitigated high risks
+  if (lead.dealIntelligence?.riskRegister?.length) {
+    const unmitigated = lead.dealIntelligence.riskRegister.filter(
+      r => r.mitigationStatus === "Unmitigated" && (r.severity === "Critical" || r.severity === "High")
+    );
+    if (unmitigated.length) {
+      alerts.push({ message: `${unmitigated.length} unmitigated high/critical risk${unmitigated.length !== 1 ? "s" : ""}`, severity: "critical" });
+    }
+  }
+
+  // No follow-up scheduled or overdue
+  if (!["Closed Won", "Closed Lost", "Went Dark"].includes(lead.stage)) {
+    if (!lead.nextFollowUp) {
+      alerts.push({ message: "No follow-up scheduled", severity: "warning" });
+    } else if (new Date(lead.nextFollowUp) < today) {
+      const daysOverdue = Math.floor((today.getTime() - new Date(lead.nextFollowUp).getTime()) / (1000 * 60 * 60 * 24));
+      alerts.push({ message: `Follow-up overdue by ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""}`, severity: "critical" });
+    }
+  }
+
+  // Momentum stalling/stalled
+  if (lead.dealIntelligence?.momentumSignals) {
+    const ms = lead.dealIntelligence.momentumSignals;
+    if (ms.momentum === "Stalled") {
+      alerts.push({ message: "Deal momentum: Stalled", severity: "critical" });
+    } else if (ms.momentum === "Stalling") {
+      alerts.push({ message: "Deal momentum: Stalling", severity: "warning" });
+    }
+  }
+
+  // Contract expiring
+  if (lead.contractEnd) {
+    const daysToExpiry = Math.floor((new Date(lead.contractEnd).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysToExpiry >= 0 && daysToExpiry <= 30) {
+      alerts.push({ message: `Contract expiring in ${daysToExpiry} day${daysToExpiry !== 1 ? "s" : ""}`, severity: daysToExpiry <= 7 ? "critical" : "warning" });
+    }
+  }
+
+  if (alerts.length === 0) return null;
+
+  return (
+    <div className="space-y-1">
+      {alerts.filter(a => a.severity === "critical").map((a, i) => (
+        <div key={`c-${i}`} className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-1.5">
+          <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
+          <span className="text-xs text-destructive font-medium">{a.message}</span>
+        </div>
+      ))}
+      {alerts.filter(a => a.severity === "warning").map((a, i) => (
+        <div key={`w-${i}`} className="flex items-center gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/5 px-3 py-1.5">
+          <AlertTriangle className="h-3.5 w-3.5 text-yellow-600 shrink-0" />
+          <span className="text-xs text-yellow-700 font-medium">{a.message}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 const SUGGESTION_LABELS: Record<string, string> = {
   stage: "Stage", priority: "Priority", forecastCategory: "Forecast",
   icpFit: "ICP Fit", nextFollowUp: "Next Follow-up", dealValue: "Deal Value",

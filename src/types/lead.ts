@@ -116,6 +116,56 @@ export interface MeetingIntelligence {
   talkingPoints: string[];
   competitiveIntel: string;
   pricingDiscussion: string;
+  // Coaching metrics
+  talkRatio?: number;
+  questionQuality?: "Strong" | "Adequate" | "Weak";
+  objectionHandling?: "Effective" | "Partial" | "Missed";
+}
+
+// ─── Meeting Prep Brief ───
+
+export interface PrepBriefActionItem {
+  item: string;
+  deadline: string;
+  context: string;
+}
+
+export interface PrepBriefTheyOwe {
+  item: string;
+  followUpApproach: string;
+}
+
+export interface PrepBriefObjection {
+  objection: string;
+  recommendedApproach: string;
+  evidence: string;
+}
+
+export interface PrepBriefStakeholder {
+  name: string;
+  role: string;
+  stance: string;
+  keyInterests: string;
+  approachTips: string;
+}
+
+export interface PrepBriefCompetitor {
+  competitor: string;
+  threat: string;
+  counterStrategy: string;
+}
+
+export interface MeetingPrepBrief {
+  executiveSummary: string;
+  openActionItemsWeOwe: PrepBriefActionItem[];
+  openActionItemsTheyOwe: PrepBriefTheyOwe[];
+  unresolvedObjections: PrepBriefObjection[];
+  stakeholderBriefing: PrepBriefStakeholder[];
+  competitiveThreats: PrepBriefCompetitor[];
+  talkingPoints: string[];
+  questionsToAsk: string[];
+  risksToWatch: string[];
+  desiredOutcomes: string[];
 }
 
 export interface Meeting {
