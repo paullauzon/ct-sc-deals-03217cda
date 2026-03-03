@@ -163,6 +163,10 @@ function parseTargetLeads(): Lead[] {
     hearAboutUs: "",
     acquisitionStrategy: "",
     buyerType: "",
+    firefliesUrl: "",
+    firefliesTranscript: "",
+    firefliesSummary: "",
+    firefliesNextSteps: "",
   }));
 }
 
