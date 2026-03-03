@@ -162,7 +162,12 @@ export function LeadProvider({ children }: { children: ReactNode }) {
     setLeads((prev) => {
       const next = prev.map((l) => {
         if (l.id !== leadId) return l;
-        return { ...l, meetings: [...(l.meetings || []), meeting] };
+        const updated = { ...l, meetings: [...(l.meetings || []), meeting] };
+        // Auto-update lastContactDate if meeting date is more recent
+        if (meeting.date && (!l.lastContactDate || meeting.date > l.lastContactDate)) {
+          updated.lastContactDate = meeting.date;
+        }
+        return updated;
       });
       localStorage.setItem("captarget-leads", JSON.stringify(next));
       return next;

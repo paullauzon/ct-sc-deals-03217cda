@@ -188,6 +188,29 @@ export function Pipeline() {
                           {lead.meetingOutcome && <span>{lead.meetingOutcome}</span>}
                         </div>
                       </div>
+                      {/* Row 6: Intelligence indicators */}
+                      {lead.dealIntelligence && (
+                        <div className="flex items-center gap-1.5 text-[10px]">
+                          {lead.dealIntelligence.momentumSignals?.momentum && (
+                            <span className={`px-1.5 py-0.5 rounded ${
+                              lead.dealIntelligence.momentumSignals.momentum === "Accelerating" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
+                              lead.dealIntelligence.momentumSignals.momentum === "Stalling" || lead.dealIntelligence.momentumSignals.momentum === "Stalled" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
+                              "bg-secondary text-muted-foreground"
+                            }`}>
+                              {lead.dealIntelligence.momentumSignals.momentum === "Accelerating" ? "↑" :
+                               lead.dealIntelligence.momentumSignals.momentum === "Stalling" || lead.dealIntelligence.momentumSignals.momentum === "Stalled" ? "↓" : "→"} {lead.dealIntelligence.momentumSignals.momentum}
+                            </span>
+                          )}
+                          {lead.dealIntelligence.riskRegister?.filter(r => r.mitigationStatus !== "Mitigated").length > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                              ⚠ {lead.dealIntelligence.riskRegister.filter(r => r.mitigationStatus !== "Mitigated").length} risks
+                            </span>
+                          )}
+                          {lead.enrichment && (
+                            <span className="px-1 py-0.5 rounded bg-secondary text-muted-foreground">AI</span>
+                          )}
+                        </div>
+                      )}
                       {closed && lead.closeReason && (
                         <p className="text-xs text-muted-foreground">Reason: {lead.closeReason}</p>
                       )}
