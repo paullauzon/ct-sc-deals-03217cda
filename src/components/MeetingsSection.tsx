@@ -240,7 +240,15 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
         lead={lead}
         existingMeetings={meetings}
         onAdd={(meeting) => {
-          updateLead(lead.id, { meetings: [...meetings, meeting] });
+          const updatedMeetings = [...meetings, meeting];
+          updateLead(lead.id, { meetings: updatedMeetings });
+          // Auto-trigger synthesis if the new meeting has intelligence
+          if (meeting.intelligence) {
+            const meetingsWithIntel = updatedMeetings.filter(m => m.intelligence);
+            if (meetingsWithIntel.length > 0) {
+              synthesizeDealIntelligence(updatedMeetings, lead);
+            }
+          }
         }}
       />
     </div>
