@@ -191,6 +191,9 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
         </SheetHeader>
 
         <div className="space-y-8 mt-4">
+          {/* Deal Health Alerts */}
+          <DealHealthAlerts lead={lead} />
+
           {/* Deal Progress Bar */}
           <DealProgressBar currentStage={lead.stage} />
 
@@ -327,7 +330,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
 
           {/* Deal Intelligence (Cross-Meeting Synthesis) */}
           {lead.dealIntelligence && (
-            <DealIntelligencePanel intel={lead.dealIntelligence} />
+            <DealIntelligencePanel intel={lead.dealIntelligence} lead={lead} />
           )}
 
           {/* Close Reasons */}
