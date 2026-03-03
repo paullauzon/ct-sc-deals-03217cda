@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Lead, Meeting, MeetingIntelligence, DealIntelligence, MeetingPrepBrief } from "@/types/lead";
 import { useLeads } from "@/contexts/LeadContext";
+import { useProcessing } from "@/contexts/ProcessingContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Mail, Copy, Check, CheckCircle, X } from "lucide-react";
+import { FileText, Mail, Copy, Check, CheckCircle, X, Loader2 } from "lucide-react";
 
 // ─── Suggested Lead Update Types ───
 
@@ -106,8 +107,8 @@ function formatMeetingDate(dateStr: string): string {
 
 export function MeetingsSection({ lead }: { lead: Lead }) {
   const { updateLead } = useLeads();
+  const { startAutoFind, leadJobs } = useProcessing();
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [searching, setSearching] = useState(false);
   const [showPrepDialog, setShowPrepDialog] = useState(false);
   const [prepBrief, setPrepBrief] = useState<MeetingPrepBrief | null>(null);
   const [generatingPrep, setGeneratingPrep] = useState(false);
@@ -115,8 +116,8 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
   const [followUpEmail, setFollowUpEmail] = useState("");
   const [followUpMeetingId, setFollowUpMeetingId] = useState<string | null>(null);
   const [generatingFollowUp, setGeneratingFollowUp] = useState(false);
-  const [pendingSuggestions, setPendingSuggestions] = useState<Array<{ field: string; label: string; value: string | number; evidence: string }>>([]);
-  const [showSuggestionsDialog, setShowSuggestionsDialog] = useState(false);
+
+  const searching = leadJobs[lead.id]?.searching ?? false;
 
   const meetings = lead.meetings || [];
 
