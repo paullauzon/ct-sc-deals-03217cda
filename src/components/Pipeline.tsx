@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, DragEvent } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { LeadStage, Lead } from "@/types/lead";
 import { LeadDetail } from "@/components/LeadsTable";
-import { computeDaysInStage } from "@/lib/leadUtils";
+import { computeDaysInStage, getCompanyAssociates } from "@/lib/leadUtils";
 import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
