@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, DragEvent } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { LeadStage, Lead } from "@/types/lead";
 import { LeadDetail } from "@/components/LeadsTable";
-import { computeDaysInStage } from "@/lib/leadUtils";
+import { computeDaysInStage, getCompanyAssociates } from "@/lib/leadUtils";
 import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -168,6 +168,7 @@ export function Pipeline() {
                   const days = computeDaysInStage(lead.stageEnteredDate);
                   const brandAbbr = lead.brand === "Captarget" ? "CT" : "SC";
                   const sourceShort = lead.source.replace("CT ", "").replace("SC ", "");
+                  const associates = getCompanyAssociates(lead, leads);
                   return (
                     <div
                       key={lead.id}
@@ -188,6 +189,9 @@ export function Pipeline() {
                       {/* Row 2: Source */}
                       <p className="text-[10px] text-muted-foreground">{brandAbbr} · {sourceShort}</p>
                       {lead.isDuplicate && <p className="text-[10px] text-muted-foreground">⚑ Also via {lead.brand === "Captarget" ? "SC" : "CT"}</p>}
+                      {associates.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground">👥 {associates.length + 1} contacts at {lead.company}</p>
+                      )}
                       {/* Row 3: Service interest */}
                       {lead.serviceInterest && lead.serviceInterest !== "TBD" && (
                         <p className="text-xs text-muted-foreground">{lead.serviceInterest}</p>
