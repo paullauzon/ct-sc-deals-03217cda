@@ -335,8 +335,8 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Phase 3: Create DB job rows and invoke run-lead-job for each
-        const jobIds: string[] = [];
+        // Phase 3: Create DB job rows and build invocation queue
+        const jobQueue: Array<{ jobId: string; leadId: string; leadName: string; leadPayload: any; prefetchedMeetings: any[] }> = [];
 
         for (const [leadId, transcripts] of leadMatches.entries()) {
           const lead = currentLeads.find(l => l.id === leadId);
@@ -380,15 +380,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             continue;
           }
 
-          jobIds.push(jobRow.id);
-
-          // Set searching state
-          setLeadJobs(prev => ({
-            ...prev,
-            [leadId]: { searching: true, pendingSuggestions: [], leadId, leadName: lead.name },
-          }));
-
-          // Prepare prefetched meetings for this lead (trim transcripts)
+          // Prepare prefetched meetings — truncate transcripts to 15K chars to avoid payload overflow
           const prefetchedMeetings = transcripts.map(t => ({
             firefliesId: t.firefliesId,
             title: t.title,
@@ -397,17 +389,16 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             attendees: t.attendees,
             attendeeEmails: t.attendeeEmails,
             transcriptUrl: t.transcriptUrl,
-            transcript: t.transcript,
+            transcript: (t.transcript || "").substring(0, 15000),
             summary: t.summary,
             nextSteps: t.nextSteps,
             sourceBrand: t.sourceBrand,
           }));
 
-          // Fire-and-forget invocation
-          supabase.functions.invoke("run-lead-job", {
-            body: { jobId: jobRow.id, lead: leadPayload, prefetchedMeetings },
-          }).catch(e => console.error(`Failed to invoke run-lead-job for ${lead.name}:`, e));
+          jobQueue.push({ jobId: jobRow.id, leadId, leadName: lead.name, leadPayload, prefetchedMeetings });
         }
+
+        const jobIds = jobQueue.map(j => j.jobId);
 
         setBulkJob({
           phase: "running",
@@ -419,6 +410,38 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         });
 
         toast.info(`Started processing ${jobIds.length} leads in background`);
+
+        // Sequential invocation with concurrency limit of 2
+        const CONCURRENCY = 2;
+        const invokeJob = async (item: typeof jobQueue[0]) => {
+          setLeadJobs(prev => ({
+            ...prev,
+            [item.leadId]: { searching: true, pendingSuggestions: [], leadId: item.leadId, leadName: item.leadName },
+          }));
+          try {
+            const { error } = await supabase.functions.invoke("run-lead-job", {
+              body: { jobId: item.jobId, lead: item.leadPayload, prefetchedMeetings: item.prefetchedMeetings },
+            });
+            if (error) {
+              console.error(`Edge function error for ${item.leadName}:`, error);
+              // Mark job as failed in DB so realtime picks it up
+              await (supabase.from("processing_jobs") as any)
+                .update({ status: "failed", error: error.message || "Invocation failed" })
+                .eq("id", item.jobId);
+            }
+          } catch (e: any) {
+            console.error(`Failed to invoke run-lead-job for ${item.leadName}:`, e);
+            await (supabase.from("processing_jobs") as any)
+              .update({ status: "failed", error: e.message || "Invocation failed" })
+              .eq("id", item.jobId);
+          }
+        };
+
+        // Process queue with concurrency limit
+        for (let i = 0; i < jobQueue.length; i += CONCURRENCY) {
+          const batch = jobQueue.slice(i, i + CONCURRENCY);
+          await Promise.all(batch.map(invokeJob));
+        }
       } catch (e: any) {
         console.error("Bulk processing setup error:", e);
         toast.error(`Bulk processing failed: ${e.message || "Unknown error"}`);

@@ -165,28 +165,48 @@ const FULL_TRANSCRIPT_QUERY = `
   }
 `;
 
-async function firefliesRequest(apiKey: string, query: string, variables: Record<string, any> = {}) {
-  const response = await fetch(FIREFLIES_GRAPHQL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
+async function firefliesRequest(apiKey: string, query: string, variables: Record<string, any> = {}, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const response = await fetch(FIREFLIES_GRAPHQL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ query, variables }),
+    });
 
-  if (!response.ok) {
-    const text = await response.text();
-    console.error("Fireflies API error:", response.status, text);
-    throw new Error(`Fireflies API error: ${response.status}`);
-  }
+    if (!response.ok) {
+      const text = await response.text();
+      if (response.status === 429 && attempt < maxRetries - 1) {
+        const waitMs = Math.min(5000 * Math.pow(2, attempt), 30000);
+        console.log(`Fireflies 429 — retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+      console.error("Fireflies API error:", response.status, text);
+      throw new Error(`Fireflies API error: ${response.status}`);
+    }
 
-  const data = await response.json();
-  if (data.errors) {
-    console.error("Fireflies GraphQL errors:", data.errors);
-    throw new Error(data.errors[0]?.message || "Fireflies GraphQL error");
+    const data = await response.json();
+    if (data.errors) {
+      const err = data.errors[0];
+      // Handle 429 inside GraphQL errors (Fireflies returns these)
+      if (err?.extensions?.status === 429 && attempt < maxRetries - 1) {
+        const retryAfter = err.extensions?.metadata?.retryAfter;
+        const waitMs = retryAfter
+          ? Math.max(retryAfter - Date.now(), 1000)
+          : Math.min(5000 * Math.pow(2, attempt), 30000);
+        console.log(`Fireflies GraphQL 429 — retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+      console.error("Fireflies GraphQL errors:", data.errors);
+      throw new Error(err?.message || "Fireflies GraphQL error");
+    }
+    return data.data;
   }
-  return data.data;
+  throw new Error("Fireflies request failed after max retries");
 }
 
 /** Fetch metadata in paginated batches, applying filter function to each batch */
@@ -255,9 +275,9 @@ async function fetchFullTranscripts(apiKey: string, ids: string[]): Promise<any[
   console.log(`Fetching full transcripts for ${ids.length} matched meetings...`);
   const results: any[] = [];
 
-  // Fetch in parallel, 5 at a time
-  for (let i = 0; i < ids.length; i += 5) {
-    const batch = ids.slice(i, i + 5);
+  // Fetch in parallel, 2 at a time (reduced from 5 to avoid 429s)
+  for (let i = 0; i < ids.length; i += 2) {
+    const batch = ids.slice(i, i + 2);
     const promises = batch.map((id) =>
       firefliesRequest(apiKey, FULL_TRANSCRIPT_QUERY, { id })
         .then((data) => data?.transcript)

@@ -70,8 +70,11 @@ serve(async (req) => {
     let newMeetings: any[];
 
     if (prefetchedMeetings && prefetchedMeetings.length > 0) {
-      // Use prefetched meetings (from bulk processing — already matched and filtered)
-      newMeetings = prefetchedMeetings;
+      // Use prefetched meetings — defensively truncate transcripts
+      newMeetings = prefetchedMeetings.map((m: any) => ({
+        ...m,
+        transcript: (m.transcript || "").substring(0, 15000),
+      }));
     } else {
       // Build search params and fetch from Fireflies
       const searchEmails: string[] = lead.email ? [lead.email] : [];
