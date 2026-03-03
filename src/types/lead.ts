@@ -118,11 +118,24 @@ export interface Lead {
   buyerType: string;
   // Multi-meeting support
   meetings: Meeting[];
+  // AI Enrichment
+  enrichment?: LeadEnrichment;
   // Legacy fields (kept for migration)
   firefliesUrl: string;
   firefliesTranscript: string;
   firefliesSummary: string;
   firefliesNextSteps: string;
+}
+
+export interface LeadEnrichment {
+  companyDescription: string;
+  acquisitionCriteria: string;
+  buyerMotivation: string;
+  urgency: string;
+  decisionMakers: string;
+  competitorTools: string;
+  keyInsights: string;
+  enrichedAt: string;
 }
 
 export interface PipelineMetrics {
