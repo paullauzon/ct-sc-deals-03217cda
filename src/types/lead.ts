@@ -192,6 +192,22 @@ export interface Lead {
   firefliesNextSteps: string;
 }
 
+export interface SuggestedFieldUpdate {
+  value: string | number;
+  reason: string;
+}
+
+export interface SuggestedUpdates {
+  stage?: SuggestedFieldUpdate;
+  priority?: SuggestedFieldUpdate;
+  forecastCategory?: SuggestedFieldUpdate;
+  icpFit?: SuggestedFieldUpdate;
+  nextFollowUp?: SuggestedFieldUpdate;
+  dealValue?: SuggestedFieldUpdate;
+  serviceInterest?: SuggestedFieldUpdate;
+  meetingOutcome?: SuggestedFieldUpdate;
+}
+
 export interface LeadEnrichment {
   companyDescription: string;
   acquisitionCriteria: string;
@@ -202,7 +218,7 @@ export interface LeadEnrichment {
   keyInsights: string;
   dataSources?: string;
   enrichedAt: string;
-  // New holistic deal intelligence fields
+  // Holistic deal intelligence fields
   objectionsSummary?: string;
   dealRiskAssessment?: string;
   recommendedNextActions?: string;
@@ -212,6 +228,8 @@ export interface LeadEnrichment {
   engagementTrend?: string;
   likelihoodToClose?: string;
   sentimentAnalysis?: string;
+  // AI-suggested field updates
+  suggestedUpdates?: SuggestedUpdates;
 }
 
 export interface PipelineMetrics {

@@ -187,6 +187,11 @@ CRITICAL RULES:
 5. When objections exist from meetings, provide specific recommendations to overcome each one.
 6. When assessing deal health, consider: stage velocity (days in stage), sentiment trends, engagement level, outstanding action items, and competitive threats.
 7. For recommended actions, be SPECIFIC to this deal's current stage and context — not generic advice.
+8. In suggestedUpdates, ONLY suggest changes when you have clear evidence. Compare against current deal field values provided. For each suggestion include a concise reason citing the evidence.
+9. For stage suggestions: only suggest advancement when evidence clearly supports it (e.g., meeting held → suggest "Meeting Held"; proposal discussed → suggest "Proposal Sent").
+10. For priority: consider urgency signals, deal size, and engagement level.
+11. For nextFollowUp: extract specific dates mentioned in meetings or suggest based on next step deadlines.
+12. For dealValue: only suggest when specific pricing/fees are discussed in transcripts.
 
 Focus areas for M&A deal origination:
 - Company profile and acquisition appetite
@@ -226,6 +231,53 @@ Focus areas for M&A deal origination:
                   engagementTrend: { type: "string", description: "One of: Increasing, Stable, Declining, New. Based on meeting frequency, responsiveness, sentiment." },
                   likelihoodToClose: { type: "string", description: "One of: High, Medium, Low, Unknown. With brief justification." },
                   sentimentAnalysis: { type: "string", description: "Sentiment progression across meetings with analysis. If single meeting, overall tone. If no meetings, say 'Not available from current data'." },
+                  suggestedUpdates: {
+                    type: "object",
+                    description: "Suggested updates to lead fields based on evidence from transcripts, deal fields, and intelligence. Only include fields where evidence supports a change from current values. Omit fields where no change is warranted.",
+                    properties: {
+                      stage: {
+                        type: "object",
+                        properties: { value: { type: "string", enum: ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Closed Lost", "Went Dark"] }, reason: { type: "string" } },
+                        required: ["value", "reason"],
+                      },
+                      priority: {
+                        type: "object",
+                        properties: { value: { type: "string", enum: ["High", "Medium", "Low"] }, reason: { type: "string" } },
+                        required: ["value", "reason"],
+                      },
+                      forecastCategory: {
+                        type: "object",
+                        properties: { value: { type: "string", enum: ["Commit", "Best Case", "Pipeline", "Omit"] }, reason: { type: "string" } },
+                        required: ["value", "reason"],
+                      },
+                      icpFit: {
+                        type: "object",
+                        properties: { value: { type: "string", enum: ["Strong", "Moderate", "Weak"] }, reason: { type: "string" } },
+                        required: ["value", "reason"],
+                      },
+                      nextFollowUp: {
+                        type: "object",
+                        properties: { value: { type: "string", description: "ISO date string YYYY-MM-DD" }, reason: { type: "string" } },
+                        required: ["value", "reason"],
+                      },
+                      dealValue: {
+                        type: "object",
+                        properties: { value: { type: "number" }, reason: { type: "string" } },
+                        required: ["value", "reason"],
+                      },
+                      serviceInterest: {
+                        type: "object",
+                        properties: { value: { type: "string", enum: ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"] }, reason: { type: "string" } },
+                        required: ["value", "reason"],
+                      },
+                      meetingOutcome: {
+                        type: "object",
+                        properties: { value: { type: "string", enum: ["Scheduled", "Held", "No-Show", "Rescheduled", "Cancelled"] }, reason: { type: "string" } },
+                        required: ["value", "reason"],
+                      },
+                    },
+                    additionalProperties: false,
+                  },
                 },
                 required: [
                   "companyDescription", "acquisitionCriteria", "buyerMotivation",
