@@ -272,16 +272,35 @@ serve(async (req) => {
     const searchEmails: string[] = body.searchEmails || [];
     const searchNames: string[] = body.searchNames || [];
     const searchDomains: string[] = body.searchDomains || [];
+    const searchCompanies: string[] = body.searchCompanies || [];
 
-    console.log(`Fetching Fireflies transcripts (limit: ${limit}, since: ${since}, searchEmails: ${searchEmails.length}, searchNames: ${searchNames.length}, searchDomains: ${searchDomains.length})`);
+    console.log(`Fetching Fireflies transcripts (limit: ${limit}, since: ${since}, searchEmails: ${searchEmails.length}, searchNames: ${searchNames.length}, searchDomains: ${searchDomains.length}, searchCompanies: ${searchCompanies.length})`);
 
     let transcripts = await fetchFirefliesTranscripts(FIREFLIES_API_KEY, limit, since);
 
     // Filter by search criteria if provided
-    if (searchEmails.length > 0 || searchNames.length > 0 || searchDomains.length > 0) {
+    if (searchEmails.length > 0 || searchNames.length > 0 || searchDomains.length > 0 || searchCompanies.length > 0) {
       const lowerEmails = searchEmails.map((e: string) => e.toLowerCase());
       const lowerFullNames = searchNames.map((n: string) => n.toLowerCase().trim());
       const lowerDomains = searchDomains.map((d: string) => d.toLowerCase().trim());
+
+      // Build distinctive company words for matching
+      const GENERIC_COMPANY_WORDS = new Set([
+        "group", "capital", "partners", "services", "solutions", "inc", "llc",
+        "corp", "corporation", "company", "co", "the", "and", "of", "for",
+        "holdings", "enterprises", "consulting", "management", "advisors",
+        "associates", "global", "international", "home", "health", "tech",
+        "financial", "investment", "investments", "properties", "fund", "equity",
+      ]);
+      const companyWords: string[] = [];
+      for (const company of searchCompanies) {
+        const words = company.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(
+          (w: string) => w.length >= 4 && !GENERIC_COMPANY_WORDS.has(w)
+        );
+        companyWords.push(...words);
+      }
+      // Use the longest (most distinctive) word first
+      companyWords.sort((a, b) => b.length - a.length);
 
       transcripts = transcripts.filter((t: any) => {
         const participants = (t.participants || []).map((p: string) => p.toLowerCase());
@@ -308,22 +327,18 @@ serve(async (req) => {
           const nameParts = fullName.split(/\s+/).filter((p: string) => p.length >= 2);
           if (nameParts.length === 0) continue;
 
-          // Build expanded name parts: for the first name, include nickname variants
           const firstName = nameParts[0];
           const firstNameVariants = getNameVariants(firstName);
           const restParts = nameParts.slice(1);
 
-          // Helper: check if a text matches any first-name variant + all remaining name parts
           const matchesInText = (text: string): boolean => {
             const hasFirstName = firstNameVariants.some((v) => wordBoundaryMatch(text, v));
             if (!hasFirstName) return false;
             return restParts.every((part) => wordBoundaryMatch(text, part));
           };
 
-          // Check title
           if (matchesInText(titleLower)) return true;
 
-          // Check each participant/email field individually
           for (const field of allEmailFields) {
             if (matchesInText(field)) return true;
           }
@@ -335,6 +350,26 @@ serve(async (req) => {
             if (matchesInText(speaker as string)) return true;
           }
         }
+
+        // === Signal 5: Company name match in title or participants ===
+        if (companyWords.length > 0) {
+          // Check the most distinctive word (longest) against title
+          const distinctiveWord = companyWords[0];
+          if (wordBoundaryMatch(titleLower, distinctiveWord)) return true;
+
+          // Also check against participant names
+          for (const field of allEmailFields) {
+            if (wordBoundaryMatch(field, distinctiveWord)) return true;
+          }
+
+          // Check against speaker names
+          const speakers = (t.sentences || []).map((s: any) => (s.speaker_name || "").toLowerCase());
+          const uniqueSpeakers = [...new Set(speakers)];
+          for (const speaker of uniqueSpeakers) {
+            if (wordBoundaryMatch(speaker as string, distinctiveWord)) return true;
+          }
+        }
+
         return false;
       });
     }
