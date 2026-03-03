@@ -86,7 +86,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
 
   const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
   const days = computeDaysInStage(lead.stageEnteredDate);
-  const duplicate = lead.isDuplicate ? leads.find((l) => l.id === lead.duplicateOf) : null;
+  
 
   // Aggregate meeting intelligence for enrichment
   const aggregateMeetingIntelligence = () => {
