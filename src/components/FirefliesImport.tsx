@@ -253,7 +253,7 @@ function MeetingCard({
           </SelectContent>
         </Select>
         {lead && (
-          <span className="text-xs text-green-600 shrink-0">✓ Matched</span>
+          <span className="text-xs text-primary shrink-0">✓ Matched</span>
         )}
       </div>
     </div>
