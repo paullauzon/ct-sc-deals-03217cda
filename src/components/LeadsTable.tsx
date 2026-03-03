@@ -663,15 +663,6 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
   );
 }
 
-function ScorecardBadge({ value }: { value: string }) {
-  const lower = value.toLowerCase();
-  const variant = lower.includes("high") || lower.includes("strong") || lower.includes("good")
-    ? "default"
-    : lower.includes("low") || lower.includes("poor") || lower.includes("weak") || lower.includes("at risk")
-      ? "destructive"
-      : "secondary";
-  return <Badge variant={variant} className="text-[10px] mt-0.5">{value}</Badge>;
-}
 
 function EnrichField({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
   return (
