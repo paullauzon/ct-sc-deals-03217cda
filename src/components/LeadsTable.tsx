@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
-import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand } from "@/types/lead";
+import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner } from "@/types/lead";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,6 +11,7 @@ import { computeDaysInStage } from "@/lib/leadUtils";
 const STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Closed Lost", "Went Dark"];
 const SERVICES: ServiceInterest[] = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"];
 const PRIORITIES = ["High", "Medium", "Low"] as const;
+const OWNERS: DealOwner[] = ["Malik", "Valeria", "Tomos"];
 const CLOSE_REASONS: CloseReason[] = ["Budget", "Timing", "Competitor", "No Fit", "No Response", "Not Qualified", "Champion Left", "Other"];
 const MEETING_OUTCOMES: MeetingOutcome[] = ["Scheduled", "Held", "No-Show", "Rescheduled", "Cancelled"];
 const FORECAST_CATEGORIES: ForecastCategory[] = ["Commit", "Best Case", "Pipeline", "Omit"];
@@ -96,10 +97,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
                 <label className="text-xs text-muted-foreground uppercase tracking-wider">Deal Value ($)</label>
                 <Input type="number" value={lead.dealValue || ""} onChange={(e) => save({ dealValue: Number(e.target.value) || 0 })} className="mt-1" placeholder="Enter deal value" />
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground uppercase tracking-wider">Assigned To</label>
-                <Input value={lead.assignedTo} onChange={(e) => save({ assignedTo: e.target.value })} className="mt-1" placeholder="Team member" />
-              </div>
+              <ClearableSelectField label="Assigned To" value={lead.assignedTo} options={[...OWNERS]} onChange={(v) => save({ assignedTo: v as DealOwner })} />
             </div>
           </Section>
 
