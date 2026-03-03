@@ -306,8 +306,8 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
           }
           // For manual adds with suggested updates, apply certain ones directly
           if (suggestedUpdates) {
-            const { processSuggestedUpdates } = await import("@/lib/bulkProcessing");
-            const { applied } = processSuggestedUpdates(suggestedUpdates, lead.id, updateLead);
+            const { processSuggestedUpdates: processSugg } = require("@/lib/bulkProcessing");
+            const { applied } = processSugg(suggestedUpdates, lead.id, updateLead);
             if (applied.length > 0) {
               toast.success(`Auto-updated ${applied.length} field${applied.length !== 1 ? "s" : ""}`, {
                 description: applied.join(" · "),
