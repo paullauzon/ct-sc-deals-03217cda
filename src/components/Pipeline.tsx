@@ -272,6 +272,7 @@ export function Pipeline() {
                         }
                         return null;
                       })()}
+                      {closed && lead.closeReason && (
                         <p className="text-xs text-muted-foreground">Reason: {lead.closeReason}</p>
                       )}
                       {lead.nextFollowUp && (
