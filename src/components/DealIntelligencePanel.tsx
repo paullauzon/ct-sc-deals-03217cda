@@ -209,6 +209,7 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
 
       {/* Momentum + Buying Committee Summary */}
       <div className="grid grid-cols-2 gap-2">
+      {intel.momentumSignals && (
         <div className="rounded-md border border-border bg-secondary/30 p-2.5 space-y-1.5">
           <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">
             <TrendingUp className="h-3 w-3" /> Momentum
@@ -217,10 +218,12 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
             {intel.momentumSignals.momentum}
           </Badge>
           <div className="grid grid-cols-2 gap-1 text-[10px] text-muted-foreground">
-            <span>Frequency: {intel.momentumSignals.meetingFrequencyDays}d</span>
-            <span>Completion: {intel.momentumSignals.completionRate}%</span>
+            <span>Frequency: {intel.momentumSignals.meetingFrequencyDays ?? "—"}d</span>
+            <span>Completion: {intel.momentumSignals.completionRate ?? "—"}%</span>
           </div>
         </div>
+      )}
+        {intel.buyingCommittee && (
         <div className="rounded-md border border-border bg-secondary/30 p-2.5 space-y-1.5">
           <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">
             <Users className="h-3 w-3" /> Buying Committee
@@ -231,6 +234,7 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
             {intel.buyingCommittee.blockers?.length > 0 && <p>🚫 <span className="font-medium">Blockers:</span> {intel.buyingCommittee.blockers.join(", ")}</p>}
           </div>
         </div>
+        )}
       </div>
 
       {/* Momentum Trend Chart */}
