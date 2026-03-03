@@ -125,6 +125,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
           nextSteps,
           addedAt: new Date().toISOString(),
           intelligence,
+          sourceBrand: m.sourceBrand || undefined,
         });
       }
 
