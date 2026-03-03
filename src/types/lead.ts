@@ -24,6 +24,7 @@ export type ServiceInterest =
   | "Direct Calling"
   | "Banker/Broker Coverage"
   | "Full Platform (All 3)"
+  | "SourceCo Retained Search"
   | "Other"
   | "TBD";
 
