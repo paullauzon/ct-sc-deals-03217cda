@@ -121,7 +121,8 @@ export function Pipeline() {
 
       <div className="flex gap-4 overflow-x-auto pb-4 scroll-smooth snap-x snap-mandatory">
         {ALL_STAGES.map((stage) => {
-          const stageLeads = getLeadsByStage(stage);
+          const allStageLeads = getLeadsByStage(stage);
+          const stageLeads = allStageLeads.filter(matchesSearch);
           const totalValue = stageLeads.reduce((s, l) => s + l.dealValue, 0);
           const isOver = dragOverStage === stage;
           const closed = isClosed(stage);
@@ -135,7 +136,9 @@ export function Pipeline() {
             >
               <div className="border-b-2 border-foreground pb-2 mb-3 flex items-baseline justify-between">
                 <span className="text-xs font-medium uppercase tracking-wider">{stage}</span>
-                <span className="text-xs text-muted-foreground tabular-nums">{stageLeads.length}</span>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {searchQuery ? `${stageLeads.length} of ${allStageLeads.length}` : stageLeads.length}
+                </span>
               </div>
               <p className="text-xs text-muted-foreground mb-2 tabular-nums">${totalValue.toLocaleString()}</p>
               <div className="space-y-2 max-h-[600px] overflow-y-auto">
