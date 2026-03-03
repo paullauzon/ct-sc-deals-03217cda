@@ -68,6 +68,7 @@ export interface Meeting {
   summary: string;
   nextSteps: string;
   addedAt: string;
+  sourceBrand?: Brand;
 }
 
 export interface Lead {

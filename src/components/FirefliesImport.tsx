@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useLeads } from "@/contexts/LeadContext";
-import { Lead, Meeting } from "@/types/lead";
+import { Lead, Meeting, Brand } from "@/types/lead";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface FirefliesMeeting {
@@ -19,20 +19,29 @@ interface FirefliesMeeting {
   transcript: string;
   summary: string;
   nextSteps: string;
+  sourceBrand: Brand;
 }
 
 function autoMatchLead(meeting: FirefliesMeeting, leads: Lead[]): string | null {
-  for (const email of meeting.attendeeEmails) {
-    const match = leads.find((l) => l.email.toLowerCase() === email.toLowerCase());
-    if (match) return match.id;
-  }
-  for (const lead of leads) {
-    const nameParts = lead.name.toLowerCase().split(" ");
-    const lastName = nameParts[nameParts.length - 1];
-    if (lastName.length > 2) {
-      if (meeting.title.toLowerCase().includes(lastName)) return lead.id;
-      for (const att of meeting.attendees) {
-        if (att.toLowerCase().includes(lastName)) return lead.id;
+  // Prefer same-brand leads, then fall back to cross-brand
+  const sameBrandLeads = leads.filter((l) => l.brand === meeting.sourceBrand);
+  const otherLeads = leads.filter((l) => l.brand !== meeting.sourceBrand);
+
+  for (const pool of [sameBrandLeads, otherLeads]) {
+    // Email match
+    for (const email of meeting.attendeeEmails) {
+      const match = pool.find((l) => l.email.toLowerCase() === email.toLowerCase());
+      if (match) return match.id;
+    }
+    // Full name match
+    for (const lead of pool) {
+      const nameParts = lead.name.toLowerCase().split(" ");
+      const lastName = nameParts[nameParts.length - 1];
+      if (lastName.length > 2) {
+        if (meeting.title.toLowerCase().includes(lastName)) return lead.id;
+        for (const att of meeting.attendees) {
+          if (att.toLowerCase().includes(lastName)) return lead.id;
+        }
       }
     }
   }
@@ -60,7 +69,6 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
   const fetchMeetings = async () => {
     setLoading(true);
     try {
-      // Fetch from both Captarget and SourceCo Fireflies accounts
       const [ctResult, scResult] = await Promise.all([
         supabase.functions.invoke("fetch-fireflies", {
           body: { limit: 50, summarize: true, brand: "Captarget" },
@@ -70,8 +78,8 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
         }),
       ]);
 
-      const ctMeetings: FirefliesMeeting[] = ctResult.data?.meetings || [];
-      const scMeetings: FirefliesMeeting[] = scResult.data?.meetings || [];
+      const ctMeetings: FirefliesMeeting[] = (ctResult.data?.meetings || []).map((m: any) => ({ ...m, sourceBrand: "Captarget" as Brand }));
+      const scMeetings: FirefliesMeeting[] = (scResult.data?.meetings || []).map((m: any) => ({ ...m, sourceBrand: "SourceCo" as Brand }));
       const fetchedMeetings = [...ctMeetings, ...scMeetings];
       setMeetings(fetchedMeetings);
 
@@ -100,7 +108,6 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
     let imported = 0;
     let skipped = 0;
 
-    // Group meetings by lead
     const leadMeetings: Record<string, FirefliesMeeting[]> = {};
     for (const meeting of meetings) {
       const leadId = assignments[meeting.firefliesId];
@@ -134,6 +141,7 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
           summary: m.summary || "",
           nextSteps: m.nextSteps || "",
           addedAt: new Date().toISOString(),
+          sourceBrand: m.sourceBrand,
         };
         updatedMeetings.push(newMeeting);
         imported++;
@@ -195,7 +203,7 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
                   </p>
                 ) : (
                   meetings.map((meeting) => (
-                    <MeetingCard
+                    <ImportMeetingCard
                       key={meeting.firefliesId}
                       meeting={meeting}
                       leads={leads}
@@ -227,7 +235,7 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
   );
 }
 
-function MeetingCard({
+function ImportMeetingCard({
   meeting,
   leads,
   assignedLeadId,
@@ -239,12 +247,20 @@ function MeetingCard({
   onAssign: (leadId: string) => void;
 }) {
   const lead = leads.find((l) => l.id === assignedLeadId);
+  const brandLabel = meeting.sourceBrand === "Captarget" ? "CT" : "SC";
+
+  // Sort leads: same brand first, then others
+  const sameBrandLeads = leads.filter((l) => l.brand === meeting.sourceBrand);
+  const otherBrandLeads = leads.filter((l) => l.brand !== meeting.sourceBrand);
 
   return (
     <div className="border border-border rounded-lg p-3 space-y-2">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground shrink-0">
+              {brandLabel}
+            </span>
             <h4 className="text-sm font-medium truncate">{meeting.title}</h4>
             <span className="text-xs text-muted-foreground shrink-0">
               {meeting.date} · {formatDuration(meeting.duration)}
@@ -276,11 +292,21 @@ function MeetingCard({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__none__">— Skip —</SelectItem>
-            {leads.map((l) => (
+            {sameBrandLeads.map((l) => (
               <SelectItem key={l.id} value={l.id}>
                 {l.name} ({l.company || "No company"})
               </SelectItem>
             ))}
+            {otherBrandLeads.length > 0 && (
+              <>
+                <SelectSeparator />
+                {otherBrandLeads.map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    <span className="text-muted-foreground">{l.name} ({l.company || "No company"}) — {l.brand === "Captarget" ? "CT" : "SC"}</span>
+                  </SelectItem>
+                ))}
+              </>
+            )}
           </SelectContent>
         </Select>
         {lead && (
