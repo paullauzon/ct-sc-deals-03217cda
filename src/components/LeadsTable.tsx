@@ -234,6 +234,9 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             </div>
           </Section>
 
+          {/* Company Activity — cross-synced associates */}
+          <CompanyActivitySection lead={lead} allLeads={leads} onSelectLead={(id) => { /* handled via LeadDetail re-open */ }} />
+
           {/* Cross-Brand Submission */}
           {lead.isDuplicate && duplicate && (
             <Section title={`Also submitted via ${duplicate.brand}`}>
