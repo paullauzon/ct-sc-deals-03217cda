@@ -6,6 +6,141 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const INTELLIGENCE_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "meeting_intelligence",
+    description: "Extract comprehensive meeting intelligence from a sales meeting transcript.",
+    parameters: {
+      type: "object",
+      properties: {
+        summary: {
+          type: "string",
+          description: "Comprehensive 3-5 sentence summary covering key topics, decisions, prospect needs, objections, and overall tone.",
+        },
+        attendees: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              role: { type: "string", description: "Job title or role if mentioned" },
+              company: { type: "string" },
+            },
+            required: ["name", "role", "company"],
+          },
+          description: "All people who participated in the meeting.",
+        },
+        keyTopics: {
+          type: "array",
+          items: { type: "string" },
+          description: "Main topics discussed, in order of importance.",
+        },
+        nextSteps: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              action: { type: "string", description: "The specific action to take" },
+              owner: { type: "string", description: "Who owns this action" },
+              deadline: { type: "string", description: "When it should be done, or empty" },
+            },
+            required: ["action", "owner", "deadline"],
+          },
+        },
+        actionItems: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              item: { type: "string" },
+              owner: { type: "string" },
+              deadline: { type: "string" },
+              status: { type: "string", enum: ["New", "Pending", "In Progress"] },
+            },
+            required: ["item", "owner", "deadline", "status"],
+          },
+        },
+        decisions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Concrete decisions made during the meeting.",
+        },
+        dealSignals: {
+          type: "object",
+          properties: {
+            buyingIntent: { type: "string", enum: ["Strong", "Moderate", "Low", "None detected"] },
+            sentiment: { type: "string", enum: ["Very Positive", "Positive", "Neutral", "Cautious", "Negative"] },
+            timeline: { type: "string", description: "E.g. 'Q2 2026', 'Next 30 days', 'No timeline discussed'" },
+            budgetMentioned: { type: "string", description: "Any budget signals or ranges mentioned, or 'Not discussed'" },
+            champions: { type: "array", items: { type: "string" }, description: "Internal advocates or supporters" },
+            competitors: { type: "array", items: { type: "string" }, description: "Competing solutions or vendors mentioned" },
+            objections: { type: "array", items: { type: "string" }, description: "Concerns, pushback, or objections raised" },
+            riskFactors: { type: "array", items: { type: "string" }, description: "Deal risks identified" },
+            decisionProcess: { type: "string", description: "How decisions are made — who decides, approval process, etc." },
+            urgencyDrivers: { type: "array", items: { type: "string" }, description: "What's driving urgency or lack thereof" },
+          },
+          required: ["buyingIntent", "sentiment", "timeline", "budgetMentioned", "champions", "competitors", "objections", "riskFactors", "decisionProcess", "urgencyDrivers"],
+        },
+        priorFollowUps: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              item: { type: "string" },
+              status: { type: "string", enum: ["Addressed", "Outstanding", "Dropped"] },
+            },
+            required: ["item", "status"],
+          },
+          description: "Status of action items from prior meetings. Empty array if no prior meetings.",
+        },
+        relationshipProgression: {
+          type: "string",
+          description: "How the relationship has evolved across meetings. Empty if first meeting.",
+        },
+        questionsAsked: {
+          type: "array",
+          items: { type: "string" },
+          description: "Notable questions asked by the prospect.",
+        },
+        painPoints: {
+          type: "array",
+          items: { type: "string" },
+          description: "Pain points, frustrations, or unmet needs expressed by the prospect.",
+        },
+        valueProposition: {
+          type: "string",
+          description: "What aspects of the offering resonated most with the prospect.",
+        },
+        engagementLevel: {
+          type: "string",
+          enum: ["Highly Engaged", "Engaged", "Passive", "Disengaged"],
+        },
+        talkingPoints: {
+          type: "array",
+          items: { type: "string" },
+          description: "Key talking points to reference in follow-up communications.",
+        },
+        competitiveIntel: {
+          type: "string",
+          description: "Any competitive intelligence gathered — what they use now, what else they're evaluating.",
+        },
+        pricingDiscussion: {
+          type: "string",
+          description: "Summary of any pricing, budget, or cost discussions. 'Not discussed' if none.",
+        },
+      },
+      required: [
+        "summary", "attendees", "keyTopics", "nextSteps", "actionItems",
+        "decisions", "dealSignals", "priorFollowUps", "relationshipProgression",
+        "questionsAsked", "painPoints", "valueProposition", "engagementLevel",
+        "talkingPoints", "competitiveIntel", "pricingDiscussion",
+      ],
+      additionalProperties: false,
+    },
+  },
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -30,45 +165,51 @@ serve(async (req) => {
       );
     }
 
-    // Build prior context block
+    // Build prior context from intelligence objects when available
     let priorContext = "";
     if (priorMeetings && priorMeetings.length > 0) {
       priorContext = "\n\nPRIOR MEETING HISTORY (oldest first):\n";
       for (const m of priorMeetings) {
         priorContext += `\n--- Meeting: ${m.title || "Untitled"} (${m.date || "unknown date"}) ---\n`;
-        if (m.summary) priorContext += `Summary: ${m.summary}\n`;
-        if (m.nextSteps) priorContext += `Next Steps: ${m.nextSteps}\n`;
+        if (m.intelligence) {
+          const intel = m.intelligence;
+          priorContext += `Summary: ${intel.summary}\n`;
+          if (intel.nextSteps?.length) {
+            priorContext += `Next Steps: ${intel.nextSteps.map((ns: any) => `${ns.action} (${ns.owner})`).join("; ")}\n`;
+          }
+          if (intel.actionItems?.length) {
+            priorContext += `Action Items: ${intel.actionItems.map((ai: any) => `${ai.item} [${ai.status}]`).join("; ")}\n`;
+          }
+          if (intel.dealSignals) {
+            priorContext += `Deal Signals: Intent=${intel.dealSignals.buyingIntent}, Sentiment=${intel.dealSignals.sentiment}\n`;
+          }
+          if (intel.painPoints?.length) {
+            priorContext += `Pain Points: ${intel.painPoints.join("; ")}\n`;
+          }
+          if (intel.decisions?.length) {
+            priorContext += `Decisions: ${intel.decisions.join("; ")}\n`;
+          }
+        } else {
+          if (m.summary) priorContext += `Summary: ${m.summary}\n`;
+          if (m.nextSteps) priorContext += `Next Steps: ${m.nextSteps}\n`;
+        }
       }
     }
 
-    // Truncate transcript
-    const truncated = transcript.length > 15000
-      ? transcript.substring(0, 15000) + "\n\n[Transcript truncated...]"
+    // Truncate transcript to 25k chars
+    const truncated = transcript.length > 25000
+      ? transcript.substring(0, 25000) + "\n\n[Transcript truncated...]"
       : transcript;
 
-    const systemPrompt = `You are a sales meeting analyst for an M&A deal origination firm. Given a meeting transcript${priorMeetings?.length ? " and the history of prior meetings with this prospect" : ""}, produce a structured analysis.
+    const hasPrior = priorMeetings?.length > 0;
 
-Your output MUST follow this exact format:
+    const systemPrompt = `You are an elite sales intelligence analyst for an M&A deal origination firm (Captarget / SourceCo). You extract comprehensive, structured intelligence from meeting transcripts to inform the sales process.
 
-SUMMARY:
-A comprehensive 3-5 sentence summary covering:
-- Key topics discussed and decisions made
-- Prospect's pain points, needs, and interest level
-- Any objections or concerns raised
-- Overall tone and relationship progression
-${priorMeetings?.length ? "- What changed or progressed since the last meeting" : ""}
+Context: The firm helps private equity firms and strategic acquirers find and close acquisitions. Services include off-market email origination, direct calling campaigns, and broker/banker coverage.
 
-NEXT STEPS:
-A bulleted list of concrete, actionable next steps. Each bullet starts with "- " and includes:
-- The specific action to take
-- Who owns it (if mentioned)
-- Any deadline or timeframe mentioned
-${priorMeetings?.length ? "- Note which prior next steps were addressed or still outstanding" : ""}
+Your analysis must be thorough, specific, and actionable. Extract every signal that could inform the deal process. Use concrete details from the transcript — never be vague or generic.
 
-${priorMeetings?.length ? `RELATIONSHIP PROGRESSION:
-A 1-2 sentence note on how the relationship has evolved across meetings — momentum, engagement level, deal trajectory.` : ""}
-
-Be direct, specific, and actionable. No fluff. Use concrete details from the transcript.`;
+${hasPrior ? "IMPORTANT: You have prior meeting history. Track which prior action items were addressed, which are outstanding, and how the relationship has progressed. Note changes in sentiment, intent, or engagement." : "This is the first meeting with this prospect."}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -85,6 +226,8 @@ Be direct, specific, and actionable. No fluff. Use concrete details from the tra
             content: `${priorContext ? priorContext + "\n\n" : ""}CURRENT MEETING TRANSCRIPT:\n\n${truncated}`,
           },
         ],
+        tools: [INTELLIGENCE_TOOL],
+        tool_choice: { type: "function", function: { name: "meeting_intelligence" } },
         stream: false,
       }),
     });
@@ -103,7 +246,8 @@ Be direct, specific, and actionable. No fluff. Use concrete details from the tra
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      console.error("AI gateway error:", status);
+      const errText = await response.text();
+      console.error("AI gateway error:", status, errText);
       return new Response(
         JSON.stringify({ error: "AI processing failed" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -111,21 +255,37 @@ Be direct, specific, and actionable. No fluff. Use concrete details from the tra
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
 
-    const summaryMatch = content.match(/SUMMARY:\s*([\s\S]*?)(?=\n\s*NEXT STEPS:|$)/i);
-    const nextStepsMatch = content.match(/NEXT STEPS:\s*([\s\S]*?)(?=\n\s*RELATIONSHIP PROGRESSION:|$)/i);
-    const progressionMatch = content.match(/RELATIONSHIP PROGRESSION:\s*([\s\S]*?)$/i);
+    // Extract tool call result
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall || toolCall.function.name !== "meeting_intelligence") {
+      // Fallback: try to use content directly
+      const content = data.choices?.[0]?.message?.content || "";
+      return new Response(
+        JSON.stringify({ summary: content, nextSteps: "", intelligence: null }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    const summary = summaryMatch ? summaryMatch[1].trim() : content;
-    let nextSteps = nextStepsMatch ? nextStepsMatch[1].trim() : "";
-    const progression = progressionMatch ? progressionMatch[1].trim() : "";
+    let intelligence;
+    try {
+      intelligence = JSON.parse(toolCall.function.arguments);
+    } catch (e) {
+      console.error("Failed to parse tool call arguments:", e);
+      return new Response(
+        JSON.stringify({ error: "Failed to parse AI response" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    // Append progression to summary if present
-    const fullSummary = progression ? `${summary}\n\n📈 ${progression}` : summary;
+    // Extract backward-compatible fields
+    const summary = intelligence.summary || "";
+    const nextSteps = (intelligence.nextSteps || [])
+      .map((ns: any) => `- ${ns.action}${ns.owner ? ` (${ns.owner})` : ""}${ns.deadline ? ` — by ${ns.deadline}` : ""}`)
+      .join("\n");
 
     return new Response(
-      JSON.stringify({ summary: fullSummary, nextSteps }),
+      JSON.stringify({ summary, nextSteps, intelligence }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
