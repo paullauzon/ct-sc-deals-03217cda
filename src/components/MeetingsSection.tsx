@@ -37,7 +37,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
         body: {
           searchEmails: [lead.email],
           searchNames: [lead.name],
-          limit: 20,
+          limit: 50,
           summarize: false,
           brand: lead.brand,
         },

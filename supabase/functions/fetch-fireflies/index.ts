@@ -65,9 +65,6 @@ async function fetchFirefliesTranscripts(apiKey: string, limit: number, since?: 
     });
   }
 
-  // Limit results
-  transcripts = transcripts.slice(0, limit);
-
   return transcripts;
 }
 
@@ -190,6 +187,9 @@ serve(async (req) => {
         return false;
       });
     }
+
+    // Apply limit after filtering
+    transcripts = transcripts.slice(0, limit);
 
     const processed = [];
     for (const t of transcripts) {
