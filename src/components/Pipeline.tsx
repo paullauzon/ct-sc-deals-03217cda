@@ -72,6 +72,8 @@ export function Pipeline() {
               <div className="space-y-2 max-h-[600px] overflow-y-auto">
                 {stageLeads.map((lead) => {
                   const days = computeDaysInStage(lead.stageEnteredDate);
+                  const brandAbbr = lead.brand === "Captarget" ? "CT" : "SC";
+                  const sourceShort = lead.source.replace("CT ", "").replace("SC ", "");
                   return (
                     <div
                       key={lead.id}
@@ -80,10 +82,15 @@ export function Pipeline() {
                       onClick={() => setSelectedLeadId(lead.id)}
                       className="border border-border rounded-md p-3 cursor-grab active:cursor-grabbing hover:bg-secondary/30 transition-colors space-y-1.5"
                     >
-                      <div>
-                        <p className="text-sm font-medium">{lead.name}</p>
-                        <p className="text-xs text-muted-foreground">{lead.company || "—"} · {lead.role}</p>
+                      <div className="flex items-start gap-1.5">
+                        <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded shrink-0 mt-0.5">{brandAbbr}</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{lead.name}</p>
+                          <p className="text-xs text-muted-foreground">{lead.company || "—"} · {lead.role}</p>
+                        </div>
                       </div>
+                      <p className="text-[10px] text-muted-foreground">{brandAbbr} · {sourceShort}</p>
+                      {lead.isDuplicate && <p className="text-[10px] text-muted-foreground">⚑ Cross-brand duplicate</p>}
                       {lead.serviceInterest && lead.serviceInterest !== "TBD" && (
                         <p className="text-xs text-muted-foreground">{lead.serviceInterest}</p>
                       )}

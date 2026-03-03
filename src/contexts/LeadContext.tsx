@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, ReactNode } from "rea
 import { Lead, LeadStage, LeadSource, PipelineMetrics } from "@/types/lead";
 import { getInitialLeads } from "@/data/leadData";
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const LEAD_DEFAULTS: Partial<Lead> = {
   meetingOutcome: "",
@@ -16,6 +16,12 @@ const LEAD_DEFAULTS: Partial<Lead> = {
   targetRevenue: "",
   geography: "",
   currentSourcing: "",
+  brand: "Captarget",
+  isDuplicate: false,
+  duplicateOf: "",
+  hearAboutUs: "",
+  acquisitionStrategy: "",
+  buyerType: "",
 };
 
 const SERVICE_MIGRATION: Record<string, string> = {
@@ -24,6 +30,11 @@ const SERVICE_MIGRATION: Record<string, string> = {
   "Pipeline Building": "Full Platform (All 3)",
   "Add-on Sourcing": "Off-Market Email Origination",
   "Custom Campaign": "Full Platform (All 3)",
+};
+
+const SOURCE_MIGRATION: Record<string, string> = {
+  "Contact Form": "CT Contact Form",
+  "Free Targets Form": "CT Free Targets Form",
 };
 
 function migrateLeads(leads: Lead[]): Lead[] {
@@ -37,6 +48,10 @@ function migrateLeads(leads: Lead[]): Lead[] {
     // Migrate old service interest names
     if (SERVICE_MIGRATION[migrated.serviceInterest]) {
       migrated.serviceInterest = SERVICE_MIGRATION[migrated.serviceInterest] as any;
+    }
+    // Migrate old source names
+    if (SOURCE_MIGRATION[migrated.source]) {
+      migrated.source = SOURCE_MIGRATION[migrated.source] as any;
     }
     return migrated;
   });
@@ -62,16 +77,12 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   const [leads, setLeads] = useState<Lead[]>(() => {
     const ver = localStorage.getItem("captarget-schema-version");
     const saved = localStorage.getItem("captarget-leads");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      const migrated = migrateLeads(parsed);
-      if (ver !== String(SCHEMA_VERSION)) {
-        localStorage.setItem("captarget-leads", JSON.stringify(migrated));
-        localStorage.setItem("captarget-schema-version", String(SCHEMA_VERSION));
-      }
-      return migrated;
+    if (saved && ver === String(SCHEMA_VERSION)) {
+      return migrateLeads(JSON.parse(saved));
     }
+    // Force re-initialize on schema version change to pick up new SC leads
     const initial = getInitialLeads();
+    localStorage.setItem("captarget-leads", JSON.stringify(initial));
     localStorage.setItem("captarget-schema-version", String(SCHEMA_VERSION));
     return initial;
   });
@@ -81,18 +92,15 @@ export function LeadProvider({ children }: { children: ReactNode }) {
       const next = prev.map((l) => {
         if (l.id !== id) return l;
         const updated = { ...l, ...updates };
-        // Auto-calculate days in stage when stage changes
         if (updates.stage && updates.stage !== l.stage) {
           updated.stageEnteredDate = new Date().toISOString().split("T")[0];
           updated.daysInCurrentStage = 0;
-          // Auto-set closedDate
           if (["Closed Won", "Closed Lost", "Went Dark"].includes(updates.stage)) {
             updated.closedDate = new Date().toISOString().split("T")[0];
           } else {
             updated.closedDate = "";
           }
         }
-        // Auto-calculate hours to meeting set
         if (updates.meetingSetDate && !l.meetingSetDate) {
           const submitted = new Date(l.dateSubmitted).getTime();
           const set = new Date(updates.meetingSetDate).getTime();
