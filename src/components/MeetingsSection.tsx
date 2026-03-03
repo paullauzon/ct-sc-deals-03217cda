@@ -97,7 +97,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
 
       const updatedMeetings = [...meetings, ...addedMeetings];
       updateLead(lead.id, { meetings: updatedMeetings });
-      toast.success(`Found and processed ${added} new meeting${added !== 1 ? "s" : ""} from Fireflies`);
+      toast.success(`Found and processed ${addedMeetings.length} new meeting${addedMeetings.length !== 1 ? "s" : ""} from Fireflies`);
     } catch (e: any) {
       console.error("Auto-find error:", e);
       toast.error(e.message || "Failed to search Fireflies");
