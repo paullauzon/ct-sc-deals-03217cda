@@ -194,6 +194,40 @@ export interface StakeholderProfile {
   mentions: number;
   firstSeen: string;
   lastSeen: string;
+  // Psychographic dimensions
+  personalWin?: string;
+  careerRisk?: string;
+  communicationStyle?: "Analytical" | "Driver" | "Amiable" | "Expressive" | "";
+  decisionTrigger?: string;
+  hiddenConcern?: string;
+}
+
+export interface PowerDynamics {
+  realInfluenceMap: string;
+  internalPolitics: string;
+  relationshipTensions: string;
+  winningOrder: string[];
+}
+
+export interface PsychologicalProfile {
+  realWhy: string;
+  fearFactor: string;
+  trustLevel: string;
+  trustEvidence: string[];
+  emotionalTriggers: string[];
+  unspokenAsk: string;
+  cognitivebiases: string[];
+  recommendedApproach: string;
+}
+
+export interface WinStrategy {
+  numberOneCloser: string;
+  landmines: string[];
+  powerMove: string;
+  relationshipLeverage: string;
+  dealTemperature: "On Fire" | "Warm" | "Lukewarm" | "Cold" | "Ice Cold";
+  closingWindow: string;
+  negotiationStyle: string;
 }
 
 export interface ObjectionRecord {
@@ -260,6 +294,10 @@ export interface DealIntelligence {
   buyingCommittee: BuyingCommittee;
   dealStageEvidence: string;
   synthesizedAt: string;
+  // Deep psychological dimensions
+  powerDynamics?: PowerDynamics;
+  psychologicalProfile?: PsychologicalProfile;
+  winStrategy?: WinStrategy;
 }
 
 // ─── AI Enrichment Types ───
