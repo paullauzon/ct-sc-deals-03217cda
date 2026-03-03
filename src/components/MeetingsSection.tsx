@@ -304,7 +304,11 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
                 meeting={meeting}
                 onRemove={() => {
                   const updated = meetings.filter((m) => m.id !== meeting.id);
-                  updateLead(lead.id, { meetings: updated });
+                  // Recalculate lastContactDate from remaining meetings
+                  const latestDate = updated.length > 0
+                    ? updated.reduce((latest, m) => m.date > latest ? m.date : latest, updated[0].date)
+                    : "";
+                  updateLead(lead.id, { meetings: updated, lastContactDate: latestDate });
                   toast.success("Meeting removed");
                 }}
                 onDraftFollowUp={() => handleDraftFollowUp(meeting)}

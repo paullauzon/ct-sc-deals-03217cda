@@ -213,6 +213,50 @@ export function Dashboard() {
       };
     });
 
+    // Intelligence metrics
+    const closedWonLeads = leads.filter((l) => l.stage === "Closed Won");
+    const totalMRR = closedWonLeads.reduce((s, l) => {
+      if (!l.subscriptionValue) return s;
+      if (l.billingFrequency === "Quarterly") return s + l.subscriptionValue / 3;
+      if (l.billingFrequency === "Annually") return s + l.subscriptionValue / 12;
+      return s + l.subscriptionValue; // Monthly or default
+    }, 0);
+    const totalContractValue = closedWonLeads.reduce((s, l) => s + (l.subscriptionValue || 0), 0);
+
+    const leadsWithMeetings = leads.filter((l) => l.meetings?.length > 0).length;
+    const leadsWithIntel = leads.filter((l) => l.meetings?.some((m) => m.intelligence)).length;
+    const leadsWithDealIntel = leads.filter((l) => l.dealIntelligence).length;
+
+    const momentumDist = { Accelerating: 0, Steady: 0, Stalling: 0, Stalled: 0 };
+    for (const l of leads) {
+      const mom = l.dealIntelligence?.momentumSignals?.momentum;
+      if (mom && mom in momentumDist) momentumDist[mom as keyof typeof momentumDist]++;
+    }
+
+    // Coaching aggregates
+    const allMeetingsWithCoaching = leads.flatMap((l) => l.meetings || []).filter((m) => m.intelligence?.talkRatio);
+    const avgTalkRatio = allMeetingsWithCoaching.length
+      ? Math.round(allMeetingsWithCoaching.reduce((s, m) => s + (m.intelligence?.talkRatio || 0), 0) / allMeetingsWithCoaching.length)
+      : null;
+    const questionQualityDist = { Strong: 0, Adequate: 0, Weak: 0 };
+    for (const m of allMeetingsWithCoaching) {
+      const q = m.intelligence?.questionQuality;
+      if (q && q in questionQualityDist) questionQualityDist[q as keyof typeof questionQualityDist]++;
+    }
+
+    // Deal health summary
+    const activeLeads = leads.filter((l) => !closedStages.has(l.stage));
+    let criticalAlerts = 0;
+    let warningAlerts = 0;
+    for (const l of activeLeads) {
+      const daysSinceContact = l.lastContactDate ? Math.floor((Date.now() - new Date(l.lastContactDate).getTime()) / 86400000) : 999;
+      const overdueItems = l.dealIntelligence?.actionItemTracker?.filter((a) => a.status === "Overdue" || a.status === "Open").length || 0;
+      const unmitigatedRisks = l.dealIntelligence?.riskRegister?.filter((r) => r.mitigationStatus === "Unmitigated" && (r.severity === "Critical" || r.severity === "High")).length || 0;
+      if (daysSinceContact > 21 || unmitigatedRisks > 0) criticalAlerts++;
+      else if (daysSinceContact > 14 || overdueItems > 2) warningAlerts++;
+    }
+    const cleanDeals = activeLeads.length - criticalAlerts - warningAlerts;
+
     return {
       leadsThisWeek, leadsThisMonth, momGrowth, lvrCurrent, lvrChange,
       ctLeads, scLeads, weeklyData, sourceBreakdown, roleData,
@@ -220,6 +264,9 @@ export function Dashboard() {
       serviceData, serviceByBrand, dealsData, dayOfWeek,
       stageFunnel, maxStageCount, conversionByBrand,
       staleLeads, priorityData, forecastData, ownerData,
+      totalMRR, totalContractValue, leadsWithMeetings, leadsWithIntel, leadsWithDealIntel,
+      momentumDist, avgTalkRatio, questionQualityDist,
+      criticalAlerts, warningAlerts, cleanDeals,
     };
   }, [leads, m]);
 
@@ -267,6 +314,66 @@ export function Dashboard() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Row 2b: Intelligence & Revenue Metrics */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">MRR (Won)</p>
+          <p className="text-2xl font-semibold tabular-nums mt-1">${Math.round(analytics.totalMRR).toLocaleString()}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">ARR: ${Math.round(analytics.totalMRR * 12).toLocaleString()}</p>
+        </div>
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Intelligence Coverage</p>
+          <div className="flex items-baseline gap-2 mt-1">
+            <p className="text-2xl font-semibold tabular-nums">{analytics.leadsWithMeetings}</p>
+            <span className="text-xs text-muted-foreground">w/ meetings</span>
+          </div>
+          <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
+            <span>{analytics.leadsWithIntel} processed</span>
+            <span>{analytics.leadsWithDealIntel} synthesized</span>
+          </div>
+        </div>
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Deal Momentum</p>
+          <div className="flex items-center gap-2 mt-2">
+            {Object.entries(analytics.momentumDist).map(([key, val]) => val > 0 && (
+              <span key={key} className={`text-xs px-1.5 py-0.5 rounded ${
+                key === "Accelerating" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
+                key === "Stalling" || key === "Stalled" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
+                "bg-secondary text-muted-foreground"
+              }`}>
+                {val} {key}
+              </span>
+            ))}
+            {Object.values(analytics.momentumDist).every(v => v === 0) && (
+              <span className="text-xs text-muted-foreground">No data yet</span>
+            )}
+          </div>
+        </div>
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Deal Health</p>
+          <div className="flex items-center gap-2 mt-2">
+            {analytics.criticalAlerts > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                {analytics.criticalAlerts} critical
+              </span>
+            )}
+            {analytics.warningAlerts > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                {analytics.warningAlerts} warning
+              </span>
+            )}
+            {analytics.cleanDeals > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                {analytics.cleanDeals} healthy
+              </span>
+            )}
+          </div>
+          {analytics.avgTalkRatio !== null && (
+            <p className="text-xs text-muted-foreground mt-1">Avg talk ratio: {analytics.avgTalkRatio}%</p>
+          )}
+        </div>
       </div>
 
       {/* Row 3: Pipeline Funnel + Owner Workload */}

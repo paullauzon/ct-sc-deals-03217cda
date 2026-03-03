@@ -785,13 +785,20 @@ export function LeadsTable() {
   }, [leads, search, stageFilter, brandFilter, sortKey, sortDir]);
 
   const exportCSV = () => {
-    const headers = ["Brand","Name","Email","Phone","Company","Role","Source","Date Submitted","Stage","Service Interest","Deal Value","Priority","Assigned To","Meeting Date","Meeting Outcome","Forecast Category","ICP Fit","Days In Stage","Hours To Meeting Set","Close Reason","Won Reason","Lost Reason","Closed Date","Last Contact","Next Follow-up","Duplicate","Notes"];
-    const rows = leads.map((l) => [
-      l.brand, l.name, l.email, l.phone, l.company, l.role, l.source, l.dateSubmitted, l.stage, l.serviceInterest,
-      l.dealValue || "", l.priority, l.assignedTo, l.meetingDate, l.meetingOutcome, l.forecastCategory,
-      l.icpFit, computeDaysInStage(l.stageEnteredDate), l.hoursToMeetingSet ?? "", l.closeReason, l.wonReason, l.lostReason,
-      l.closedDate, l.lastContactDate, l.nextFollowUp, l.isDuplicate ? "Yes" : "", `"${(l.notes || "").replace(/"/g, '""')}"`
-    ]);
+    const headers = ["Brand","Name","Email","Phone","Company","Role","Source","Date Submitted","Stage","Service Interest","Deal Value","Subscription Value","Billing Frequency","Contract Start","Contract End","Priority","Assigned To","Meeting Date","Meeting Outcome","Forecast Category","ICP Fit","Days In Stage","Hours To Meeting Set","Close Reason","Won Reason","Lost Reason","Closed Date","Last Contact","Next Follow-up","Duplicate","Meetings","Enriched","Momentum","Notes"];
+    const rows = leads.map((l) => {
+      const avgTalk = l.meetings?.length ? Math.round(l.meetings.filter(m => m.intelligence?.talkRatio).reduce((s, m) => s + (m.intelligence?.talkRatio || 0), 0) / l.meetings.filter(m => m.intelligence?.talkRatio).length) || "" : "";
+      return [
+        l.brand, l.name, l.email, l.phone, l.company, l.role, l.source, l.dateSubmitted, l.stage, l.serviceInterest,
+        l.dealValue || "", l.subscriptionValue || "", l.billingFrequency || "", l.contractStart || "", l.contractEnd || "",
+        l.priority, l.assignedTo, l.meetingDate, l.meetingOutcome, l.forecastCategory,
+        l.icpFit, computeDaysInStage(l.stageEnteredDate), l.hoursToMeetingSet ?? "", l.closeReason, l.wonReason, l.lostReason,
+        l.closedDate, l.lastContactDate, l.nextFollowUp, l.isDuplicate ? "Yes" : "",
+        l.meetings?.length || 0, l.enrichment ? "Yes" : "No",
+        l.dealIntelligence?.momentumSignals?.momentum || "",
+        `"${(l.notes || "").replace(/"/g, '""')}"`
+      ];
+    });
     const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -920,6 +927,7 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
       wonReason: "", lostReason: "", targetCriteria: "", targetRevenue: "", geography: "", currentSourcing: "",
       isDuplicate: false, duplicateOf: "", hearAboutUs: "", acquisitionStrategy: "", buyerType: "",
       meetings: [],
+      subscriptionValue: 0, billingFrequency: "" as const, contractStart: "", contractEnd: "",
       firefliesUrl: "", firefliesTranscript: "", firefliesSummary: "", firefliesNextSteps: "",
     });
     setForm({ name: "", email: "", phone: "", company: "", companyUrl: "", role: "", message: "", dealsPlanned: "0-2" });
