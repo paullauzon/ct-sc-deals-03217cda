@@ -236,6 +236,7 @@ function createLead(r: { date: string; name: string; phone: string; email: strin
     hearAboutUs: "",
     acquisitionStrategy: "",
     buyerType: "",
+    meetings: [],
     firefliesUrl: "",
     firefliesTranscript: "",
     firefliesSummary: "",
