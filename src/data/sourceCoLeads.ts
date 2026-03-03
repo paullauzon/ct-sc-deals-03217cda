@@ -70,6 +70,7 @@ function makeSCLead(
     hearAboutUs: r.hearAboutUs,
     acquisitionStrategy: r.acquisitionStrategy || "",
     buyerType: "",
+    meetings: [],
     firefliesUrl: "",
     firefliesTranscript: "",
     firefliesSummary: "",

@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner } from "@/types/lead";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { MeetingsSection } from "@/components/MeetingsSection";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -123,8 +123,8 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             </div>
           </Section>
 
-          {/* Meeting Recording (Fireflies) */}
-          <FirefliesSection lead={lead} onSave={save} />
+          {/* Meetings (Multi-meeting with AI processing) */}
+          <MeetingsSection lead={lead} />
 
           {/* Close Reasons */}
           {lead.stage === "Closed Won" && (
@@ -483,6 +483,7 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
       meetingOutcome: "" as const, forecastCategory: "" as const, icpFit: "" as const,
       wonReason: "", lostReason: "", targetCriteria: "", targetRevenue: "", geography: "", currentSourcing: "",
       isDuplicate: false, duplicateOf: "", hearAboutUs: "", acquisitionStrategy: "", buyerType: "",
+      meetings: [],
       firefliesUrl: "", firefliesTranscript: "", firefliesSummary: "", firefliesNextSteps: "",
     });
     setForm({ name: "", email: "", phone: "", company: "", companyUrl: "", role: "", message: "", dealsPlanned: "0-2" });

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLeads } from "@/contexts/LeadContext";
-import { Lead } from "@/types/lead";
+import { Lead, Meeting } from "@/types/lead";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -22,21 +22,15 @@ interface FirefliesMeeting {
 }
 
 function autoMatchLead(meeting: FirefliesMeeting, leads: Lead[]): string | null {
-  // Try matching by attendee email
   for (const email of meeting.attendeeEmails) {
-    const match = leads.find(
-      (l) => l.email.toLowerCase() === email.toLowerCase()
-    );
+    const match = leads.find((l) => l.email.toLowerCase() === email.toLowerCase());
     if (match) return match.id;
   }
-  // Try matching by attendee name in title or attendees list
   for (const lead of leads) {
     const nameParts = lead.name.toLowerCase().split(" ");
     const lastName = nameParts[nameParts.length - 1];
     if (lastName.length > 2) {
-      // Check title
       if (meeting.title.toLowerCase().includes(lastName)) return lead.id;
-      // Check attendees
       for (const att of meeting.attendees) {
         if (att.toLowerCase().includes(lastName)) return lead.id;
       }
@@ -49,6 +43,10 @@ function formatDuration(seconds: number): string {
   if (!seconds) return "—";
   const mins = Math.round(seconds / 60);
   return mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+function generateMeetingId(): string {
+  return `mtg-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
 }
 
 export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -69,7 +67,6 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
       const fetchedMeetings: FirefliesMeeting[] = data.meetings || [];
       setMeetings(fetchedMeetings);
 
-      // Auto-match leads
       const autoMatched: Record<string, string> = {};
       for (const m of fetchedMeetings) {
         const matchedId = autoMatchLead(m, leads);
@@ -90,21 +87,57 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
     }
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     setImporting(true);
     let imported = 0;
+    let skipped = 0;
+
+    // Group meetings by lead
+    const leadMeetings: Record<string, FirefliesMeeting[]> = {};
     for (const meeting of meetings) {
       const leadId = assignments[meeting.firefliesId];
       if (!leadId) continue;
-      updateLead(leadId, {
-        firefliesUrl: meeting.transcriptUrl || "",
-        firefliesTranscript: meeting.transcript,
-        firefliesSummary: meeting.summary,
-        firefliesNextSteps: meeting.nextSteps,
-      });
-      imported++;
+      if (!leadMeetings[leadId]) leadMeetings[leadId] = [];
+      leadMeetings[leadId].push(meeting);
     }
-    toast.success(`Imported ${imported} meeting recordings to leads`);
+
+    for (const [leadId, meetingsForLead] of Object.entries(leadMeetings)) {
+      const lead = leads.find((l) => l.id === leadId);
+      if (!lead) continue;
+
+      const existingIds = new Set((lead.meetings || []).map((m) => m.firefliesId).filter(Boolean));
+      const newMeetings = meetingsForLead.filter((m) => !existingIds.has(m.firefliesId));
+
+      if (newMeetings.length === 0) {
+        skipped += meetingsForLead.length;
+        continue;
+      }
+
+      const updatedMeetings = [...(lead.meetings || [])];
+
+      for (const m of newMeetings) {
+        const newMeeting: Meeting = {
+          id: generateMeetingId(),
+          date: m.date || new Date().toISOString().split("T")[0],
+          title: m.title || "Untitled Meeting",
+          firefliesId: m.firefliesId,
+          firefliesUrl: m.transcriptUrl || "",
+          transcript: m.transcript || "",
+          summary: m.summary || "",
+          nextSteps: m.nextSteps || "",
+          addedAt: new Date().toISOString(),
+        };
+        updatedMeetings.push(newMeeting);
+        imported++;
+      }
+
+      updateLead(leadId, { meetings: updatedMeetings });
+    }
+
+    const msg = skipped > 0
+      ? `Imported ${imported} new meeting${imported !== 1 ? "s" : ""} (${skipped} already existed)`
+      : `Imported ${imported} meeting${imported !== 1 ? "s" : ""}`;
+    toast.success(msg);
     setImporting(false);
     onOpenChange(false);
   };
@@ -119,14 +152,14 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
             <img src="/fireflies-icon.svg" alt="Fireflies.ai" className="w-5 h-5" /> Import from Fireflies
           </DialogTitle>
           <DialogDescription>
-            Fetch meeting recordings from your Fireflies account, auto-match to leads, and import transcripts with AI summaries.
+            Fetch meeting recordings from Fireflies, auto-match to leads, and import as multi-meeting records with AI summaries.
           </DialogDescription>
         </DialogHeader>
 
         {!fetched ? (
           <div className="flex flex-col items-center justify-center py-12 gap-4">
             <p className="text-sm text-muted-foreground text-center max-w-sm">
-              This will fetch your recent Fireflies meeting recordings, summarize each with AI, and let you assign them to leads.
+              This will fetch your recent Fireflies meetings, summarize each with AI, and let you assign them to leads. Already-imported meetings will be skipped.
             </p>
             <Button onClick={fetchMeetings} disabled={loading} size="lg">
               {loading ? "Fetching & Summarizing..." : <><img src="/fireflies-icon.svg" alt="" className="w-4 h-4 mr-1 inline" /> Fetch Meetings from Fireflies</>}
@@ -141,12 +174,7 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
           <>
             <div className="flex items-center justify-between text-sm text-muted-foreground px-1">
               <span>{meetings.length} meetings found · {assignedCount} assigned to leads</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={fetchMeetings}
-                disabled={loading}
-              >
+              <Button variant="ghost" size="sm" onClick={fetchMeetings} disabled={loading}>
                 {loading ? "Refreshing..." : "Refresh"}
               </Button>
             </div>
@@ -177,13 +205,8 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
             </ScrollArea>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleImport}
-                disabled={importing || assignedCount === 0}
-              >
+              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button onClick={handleImport} disabled={importing || assignedCount === 0}>
                 {importing
                   ? "Importing..."
                   : `Import ${assignedCount} Meeting${assignedCount !== 1 ? "s" : ""}`}

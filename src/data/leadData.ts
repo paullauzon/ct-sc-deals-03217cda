@@ -163,6 +163,7 @@ function parseTargetLeads(): Lead[] {
     hearAboutUs: "",
     acquisitionStrategy: "",
     buyerType: "",
+    meetings: [],
     firefliesUrl: "",
     firefliesTranscript: "",
     firefliesSummary: "",
