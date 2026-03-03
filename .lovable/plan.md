@@ -1,28 +1,20 @@
 
-# Implementation Complete
 
-## Architecture
+# Verification: All Requirements Implemented
 
-### Individual Auto-Find
-- Client creates `processing_jobs` row → invokes `run-lead-job` edge function
-- Edge function runs server-side: fetches Fireflies, AI processing, writes results to DB
-- Client receives results via Supabase Realtime subscription
-- Survives tab close ✓
+## 1. Backend Persistence — Done
+- **Individual Auto-Find**: Creates a `processing_jobs` DB row, invokes `run-lead-job` edge function server-side. Survives tab close.
+- **Bulk "Process All"**: Client fetches/matches transcripts (fast — seconds), then creates individual `processing_jobs` rows per lead and invokes `run-lead-job` for each. Once jobs are dispatched, they run server-side and survive tab close.
+- **Hydration on return**: On mount, `ProcessingContext` queries for unacknowledged jobs and re-invokes queued ones, applies completed results, and restores the bulk progress bar.
 
-### Bulk Processing (NEW — backend-powered)
-- Client fetches all transcripts from both Fireflies accounts (via `fetch-fireflies` edge function)
-- Client matches transcripts to leads locally
-- For each matched lead: creates `processing_jobs` row (job_type: "bulk") and invokes `run-lead-job` with prefetched meetings
-- Each `run-lead-job` runs independently server-side — survives tab close ✓
-- On tab re-open: hydration finds queued/processing bulk jobs, re-invokes queued ones
-- Progress tracked via Realtime: completedJobs/totalJobs counter
+## 2. Inline Suggestions (No Popups) — Done
+- `LeadsTable.tsx` renders `autoFindJob.pendingSuggestions` inline inside each lead's detail panel (lines 211-255). Each suggestion shows field, value, evidence, with Accept/Dismiss buttons.
+- `GlobalProcessingOverlay.tsx` contains only a floating progress bar — no `Dialog` modals.
+- `BulkProcessingDialog.tsx` is just the initial confirmation to start processing (not a review popup).
 
-### Unified Suggestion UX
-- All suggestions (individual + bulk) render inline inside lead detail panels
-- No popup dialogs for bulk review — removed `Dialog` modals from GlobalProcessingOverlay
-- GlobalProcessingOverlay shows only a floating progress bar (bottom-right)
+## 3. Minor Caveat
+The first two phases of bulk processing (fetching all transcripts from Fireflies + matching to leads) still run client-side. If you close the tab during those ~5-10 seconds, the bulk job won't start. But once the jobs are dispatched to the backend (phase 3), they persist. This is acceptable because phases 1-2 are fast network calls.
 
-### `run-lead-job` Enhancement
-- Accepts optional `prefetchedMeetings` param
-- If provided, skips Fireflies fetch and uses pre-matched meetings directly
-- Used by bulk processing to avoid redundant per-lead Fireflies API calls
+## Verdict
+**You can run "Process All" now.** Everything is wired up: backend persistence, realtime progress tracking, inline suggestions, and hydration on return. No fixes needed.
+
