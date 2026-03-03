@@ -19,6 +19,7 @@ export interface BulkJobState {
   completedJobs: number;
   failedJobs: number;
   foundMeetings: number;
+  noMeetings: number;
   currentLeadIndex: number;
   currentLeadName: string;
   progressMessage: string;
@@ -42,7 +43,7 @@ interface ProcessingContextType {
 const ProcessingContext = createContext<ProcessingContextType | null>(null);
 
 const INITIAL_BULK: BulkJobState = {
-  phase: "idle", totalJobs: 0, completedJobs: 0, failedJobs: 0, foundMeetings: 0,
+  phase: "idle", totalJobs: 0, completedJobs: 0, failedJobs: 0, foundMeetings: 0, noMeetings: 0,
   currentLeadIndex: 0, currentLeadName: "", progressMessage: "", bulkJobIds: [], cancelled: false,
 };
 
@@ -334,9 +335,13 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           // Wait for this job to finish
           const result = await completionPromise;
 
+          let noMeetingsCount = 0;
           if (result.status === "completed") {
             completedCount++;
             foundMeetingsTotal += result.newMeetingsCount;
+            if (result.newMeetingsCount === 0) {
+              noMeetingsCount = 1;
+            }
           } else {
             failedCount++;
           }
@@ -346,6 +351,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             completedJobs: completedCount,
             failedJobs: failedCount,
             foundMeetings: foundMeetingsTotal,
+            noMeetings: prev.noMeetings + noMeetingsCount,
             progressMessage: `${label} ${lead.name}: ${result.status === "completed" ? (result.newMeetingsCount > 0 ? `Found ${result.newMeetingsCount} meeting(s)` : "No new meetings") : "Failed"}`,
           }));
 
