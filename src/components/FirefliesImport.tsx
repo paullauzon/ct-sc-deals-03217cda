@@ -116,7 +116,7 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
       <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span className="text-xl">🔥</span> Import from Fireflies
+            <img src="/fireflies-icon.svg" alt="Fireflies.ai" className="w-5 h-5" /> Import from Fireflies
           </DialogTitle>
           <DialogDescription>
             Fetch meeting recordings from your Fireflies account, auto-match to leads, and import transcripts with AI summaries.
@@ -129,7 +129,7 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
               This will fetch your recent Fireflies meeting recordings, summarize each with AI, and let you assign them to leads.
             </p>
             <Button onClick={fetchMeetings} disabled={loading} size="lg">
-              {loading ? "Fetching & Summarizing..." : "🔥 Fetch Meetings from Fireflies"}
+              {loading ? "Fetching & Summarizing..." : <><img src="/fireflies-icon.svg" alt="" className="w-4 h-4 mr-1 inline" /> Fetch Meetings from Fireflies</>}
             </Button>
             {loading && (
               <p className="text-xs text-muted-foreground animate-pulse">
