@@ -1,37 +1,34 @@
 
 
-# Will Publishing Sync Data to Live?
+# Fix: Bulk Processing Edge Function Failures
 
-## Short Answer: No — and here's why.
+## Root Causes Identified
 
-**Publishing deploys code and schema, never data.** The Test and Live databases are completely separate. Your 168 leads (and any enrichment/stage changes you've made in the Lovable preview) live in the **Test database only**.
+1. **Payload size overflow**: Bulk processing sends full transcripts (can be 50K+ chars each) inside `prefetchedMeetings` to `run-lead-job`. When a lead matches multiple transcripts, the request body can exceed the edge function's ~6MB limit, causing `Failed to send request to the edge function`.
 
-## What happens when you publish:
+2. **Concurrent invocation flood**: All `run-lead-job` calls fire simultaneously (fire-and-forget loop on line 407). With 20-50+ leads, this overwhelms the edge function runtime — each invocation then calls `process-meeting` and `synthesize-deal-intelligence`, creating a cascade of concurrent AI calls.
 
-| What | Synced to Live? |
-|------|----------------|
-| Code changes (edge functions, React components) | Yes |
-| Database schema (table structure, RLS policies) | Yes |
-| Database **data** (your 168 leads, enrichments, stages) | **No** |
+3. **Fireflies API rate limiting**: Confirmed in logs — `fetch-fireflies` hits 429 errors when fetching full transcripts in parallel batches.
 
-## What will happen on Live after publishing:
+## Fix Plan
 
-1. The Live database's `leads` table will be **empty** (schema exists, no rows)
-2. Your seeding logic in `LeadContext.tsx` will detect this and auto-insert the 168 **hardcoded** leads from `getInitialLeads()` — all with default stages ("New Lead"), no enrichment, no transcripts
-3. Going forward, any changes you make on the live URL **will persist** in the Live database correctly
+### 1. Trim transcript payloads in prefetched meetings
+In `ProcessingContext.tsx`, truncate each transcript in `prefetchedMeetings` to 15,000 chars before sending to `run-lead-job`. This prevents oversized request bodies while preserving enough content for AI processing.
 
-## Will changes on Live save properly going forward?
+### 2. Sequential edge function invocation with concurrency limit
+Replace the fire-and-forget loop with a sequential queue that processes 2-3 leads at a time max. After each `run-lead-job` invocation resolves (or fails), move to the next. This prevents overwhelming the edge runtime.
 
-**Yes.** Once published, the live site runs the DB-backed code. Every stage change, enrichment, meeting, and processing result will persist in the Live database. Refreshing the page, closing the tab, using a different browser — all will show the same data.
+### 3. Add retry with backoff for Fireflies 429 errors
+In `fetch-fireflies/index.ts`, add exponential backoff retry (up to 3 attempts) when Fireflies returns 429. The response already includes a `retryAfter` timestamp we can use.
 
-## If you want your Test data on Live
+### 4. Better error surfacing
+The current `.catch(e => console.error(...))` silently swallows invocation failures. Change to update the job status to "failed" in the database and show a toast, so the user sees which leads failed and why.
 
-You'd need to manually export data from the Test database and import it into the Live database. This requires running SQL in the backend admin. I can help with that if needed, but it's a separate step from publishing.
+## Files to Change
 
-## Recommendation
-
-1. **Publish now** to get the latest code on Live
-2. The 168 leads will auto-seed with default values
-3. Run "Process All" on the live site to re-enrich leads with transcripts and AI analysis
-4. From that point forward, all Live data persists permanently
+| File | Change |
+|------|--------|
+| `src/contexts/ProcessingContext.tsx` | Truncate transcripts in prefetched payload; add sequential invocation queue (max 2 concurrent); surface errors via toast |
+| `supabase/functions/fetch-fireflies/index.ts` | Add retry with backoff for 429 responses from Fireflies API |
+| `supabase/functions/run-lead-job/index.ts` | Truncate incoming transcripts defensively; add timeout handling for sub-function calls |
 
