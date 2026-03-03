@@ -60,11 +60,19 @@ export function FirefliesImportDialog({ open, onOpenChange }: { open: boolean; o
   const fetchMeetings = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-fireflies", {
-        body: { limit: 50, summarize: true },
-      });
-      if (error) throw error;
-      const fetchedMeetings: FirefliesMeeting[] = data.meetings || [];
+      // Fetch from both Captarget and SourceCo Fireflies accounts
+      const [ctResult, scResult] = await Promise.all([
+        supabase.functions.invoke("fetch-fireflies", {
+          body: { limit: 50, summarize: true, brand: "Captarget" },
+        }),
+        supabase.functions.invoke("fetch-fireflies", {
+          body: { limit: 50, summarize: true, brand: "SourceCo" },
+        }),
+      ]);
+
+      const ctMeetings: FirefliesMeeting[] = ctResult.data?.meetings || [];
+      const scMeetings: FirefliesMeeting[] = scResult.data?.meetings || [];
+      const fetchedMeetings = [...ctMeetings, ...scMeetings];
       setMeetings(fetchedMeetings);
 
       const autoMatched: Record<string, string> = {};
