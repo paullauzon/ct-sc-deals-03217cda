@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
-import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner } from "@/types/lead";
+import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment } from "@/types/lead";
 import { toast } from "sonner";
 import { MeetingsSection } from "@/components/MeetingsSection";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
+import { supabase } from "@/integrations/supabase/client";
+import { Sparkles, RefreshCw } from "lucide-react";
 
 const STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Closed Lost", "Went Dark"];
 const SERVICES: ServiceInterest[] = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"];
@@ -35,11 +37,39 @@ const PRIORITY_ORDER: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
 export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; open: boolean; onClose: () => void }) {
   const { leads, updateLead } = useLeads();
   const lead = leads.find((l) => l.id === leadId) || null;
+  const [enriching, setEnriching] = useState(false);
   if (!lead) return null;
 
   const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
   const days = computeDaysInStage(lead.stageEnteredDate);
   const duplicate = lead.isDuplicate ? leads.find((l) => l.id === lead.duplicateOf) : null;
+
+  const handleEnrich = async () => {
+    setEnriching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("enrich-lead", {
+        body: {
+          companyUrl: lead.companyUrl,
+          meetings: lead.meetings || [],
+          leadName: lead.name,
+          leadMessage: lead.message,
+          leadRole: lead.role,
+          leadCompany: lead.company,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (data?.enrichment) {
+        save({ enrichment: data.enrichment });
+        toast.success("Lead enriched with AI intelligence");
+      }
+    } catch (e: any) {
+      console.error("Enrichment failed:", e);
+      toast.error(e.message || "Failed to enrich lead");
+    } finally {
+      setEnriching(false);
+    }
+  };
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
@@ -56,6 +86,9 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
         </SheetHeader>
 
         <div className="space-y-8 mt-4">
+          {/* AI Enrichment */}
+          <EnrichmentSection enrichment={lead.enrichment} onEnrich={handleEnrich} enriching={enriching} />
+
           {/* Contact Info */}
           <Section title="Contact">
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -172,6 +205,66 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
   );
 }
 
+
+function EnrichmentSection({ enrichment, onEnrich, enriching }: { enrichment?: LeadEnrichment; onEnrich: () => void; enriching: boolean }) {
+  if (!enrichment) {
+    return (
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b border-border pb-1">AI Intelligence</h3>
+        <Button onClick={onEnrich} disabled={enriching} variant="outline" size="sm" className="w-full gap-2">
+          <Sparkles className="h-4 w-4" />
+          {enriching ? "Enriching..." : "Enrich with AI"}
+        </Button>
+        <p className="text-xs text-muted-foreground">Analyzes meeting transcripts + company website to extract deal intelligence.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between border-b border-border pb-1">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">AI Intelligence</h3>
+        <Button onClick={onEnrich} disabled={enriching} variant="ghost" size="sm" className="h-6 gap-1 text-xs text-muted-foreground">
+          <RefreshCw className={`h-3 w-3 ${enriching ? "animate-spin" : ""}`} />
+          {enriching ? "Enriching..." : "Re-enrich"}
+        </Button>
+      </div>
+      <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-3 text-sm">
+        {enrichment.companyDescription && enrichment.companyDescription !== "Not available from current data" && (
+          <EnrichField label="Company" value={enrichment.companyDescription} />
+        )}
+        {enrichment.acquisitionCriteria && enrichment.acquisitionCriteria !== "Not available from current data" && (
+          <EnrichField label="Acquisition Criteria" value={enrichment.acquisitionCriteria} />
+        )}
+        {enrichment.buyerMotivation && enrichment.buyerMotivation !== "Not available from current data" && (
+          <EnrichField label="Buyer Motivation" value={enrichment.buyerMotivation} />
+        )}
+        {enrichment.urgency && enrichment.urgency !== "Not available from current data" && (
+          <EnrichField label="Urgency" value={enrichment.urgency} />
+        )}
+        {enrichment.decisionMakers && enrichment.decisionMakers !== "Not available from current data" && (
+          <EnrichField label="Decision Makers" value={enrichment.decisionMakers} />
+        )}
+        {enrichment.competitorTools && enrichment.competitorTools !== "Not available from current data" && (
+          <EnrichField label="Competitor Tools" value={enrichment.competitorTools} />
+        )}
+        {enrichment.keyInsights && (
+          <EnrichField label="Key Insights" value={enrichment.keyInsights} />
+        )}
+        <p className="text-[10px] text-muted-foreground">Enriched {new Date(enrichment.enrichedAt).toLocaleDateString()}</p>
+      </div>
+    </div>
+  );
+}
+
+function EnrichField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+      <p className="text-sm leading-relaxed whitespace-pre-line">{value}</p>
+    </div>
+  );
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
