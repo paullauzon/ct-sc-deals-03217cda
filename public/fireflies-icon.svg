@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" fill="none">
+  <!-- Fireflies.ai brand logo - purple firefly -->
+  <!-- Body -->
+  <path d="M14 8c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6 2.7-6 6-6z" fill="#7C3AED"/>
+  <!-- Head -->
+  <circle cx="14" cy="6.5" r="3.5" fill="#7C3AED"/>
+  <!-- Left wing -->
+  <path d="M7.5 10.5c-2-3.5-1.5-6.5 0-7.5s3 .5 4 3" fill="#A78BFA" opacity="0.7"/>
+  <!-- Right wing -->
+  <path d="M20.5 10.5c2-3.5 1.5-6.5 0-7.5s-3 .5-4 3" fill="#A78BFA" opacity="0.7"/>
+  <!-- Glow dot -->
+  <circle cx="14" cy="21" r="2.5" fill="#FCD34D"/>
+  <circle cx="14" cy="21" r="1.5" fill="#FDE68A"/>
+  <!-- Eye highlights -->
+  <circle cx="12.5" cy="6" r="0.8" fill="white" opacity="0.8"/>
+  <circle cx="15.5" cy="6" r="0.8" fill="white" opacity="0.8"/>
+</svg>

@@ -201,7 +201,7 @@ function FirefliesSection({ lead, onSave }: { lead: Lead; onSave: (updates: Part
       <div className="space-y-3">
         <div>
           <label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-            <span className="text-base">🔥</span> Fireflies URL
+            <img src="/fireflies-icon.svg" alt="Fireflies.ai" className="w-4 h-4" /> Fireflies URL
           </label>
           <Input
             value={lead.firefliesUrl}
@@ -385,7 +385,7 @@ export function LeadsTable() {
           <p className="text-sm text-muted-foreground mt-1">{sorted.length} of {leads.length} leads</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowFireflies(true)}>🔥 Import Fireflies</Button>
+          <Button variant="outline" size="sm" onClick={() => setShowFireflies(true)}><img src="/fireflies-icon.svg" alt="" className="w-4 h-4" /> Import Fireflies</Button>
           <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
           <Button size="sm" onClick={() => setShowNewLead(true)}>New Lead</Button>
         </div>
