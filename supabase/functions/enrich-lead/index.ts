@@ -96,7 +96,7 @@ serve(async (req) => {
             role: "system",
             content: `You are an M&A deal intelligence analyst for a buy-side deal origination firm. Your job is to extract deal-qualifying intelligence from prospect data to help the sales team qualify leads faster.
 
-Analyze the provided information (form submissions, meeting transcripts, company website) and extract structured intelligence. Be specific and cite evidence from the source material. If information is not available, say "Not available from current data" rather than guessing.
+Analyze the provided information and extract structured intelligence. For EVERY claim you make, indicate the source in parentheses: (website), (form submission), or (meeting transcript). If you cannot cite a specific source for a claim, do NOT include it — say "Not available from current data" instead. Never guess or infer facts that aren't explicitly stated in the source material.
 
 Focus on what matters for M&A deal origination:
 - What does their company do and how big are they?
@@ -149,6 +149,10 @@ Focus on what matters for M&A deal origination:
                     type: "string",
                     description: "3-5 bullet points of deal-critical intelligence that would help close this deal. Each bullet on a new line starting with •",
                   },
+                  dataSources: {
+                    type: "string",
+                    description: "Comma-separated list of data sources that were available and contained useful content, e.g. 'Website, Form Submission, 2 Meeting Transcripts'",
+                  },
                 },
                 required: [
                   "companyDescription",
@@ -158,6 +162,7 @@ Focus on what matters for M&A deal origination:
                   "decisionMakers",
                   "competitorTools",
                   "keyInsights",
+                  "dataSources",
                 ],
                 additionalProperties: false,
               },
