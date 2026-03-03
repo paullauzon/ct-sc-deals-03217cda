@@ -51,6 +51,7 @@ serve(async (req) => {
     const body = await req.json();
     jobId = body.jobId;
     const lead = body.lead;
+    const prefetchedMeetings = body.prefetchedMeetings || null;
 
     if (!jobId || !lead) {
       return new Response(
@@ -62,75 +63,82 @@ serve(async (req) => {
     // Update status to processing
     await supabase.from("processing_jobs").update({
       status: "processing",
-      progress_message: "Fetching meetings from Fireflies...",
+      progress_message: prefetchedMeetings ? "Processing pre-matched meetings..." : "Fetching meetings from Fireflies...",
       updated_at: new Date().toISOString(),
     }).eq("id", jobId);
 
-    // Build search params
-    const searchEmails: string[] = lead.email ? [lead.email] : [];
-    const searchNames: string[] = lead.name ? [lead.name] : [];
-    const searchDomains: string[] = [];
-    const searchCompanies: string[] = lead.company?.trim() ? [lead.company.trim()] : [];
+    let newMeetings: any[];
 
-    if (lead.email) {
-      const domain = lead.email.split("@")[1]?.toLowerCase();
-      if (domain && !GENERIC_DOMAINS.has(domain)) searchDomains.push(domain);
+    if (prefetchedMeetings && prefetchedMeetings.length > 0) {
+      // Use prefetched meetings (from bulk processing — already matched and filtered)
+      newMeetings = prefetchedMeetings;
+    } else {
+      // Build search params and fetch from Fireflies
+      const searchEmails: string[] = lead.email ? [lead.email] : [];
+      const searchNames: string[] = lead.name ? [lead.name] : [];
+      const searchDomains: string[] = [];
+      const searchCompanies: string[] = lead.company?.trim() ? [lead.company.trim()] : [];
+
+      if (lead.email) {
+        const domain = lead.email.split("@")[1]?.toLowerCase();
+        if (domain && !GENERIC_DOMAINS.has(domain)) searchDomains.push(domain);
+      }
+      if (searchDomains.length === 0 && lead.companyUrl) {
+        try {
+          const urlDomain = new URL(
+            lead.companyUrl.startsWith("http") ? lead.companyUrl : `https://${lead.companyUrl}`
+          ).hostname.replace(/^www\./, "").toLowerCase();
+          if (urlDomain && !GENERIC_DOMAINS.has(urlDomain)) searchDomains.push(urlDomain);
+        } catch { /* skip */ }
+      }
+
+      const searchBody = {
+        searchEmails,
+        searchNames,
+        searchDomains,
+        searchCompanies,
+        limit: 100,
+        summarize: false,
+      };
+
+      // Fetch from both brands in parallel
+      const [ctRes, scRes] = await Promise.all([
+        fetch(`${funcUrl}/fetch-fireflies`, {
+          method: "POST",
+          headers: funcHeaders,
+          body: JSON.stringify({ ...searchBody, brand: "Captarget" }),
+        }),
+        fetch(`${funcUrl}/fetch-fireflies`, {
+          method: "POST",
+          headers: funcHeaders,
+          body: JSON.stringify({ ...searchBody, brand: "SourceCo" }),
+        }),
+      ]);
+
+      const ctData = ctRes.ok ? await ctRes.json() : { meetings: [] };
+      const scData = scRes.ok ? await scRes.json() : { meetings: [] };
+
+      if (!ctRes.ok && !scRes.ok) {
+        const ctText = await ctRes.text().catch(() => "");
+        throw new Error(`Both Fireflies fetches failed. CT: ${ctRes.status}, SC: ${scRes.status}. ${ctText}`);
+      }
+
+      const ctMeetings = (ctData.meetings || []).map((m: any) => ({ ...m, sourceBrand: "Captarget" }));
+      const scMeetings = (scData.meetings || []).map((m: any) => ({ ...m, sourceBrand: "SourceCo" }));
+
+      // Deduplicate by firefliesId
+      const seenIds = new Set<string>();
+      const foundMeetings: any[] = [];
+      for (const m of [...ctMeetings, ...scMeetings]) {
+        if (m.firefliesId && seenIds.has(m.firefliesId)) continue;
+        if (m.firefliesId) seenIds.add(m.firefliesId);
+        foundMeetings.push(m);
+      }
+
+      // Filter out existing meetings
+      const existingIds = new Set(lead.existingMeetingIds || []);
+      newMeetings = foundMeetings.filter((m: any) => !existingIds.has(m.firefliesId));
     }
-    if (searchDomains.length === 0 && lead.companyUrl) {
-      try {
-        const urlDomain = new URL(
-          lead.companyUrl.startsWith("http") ? lead.companyUrl : `https://${lead.companyUrl}`
-        ).hostname.replace(/^www\./, "").toLowerCase();
-        if (urlDomain && !GENERIC_DOMAINS.has(urlDomain)) searchDomains.push(urlDomain);
-      } catch { /* skip */ }
-    }
-
-    const searchBody = {
-      searchEmails,
-      searchNames,
-      searchDomains,
-      searchCompanies,
-      limit: 100,
-      summarize: false,
-    };
-
-    // Fetch from both brands in parallel
-    const [ctRes, scRes] = await Promise.all([
-      fetch(`${funcUrl}/fetch-fireflies`, {
-        method: "POST",
-        headers: funcHeaders,
-        body: JSON.stringify({ ...searchBody, brand: "Captarget" }),
-      }),
-      fetch(`${funcUrl}/fetch-fireflies`, {
-        method: "POST",
-        headers: funcHeaders,
-        body: JSON.stringify({ ...searchBody, brand: "SourceCo" }),
-      }),
-    ]);
-
-    const ctData = ctRes.ok ? await ctRes.json() : { meetings: [] };
-    const scData = scRes.ok ? await scRes.json() : { meetings: [] };
-
-    if (!ctRes.ok && !scRes.ok) {
-      const ctText = await ctRes.text().catch(() => "");
-      throw new Error(`Both Fireflies fetches failed. CT: ${ctRes.status}, SC: ${scRes.status}. ${ctText}`);
-    }
-
-    const ctMeetings = (ctData.meetings || []).map((m: any) => ({ ...m, sourceBrand: "Captarget" }));
-    const scMeetings = (scData.meetings || []).map((m: any) => ({ ...m, sourceBrand: "SourceCo" }));
-
-    // Deduplicate by firefliesId
-    const seenIds = new Set<string>();
-    const foundMeetings: any[] = [];
-    for (const m of [...ctMeetings, ...scMeetings]) {
-      if (m.firefliesId && seenIds.has(m.firefliesId)) continue;
-      if (m.firefliesId) seenIds.add(m.firefliesId);
-      foundMeetings.push(m);
-    }
-
-    // Filter out existing meetings
-    const existingIds = new Set(lead.existingMeetingIds || []);
-    const newMeetings = foundMeetings.filter((m: any) => !existingIds.has(m.firefliesId));
 
     if (newMeetings.length === 0) {
       await supabase.from("processing_jobs").update({
