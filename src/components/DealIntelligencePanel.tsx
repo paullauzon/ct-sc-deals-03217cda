@@ -82,6 +82,14 @@ const signalToValue: Record<string, number> = {
 };
 
 export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence; lead?: Lead }) {
+  // Guard against partial/malformed deal intelligence data
+  if (!intel || !intel.dealNarrative) {
+    return (
+      <div className="text-xs text-muted-foreground p-3 border border-border rounded-md">
+        Deal intelligence data is incomplete. Try re-synthesizing.
+      </div>
+    );
+  }
   const context = (() => { try { return useLeads(); } catch { return null; } })();
   const [reSynthesizing, setReSynthesizing] = useState(false);
 
@@ -90,23 +98,10 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
     setReSynthesizing(true);
     try {
       toast.info("Re-synthesizing deal intelligence...");
-      const sorted = [...(lead.meetings || [])].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-      );
-      const { data, error } = await supabase.functions.invoke("synthesize-deal-intelligence", {
-        body: {
-          meetings: sorted,
-          leadFields: {
-            name: lead.name, company: lead.company, role: lead.role,
-            stage: lead.stage, priority: lead.priority, dealValue: lead.dealValue,
-            serviceInterest: lead.serviceInterest, message: lead.message,
-            targetCriteria: lead.targetCriteria, acquisitionStrategy: lead.acquisitionStrategy,
-          },
-        },
-      });
-      if (error) throw error;
-      if (data?.dealIntelligence) {
-        context.updateLead(lead.id, { dealIntelligence: data.dealIntelligence });
+      const { synthesizeDealIntelligence } = await import("@/lib/bulkProcessing");
+      const dealIntel = await synthesizeDealIntelligence(lead.meetings || [], lead);
+      if (dealIntel) {
+        context.updateLead(lead.id, { dealIntelligence: dealIntel });
         toast.success("Deal intelligence re-synthesized");
       }
     } catch (e: any) {

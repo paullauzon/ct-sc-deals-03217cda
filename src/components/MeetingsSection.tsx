@@ -129,26 +129,10 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
   const synthesizeDealIntelligence = async (allMeetings: Meeting[], currentLead: Lead) => {
     try {
       toast.info("Synthesizing deal intelligence across all meetings...");
-      const sortedMeetings = [...allMeetings].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-      );
-      const { data, error } = await supabase.functions.invoke("synthesize-deal-intelligence", {
-        body: {
-          meetings: sortedMeetings,
-          leadFields: {
-            name: currentLead.name,
-            company: currentLead.company,
-            role: currentLead.role,
-            stage: currentLead.stage,
-            priority: currentLead.priority,
-            dealValue: currentLead.dealValue,
-            serviceInterest: currentLead.serviceInterest,
-          },
-        },
-      });
-      if (error) throw error;
-      if (data?.dealIntelligence) {
-        updateLead(currentLead.id, { dealIntelligence: data.dealIntelligence });
+      const { synthesizeDealIntelligence } = await import("@/lib/bulkProcessing");
+      const dealIntel = await synthesizeDealIntelligence(allMeetings, currentLead);
+      if (dealIntel) {
+        updateLead(currentLead.id, { dealIntelligence: dealIntel });
         toast.success("Deal intelligence synthesized from all meetings");
       }
     } catch (e: any) {
