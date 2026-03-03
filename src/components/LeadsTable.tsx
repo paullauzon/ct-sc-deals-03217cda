@@ -674,6 +674,89 @@ function EnrichField({ label, value, icon }: { label: string; value: string; ico
   );
 }
 
+function SubmissionHistory({ submissions, currentLead }: { submissions: Submission[]; currentLead: Lead }) {
+  const [expanded, setExpanded] = useState(false);
+  const brands = new Set(submissions.map(s => s.brand));
+  const brandLabel = brands.size > 1 ? "CT + SC" : brands.values().next().value === "Captarget" ? "CT" : "SC";
+
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between border-b border-border pb-1 group"
+      >
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+          Submission History ({submissions.length})
+        </h3>
+        <span className="text-xs text-muted-foreground">{expanded ? "▾" : "▸"} {brandLabel}</span>
+      </button>
+      {expanded && (
+        <div className="space-y-3">
+          {submissions.map((sub, i) => {
+            const isLatest = i === submissions.length - 1;
+            const prev = i > 0 ? submissions[i - 1] : null;
+            const brandAbbr = sub.brand === "Captarget" ? "CT" : "SC";
+            const sourceLabel = SOURCE_LABELS[sub.source] || sub.source;
+
+            // Detect changed fields from previous submission
+            const changes: string[] = [];
+            if (prev) {
+              if (prev.role !== sub.role && sub.role) changes.push("role");
+              if (prev.message !== sub.message && sub.message) changes.push("message");
+              if (prev.dealsPlanned !== sub.dealsPlanned && sub.dealsPlanned) changes.push("deals");
+              if (prev.targetRevenue !== sub.targetRevenue && sub.targetRevenue) changes.push("revenue");
+              if (prev.geography !== sub.geography && sub.geography) changes.push("geography");
+              if (prev.targetCriteria !== sub.targetCriteria && sub.targetCriteria) changes.push("criteria");
+              if (prev.currentSourcing !== sub.currentSourcing && sub.currentSourcing) changes.push("sourcing");
+              if (prev.acquisitionStrategy !== sub.acquisitionStrategy && sub.acquisitionStrategy) changes.push("strategy");
+              if (prev.phone !== sub.phone && sub.phone) changes.push("phone");
+            }
+
+            return (
+              <div key={i} className={cn(
+                "rounded-md border p-3 space-y-1.5 text-sm",
+                isLatest ? "border-primary/30 bg-primary/5" : "border-border bg-secondary/20"
+              )}>
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    "text-[10px] font-mono px-1.5 py-0.5 rounded border",
+                    brandAbbr === "CT" ? "border-border" : "border-primary/30 bg-primary/10"
+                  )}>
+                    {brandAbbr}
+                  </span>
+                  <span className="text-xs font-medium">{sourceLabel}</span>
+                  <span className="text-xs text-muted-foreground">· {sub.dateSubmitted}</span>
+                  {isLatest && <Badge variant="outline" className="text-[10px] px-1 py-0 ml-auto">Latest</Badge>}
+                </div>
+                {sub.message && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    "{sub.message.length > 200 ? sub.message.slice(0, 200) + "…" : sub.message}"
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                  {sub.role && <span>Role: {sub.role}</span>}
+                  {sub.dealsPlanned && <span>Deals: {sub.dealsPlanned}</span>}
+                  {sub.targetRevenue && <span>Rev: {sub.targetRevenue}</span>}
+                  {sub.geography && <span>Geo: {sub.geography}</span>}
+                </div>
+                {changes.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {changes.map(c => (
+                      <span key={c} className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground">
+                        ← {c} changed
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
