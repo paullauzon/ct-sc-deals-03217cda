@@ -62,9 +62,17 @@ serve(async (req) => {
         if (intel.competitiveIntel) detail += `Competitive Intel: ${intel.competitiveIntel}\n`;
         if (intel.pricingDiscussion) detail += `Pricing: ${intel.pricingDiscussion}\n`;
         if (intel.relationshipProgression) detail += `Relationship: ${intel.relationshipProgression}\n`;
+        if (intel.talkRatio) detail += `Talk Ratio (us vs them): ${intel.talkRatio}%\n`;
+        if (intel.questionQuality) detail += `Question Quality: ${intel.questionQuality}\n`;
+        if (intel.objectionHandling) detail += `Objection Handling: ${intel.objectionHandling}\n`;
+        if (intel.talkingPoints?.length) detail += `Talking Points: ${intel.talkingPoints.join("; ")}\n`;
       } else {
         if (m.summary) detail += `Summary: ${m.summary}\n`;
         if (m.nextSteps) detail += `Next Steps: ${m.nextSteps}\n`;
+      }
+      if (m.transcript) {
+        // Include first 3000 chars of transcript for psychological analysis
+        detail += `\nTRANSCRIPT EXCERPT:\n${m.transcript.substring(0, 3000)}\n`;
       }
       meetingDetails.push(detail);
     }
@@ -80,25 +88,65 @@ serve(async (req) => {
       if (lf.priority) leadContext.push(`Priority: ${lf.priority}`);
       if (lf.dealValue) leadContext.push(`Deal Value: $${lf.dealValue}`);
       if (lf.serviceInterest) leadContext.push(`Service Interest: ${lf.serviceInterest}`);
+      if (lf.message) leadContext.push(`Original Inquiry: ${lf.message}`);
+      if (lf.targetCriteria) leadContext.push(`Target Criteria: ${lf.targetCriteria}`);
+      if (lf.acquisitionStrategy) leadContext.push(`Acquisition Strategy: ${lf.acquisitionStrategy}`);
     }
 
-    const systemPrompt = `You are an elite cross-meeting deal intelligence synthesizer — combining the analytical rigor of a Fortune 100 SVP of Sales/Marketing with the pattern-recognition of an FBI intelligence analyst.
+    const systemPrompt = `You are an elite deal intelligence synthesizer operating at the intersection of FIVE disciplines:
 
-Your job: Given ALL meetings with a prospect (chronologically), build a UNIFIED accumulated intelligence picture. This is NOT a per-meeting analysis — it's a cross-meeting synthesis that tracks threads, patterns, contradictions, and evolution across the entire relationship.
+1. FORTUNE 100 SVP OF SALES — 50+ years pattern recognition across thousands of enterprise deals. You see the deal mechanics, pipeline dynamics, and closing patterns that rookies miss.
 
-CRITICAL INSTRUCTIONS:
-1. STAKEHOLDER MAP: Build a profile for EVERY person mentioned across all meetings. Track how their stance, concerns, and engagement evolved. Note first/last appearance.
-2. OBJECTION TRACKER: Track every objection across meetings. If objection from meeting 1 was addressed in meeting 2, mark it "Addressed" with the resolution. If it resurfaces, mark "Recurring". Only mark "Open" if unresolved.
-3. ACTION ITEM TRACKER: Track every action item across meetings. Cross-reference with follow-up statuses in later meetings. Mark completed items as "Completed" with which meeting resolved them. Mark items never addressed as "Dropped" or "Overdue".
-4. MOMENTUM: Calculate meeting frequency. Track sentiment/intent/engagement trajectories across meetings. Compute action item completion rate. Determine overall momentum.
-5. MILESTONES: Identify key deal events: first meeting, champion identified, budget discussed, proposal requested, objection overcome, decision timeline set, etc.
-6. RISK REGISTER: Aggregate all risks. Assess severity. Note which are mitigated by later meetings.
-7. BUYING COMMITTEE: Identify the full buying committee: decision maker, champion, influencers, blockers.
-8. DEAL NARRATIVE: Write a 3-5 sentence story of the entire deal arc — how it started, evolved, where it stands, what's next.
-9. DEAL STAGE EVIDENCE: What evidence supports the current stage? What evidence suggests it should advance or regress?
-10. COMPETITIVE TIMELINE: Track when competitors were mentioned, evaluated, or dismissed.
+2. FBI INTELLIGENCE ANALYST — You cross-reference data points across meetings to identify contradictions, evolving narratives, hidden agendas, and what's being deliberately withheld.
 
-Be SPECIFIC — use names, dates, quotes from meetings. Never be vague.`;
+3. MASTER ORGANIZATIONAL PSYCHOLOGIST — You read between the lines of every conversation. You understand career motivations, personal ambitions, fear of failure, desire for recognition, and the politics of organizational decision-making. You know that every buyer has a PERSONAL reason (promotion, job security, impressing the board, looking innovative) layered on top of the business reason.
+
+4. HOSTAGE NEGOTIATOR — You analyze communication patterns, emotional states, trust signals, and leverage points. You notice when someone's words don't match their energy. You identify the "tells" — repeated phrases, avoided topics, deflections, over-explanations.
+
+5. BEHAVIORAL ECONOMIST — You spot cognitive biases at play: anchoring, loss aversion, status quo bias, social proof needs, authority influence. You understand how framing changes decisions.
+
+Your job: Given ALL meetings with a prospect (chronologically), build a UNIFIED intelligence picture that goes BEYOND operational data into the HUMAN LAYER — the psychology, politics, fears, and desires that actually close deals.
+
+CRITICAL INSTRUCTIONS FOR OPERATIONAL INTELLIGENCE:
+1. STAKEHOLDER MAP: Build a profile for EVERY person. Track stance/concern evolution. For each person, infer their PERSONAL win condition (what closing means for their career), their communication style (Analytical/Driver/Amiable/Expressive), what decision trigger will move them, and what hidden concern they haven't voiced.
+2. OBJECTION TRACKER: Track every objection across meetings with status.
+3. ACTION ITEM TRACKER: Cross-reference action items across meetings.
+4. MOMENTUM: Calculate meeting frequency, trajectory signals, completion rate.
+5. MILESTONES: Key deal events chronologically.
+6. RISK REGISTER: All risks with severity and mitigation status.
+7. BUYING COMMITTEE: Full committee identification.
+8. DEAL NARRATIVE: 3-5 sentence story of the deal arc.
+9. DEAL STAGE EVIDENCE: Evidence for current stage.
+10. COMPETITIVE TIMELINE: When competitors were mentioned.
+
+CRITICAL INSTRUCTIONS FOR PSYCHOLOGICAL INTELLIGENCE:
+11. POWER DYNAMICS: Map the REAL influence structure — who has actual power vs. title authority? What internal politics are at play? What tensions exist between stakeholders? In what ORDER must people be won over?
+12. PSYCHOLOGICAL PROFILE:
+   - The Real "Why": What's ACTUALLY driving this purchase at a human level? Not ROI — the personal motivation.
+   - Fear Factor: What happens to the champion/decision-maker if they DON'T buy? What are they afraid of?
+   - Trust Level: How much do they trust us? Cite specific evidence.
+   - Emotional Triggers: What language, framing, or topics made them lean in? What resonated emotionally?
+   - The Unspoken Ask: What do they want but haven't directly said? Read between the lines.
+   - Cognitive Biases: What biases are at play that we can ethically leverage?
+   - Recommended Approach: Specific psychological approach for the next interaction.
+13. WIN STRATEGY:
+   - #1 Thing That Closes This Deal: ONE sentence — the single most important thing.
+   - Landmines: Topics, phrases, or approaches that could KILL this deal.
+   - Power Move: The strategic action that would DRAMATICALLY accelerate this deal.
+   - Relationship Leverage: Who to activate, who to neutralize, what relationships to build.
+   - Deal Temperature: How hot is this deal RIGHT NOW?
+   - Closing Window: When does the window close and why?
+   - Negotiation Style: How should we negotiate with this specific buyer?
+
+ANALYSIS TECHNIQUES — apply these to transcripts:
+- Track question patterns: what they ask reveals what they fear
+- Notice what they emphasize vs. what they avoid
+- Meeting attendance patterns signal priority and politics
+- Language choices reveal emotional state (hedging = uncertainty, "we" vs "I" = consensus vs authority)
+- Response latency to follow-ups signals true interest level
+- How they describe the problem reveals how they'll justify the purchase internally
+
+Be SPECIFIC — use names, dates, inferred evidence. Never be generic or vague. If you must infer, explain WHY you're inferring it.`;
 
     const userContent = `LEAD CONTEXT:\n${leadContext.join("\n")}\n\nMEETING HISTORY (${meetings.length} meetings, chronological):\n${meetingDetails.join("\n")}`;
 
@@ -109,7 +157,7 @@ Be SPECIFIC — use names, dates, quotes from meetings. Never be vague.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userContent },
@@ -119,7 +167,7 @@ Be SPECIFIC — use names, dates, quotes from meetings. Never be vague.`;
             type: "function",
             function: {
               name: "synthesize_deal_intelligence",
-              description: "Return unified cross-meeting deal intelligence synthesis.",
+              description: "Return unified cross-meeting deal intelligence synthesis with deep psychological analysis.",
               parameters: {
                 type: "object",
                 properties: {
@@ -136,8 +184,13 @@ Be SPECIFIC — use names, dates, quotes from meetings. Never be vague.`;
                         influence: { type: "string", enum: ["Decision Maker", "High", "Medium", "Low", "Unknown"] },
                         concerns: { type: "array", items: { type: "string" } },
                         mentions: { type: "number" },
-                        firstSeen: { type: "string", description: "Meeting title where first appeared" },
-                        lastSeen: { type: "string", description: "Meeting title where last appeared" },
+                        firstSeen: { type: "string" },
+                        lastSeen: { type: "string" },
+                        personalWin: { type: "string", description: "What closing this deal means for THIS person's career/reputation/goals" },
+                        careerRisk: { type: "string", description: "What they risk personally by championing or blocking this deal" },
+                        communicationStyle: { type: "string", enum: ["Analytical", "Driver", "Amiable", "Expressive", ""], description: "Their dominant communication style" },
+                        decisionTrigger: { type: "string", description: "What specific thing will make this person say yes" },
+                        hiddenConcern: { type: "string", description: "What they're NOT saying but you can infer from their behavior/questions" },
                       },
                       required: ["name", "role", "company", "stance", "influence", "concerns", "mentions", "firstSeen", "lastSeen"],
                     },
@@ -148,10 +201,10 @@ Be SPECIFIC — use names, dates, quotes from meetings. Never be vague.`;
                       type: "object",
                       properties: {
                         objection: { type: "string" },
-                        raisedIn: { type: "string", description: "Meeting title where raised" },
+                        raisedIn: { type: "string" },
                         status: { type: "string", enum: ["Open", "Addressed", "Recurring"] },
-                        addressedIn: { type: "string", description: "Meeting title where addressed, or empty" },
-                        resolution: { type: "string", description: "How it was resolved, or empty" },
+                        addressedIn: { type: "string" },
+                        resolution: { type: "string" },
                       },
                       required: ["objection", "raisedIn", "status", "addressedIn", "resolution"],
                     },
@@ -163,9 +216,9 @@ Be SPECIFIC — use names, dates, quotes from meetings. Never be vague.`;
                       properties: {
                         item: { type: "string" },
                         owner: { type: "string" },
-                        createdIn: { type: "string", description: "Meeting title" },
+                        createdIn: { type: "string" },
                         status: { type: "string", enum: ["Open", "Completed", "Overdue", "Dropped"] },
-                        resolvedIn: { type: "string", description: "Meeting title where resolved, or empty" },
+                        resolvedIn: { type: "string" },
                         deadline: { type: "string" },
                       },
                       required: ["item", "owner", "createdIn", "status", "resolvedIn", "deadline"],
@@ -174,11 +227,11 @@ Be SPECIFIC — use names, dates, quotes from meetings. Never be vague.`;
                   momentumSignals: {
                     type: "object",
                     properties: {
-                      meetingFrequencyDays: { type: "number", description: "Avg days between meetings" },
-                      sentimentTrajectory: { type: "array", items: { type: "string" }, description: "Sentiment per meeting chronologically" },
-                      intentTrajectory: { type: "array", items: { type: "string" }, description: "Intent per meeting chronologically" },
-                      engagementTrajectory: { type: "array", items: { type: "string" }, description: "Engagement per meeting chronologically" },
-                      completionRate: { type: "number", description: "Percentage of action items completed (0-100)" },
+                      meetingFrequencyDays: { type: "number" },
+                      sentimentTrajectory: { type: "array", items: { type: "string" } },
+                      intentTrajectory: { type: "array", items: { type: "string" } },
+                      engagementTrajectory: { type: "array", items: { type: "string" } },
+                      completionRate: { type: "number" },
                       momentum: { type: "string", enum: ["Accelerating", "Steady", "Stalling", "Stalled"] },
                     },
                     required: ["meetingFrequencyDays", "sentimentTrajectory", "intentTrajectory", "engagementTrajectory", "completionRate", "momentum"],
@@ -202,7 +255,7 @@ Be SPECIFIC — use names, dates, quotes from meetings. Never be vague.`;
                       properties: {
                         risk: { type: "string" },
                         severity: { type: "string", enum: ["Critical", "High", "Medium", "Low"] },
-                        source: { type: "string", description: "Meeting where identified" },
+                        source: { type: "string" },
                         mitigationStatus: { type: "string", enum: ["Unmitigated", "Partially Mitigated", "Mitigated"] },
                       },
                       required: ["risk", "severity", "source", "mitigationStatus"],
@@ -230,12 +283,51 @@ Be SPECIFIC — use names, dates, quotes from meetings. Never be vague.`;
                     },
                     required: ["decisionMaker", "champion", "influencers", "blockers", "unknowns"],
                   },
-                  dealStageEvidence: { type: "string", description: "Evidence supporting current stage + evidence for advancement/regression." },
+                  dealStageEvidence: { type: "string" },
+                  // NEW: Psychological intelligence
+                  powerDynamics: {
+                    type: "object",
+                    properties: {
+                      realInfluenceMap: { type: "string", description: "Who has REAL influence vs title authority. Be specific with names." },
+                      internalPolitics: { type: "string", description: "What organizational politics are at play?" },
+                      relationshipTensions: { type: "string", description: "Tensions between stakeholders that affect the deal" },
+                      winningOrder: { type: "array", items: { type: "string" }, description: "Names in the order they must be won over, with brief reason" },
+                    },
+                    required: ["realInfluenceMap", "internalPolitics", "relationshipTensions", "winningOrder"],
+                  },
+                  psychologicalProfile: {
+                    type: "object",
+                    properties: {
+                      realWhy: { type: "string", description: "What's ACTUALLY driving this purchase at a human level — the personal motivation behind the business case" },
+                      fearFactor: { type: "string", description: "What happens to the champion/DM if they DON'T buy? What are they genuinely afraid of?" },
+                      trustLevel: { type: "string", description: "Assessment of how much they trust us and why" },
+                      trustEvidence: { type: "array", items: { type: "string" }, description: "Specific evidence from transcripts supporting trust assessment" },
+                      emotionalTriggers: { type: "array", items: { type: "string" }, description: "Language, framing, or topics that made them lean in emotionally" },
+                      unspokenAsk: { type: "string", description: "What they want but haven't directly said — read between the lines" },
+                      cognitivebiases: { type: "array", items: { type: "string" }, description: "Cognitive biases at play (e.g., 'Loss aversion — they keep mentioning what they'll lose without a solution')" },
+                      recommendedApproach: { type: "string", description: "Specific psychological approach for the next interaction" },
+                    },
+                    required: ["realWhy", "fearFactor", "trustLevel", "trustEvidence", "emotionalTriggers", "unspokenAsk", "cognitivebiases", "recommendedApproach"],
+                  },
+                  winStrategy: {
+                    type: "object",
+                    properties: {
+                      numberOneCloser: { type: "string", description: "ONE sentence — the single most important thing that closes this deal" },
+                      landmines: { type: "array", items: { type: "string" }, description: "Topics, phrases, or approaches that could KILL this deal" },
+                      powerMove: { type: "string", description: "The strategic action that would DRAMATICALLY accelerate this deal" },
+                      relationshipLeverage: { type: "string", description: "Who to activate, who to neutralize, what relationships to build" },
+                      dealTemperature: { type: "string", enum: ["On Fire", "Warm", "Lukewarm", "Cold", "Ice Cold"] },
+                      closingWindow: { type: "string", description: "When does the window close and why?" },
+                      negotiationStyle: { type: "string", description: "How should we negotiate with this specific buyer?" },
+                    },
+                    required: ["numberOneCloser", "landmines", "powerMove", "relationshipLeverage", "dealTemperature", "closingWindow", "negotiationStyle"],
+                  },
                 },
                 required: [
                   "dealNarrative", "stakeholderMap", "objectionTracker", "actionItemTracker",
                   "momentumSignals", "keyMilestones", "riskRegister", "competitiveTimeline",
                   "buyingCommittee", "dealStageEvidence",
+                  "powerDynamics", "psychologicalProfile", "winStrategy",
                 ],
                 additionalProperties: false,
               },
