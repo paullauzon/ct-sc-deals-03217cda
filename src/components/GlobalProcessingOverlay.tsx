@@ -1,18 +1,21 @@
+import { useState } from "react";
 import { useProcessing } from "@/contexts/ProcessingContext";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Zap, Loader2, Check, X, Search, Brain, AlertTriangle, Circle } from "lucide-react";
+import { Zap, Loader2, Check, X, Search, Brain, AlertTriangle, Circle, Pause, Play, ChevronDown, ChevronUp } from "lucide-react";
 
 export function GlobalProcessingOverlay() {
-  const { bulkJob, leadJobs, cancelBulk, dismissBulk } = useProcessing();
+  const { bulkJob, leadJobs, cancelBulk, dismissBulk, pauseBulk, resumeBulk } = useProcessing();
+  const [showErrors, setShowErrors] = useState(false);
 
   const searchingLeadJobs = Object.values(leadJobs).filter(j => j.searching);
   const bulkActive = bulkJob.phase === "running";
+  const bulkPaused = bulkJob.phase === "paused";
   const bulkDone = bulkJob.phase === "done";
   const progressPercent = bulkJob.totalJobs > 0
     ? Math.round(((bulkJob.completedJobs + bulkJob.failedJobs) / bulkJob.totalJobs) * 100) : 0;
 
-  if (!bulkActive && !bulkDone && searchingLeadJobs.length === 0) return null;
+  if (!bulkActive && !bulkPaused && !bulkDone && searchingLeadJobs.length === 0) return null;
 
   const getStepIcon = (msg: string) => {
     if (msg.includes("Searching") || msg.includes("searching")) return <Search className="h-3.5 w-3.5 text-primary animate-pulse" />;
@@ -20,6 +23,7 @@ export function GlobalProcessingOverlay() {
     if (msg.includes("Failed")) return <AlertTriangle className="h-3.5 w-3.5 text-destructive" />;
     if (msg.includes("Found")) return <Check className="h-3.5 w-3.5 text-primary" />;
     if (msg.includes("No new")) return <Circle className="h-3.5 w-3.5 text-muted-foreground" />;
+    if (msg.includes("Paused")) return <Pause className="h-3.5 w-3.5 text-amber-500" />;
     return <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />;
   };
 
@@ -27,14 +31,18 @@ export function GlobalProcessingOverlay() {
 
   return (
     <div className="fixed bottom-4 right-4 z-50 w-96 bg-background border border-border rounded-lg shadow-lg p-4 space-y-3">
-      {/* Bulk progress */}
-      {bulkActive && (
+      {/* Bulk progress (running or paused) */}
+      {(bulkActive || bulkPaused) && (
         <div className="space-y-2">
           {/* Header with counter */}
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold flex items-center gap-1.5">
-              <Zap className="h-3.5 w-3.5 text-primary" />
-              Bulk Processing
+              {bulkPaused ? (
+                <Pause className="h-3.5 w-3.5 text-amber-500" />
+              ) : (
+                <Zap className="h-3.5 w-3.5 text-primary" />
+              )}
+              Bulk Processing {bulkPaused ? "(Paused)" : ""}
             </span>
             <span className="text-xs text-muted-foreground font-mono">
               Lead {bulkJob.currentLeadIndex + 1} of {bulkJob.totalJobs}
@@ -55,7 +63,7 @@ export function GlobalProcessingOverlay() {
             <span className="text-muted-foreground leading-snug">{bulkJob.progressMessage}</span>
           </div>
 
-          {/* Stats row: found · no meetings · failed */}
+          {/* Stats row */}
           <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1">
               <Check className="h-3 w-3 text-primary" />
@@ -77,9 +85,20 @@ export function GlobalProcessingOverlay() {
             )}
           </div>
 
-          {/* Cancel */}
-          <div className="flex justify-end">
-            <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={cancelBulk}>
+          {/* Pause / Resume / Cancel */}
+          <div className="flex justify-end gap-1">
+            {bulkPaused ? (
+              <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={resumeBulk}>
+                <Play className="h-3 w-3 mr-1" />
+                Resume
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={pauseBulk}>
+                <Pause className="h-3 w-3 mr-1" />
+                Pause
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-destructive" onClick={cancelBulk}>
               <X className="h-3 w-3 mr-1" />
               Cancel
             </Button>
@@ -87,7 +106,7 @@ export function GlobalProcessingOverlay() {
         </div>
       )}
 
-      {/* Bulk complete */}
+      {/* Bulk complete — persists until manually dismissed */}
       {bulkDone && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs">
@@ -122,6 +141,30 @@ export function GlobalProcessingOverlay() {
           <div className="text-[10px] text-muted-foreground">
             {bulkJob.foundMeetings} total meetings discovered
           </div>
+
+          {/* Expandable error list */}
+          {bulkJob.failedLeads.length > 0 && (
+            <div className="border border-destructive/20 rounded p-2 space-y-1">
+              <button
+                onClick={() => setShowErrors(!showErrors)}
+                className="flex items-center gap-1 text-[10px] font-medium text-destructive w-full text-left"
+              >
+                <AlertTriangle className="h-3 w-3" />
+                {bulkJob.failedLeads.length} failed — click to {showErrors ? "hide" : "see"} details
+                {showErrors ? <ChevronUp className="h-3 w-3 ml-auto" /> : <ChevronDown className="h-3 w-3 ml-auto" />}
+              </button>
+              {showErrors && (
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {bulkJob.failedLeads.map((fl, idx) => (
+                    <div key={idx} className="text-[10px] pl-4 border-l-2 border-destructive/30">
+                      <span className="font-medium text-foreground">{fl.name}</span>
+                      <p className="text-destructive/80 break-words">{fl.error}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

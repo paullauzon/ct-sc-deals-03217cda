@@ -13,8 +13,13 @@ export interface LeadJobState {
   leadName: string;
 }
 
+export interface FailedLead {
+  name: string;
+  error: string;
+}
+
 export interface BulkJobState {
-  phase: "idle" | "running" | "done";
+  phase: "idle" | "running" | "paused" | "done";
   totalJobs: number;
   completedJobs: number;
   failedJobs: number;
@@ -25,6 +30,8 @@ export interface BulkJobState {
   progressMessage: string;
   bulkJobIds: string[];
   cancelled: boolean;
+  paused: boolean;
+  failedLeads: FailedLead[];
 }
 
 interface ProcessingContextType {
@@ -33,6 +40,8 @@ interface ProcessingContextType {
   startBulkProcessing: () => void;
   cancelBulk: () => void;
   dismissBulk: () => void;
+  pauseBulk: () => void;
+  resumeBulk: () => void;
   startAutoFind: (lead: Lead) => void;
   acceptLeadSuggestion: (leadId: string, field: string, value: string | number) => void;
   dismissLeadSuggestion: (leadId: string, field: string) => void;
@@ -45,6 +54,7 @@ const ProcessingContext = createContext<ProcessingContextType | null>(null);
 const INITIAL_BULK: BulkJobState = {
   phase: "idle", totalJobs: 0, completedJobs: 0, failedJobs: 0, foundMeetings: 0, noMeetings: 0,
   currentLeadIndex: 0, currentLeadName: "", progressMessage: "", bulkJobIds: [], cancelled: false,
+  paused: false, failedLeads: [],
 };
 
 export function ProcessingProvider({ children }: { children: ReactNode }) {
@@ -60,6 +70,8 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
   bulkJobRef.current = bulkJob;
   const appliedJobsRef = useRef(new Set<string>());
   const cancelledRef = useRef(false);
+  const pausedRef = useRef(false);
+  const resumeResolverRef = useRef<(() => void) | null>(null);
 
   // ─── Apply completed job results to lead ───
 
@@ -150,7 +162,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           // For bulk jobs during sequential processing, update the progress message in real-time
           if (job.job_type === "bulk" && job.status === "processing" && job.progress_message) {
             setBulkJob(prev => {
-              if (prev.phase !== "running") return prev;
+              if (prev.phase !== "running" && prev.phase !== "paused") return prev;
               return { ...prev, progressMessage: job.progress_message };
             });
           }
@@ -216,7 +228,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
   // ─── Wait for a single job to reach terminal state ───
 
-  const waitForJobCompletion = useCallback((jobId: string): Promise<{ status: string; newMeetingsCount: number }> => {
+  const waitForJobCompletion = useCallback((jobId: string): Promise<{ status: string; newMeetingsCount: number; error?: string }> => {
     return new Promise((resolve) => {
       const channelName = `job-wait-${jobId}`;
       const channel = supabase
@@ -229,7 +241,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             if (job.status === "completed" || job.status === "failed") {
               supabase.removeChannel(channel);
               const meetingsCount = (job.new_meetings || []).length;
-              resolve({ status: job.status, newMeetingsCount: meetingsCount });
+              resolve({ status: job.status, newMeetingsCount: meetingsCount, error: job.error || undefined });
             }
           }
         )
@@ -238,8 +250,17 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
       // Safety timeout: 5 minutes
       setTimeout(() => {
         supabase.removeChannel(channel);
-        resolve({ status: "failed", newMeetingsCount: 0 });
+        resolve({ status: "failed", newMeetingsCount: 0, error: "Timed out after 5 minutes" });
       }, 5 * 60 * 1000);
+    });
+  }, []);
+
+  // ─── Pause check helper ───
+
+  const waitIfPaused = useCallback((): Promise<void> => {
+    if (!pausedRef.current) return Promise.resolve();
+    return new Promise((resolve) => {
+      resumeResolverRef.current = resolve;
     });
   }, []);
 
@@ -248,6 +269,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
   const startBulkProcessing = useCallback(() => {
     if (bulkJobRef.current.phase !== "idle" && bulkJobRef.current.phase !== "done") return;
     cancelledRef.current = false;
+    pausedRef.current = false;
 
     const currentLeads = leadsRef.current;
     const total = currentLeads.length;
@@ -261,6 +283,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
       phase: "running", totalJobs: total, completedJobs: 0, failedJobs: 0, foundMeetings: 0, noMeetings: 0,
       currentLeadIndex: 0, currentLeadName: currentLeads[0]?.name || "",
       progressMessage: `[1/${total}] Starting...`, bulkJobIds: [], cancelled: false,
+      paused: false, failedLeads: [],
     });
 
     toast.info(`Starting sequential processing of ${total} leads...`);
@@ -269,8 +292,12 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
       let completedCount = 0;
       let failedCount = 0;
       let foundMeetingsTotal = 0;
+      const failedLeadsList: FailedLead[] = [];
 
       for (let i = 0; i < currentLeads.length; i++) {
+        // Check pause
+        await waitIfPaused();
+
         if (cancelledRef.current) {
           toast.info("Bulk processing cancelled.");
           setBulkJob(prev => ({ ...prev, phase: "done", progressMessage: "Cancelled" }));
@@ -288,7 +315,6 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         }));
 
         try {
-          // Build lead payload
           const existingMeetingIds = (lead.meetings || []).map(m => m.firefliesId).filter(Boolean);
           const existingMeetings = (lead.meetings || []).map(m => ({
             ...m,
@@ -302,7 +328,6 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             existingMeetingIds, existingMeetings,
           };
 
-          // Create job row
           const { data: jobRow, error: insertError } = await (supabase
             .from("processing_jobs") as any)
             .insert({
@@ -313,16 +338,16 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             .single();
 
           if (insertError || !jobRow) {
+            const errMsg = insertError?.message || "Failed to create job";
             console.error(`Failed to create job for ${lead.name}:`, insertError);
             failedCount++;
-            setBulkJob(prev => ({ ...prev, failedJobs: failedCount }));
+            failedLeadsList.push({ name: lead.name, error: errMsg });
+            setBulkJob(prev => ({ ...prev, failedJobs: failedCount, failedLeads: [...failedLeadsList] }));
             continue;
           }
 
-          // Set up completion listener BEFORE invoking
           const completionPromise = waitForJobCompletion(jobRow.id);
 
-          // Invoke edge function (fire-and-forget on the HTTP level, but job runs server-side)
           supabase.functions.invoke("run-lead-job", {
             body: { jobId: jobRow.id, lead: leadPayload },
           }).catch(async (e: any) => {
@@ -332,7 +357,6 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
               .eq("id", jobRow.id);
           });
 
-          // Wait for this job to finish
           const result = await completionPromise;
 
           let noMeetingsCount = 0;
@@ -344,6 +368,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             }
           } else {
             failedCount++;
+            failedLeadsList.push({ name: lead.name, error: result.error || "Unknown error" });
           }
 
           setBulkJob(prev => ({
@@ -352,10 +377,10 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             failedJobs: failedCount,
             foundMeetings: foundMeetingsTotal,
             noMeetings: prev.noMeetings + noMeetingsCount,
+            failedLeads: [...failedLeadsList],
             progressMessage: `${label} ${lead.name}: ${result.status === "completed" ? (result.newMeetingsCount > 0 ? `Found ${result.newMeetingsCount} meeting(s)` : "No new meetings") : "Failed"}`,
           }));
 
-          // Cool-down between leads
           if (i < currentLeads.length - 1) {
             await new Promise(r => setTimeout(r, 1500));
           }
@@ -363,11 +388,11 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         } catch (e: any) {
           console.error(`Error processing ${lead.name}:`, e);
           failedCount++;
-          setBulkJob(prev => ({ ...prev, failedJobs: failedCount }));
+          failedLeadsList.push({ name: lead.name, error: e.message || "Unknown error" });
+          setBulkJob(prev => ({ ...prev, failedJobs: failedCount, failedLeads: [...failedLeadsList] }));
         }
       }
 
-      // Done
       setBulkJob(prev => ({
         ...prev,
         phase: "done",
@@ -375,11 +400,30 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
       }));
       toast.success(`Bulk processing complete: ${completedCount} processed, ${failedCount} failed, ${foundMeetingsTotal} meetings found`);
     })();
-  }, [waitForJobCompletion]);
+  }, [waitForJobCompletion, waitIfPaused]);
 
   const cancelBulk = useCallback(() => {
     cancelledRef.current = true;
+    // If paused, resume to let the loop exit
+    if (resumeResolverRef.current) {
+      resumeResolverRef.current();
+      resumeResolverRef.current = null;
+    }
     setBulkJob(prev => ({ ...prev, cancelled: true, progressMessage: "Cancelling..." }));
+  }, []);
+
+  const pauseBulk = useCallback(() => {
+    pausedRef.current = true;
+    setBulkJob(prev => ({ ...prev, paused: true, phase: "paused", progressMessage: `Paused — ${prev.progressMessage}` }));
+  }, []);
+
+  const resumeBulk = useCallback(() => {
+    pausedRef.current = false;
+    setBulkJob(prev => ({ ...prev, paused: false, phase: "running" }));
+    if (resumeResolverRef.current) {
+      resumeResolverRef.current();
+      resumeResolverRef.current = null;
+    }
   }, []);
 
   const dismissBulk = useCallback(() => {
@@ -496,7 +540,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
   return (
     <ProcessingContext.Provider value={{
       bulkJob, leadJobs,
-      startBulkProcessing, cancelBulk, dismissBulk,
+      startBulkProcessing, cancelBulk, dismissBulk, pauseBulk, resumeBulk,
       startAutoFind,
       acceptLeadSuggestion, dismissLeadSuggestion, acceptAllLeadSuggestions, dismissLeadJob,
     }}>
