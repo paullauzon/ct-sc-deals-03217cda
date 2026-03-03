@@ -121,172 +121,8 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
 
   const meetings = lead.meetings || [];
 
-  /** Process AI suggestions: auto-apply certain, show dialog for likely */
-  const handleSuggestedUpdates = (allSuggestions: SuggestedLeadUpdates[]) => {
-    const mergedApplied: string[] = [];
-    const mergedPending: Array<{ field: string; label: string; value: string | number; evidence: string }> = [];
-
-    for (const suggestions of allSuggestions) {
-      const { applied, pending } = processSuggestedUpdates(suggestions, lead.id, updateLead);
-      mergedApplied.push(...applied);
-      mergedPending.push(...pending);
-    }
-
-    // Deduplicate pending by field (keep latest)
-    const seen = new Set<string>();
-    const uniquePending = mergedPending.reverse().filter(p => {
-      if (seen.has(p.field)) return false;
-      seen.add(p.field);
-      return true;
-    }).reverse();
-
-    if (mergedApplied.length > 0) {
-      toast.success(`Auto-updated ${mergedApplied.length} field${mergedApplied.length !== 1 ? "s" : ""} from transcript`, {
-        description: mergedApplied.join(" · "),
-        duration: 6000,
-      });
-    }
-
-    if (uniquePending.length > 0) {
-      setPendingSuggestions(uniquePending);
-      setShowSuggestionsDialog(true);
-    }
-  };
-
-  const handleAutoFind = async () => {
-    setSearching(true);
-    try {
-      const genericDomains = new Set([
-        "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com",
-        "icloud.com", "mail.com", "protonmail.com", "live.com", "msn.com",
-      ]);
-      const searchDomains: string[] = [];
-      if (lead.email) {
-        const domain = lead.email.split("@")[1]?.toLowerCase();
-        if (domain && !genericDomains.has(domain)) searchDomains.push(domain);
-      }
-      if (searchDomains.length === 0 && lead.companyUrl) {
-        try {
-          const urlDomain = new URL(lead.companyUrl.startsWith("http") ? lead.companyUrl : `https://${lead.companyUrl}`).hostname.replace(/^www\./, "").toLowerCase();
-          if (urlDomain && !genericDomains.has(urlDomain)) searchDomains.push(urlDomain);
-        } catch { /* skip */ }
-      }
-
-      const searchCompanies: string[] = [];
-      if (lead.company?.trim()) searchCompanies.push(lead.company.trim());
-
-      const searchBody = {
-        searchEmails: lead.email ? [lead.email] : [],
-        searchNames: lead.name ? [lead.name] : [],
-        searchDomains,
-        searchCompanies,
-        limit: 100,
-        summarize: false,
-      };
-
-      const [ctResult, scResult] = await Promise.all([
-        supabase.functions.invoke("fetch-fireflies", { body: { ...searchBody, brand: "Captarget" } }),
-        supabase.functions.invoke("fetch-fireflies", { body: { ...searchBody, brand: "SourceCo" } }),
-      ]);
-
-      if (ctResult.error && scResult.error) throw ctResult.error;
-
-      const ctMeetings = (ctResult.data?.meetings || []).map((m: any) => ({ ...m, sourceBrand: "Captarget" }));
-      const scMeetings = (scResult.data?.meetings || []).map((m: any) => ({ ...m, sourceBrand: "SourceCo" }));
-
-      const seenIds = new Set<string>();
-      const foundMeetings: any[] = [];
-      for (const m of [...ctMeetings, ...scMeetings]) {
-        if (m.firefliesId && seenIds.has(m.firefliesId)) continue;
-        if (m.firefliesId) seenIds.add(m.firefliesId);
-        foundMeetings.push(m);
-      }
-      const existingIds = new Set(meetings.map((m) => m.firefliesId).filter(Boolean));
-      const newMeetings = foundMeetings.filter((m: any) => !existingIds.has(m.firefliesId));
-
-      if (newMeetings.length === 0) {
-        toast.info("No new meetings found in Fireflies for this lead.");
-        return;
-      }
-
-      const addedMeetings: Meeting[] = [];
-      const collectedSuggestions: SuggestedLeadUpdates[] = [];
-      for (const m of newMeetings) {
-        const transcript = m.transcript || "";
-        const allMeetings = [...meetings, ...addedMeetings].sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
-
-        let summary = m.summary || "";
-        let nextSteps = m.nextSteps || "";
-        let intelligence: MeetingIntelligence | undefined;
-
-        if (transcript.length > 20) {
-          try {
-            const { data: aiData, error: aiError } = await supabase.functions.invoke("process-meeting", {
-              body: { transcript, priorMeetings: allMeetings },
-            });
-            if (!aiError && aiData) {
-              summary = aiData.summary || summary;
-              nextSteps = aiData.nextSteps || nextSteps;
-              intelligence = aiData.intelligence || undefined;
-              if (aiData.suggestedLeadUpdates) {
-                collectedSuggestions.push(aiData.suggestedLeadUpdates);
-              }
-            }
-          } catch { /* fallback */ }
-        }
-
-        addedMeetings.push({
-          id: generateMeetingId(),
-          date: m.date || new Date().toISOString().split("T")[0],
-          title: m.title || "Untitled Meeting",
-          firefliesId: m.firefliesId,
-          firefliesUrl: m.transcriptUrl || "",
-          transcript,
-          summary,
-          nextSteps,
-          addedAt: new Date().toISOString(),
-          intelligence,
-          sourceBrand: m.sourceBrand || undefined,
-        });
-      }
-
-      const updatedMeetings = [...meetings, ...addedMeetings];
-      const allDates = updatedMeetings.map(m => m.date).filter(Boolean).sort();
-      const latestDate = allDates[allDates.length - 1] || "";
-      const updates: Partial<Lead> = { meetings: updatedMeetings };
-      if (latestDate && (!lead.lastContactDate || latestDate > lead.lastContactDate)) {
-        updates.lastContactDate = latestDate;
-      }
-      const today = new Date().toISOString().split("T")[0];
-      const allNextSteps = addedMeetings
-        .flatMap(m => m.intelligence?.nextSteps || [])
-        .filter(ns => ns.deadline && ns.deadline >= today)
-        .map(ns => ns.deadline)
-        .filter(Boolean)
-        .sort();
-      if (allNextSteps.length > 0 && (!lead.nextFollowUp || allNextSteps[0] > today)) {
-        updates.nextFollowUp = allNextSteps[0];
-      }
-      updateLead(lead.id, updates);
-      toast.success(`Found and processed ${addedMeetings.length} new meeting${addedMeetings.length !== 1 ? "s" : ""} from Fireflies`);
-
-      // Apply AI-suggested CRM updates
-      if (collectedSuggestions.length > 0) {
-        handleSuggestedUpdates(collectedSuggestions);
-      }
-
-      const meetingsWithIntel = updatedMeetings.filter(m => m.intelligence);
-      if (meetingsWithIntel.length > 0) {
-        synthesizeDealIntelligence(updatedMeetings, lead);
-      }
-    } catch (e: any) {
-      console.error("Auto-find error:", e);
-      toast.error(e.message || "Failed to search Fireflies");
-    } finally {
-      setSearching(false);
-    }
+  const handleAutoFind = () => {
+    startAutoFind(lead);
   };
 
   const synthesizeDealIntelligence = async (allMeetings: Meeting[], currentLead: Lead) => {
@@ -403,7 +239,9 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
             </Button>
           )}
           <Button variant="ghost" size="sm" onClick={handleAutoFind} disabled={searching} className="text-xs h-7">
-            {searching ? "Searching..." : (
+            {searching ? (
+              <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Searching...</>
+            ) : (
               <><img src="/fireflies-icon.svg" alt="" className="w-3.5 h-3.5 mr-1" />Auto-find</>
             )}
           </Button>
