@@ -2,3 +2,6 @@ project_id = "qlvlftqzctywlrsdlyty"
 
 [functions.summarize-meeting]
 verify_jwt = false
+
+[functions.fetch-fireflies]
+verify_jwt = false
