@@ -8,6 +8,121 @@ const corsHeaders = {
 
 const FIREFLIES_GRAPHQL = "https://api.fireflies.ai/graphql";
 
+// Common nickname map — bidirectional lookup
+const NICKNAME_MAP: Record<string, string[]> = {
+  michael: ["mike", "mikey"],
+  mike: ["michael"],
+  mikey: ["michael"],
+  robert: ["rob", "bob", "bobby", "robbie"],
+  rob: ["robert"],
+  bob: ["robert"],
+  bobby: ["robert"],
+  robbie: ["robert"],
+  william: ["will", "bill", "billy", "willy"],
+  will: ["william"],
+  bill: ["william"],
+  billy: ["william"],
+  willy: ["william"],
+  richard: ["rick", "rich", "dick"],
+  rick: ["richard"],
+  rich: ["richard"],
+  dick: ["richard"],
+  james: ["jim", "jimmy", "jamie"],
+  jim: ["james"],
+  jimmy: ["james"],
+  jamie: ["james"],
+  joseph: ["joe", "joey"],
+  joe: ["joseph"],
+  joey: ["joseph"],
+  thomas: ["tom", "tommy"],
+  tom: ["thomas"],
+  tommy: ["thomas"],
+  daniel: ["dan", "danny"],
+  dan: ["daniel"],
+  danny: ["daniel"],
+  matthew: ["matt"],
+  matt: ["matthew"],
+  christopher: ["chris"],
+  chris: ["christopher"],
+  anthony: ["tony"],
+  tony: ["anthony"],
+  nicholas: ["nick"],
+  nick: ["nicholas"],
+  benjamin: ["ben"],
+  ben: ["benjamin"],
+  alexander: ["alex"],
+  alex: ["alexander"],
+  jonathan: ["jon"],
+  jon: ["jonathan"],
+  stephen: ["steve"],
+  steve: ["stephen", "steven"],
+  steven: ["steve"],
+  edward: ["ed", "eddie"],
+  ed: ["edward"],
+  eddie: ["edward"],
+  elizabeth: ["liz", "beth", "lizzy"],
+  liz: ["elizabeth"],
+  beth: ["elizabeth"],
+  lizzy: ["elizabeth"],
+  jennifer: ["jen", "jenny"],
+  jen: ["jennifer"],
+  jenny: ["jennifer"],
+  katherine: ["kate", "kathy", "katie"],
+  kate: ["katherine", "catherine"],
+  kathy: ["katherine"],
+  katie: ["katherine"],
+  catherine: ["kate", "cathy"],
+  cathy: ["catherine"],
+  margaret: ["maggie", "meg"],
+  maggie: ["margaret"],
+  meg: ["margaret"],
+  patricia: ["pat", "patty"],
+  pat: ["patricia", "patrick"],
+  patty: ["patricia"],
+  patrick: ["pat"],
+  david: ["dave"],
+  dave: ["david"],
+  andrew: ["andy", "drew"],
+  andy: ["andrew"],
+  drew: ["andrew"],
+  timothy: ["tim"],
+  tim: ["timothy"],
+  samuel: ["sam"],
+  sam: ["samuel", "samantha"],
+  samantha: ["sam"],
+  rebecca: ["becca", "becky"],
+  becca: ["rebecca"],
+  becky: ["rebecca"],
+};
+
+const GENERIC_EMAIL_DOMAINS = new Set([
+  "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com",
+  "icloud.com", "mail.com", "protonmail.com", "live.com", "msn.com",
+  "me.com", "mac.com", "googlemail.com", "ymail.com",
+]);
+
+/** Get all name variants (original + nicknames) for a given first name */
+function getNameVariants(name: string): string[] {
+  const lower = name.toLowerCase();
+  const variants = [lower];
+  const aliases = NICKNAME_MAP[lower];
+  if (aliases) variants.push(...aliases);
+  return variants;
+}
+
+/** Word-boundary match: checks if `word` appears as a whole word in `text` */
+function wordBoundaryMatch(text: string, word: string): boolean {
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\b`, "i").test(text);
+}
+
+/** Extract domain from an email address */
+function extractDomain(email: string): string | null {
+  const at = email.lastIndexOf("@");
+  if (at < 0) return null;
+  return email.substring(at + 1).toLowerCase();
+}
+
 async function fetchFirefliesTranscripts(apiKey: string, limit: number, since?: string) {
   const query = `
     query {
@@ -151,52 +266,73 @@ serve(async (req) => {
       );
     }
 
-    const limit = body.limit || 50;
+    const limit = body.limit || 100;
     const since = body.since || null;
     const summarize = body.summarize !== false; // default true
     const searchEmails: string[] = body.searchEmails || [];
     const searchNames: string[] = body.searchNames || [];
+    const searchDomains: string[] = body.searchDomains || [];
 
-    console.log(`Fetching Fireflies transcripts (limit: ${limit}, since: ${since}, searchEmails: ${searchEmails.length}, searchNames: ${searchNames.length})`);
+    console.log(`Fetching Fireflies transcripts (limit: ${limit}, since: ${since}, searchEmails: ${searchEmails.length}, searchNames: ${searchNames.length}, searchDomains: ${searchDomains.length})`);
 
     let transcripts = await fetchFirefliesTranscripts(FIREFLIES_API_KEY, limit, since);
 
     // Filter by search criteria if provided
-    if (searchEmails.length > 0 || searchNames.length > 0) {
+    if (searchEmails.length > 0 || searchNames.length > 0 || searchDomains.length > 0) {
       const lowerEmails = searchEmails.map((e: string) => e.toLowerCase());
-      // Build full names for strict matching
       const lowerFullNames = searchNames.map((n: string) => n.toLowerCase().trim());
+      const lowerDomains = searchDomains.map((d: string) => d.toLowerCase().trim());
 
       transcripts = transcripts.filter((t: any) => {
         const participants = (t.participants || []).map((p: string) => p.toLowerCase());
         const organizerEmail = (t.organizer_email || "").toLowerCase();
         const firefliesUsers = (t.fireflies_users || []).map((u: string) => u.toLowerCase());
-        const allEmailFields = [...participants, organizerEmail, ...firefliesUsers];
+        const allEmailFields = [...participants, organizerEmail, ...firefliesUsers].filter(Boolean);
         const titleLower = (t.title || "").toLowerCase();
 
-        // Check email match (emails are unique enough)
+        // === Signal 1: Direct email match ===
         for (const email of lowerEmails) {
           if (allEmailFields.some((f: string) => f.includes(email))) return true;
         }
 
-        // Check full name match — require ALL parts of the name to appear in the SAME field
+        // === Signal 2: Company domain match ===
+        for (const domain of lowerDomains) {
+          for (const field of allEmailFields) {
+            const fieldDomain = extractDomain(field);
+            if (fieldDomain && fieldDomain === domain) return true;
+          }
+        }
+
+        // === Signal 3: Full name match with word-boundary + nicknames ===
         for (const fullName of lowerFullNames) {
           const nameParts = fullName.split(/\s+/).filter((p: string) => p.length >= 2);
           if (nameParts.length === 0) continue;
 
-          // Check if ALL name parts appear in the title
-          if (nameParts.every((part: string) => titleLower.includes(part))) return true;
+          // Build expanded name parts: for the first name, include nickname variants
+          const firstName = nameParts[0];
+          const firstNameVariants = getNameVariants(firstName);
+          const restParts = nameParts.slice(1);
 
-          // Check if ALL name parts appear in any single participant/email field
+          // Helper: check if a text matches any first-name variant + all remaining name parts
+          const matchesInText = (text: string): boolean => {
+            const hasFirstName = firstNameVariants.some((v) => wordBoundaryMatch(text, v));
+            if (!hasFirstName) return false;
+            return restParts.every((part) => wordBoundaryMatch(text, part));
+          };
+
+          // Check title
+          if (matchesInText(titleLower)) return true;
+
+          // Check each participant/email field individually
           for (const field of allEmailFields) {
-            if (nameParts.every((part: string) => field.includes(part))) return true;
+            if (matchesInText(field)) return true;
           }
 
-          // Check sentences speaker names for full name match
+          // === Signal 4: Speaker name match in transcript ===
           const speakers = (t.sentences || []).map((s: any) => (s.speaker_name || "").toLowerCase());
           const uniqueSpeakers = [...new Set(speakers)];
           for (const speaker of uniqueSpeakers) {
-            if (nameParts.every((part: string) => speaker.includes(part))) return true;
+            if (matchesInText(speaker as string)) return true;
           }
         }
         return false;
@@ -235,7 +371,6 @@ serve(async (req) => {
           if (aiResult.nextSteps) nextSteps = aiResult.nextSteps;
         } catch (e) {
           console.error("AI summarization failed for transcript:", t.id, e);
-          // Fall back to Fireflies' own summary
         }
       }
 
