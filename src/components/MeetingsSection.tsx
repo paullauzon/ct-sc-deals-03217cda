@@ -201,6 +201,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
       }
 
       const addedMeetings: Meeting[] = [];
+      const collectedSuggestions: SuggestedLeadUpdates[] = [];
       for (const m of newMeetings) {
         const transcript = m.transcript || "";
         const allMeetings = [...meetings, ...addedMeetings].sort(
@@ -220,6 +221,9 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
               summary = aiData.summary || summary;
               nextSteps = aiData.nextSteps || nextSteps;
               intelligence = aiData.intelligence || undefined;
+              if (aiData.suggestedLeadUpdates) {
+                collectedSuggestions.push(aiData.suggestedLeadUpdates);
+              }
             }
           } catch { /* fallback */ }
         }
@@ -257,6 +261,11 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
       }
       updateLead(lead.id, updates);
       toast.success(`Found and processed ${addedMeetings.length} new meeting${addedMeetings.length !== 1 ? "s" : ""} from Fireflies`);
+
+      // Apply AI-suggested CRM updates
+      if (collectedSuggestions.length > 0) {
+        handleSuggestedUpdates(collectedSuggestions);
+      }
 
       const meetingsWithIntel = updatedMeetings.filter(m => m.intelligence);
       if (meetingsWithIntel.length > 0) {
