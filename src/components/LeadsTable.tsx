@@ -956,3 +956,52 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
     </Sheet>
   );
 }
+
+// ─── Company Activity Section ───
+
+function CompanyActivitySection({ lead, allLeads, onSelectLead }: { lead: Lead; allLeads: Lead[]; onSelectLead: (id: string) => void }) {
+  const associates = getCompanyAssociates(lead, allLeads);
+  if (associates.length === 0) return null;
+
+  const shared = getSharedIntelligence([lead, ...associates]);
+  const trunc = (s: string) => s.length > 80 ? s.slice(0, 77) + "…" : s;
+
+  return (
+    <Section title={`Company Activity · ${lead.company}`}>
+      <p className="text-xs text-muted-foreground mb-2">
+        {associates.length + 1} contacts at this company · {shared.totalMeetings} total meeting{shared.totalMeetings !== 1 ? "s" : ""}
+      </p>
+
+      {/* Associated contacts */}
+      <div className="space-y-1.5">
+        {associates.map((a) => (
+          <div key={a.id} className="flex items-center justify-between text-sm border border-border rounded px-2.5 py-1.5">
+            <div className="min-w-0">
+              <span className="font-medium">{a.name}</span>
+              <span className="text-muted-foreground ml-1.5">· {a.role}</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Badge variant="outline" className="text-[10px]">{a.stage}</Badge>
+              {a.meetings?.length > 0 && (
+                <span className="text-[10px] text-muted-foreground">{a.meetings.length} mtg{a.meetings.length !== 1 ? "s" : ""}</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Shared intelligence highlights */}
+      {(shared.objections.length > 0 || shared.painPoints.length > 0) && (
+        <div className="mt-3 space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Shared Intelligence</p>
+          {shared.objections.map((o, i) => (
+            <p key={`o-${i}`} className="text-xs text-muted-foreground">⚡ {trunc(o)}</p>
+          ))}
+          {shared.painPoints.map((p, i) => (
+            <p key={`p-${i}`} className="text-xs text-muted-foreground">🎯 {trunc(p)}</p>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
