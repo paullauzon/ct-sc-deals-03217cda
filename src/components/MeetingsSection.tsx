@@ -179,7 +179,7 @@ function MeetingCard({ meeting }: { meeting: Meeting }) {
             </div>
           </div>
           {!open && meeting.summary && (
-            <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 pl-5">{meeting.summary}</p>
+            <p className="text-xs text-muted-foreground mt-1.5 line-clamp-3 pl-5">{meeting.summary}</p>
           )}
         </button>
       </CollapsibleTrigger>
@@ -188,7 +188,7 @@ function MeetingCard({ meeting }: { meeting: Meeting }) {
           {meeting.summary && (
             <div>
               <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Summary</label>
-              <div className="mt-1 text-sm leading-relaxed p-3 bg-secondary/30 rounded-md whitespace-pre-line">
+              <div className="mt-1 text-sm leading-relaxed p-4 bg-secondary/30 rounded-md whitespace-pre-line min-h-[80px]">
                 {meeting.summary}
               </div>
             </div>
