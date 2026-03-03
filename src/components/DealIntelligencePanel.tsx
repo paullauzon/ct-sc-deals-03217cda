@@ -82,6 +82,9 @@ const signalToValue: Record<string, number> = {
 };
 
 export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence; lead?: Lead }) {
+  const context = (() => { try { return useLeads(); } catch { return null; } })();
+  const [reSynthesizing, setReSynthesizing] = useState(false);
+
   // Guard against partial/malformed deal intelligence data
   if (!intel || !intel.dealNarrative) {
     return (
@@ -90,8 +93,6 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
       </div>
     );
   }
-  const context = (() => { try { return useLeads(); } catch { return null; } })();
-  const [reSynthesizing, setReSynthesizing] = useState(false);
 
   const handleReSynthesize = async () => {
     if (!lead || !context) return;
