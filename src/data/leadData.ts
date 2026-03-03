@@ -1,4 +1,5 @@
 import { Lead, LeadSource } from "@/types/lead";
+import { parseSourceCoIntroLeads, parseSourceCoTargetLeads } from "./sourceCoLeads";
 
 // Parse contact form CSV leads (since Nov 1, 2025)
 function parseContactLeads(): Lead[] {
@@ -87,7 +88,7 @@ function parseContactLeads(): Lead[] {
     { date: "2025-11-20", name: "Dan Selis", phone: "6198187147", email: "dan@selisadvisors.com", role: "Independent Sponsor", url: "https://www.selisadvisors.com", deals: "3-10", message: "Looking for several platform acquisitions and numerous add-ons. Very interested in how Captarget can help." },
   ];
 
-  return raw.map((r, i) => createLead(r, i, "Contact Form"));
+  return raw.map((r, i) => createLead(r, i, "CT Contact Form"));
 }
 
 // Parse free targets form leads
@@ -122,13 +123,14 @@ function parseTargetLeads(): Lead[] {
 
   return raw.map((r, i) => ({
     id: `TGT-${String(i + 1).padStart(3, "0")}`,
+    brand: "Captarget" as const,
     name: `${r.firstName} ${r.lastName}`.trim(),
     email: r.email,
     phone: "",
     company: extractCompany(r.url || r.email),
     companyUrl: r.url,
     role: r.role,
-    source: "Free Targets Form" as LeadSource,
+    source: "CT Free Targets Form" as LeadSource,
     dateSubmitted: r.date,
     message: r.criteria,
     dealsPlanned: r.deals,
@@ -156,6 +158,11 @@ function parseTargetLeads(): Lead[] {
     targetRevenue: r.revenue,
     geography: r.geography,
     currentSourcing: r.sourcing,
+    isDuplicate: false,
+    duplicateOf: "",
+    hearAboutUs: "",
+    acquisitionStrategy: "",
+    buyerType: "",
   }));
 }
 
@@ -164,7 +171,7 @@ function extractCompany(urlOrEmail: string): string {
   try {
     if (urlOrEmail.includes("@")) {
       const domain = urlOrEmail.split("@")[1];
-      if (["gmail.com", "hotmail.com", "icloud.com", "outlook.com", "yahoo.com", "proton.me"].includes(domain)) return "";
+      if (["gmail.com", "hotmail.com", "icloud.com", "outlook.com", "yahoo.com", "proton.me", "mozmail.com"].includes(domain)) return "";
       return domain.split(".")[0].charAt(0).toUpperCase() + domain.split(".")[0].slice(1);
     }
     const url = new URL(urlOrEmail.startsWith("http") ? urlOrEmail : `https://${urlOrEmail}`);
@@ -177,13 +184,14 @@ function extractCompany(urlOrEmail: string): string {
 
 function daysSince(dateStr: string): number {
   const d = new Date(dateStr);
-  const now = new Date("2026-03-02");
+  const now = new Date("2026-03-03");
   return Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 function createLead(r: { date: string; name: string; phone: string; email: string; role: string; url: string; deals: string; message: string }, idx: number, source: LeadSource): Lead {
   return {
     id: `CT-${String(idx + 1).padStart(3, "0")}`,
+    brand: "Captarget",
     name: r.name,
     email: r.email,
     phone: r.phone,
@@ -218,15 +226,46 @@ function createLead(r: { date: string; name: string; phone: string; email: strin
     targetRevenue: "",
     geography: "",
     currentSourcing: "",
+    isDuplicate: false,
+    duplicateOf: "",
+    hearAboutUs: "",
+    acquisitionStrategy: "",
+    buyerType: "",
   };
 }
 
-// Deduplicate by email, keeping the most recent
-function deduplicateLeads(leads: Lead[]): Lead[] {
+// Cross-brand duplicate detection: flag leads with same email across different brands
+function flagDuplicates(leads: Lead[]): Lead[] {
+  const emailMap = new Map<string, Lead[]>();
+  for (const lead of leads) {
+    const key = lead.email.toLowerCase();
+    if (!emailMap.has(key)) emailMap.set(key, []);
+    emailMap.get(key)!.push(lead);
+  }
+
+  for (const [, group] of emailMap) {
+    if (group.length > 1) {
+      // Check if there are leads from different brands
+      const brands = new Set(group.map((l) => l.brand));
+      if (brands.size > 1) {
+        // Flag all as cross-brand duplicates
+        for (const lead of group) {
+          lead.isDuplicate = true;
+          const otherBrand = group.find((l) => l.brand !== lead.brand);
+          if (otherBrand) lead.duplicateOf = otherBrand.id;
+        }
+      }
+    }
+  }
+  return leads;
+}
+
+// Deduplicate within same brand+source by email, keeping the most recent
+function deduplicateWithinBrand(leads: Lead[]): Lead[] {
   const map = new Map<string, Lead>();
   const sorted = [...leads].sort((a, b) => new Date(b.dateSubmitted).getTime() - new Date(a.dateSubmitted).getTime());
   for (const lead of sorted) {
-    const key = lead.email.toLowerCase();
+    const key = `${lead.brand}:${lead.source}:${lead.email.toLowerCase()}`;
     if (!map.has(key)) {
       map.set(key, lead);
     } else {
@@ -244,7 +283,12 @@ function deduplicateLeads(leads: Lead[]): Lead[] {
 }
 
 export function getInitialLeads(): Lead[] {
-  const contacts = parseContactLeads();
-  const targets = parseTargetLeads();
-  return deduplicateLeads([...contacts, ...targets]);
+  const ctContacts = parseContactLeads();
+  const ctTargets = parseTargetLeads();
+  const scIntro = parseSourceCoIntroLeads();
+  const scTargets = parseSourceCoTargetLeads();
+
+  const allLeads = [...ctContacts, ...ctTargets, ...scIntro, ...scTargets];
+  const deduped = deduplicateWithinBrand(allLeads);
+  return flagDuplicates(deduped);
 }

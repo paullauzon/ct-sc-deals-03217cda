@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
-import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit } from "@/types/lead";
+import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand } from "@/types/lead";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +16,13 @@ const MEETING_OUTCOMES: MeetingOutcome[] = ["Scheduled", "Held", "No-Show", "Res
 const FORECAST_CATEGORIES: ForecastCategory[] = ["Commit", "Best Case", "Pipeline", "Omit"];
 const ICP_FITS: IcpFit[] = ["Strong", "Moderate", "Weak"];
 
+const SOURCE_LABELS: Record<LeadSource, string> = {
+  "CT Contact Form": "CT Contact",
+  "CT Free Targets Form": "CT Targets",
+  "SC Intro Call Form": "SC Intro",
+  "SC Free Targets Form": "SC Targets",
+};
+
 type SortKey = "name" | "company" | "stage" | "dealValue" | "days" | "priority" | "dateSubmitted" | "source" | "serviceInterest" | "role";
 type SortDir = "asc" | "desc";
 
@@ -28,13 +35,20 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
 
   const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
   const days = computeDaysInStage(lead.stageEnteredDate);
+  const duplicate = lead.isDuplicate ? leads.find((l) => l.id === lead.duplicateOf) : null;
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
       <SheetContent side="right" className="overflow-y-auto" aria-describedby={undefined}>
         <SheetHeader>
-          <SheetTitle className="text-lg font-semibold">{lead.name}</SheetTitle>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono px-1.5 py-0.5 border border-border rounded">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
+            <SheetTitle className="text-lg font-semibold">{lead.name}</SheetTitle>
+          </div>
           <p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>
+          {lead.isDuplicate && (
+            <p className="text-xs text-muted-foreground mt-1">⚑ Cross-brand duplicate{duplicate ? ` — also submitted via ${duplicate.brand} (${duplicate.source})` : ""}</p>
+          )}
         </SheetHeader>
 
         <div className="space-y-8 mt-4">
@@ -44,9 +58,11 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
               <Field label="Email" value={lead.email} />
               <Field label="Phone" value={lead.phone || "—"} />
               <Field label="Website" value={lead.companyUrl ? <a href={lead.companyUrl} target="_blank" rel="noreferrer" className="underline">{lead.companyUrl}</a> : "—"} />
-              <Field label="Source" value={lead.source} />
+              <Field label="Source" value={SOURCE_LABELS[lead.source] || lead.source} />
+              <Field label="Brand" value={lead.brand} />
               <Field label="Submitted" value={lead.dateSubmitted} />
-              <Field label="Deals Planned" value={lead.dealsPlanned} />
+              <Field label="Deals Planned" value={lead.dealsPlanned || "—"} />
+              {lead.hearAboutUs && <Field label="Heard About Us" value={lead.hearAboutUs} />}
             </div>
           </Section>
 
@@ -63,6 +79,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
                 <Field label="Revenue Range" value={lead.targetRevenue || "—"} />
                 <Field label="Geography" value={lead.geography || "—"} />
                 <Field label="Current Sourcing" value={lead.currentSourcing || "—"} />
+                {lead.acquisitionStrategy && <Field label="Acq. Strategy" value={lead.acquisitionStrategy} />}
               </div>
             </Section>
           )}
@@ -181,7 +198,6 @@ function SelectField({ label, value, options, onChange, placeholder }: { label: 
   );
 }
 
-/** Select with a "None" clearable option for optional fields */
 function ClearableSelectField({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
   return (
     <div>
@@ -201,6 +217,7 @@ export function LeadsTable() {
   const { leads, addLead } = useLeads();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
+  const [brandFilter, setBrandFilter] = useState<string>("all");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [showNewLead, setShowNewLead] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("dateSubmitted");
@@ -219,7 +236,8 @@ export function LeadsTable() {
     const filtered = leads.filter((l) => {
       const matchSearch = !search || l.name.toLowerCase().includes(search.toLowerCase()) || l.email.toLowerCase().includes(search.toLowerCase()) || l.company.toLowerCase().includes(search.toLowerCase());
       const matchStage = stageFilter === "all" || l.stage === stageFilter;
-      return matchSearch && matchStage;
+      const matchBrand = brandFilter === "all" || l.brand === brandFilter;
+      return matchSearch && matchStage && matchBrand;
     });
 
     return [...filtered].sort((a, b) => {
@@ -238,15 +256,15 @@ export function LeadsTable() {
         default: return 0;
       }
     });
-  }, [leads, search, stageFilter, sortKey, sortDir]);
+  }, [leads, search, stageFilter, brandFilter, sortKey, sortDir]);
 
   const exportCSV = () => {
-    const headers = ["Name","Email","Phone","Company","Role","Source","Date Submitted","Stage","Service Interest","Deal Value","Priority","Assigned To","Meeting Date","Meeting Outcome","Forecast Category","ICP Fit","Days In Stage","Hours To Meeting Set","Close Reason","Won Reason","Lost Reason","Closed Date","Last Contact","Next Follow-up","Notes"];
+    const headers = ["Brand","Name","Email","Phone","Company","Role","Source","Date Submitted","Stage","Service Interest","Deal Value","Priority","Assigned To","Meeting Date","Meeting Outcome","Forecast Category","ICP Fit","Days In Stage","Hours To Meeting Set","Close Reason","Won Reason","Lost Reason","Closed Date","Last Contact","Next Follow-up","Duplicate","Notes"];
     const rows = leads.map((l) => [
-      l.name, l.email, l.phone, l.company, l.role, l.source, l.dateSubmitted, l.stage, l.serviceInterest,
+      l.brand, l.name, l.email, l.phone, l.company, l.role, l.source, l.dateSubmitted, l.stage, l.serviceInterest,
       l.dealValue || "", l.priority, l.assignedTo, l.meetingDate, l.meetingOutcome, l.forecastCategory,
       l.icpFit, computeDaysInStage(l.stageEnteredDate), l.hoursToMeetingSet ?? "", l.closeReason, l.wonReason, l.lostReason,
-      l.closedDate, l.lastContactDate, l.nextFollowUp, `"${(l.notes || "").replace(/"/g, '""')}"`
+      l.closedDate, l.lastContactDate, l.nextFollowUp, l.isDuplicate ? "Yes" : "", `"${(l.notes || "").replace(/"/g, '""')}"`
     ]);
     const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -291,6 +309,14 @@ export function LeadsTable() {
             {STAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={brandFilter} onValueChange={setBrandFilter}>
+          <SelectTrigger className="w-36"><SelectValue placeholder="All Brands" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Brands</SelectItem>
+            <SelectItem value="Captarget">Captarget</SelectItem>
+            <SelectItem value="SourceCo">SourceCo</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="border border-border rounded-md overflow-x-auto">
@@ -315,8 +341,14 @@ export function LeadsTable() {
             {sorted.map((lead) => (
               <tr key={lead.id} onClick={() => setSelectedLeadId(lead.id)} className="cursor-pointer hover:bg-secondary/30 transition-colors">
                 <td className="px-4 py-3">
-                  <div className="font-medium">{lead.name}</div>
-                  <div className="text-xs text-muted-foreground">{lead.email}</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded shrink-0">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
+                    <div>
+                      <div className="font-medium">{lead.name}</div>
+                      <div className="text-xs text-muted-foreground">{lead.email}</div>
+                    </div>
+                    {lead.isDuplicate && <span className="text-[10px] px-1 py-0.5 bg-secondary rounded ml-1">DUP</span>}
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{lead.company || "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{lead.role}</td>
@@ -328,7 +360,7 @@ export function LeadsTable() {
                 <td className="px-4 py-3 tabular-nums text-muted-foreground">{computeDaysInStage(lead.stageEnteredDate)}d</td>
                 <td className="px-4 py-3 text-xs">{lead.priority}</td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{lead.dateSubmitted}</td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{lead.source === "Contact Form" ? "CF" : "TF"}</td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{SOURCE_LABELS[lead.source] || lead.source}</td>
               </tr>
             ))}
           </tbody>
@@ -349,14 +381,16 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
     if (!form.name || !form.email) return;
     const today = new Date().toISOString().split("T")[0];
     onSave({
+      brand: "Captarget" as Brand,
       name: form.name, email: form.email, phone: form.phone, company: form.company,
       companyUrl: form.companyUrl, role: form.role, message: form.message, dealsPlanned: form.dealsPlanned,
-      source: "Contact Form" as LeadSource, dateSubmitted: today,
+      source: "CT Contact Form" as LeadSource, dateSubmitted: today,
       stage: "New Lead" as LeadStage, serviceInterest: "TBD" as const, dealValue: 0, assignedTo: "",
       meetingDate: "", meetingSetDate: "", closeReason: "" as const, closedDate: "", notes: "",
       lastContactDate: "", nextFollowUp: "", priority: "Medium" as const,
       meetingOutcome: "" as const, forecastCategory: "" as const, icpFit: "" as const,
       wonReason: "", lostReason: "", targetCriteria: "", targetRevenue: "", geography: "", currentSourcing: "",
+      isDuplicate: false, duplicateOf: "", hearAboutUs: "", acquisitionStrategy: "", buyerType: "",
     });
     setForm({ name: "", email: "", phone: "", company: "", companyUrl: "", role: "", message: "", dealsPlanned: "0-2" });
     onClose();

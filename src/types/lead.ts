@@ -1,4 +1,10 @@
-export type LeadSource = "Contact Form" | "Free Targets Form";
+export type Brand = "Captarget" | "SourceCo";
+
+export type LeadSource =
+  | "CT Contact Form"
+  | "CT Free Targets Form"
+  | "SC Intro Call Form"
+  | "SC Free Targets Form";
 
 export type LeadStage =
   | "New Lead"
@@ -51,6 +57,7 @@ export type IcpFit = "Strong" | "Moderate" | "Weak" | "";
 
 export interface Lead {
   id: string;
+  brand: Brand;
   name: string;
   email: string;
   phone: string;
@@ -77,7 +84,7 @@ export interface Lead {
   lastContactDate: string;
   nextFollowUp: string;
   priority: "High" | "Medium" | "Low";
-  // New fields
+  // Extended fields
   meetingOutcome: MeetingOutcome;
   forecastCategory: ForecastCategory;
   icpFit: IcpFit;
@@ -88,6 +95,12 @@ export interface Lead {
   targetRevenue: string;
   geography: string;
   currentSourcing: string;
+  // Cross-brand & SourceCo fields
+  isDuplicate: boolean;
+  duplicateOf: string;
+  hearAboutUs: string;
+  acquisitionStrategy: string;
+  buyerType: string;
 }
 
 export interface PipelineMetrics {
