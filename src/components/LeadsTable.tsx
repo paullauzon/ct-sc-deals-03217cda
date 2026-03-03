@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
-import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency, SuggestedUpdates, SuggestedFieldUpdate } from "@/types/lead";
+import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency, SuggestedUpdates, SuggestedFieldUpdate, Submission } from "@/types/lead";
 import { toast } from "sonner";
 import { MeetingsSection } from "@/components/MeetingsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
@@ -186,8 +186,13 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             <SheetTitle className="text-lg font-semibold">{lead.name}</SheetTitle>
           </div>
           <p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>
-          {lead.isDuplicate && (
-            <p className="text-xs text-muted-foreground mt-1">⚑ Cross-brand duplicate{duplicate ? ` — also submitted via ${duplicate.brand} (${duplicate.source})` : ""}</p>
+          {lead.submissions && lead.submissions.length > 1 && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                🔄 {lead.submissions.length} submissions
+                {new Set(lead.submissions.map(s => s.brand)).size > 1 ? " (CT + SC)" : ""}
+              </Badge>
+            </div>
           )}
         </SheetHeader>
 
@@ -238,17 +243,9 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           {/* Company Activity — cross-synced associates */}
           <CompanyActivitySection lead={lead} allLeads={leads} onSelectLead={(id) => { /* handled via LeadDetail re-open */ }} />
 
-          {/* Cross-Brand Submission */}
-          {lead.isDuplicate && duplicate && (
-            <Section title={`Also submitted via ${duplicate.brand}`}>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <Field label="Source" value={SOURCE_LABELS[duplicate.source] || duplicate.source} />
-                <Field label="Submitted" value={duplicate.dateSubmitted} />
-              </div>
-              {duplicate.message && (
-                <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{duplicate.message.length > 200 ? duplicate.message.slice(0, 200) + "…" : duplicate.message}</p>
-              )}
-            </Section>
+          {/* Submission History */}
+          {lead.submissions && lead.submissions.length > 1 && (
+            <SubmissionHistory submissions={lead.submissions} currentLead={lead} />
           )}
 
           {/* Message */}
