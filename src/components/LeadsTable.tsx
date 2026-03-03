@@ -103,6 +103,19 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             </div>
           </Section>
 
+          {/* Cross-Brand Submission */}
+          {lead.isDuplicate && duplicate && (
+            <Section title={`Also submitted via ${duplicate.brand}`}>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <Field label="Source" value={SOURCE_LABELS[duplicate.source] || duplicate.source} />
+                <Field label="Submitted" value={duplicate.dateSubmitted} />
+              </div>
+              {duplicate.message && (
+                <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{duplicate.message.length > 200 ? duplicate.message.slice(0, 200) + "…" : duplicate.message}</p>
+              )}
+            </Section>
+          )}
+
           {/* Message */}
           <Section title="Original Message">
             <p className="text-sm leading-relaxed">{lead.message}</p>
