@@ -232,22 +232,37 @@ export async function synthesizeDealIntelligence(
   lead: Pick<Lead, "name" | "company" | "role" | "stage" | "priority" | "dealValue" | "serviceInterest">
 ) {
   const sorted = [...meetings].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  const { data, error } = await supabase.functions.invoke("synthesize-deal-intelligence", {
-    body: {
-      meetings: sorted,
-      leadFields: {
-        name: lead.name,
-        company: lead.company,
-        role: lead.role,
-        stage: lead.stage,
-        priority: lead.priority,
-        dealValue: lead.dealValue,
-        serviceInterest: lead.serviceInterest,
+  // Strip transcripts to first 3000 chars to avoid payload size issues
+  const trimmedMeetings = sorted.map(m => ({
+    ...m,
+    transcript: m.transcript ? m.transcript.substring(0, 3000) : "",
+  }));
+
+  // Retry once on transient 500 errors
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { data, error } = await supabase.functions.invoke("synthesize-deal-intelligence", {
+      body: {
+        meetings: trimmedMeetings,
+        leadFields: {
+          name: lead.name,
+          company: lead.company,
+          role: lead.role,
+          stage: lead.stage,
+          priority: lead.priority,
+          dealValue: lead.dealValue,
+          serviceInterest: lead.serviceInterest,
+        },
       },
-    },
-  });
-  if (error) throw error;
-  return data?.dealIntelligence || null;
+    });
+    if (!error) return data?.dealIntelligence || null;
+    if (attempt === 0) {
+      console.warn("synthesizeDealIntelligence attempt 1 failed, retrying...", error);
+      await new Promise(r => setTimeout(r, 2000));
+      continue;
+    }
+    throw error;
+  }
+  return null;
 }
 
 function generateMeetingId(): string {

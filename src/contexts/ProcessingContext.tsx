@@ -318,6 +318,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             }
           } catch (e) {
             console.error("Deal intelligence synthesis error:", e);
+            toast.error(`Failed to synthesize deal intelligence for ${lead.name}`);
           }
         }
 

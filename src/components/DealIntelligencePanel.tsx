@@ -85,28 +85,24 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
   const context = (() => { try { return useLeads(); } catch { return null; } })();
   const [reSynthesizing, setReSynthesizing] = useState(false);
 
+  // Guard against partial/malformed deal intelligence data
+  if (!intel || !intel.dealNarrative) {
+    return (
+      <div className="text-xs text-muted-foreground p-3 border border-border rounded-md">
+        Deal intelligence data is incomplete. Try re-synthesizing.
+      </div>
+    );
+  }
+
   const handleReSynthesize = async () => {
     if (!lead || !context) return;
     setReSynthesizing(true);
     try {
       toast.info("Re-synthesizing deal intelligence...");
-      const sorted = [...(lead.meetings || [])].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-      );
-      const { data, error } = await supabase.functions.invoke("synthesize-deal-intelligence", {
-        body: {
-          meetings: sorted,
-          leadFields: {
-            name: lead.name, company: lead.company, role: lead.role,
-            stage: lead.stage, priority: lead.priority, dealValue: lead.dealValue,
-            serviceInterest: lead.serviceInterest, message: lead.message,
-            targetCriteria: lead.targetCriteria, acquisitionStrategy: lead.acquisitionStrategy,
-          },
-        },
-      });
-      if (error) throw error;
-      if (data?.dealIntelligence) {
-        context.updateLead(lead.id, { dealIntelligence: data.dealIntelligence });
+      const { synthesizeDealIntelligence } = await import("@/lib/bulkProcessing");
+      const dealIntel = await synthesizeDealIntelligence(lead.meetings || [], lead);
+      if (dealIntel) {
+        context.updateLead(lead.id, { dealIntelligence: dealIntel });
         toast.success("Deal intelligence re-synthesized");
       }
     } catch (e: any) {
@@ -213,6 +209,7 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
 
       {/* Momentum + Buying Committee Summary */}
       <div className="grid grid-cols-2 gap-2">
+      {intel.momentumSignals && (
         <div className="rounded-md border border-border bg-secondary/30 p-2.5 space-y-1.5">
           <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">
             <TrendingUp className="h-3 w-3" /> Momentum
@@ -221,10 +218,12 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
             {intel.momentumSignals.momentum}
           </Badge>
           <div className="grid grid-cols-2 gap-1 text-[10px] text-muted-foreground">
-            <span>Frequency: {intel.momentumSignals.meetingFrequencyDays}d</span>
-            <span>Completion: {intel.momentumSignals.completionRate}%</span>
+            <span>Frequency: {intel.momentumSignals.meetingFrequencyDays ?? "—"}d</span>
+            <span>Completion: {intel.momentumSignals.completionRate ?? "—"}%</span>
           </div>
         </div>
+      )}
+        {intel.buyingCommittee && (
         <div className="rounded-md border border-border bg-secondary/30 p-2.5 space-y-1.5">
           <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">
             <Users className="h-3 w-3" /> Buying Committee
@@ -235,6 +234,7 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
             {intel.buyingCommittee.blockers?.length > 0 && <p>🚫 <span className="font-medium">Blockers:</span> {intel.buyingCommittee.blockers.join(", ")}</p>}
           </div>
         </div>
+        )}
       </div>
 
       {/* Momentum Trend Chart */}
