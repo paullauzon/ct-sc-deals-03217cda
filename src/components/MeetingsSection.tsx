@@ -133,7 +133,15 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
           {[...meetings]
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             .map((meeting) => (
-              <MeetingCard key={meeting.id} meeting={meeting} />
+              <MeetingCard
+                key={meeting.id}
+                meeting={meeting}
+                onRemove={() => {
+                  const updated = meetings.filter((m) => m.id !== meeting.id);
+                  updateLead(lead.id, { meetings: updated });
+                  toast.success("Meeting removed");
+                }}
+              />
             ))}
         </div>
       )}
