@@ -55,32 +55,34 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
         return;
       }
 
-      // Process each new meeting with AI
-      let added = 0;
+      // Process each new meeting with AI — build new array immutably
+      const addedMeetings: Meeting[] = [];
       for (const m of newMeetings) {
         const transcript = m.transcript || "";
-        if (transcript.length < 20) continue;
 
-        const priorMeetings = [...meetings].sort(
+        const allMeetings = [...meetings, ...addedMeetings].sort(
           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
         );
 
+        // Use Fireflies native summary as fallback
         let summary = m.summary || "";
         let nextSteps = m.nextSteps || "";
 
-        try {
-          const { data: aiData, error: aiError } = await supabase.functions.invoke("process-meeting", {
-            body: { transcript, priorMeetings },
-          });
-          if (!aiError && aiData) {
-            summary = aiData.summary || summary;
-            nextSteps = aiData.nextSteps || nextSteps;
+        if (transcript.length > 20) {
+          try {
+            const { data: aiData, error: aiError } = await supabase.functions.invoke("process-meeting", {
+              body: { transcript, priorMeetings: allMeetings },
+            });
+            if (!aiError && aiData) {
+              summary = aiData.summary || summary;
+              nextSteps = aiData.nextSteps || nextSteps;
+            }
+          } catch {
+            // Fall back to Fireflies summary
           }
-        } catch {
-          // Fall back to Fireflies summary
         }
 
-        const newMeeting: Meeting = {
+        addedMeetings.push({
           id: generateMeetingId(),
           date: m.date || new Date().toISOString().split("T")[0],
           title: m.title || "Untitled Meeting",
@@ -90,14 +92,12 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
           summary,
           nextSteps,
           addedAt: new Date().toISOString(),
-        };
-
-        meetings.push(newMeeting);
-        added++;
+        });
       }
 
-      updateLead(lead.id, { meetings: [...meetings] });
-      toast.success(`Found and processed ${added} new meeting${added !== 1 ? "s" : ""} from Fireflies`);
+      const updatedMeetings = [...meetings, ...addedMeetings];
+      updateLead(lead.id, { meetings: updatedMeetings });
+      toast.success(`Found and processed ${addedMeetings.length} new meeting${addedMeetings.length !== 1 ? "s" : ""} from Fireflies`);
     } catch (e: any) {
       console.error("Auto-find error:", e);
       toast.error(e.message || "Failed to search Fireflies");
