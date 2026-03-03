@@ -58,6 +58,62 @@ export type ForecastCategory =
 
 export type IcpFit = "Strong" | "Moderate" | "Weak" | "";
 
+export interface MeetingAttendee {
+  name: string;
+  role: string;
+  company: string;
+}
+
+export interface MeetingActionItem {
+  item: string;
+  owner: string;
+  deadline: string;
+  status: string;
+}
+
+export interface MeetingNextStep {
+  action: string;
+  owner: string;
+  deadline: string;
+}
+
+export interface PriorFollowUp {
+  item: string;
+  status: "Addressed" | "Outstanding" | "Dropped";
+}
+
+export interface DealSignals {
+  buyingIntent: "Strong" | "Moderate" | "Low" | "None detected";
+  sentiment: "Very Positive" | "Positive" | "Neutral" | "Cautious" | "Negative";
+  timeline: string;
+  budgetMentioned: string;
+  champions: string[];
+  competitors: string[];
+  objections: string[];
+  riskFactors: string[];
+  decisionProcess: string;
+  urgencyDrivers: string[];
+}
+
+export interface MeetingIntelligence {
+  summary: string;
+  attendees: MeetingAttendee[];
+  keyTopics: string[];
+  nextSteps: MeetingNextStep[];
+  actionItems: MeetingActionItem[];
+  decisions: string[];
+  dealSignals: DealSignals;
+  priorFollowUps: PriorFollowUp[];
+  relationshipProgression: string;
+  questionsAsked: string[];
+  painPoints: string[];
+  valueProposition: string;
+  engagementLevel: "Highly Engaged" | "Engaged" | "Passive" | "Disengaged";
+  talkingPoints: string[];
+  competitiveIntel: string;
+  pricingDiscussion: string;
+}
+
 export interface Meeting {
   id: string;
   date: string;
@@ -69,6 +125,7 @@ export interface Meeting {
   nextSteps: string;
   addedAt: string;
   sourceBrand?: Brand;
+  intelligence?: MeetingIntelligence;
 }
 
 export interface Lead {
