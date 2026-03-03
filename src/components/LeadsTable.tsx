@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { computeDaysInStage, getCompanyAssociates, getSharedIntelligence } from "@/lib/leadUtils";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, RefreshCw, AlertTriangle, TrendingUp, Shield, Users, Target, BarChart3, Check, X, ArrowRight, Zap } from "lucide-react";
+import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -559,26 +559,25 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
   if (!enrichment) {
     return (
       <div className="space-y-2">
-        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b border-border pb-1">AI Intelligence</h3>
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider border-b border-border pb-1">External Research</h3>
         <Button onClick={onEnrich} disabled={enriching} variant="outline" size="sm" className="w-full gap-2">
           <Sparkles className="h-4 w-4" />
-          {enriching ? "Enriching..." : "Enrich with AI"}
+          {enriching ? "Researching..." : "Research & Recommend"}
         </Button>
-        <p className="text-xs text-muted-foreground">Analyzes transcripts, deal fields, company website, and web data to synthesize deal intelligence.</p>
+        <p className="text-xs text-muted-foreground">Scrapes company website, searches the web for prospect intelligence, and recommends CRM field updates.</p>
       </div>
     );
   }
 
-  const hasScorecard = enrichment.dealHealthScore || enrichment.engagementTrend || enrichment.likelihoodToClose;
   const hasSuggestions = enrichment.suggestedUpdates && Object.keys(enrichment.suggestedUpdates).length > 0;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between border-b border-border pb-1">
-        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">AI Intelligence</h3>
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">External Research</h3>
         <Button onClick={onEnrich} disabled={enriching} variant="ghost" size="sm" className="h-6 gap-1 text-xs text-muted-foreground">
           <RefreshCw className={`h-3 w-3 ${enriching ? "animate-spin" : ""}`} />
-          {enriching ? "Enriching..." : "Re-enrich"}
+          {enriching ? "Researching..." : "Re-research"}
         </Button>
       </div>
 
@@ -593,38 +592,47 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
       )}
 
       <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-3 text-sm">
-        {/* Deal Scorecard */}
-        {hasScorecard && (
-          <div className="rounded-md border border-border bg-background/50 p-2.5 space-y-2">
+        {/* Company Dossier — the headline section */}
+        {enrichment.companyDossier && enrichment.companyDossier !== "Not available from current data" && (
+          <div className="rounded-md border border-border bg-background/50 p-2.5 space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              <BarChart3 className="h-3.5 w-3.5" />
-              Deal Scorecard
+              <Shield className="h-3.5 w-3.5" />
+              Company Dossier
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              {enrichment.dealHealthScore && (
-                <div className="text-center">
-                  <p className="text-[10px] text-muted-foreground">Health</p>
-                  <ScorecardBadge value={enrichment.dealHealthScore} />
-                </div>
-              )}
-              {enrichment.engagementTrend && (
-                <div className="text-center">
-                  <p className="text-[10px] text-muted-foreground">Engagement</p>
-                  <ScorecardBadge value={enrichment.engagementTrend} />
-                </div>
-              )}
-              {enrichment.likelihoodToClose && (
-                <div className="text-center">
-                  <p className="text-[10px] text-muted-foreground">Close Likelihood</p>
-                  <ScorecardBadge value={enrichment.likelihoodToClose} />
-                </div>
-              )}
-            </div>
+            <p className="text-sm leading-relaxed whitespace-pre-line">{enrichment.companyDossier}</p>
           </div>
         )}
 
+        {/* Prospect Profile */}
+        {enrichment.prospectProfile && enrichment.prospectProfile !== "Not available from current data" && (
+          <div className="rounded-md border border-border bg-background/50 p-2.5 space-y-1.5">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <Users className="h-3.5 w-3.5" />
+              Prospect Profile
+            </div>
+            <p className="text-sm leading-relaxed whitespace-pre-line">{enrichment.prospectProfile}</p>
+          </div>
+        )}
+
+        {/* Pre-Meeting Ammunition */}
+        {enrichment.preMeetingAmmo && enrichment.preMeetingAmmo !== "Not available from current data" && (
+          <div className="rounded-md border-2 border-primary/20 bg-primary/5 p-2.5 space-y-1.5">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-primary uppercase tracking-wider">
+              <Zap className="h-3.5 w-3.5" />
+              Pre-Meeting Ammunition
+            </div>
+            <p className="text-sm leading-relaxed whitespace-pre-line">{enrichment.preMeetingAmmo}</p>
+          </div>
+        )}
+
+        {/* Competitive Positioning */}
+        {enrichment.competitivePositioning && enrichment.competitivePositioning !== "Not available from current data" && (
+          <EnrichField label="Competitive Positioning" value={enrichment.competitivePositioning} icon={<Target className="h-3.5 w-3.5" />} />
+        )}
+
+        {/* Core fields */}
         {enrichment.companyDescription && enrichment.companyDescription !== "Not available from current data" && (
-          <EnrichField label="Company" value={enrichment.companyDescription} />
+          <EnrichField label="Company Overview" value={enrichment.companyDescription} />
         )}
         {enrichment.acquisitionCriteria && enrichment.acquisitionCriteria !== "Not available from current data" && (
           <EnrichField label="Acquisition Criteria" value={enrichment.acquisitionCriteria} />
@@ -636,35 +644,16 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
           <EnrichField label="Urgency" value={enrichment.urgency} />
         )}
         {enrichment.decisionMakers && enrichment.decisionMakers !== "Not available from current data" && (
-          <EnrichField label="Decision Makers" value={enrichment.decisionMakers} icon={<Users className="h-3.5 w-3.5" />} />
-        )}
-
-        {enrichment.objectionsSummary && enrichment.objectionsSummary !== "Not available from current data" && (
-          <EnrichField label="Objections" value={enrichment.objectionsSummary} icon={<AlertTriangle className="h-3.5 w-3.5" />} />
-        )}
-        {enrichment.dealRiskAssessment && enrichment.dealRiskAssessment !== "Not available from current data" && (
-          <EnrichField label="Risk Assessment" value={enrichment.dealRiskAssessment} icon={<Shield className="h-3.5 w-3.5" />} />
-        )}
-        {enrichment.recommendedNextActions && enrichment.recommendedNextActions !== "Not available from current data" && (
-          <EnrichField label="Recommended Actions" value={enrichment.recommendedNextActions} icon={<Target className="h-3.5 w-3.5" />} />
-        )}
-        {enrichment.competitiveLandscape && enrichment.competitiveLandscape !== "Not available from current data" && (
-          <EnrichField label="Competitive Landscape" value={enrichment.competitiveLandscape} />
-        )}
-        {enrichment.relationshipMap && enrichment.relationshipMap !== "Not available from current data" && (
-          <EnrichField label="Relationship Map" value={enrichment.relationshipMap} icon={<Users className="h-3.5 w-3.5" />} />
-        )}
-        {enrichment.sentimentAnalysis && enrichment.sentimentAnalysis !== "Not available from current data" && (
-          <EnrichField label="Sentiment Analysis" value={enrichment.sentimentAnalysis} icon={<TrendingUp className="h-3.5 w-3.5" />} />
+          <EnrichField label="Key People" value={enrichment.decisionMakers} icon={<Users className="h-3.5 w-3.5" />} />
         )}
         {enrichment.competitorTools && enrichment.competitorTools !== "Not available from current data" && (
-          <EnrichField label="Competitor Tools" value={enrichment.competitorTools} />
+          <EnrichField label="Other Advisors/Tools" value={enrichment.competitorTools} />
         )}
         {enrichment.keyInsights && (
           <EnrichField label="Key Insights" value={enrichment.keyInsights} />
         )}
         <div className="pt-1 border-t border-border/50 space-y-0.5">
-          <p className="text-[10px] text-muted-foreground">Enriched {new Date(enrichment.enrichedAt).toLocaleDateString()}</p>
+          <p className="text-[10px] text-muted-foreground">Researched {new Date(enrichment.enrichedAt).toLocaleDateString()}</p>
           {enrichment.dataSources && (
             <p className="text-[10px] text-muted-foreground">Sources: {enrichment.dataSources}</p>
           )}
@@ -674,15 +663,6 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
   );
 }
 
-function ScorecardBadge({ value }: { value: string }) {
-  const lower = value.toLowerCase();
-  const variant = lower.includes("high") || lower.includes("strong") || lower.includes("good")
-    ? "default"
-    : lower.includes("low") || lower.includes("poor") || lower.includes("weak") || lower.includes("at risk")
-      ? "destructive"
-      : "secondary";
-  return <Badge variant={variant} className="text-[10px] mt-0.5">{value}</Badge>;
-}
 
 function EnrichField({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
   return (

@@ -328,7 +328,14 @@ export interface LeadEnrichment {
   keyInsights: string;
   dataSources?: string;
   enrichedAt: string;
-  // Holistic deal intelligence fields
+  // External Research fields (no overlap with Deal Intelligence)
+  companyDossier?: string;
+  prospectProfile?: string;
+  preMeetingAmmo?: string;
+  competitivePositioning?: string;
+  // AI-suggested field updates
+  suggestedUpdates?: SuggestedUpdates;
+  // Legacy fields (kept for backward compatibility with existing enrichments)
   objectionsSummary?: string;
   dealRiskAssessment?: string;
   recommendedNextActions?: string;
@@ -338,8 +345,6 @@ export interface LeadEnrichment {
   engagementTrend?: string;
   likelihoodToClose?: string;
   sentimentAnalysis?: string;
-  // AI-suggested field updates
-  suggestedUpdates?: SuggestedUpdates;
 }
 
 // ─── Lead ───
