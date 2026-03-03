@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { computeDaysInStage } from "@/lib/leadUtils";
+import { computeDaysInStage, getCompanyAssociates, getSharedIntelligence } from "@/lib/leadUtils";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { supabase } from "@/integrations/supabase/client";
 import { Sparkles, RefreshCw, AlertTriangle, TrendingUp, Shield, Users, Target, BarChart3, Check, X, ArrowRight, Zap } from "lucide-react";
