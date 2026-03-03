@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
-import { Lead, LeadStage, LeadSource, PipelineMetrics } from "@/types/lead";
+import { Lead, Meeting, LeadStage, LeadSource, PipelineMetrics } from "@/types/lead";
 import { getInitialLeads } from "@/data/leadData";
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 const LEAD_DEFAULTS: Partial<Lead> = {
   meetingOutcome: "",
@@ -22,6 +22,7 @@ const LEAD_DEFAULTS: Partial<Lead> = {
   hearAboutUs: "",
   acquisitionStrategy: "",
   buyerType: "",
+  meetings: [],
   firefliesUrl: "",
   firefliesTranscript: "",
   firefliesSummary: "",
@@ -57,6 +58,20 @@ function migrateLeads(leads: Lead[]): Lead[] {
     if (SOURCE_MIGRATION[migrated.source]) {
       migrated.source = SOURCE_MIGRATION[migrated.source] as any;
     }
+    // Migrate old flat fireflies fields to meetings array
+    if (!migrated.meetings) migrated.meetings = [];
+    if (migrated.firefliesTranscript && migrated.meetings.length === 0) {
+      migrated.meetings.push({
+        id: `migrated-${migrated.id}`,
+        date: migrated.meetingDate || migrated.lastContactDate || new Date().toISOString().split("T")[0],
+        title: "Imported Meeting",
+        firefliesUrl: migrated.firefliesUrl || "",
+        transcript: migrated.firefliesTranscript,
+        summary: migrated.firefliesSummary || "",
+        nextSteps: migrated.firefliesNextSteps || "",
+        addedAt: new Date().toISOString(),
+      });
+    }
     return migrated;
   });
 }
@@ -65,6 +80,7 @@ interface LeadContextType {
   leads: Lead[];
   updateLead: (id: string, updates: Partial<Lead>) => void;
   addLead: (lead: Omit<Lead, "id" | "daysInCurrentStage" | "stageEnteredDate" | "hoursToMeetingSet">) => void;
+  addMeeting: (leadId: string, meeting: Meeting) => void;
   getMetrics: () => PipelineMetrics;
   getLeadsByStage: (stage: LeadStage) => Lead[];
   searchLeads: (query: string) => Lead[];
@@ -128,6 +144,17 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         hoursToMeetingSet: null,
       };
       const next = [newLead, ...prev];
+      localStorage.setItem("captarget-leads", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const addMeeting = useCallback((leadId: string, meeting: Meeting) => {
+    setLeads((prev) => {
+      const next = prev.map((l) => {
+        if (l.id !== leadId) return l;
+        return { ...l, meetings: [...(l.meetings || []), meeting] };
+      });
       localStorage.setItem("captarget-leads", JSON.stringify(next));
       return next;
     });
@@ -197,7 +224,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <LeadContext.Provider value={{ leads, updateLead, addLead, getMetrics, getLeadsByStage, searchLeads }}>
+    <LeadContext.Provider value={{ leads, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads }}>
       {children}
     </LeadContext.Provider>
   );

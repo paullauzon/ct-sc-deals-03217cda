@@ -152,10 +152,33 @@ serve(async (req) => {
     const limit = body.limit || 50;
     const since = body.since || null;
     const summarize = body.summarize !== false; // default true
+    const searchEmails: string[] = body.searchEmails || [];
+    const searchNames: string[] = body.searchNames || [];
 
-    console.log(`Fetching Fireflies transcripts (limit: ${limit}, since: ${since})`);
+    console.log(`Fetching Fireflies transcripts (limit: ${limit}, since: ${since}, searchEmails: ${searchEmails.length}, searchNames: ${searchNames.length})`);
 
-    const transcripts = await fetchFirefliesTranscripts(FIREFLIES_API_KEY, limit, since);
+    let transcripts = await fetchFirefliesTranscripts(FIREFLIES_API_KEY, limit, since);
+
+    // Filter by search criteria if provided
+    if (searchEmails.length > 0 || searchNames.length > 0) {
+      const lowerEmails = searchEmails.map((e: string) => e.toLowerCase());
+      const lowerNames = searchNames.map((n: string) => n.toLowerCase().split(" ").pop() || "");
+
+      transcripts = transcripts.filter((t: any) => {
+        const participants = (t.participants || []).map((p: string) => p.toLowerCase());
+        // Check email match
+        for (const email of lowerEmails) {
+          if (participants.some((p: string) => p.includes(email))) return true;
+        }
+        // Check name match in title or participants
+        for (const name of lowerNames) {
+          if (name.length < 3) continue;
+          if (t.title?.toLowerCase().includes(name)) return true;
+          if (participants.some((p: string) => p.includes(name))) return true;
+        }
+        return false;
+      });
+    }
 
     const processed = [];
     for (const t of transcripts) {
