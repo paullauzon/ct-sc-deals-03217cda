@@ -45,12 +45,27 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
           searchDomains.push(domain);
         }
       }
+      // Fallback: extract domain from companyUrl if email domain is generic or missing
+      if (searchDomains.length === 0 && lead.companyUrl) {
+        try {
+          const urlDomain = new URL(lead.companyUrl.startsWith("http") ? lead.companyUrl : `https://${lead.companyUrl}`).hostname.replace(/^www\./, "").toLowerCase();
+          if (urlDomain && !genericDomains.has(urlDomain)) {
+            searchDomains.push(urlDomain);
+          }
+        } catch { /* invalid URL, skip */ }
+      }
+
+      const searchCompanies: string[] = [];
+      if (lead.company?.trim()) {
+        searchCompanies.push(lead.company.trim());
+      }
 
       const { data, error } = await supabase.functions.invoke("fetch-fireflies", {
         body: {
           searchEmails: [lead.email],
           searchNames: [lead.name],
           searchDomains,
+          searchCompanies,
           limit: 100,
           summarize: false,
           brand: lead.brand,
