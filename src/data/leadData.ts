@@ -1,4 +1,4 @@
-import { Lead, LeadSource } from "@/types/lead";
+import { Lead, LeadSource, Submission } from "@/types/lead";
 import { parseSourceCoIntroLeads, parseSourceCoTargetLeads } from "./sourceCoLeads";
 
 // Parse contact form CSV leads (since Nov 1, 2025)
@@ -164,6 +164,7 @@ function parseTargetLeads(): Lead[] {
     acquisitionStrategy: "",
     buyerType: "",
     meetings: [],
+    submissions: [],
     subscriptionValue: 0,
     billingFrequency: "",
     contractStart: "",
@@ -241,6 +242,7 @@ function createLead(r: { date: string; name: string; phone: string; email: strin
     acquisitionStrategy: "",
     buyerType: "",
     meetings: [],
+    submissions: [],
     subscriptionValue: 0,
     billingFrequency: "",
     contractStart: "",
@@ -252,8 +254,30 @@ function createLead(r: { date: string; name: string; phone: string; email: strin
   };
 }
 
-// Cross-brand duplicate detection: flag leads with same email across different brands
-function flagDuplicates(leads: Lead[]): Lead[] {
+// Extract a Submission record from a Lead
+function toSubmission(lead: Lead): Submission {
+  return {
+    brand: lead.brand,
+    source: lead.source,
+    dateSubmitted: lead.dateSubmitted,
+    message: lead.message,
+    dealsPlanned: lead.dealsPlanned,
+    targetCriteria: lead.targetCriteria,
+    targetRevenue: lead.targetRevenue,
+    geography: lead.geography,
+    currentSourcing: lead.currentSourcing,
+    hearAboutUs: lead.hearAboutUs,
+    acquisitionStrategy: lead.acquisitionStrategy,
+    buyerType: lead.buyerType,
+    role: lead.role,
+    phone: lead.phone,
+    companyUrl: lead.companyUrl,
+  };
+}
+
+// Merge all duplicates by email: produces one canonical lead per email
+// with all original submissions preserved chronologically
+function mergeAllDuplicates(leads: Lead[]): Lead[] {
   const emailMap = new Map<string, Lead[]>();
   for (const lead of leads) {
     const key = lead.email.toLowerCase();
@@ -261,43 +285,46 @@ function flagDuplicates(leads: Lead[]): Lead[] {
     emailMap.get(key)!.push(lead);
   }
 
+  const result: Lead[] = [];
   for (const [, group] of emailMap) {
-    if (group.length > 1) {
-      // Check if there are leads from different brands
-      const brands = new Set(group.map((l) => l.brand));
-      if (brands.size > 1) {
-        // Flag all as cross-brand duplicates
-        for (const lead of group) {
-          lead.isDuplicate = true;
-          const otherBrand = group.find((l) => l.brand !== lead.brand);
-          if (otherBrand) lead.duplicateOf = otherBrand.id;
-        }
-      }
-    }
-  }
-  return leads;
-}
+    // Sort oldest to newest for submission history
+    group.sort((a, b) => new Date(a.dateSubmitted).getTime() - new Date(b.dateSubmitted).getTime());
 
-// Deduplicate within same brand+source by email, keeping the most recent
-function deduplicateWithinBrand(leads: Lead[]): Lead[] {
-  const map = new Map<string, Lead>();
-  const sorted = [...leads].sort((a, b) => new Date(b.dateSubmitted).getTime() - new Date(a.dateSubmitted).getTime());
-  for (const lead of sorted) {
-    const key = `${lead.brand}:${lead.source}:${lead.email.toLowerCase()}`;
-    if (!map.has(key)) {
-      map.set(key, lead);
-    } else {
-      // Merge target criteria if the existing lead doesn't have it
-      const existing = map.get(key)!;
-      if (!existing.targetCriteria && lead.targetCriteria) {
-        existing.targetCriteria = lead.targetCriteria;
-        existing.targetRevenue = lead.targetRevenue;
-        existing.geography = lead.geography;
-        existing.currentSourcing = lead.currentSourcing;
+    // Use the most recent as the canonical lead
+    const canonical = { ...group[group.length - 1] };
+
+    // Build submissions array from ALL entries
+    const submissions = group.map(toSubmission);
+
+    // Merge target criteria from earlier submissions if canonical doesn't have them
+    for (const older of group) {
+      if (!canonical.targetCriteria && older.targetCriteria) {
+        canonical.targetCriteria = older.targetCriteria;
+        canonical.targetRevenue = older.targetRevenue;
+        canonical.geography = older.geography;
+        canonical.currentSourcing = older.currentSourcing;
       }
+      // Merge phone if missing
+      if (!canonical.phone && older.phone) canonical.phone = older.phone;
+      // Merge company URL if missing
+      if (!canonical.companyUrl && older.companyUrl) canonical.companyUrl = older.companyUrl;
+      if (!canonical.company && older.company) canonical.company = older.company;
     }
+
+    canonical.submissions = submissions;
+
+    // Flag cross-brand duplicates
+    const brands = new Set(group.map((l) => l.brand));
+    if (brands.size > 1) {
+      canonical.isDuplicate = true;
+      // Keep duplicateOf pointing to first entry from the other brand
+      const otherBrand = group.find((l) => l.brand !== canonical.brand);
+      if (otherBrand) canonical.duplicateOf = otherBrand.id;
+    }
+
+    result.push(canonical);
   }
-  return Array.from(map.values());
+  return result;
 }
 
 export function getInitialLeads(): Lead[] {
@@ -307,6 +334,5 @@ export function getInitialLeads(): Lead[] {
   const scTargets = parseSourceCoTargetLeads();
 
   const allLeads = [...ctContacts, ...ctTargets, ...scIntro, ...scTargets];
-  const deduped = deduplicateWithinBrand(allLeads);
-  return flagDuplicates(deduped);
+  return mergeAllDuplicates(allLeads);
 }

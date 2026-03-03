@@ -347,6 +347,26 @@ export interface LeadEnrichment {
   sentimentAnalysis?: string;
 }
 
+// ─── Submission (historical form entry) ───
+
+export interface Submission {
+  brand: Brand;
+  source: LeadSource;
+  dateSubmitted: string;
+  message: string;
+  dealsPlanned: string;
+  targetCriteria: string;
+  targetRevenue: string;
+  geography: string;
+  currentSourcing: string;
+  hearAboutUs: string;
+  acquisitionStrategy: string;
+  buyerType: string;
+  role: string;
+  phone: string;
+  companyUrl: string;
+}
+
 // ─── Lead ───
 
 export interface Lead {
@@ -402,6 +422,8 @@ export interface Lead {
   buyerType: string;
   // Multi-meeting support
   meetings: Meeting[];
+  // Submission history (all form entries from this person)
+  submissions: Submission[];
   // AI Enrichment
   enrichment?: LeadEnrichment;
   // Accumulated Deal Intelligence

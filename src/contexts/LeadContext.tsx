@@ -23,6 +23,7 @@ const LEAD_DEFAULTS: Partial<Lead> = {
   acquisitionStrategy: "",
   buyerType: "",
   meetings: [],
+  submissions: [],
   dealIntelligence: undefined,
   subscriptionValue: 0,
   billingFrequency: "",
