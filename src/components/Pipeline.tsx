@@ -19,6 +19,28 @@ const OWNER_COLORS: Record<string, string> = {
   Tomos: "bg-foreground/40 text-background",
 };
 
+function getClosingInsight(lead: Lead): { icon: string; text: string } | null {
+  const meetingsWithIntel = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const latest = meetingsWithIntel?.[0]?.intelligence;
+  if (!latest) return null;
+
+  const trunc = (s: string) => s.length > 60 ? s.slice(0, 57) + "…" : s;
+
+  if (latest.dealSignals?.objections?.length > 0) {
+    return { icon: "⚡", text: trunc(latest.dealSignals.objections[0]) };
+  }
+  if (latest.painPoints?.length > 0) {
+    return { icon: "🎯", text: trunc(latest.painPoints[0]) };
+  }
+  if (latest.dealSignals?.timeline && latest.dealSignals.timeline !== "Not mentioned" && latest.dealSignals.timeline !== "None mentioned") {
+    return { icon: "⏱", text: trunc(latest.dealSignals.timeline) };
+  }
+  if (latest.dealSignals?.sentiment && latest.dealSignals?.buyingIntent) {
+    return { icon: "📊", text: trunc(`${latest.dealSignals.sentiment} · ${latest.dealSignals.buyingIntent} intent`) };
+  }
+  return null;
+}
+
 function OwnerBadge({ owner }: { owner: string }) {
   if (!owner) {
     return (
