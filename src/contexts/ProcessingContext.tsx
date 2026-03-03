@@ -346,8 +346,8 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         };
 
         // Create job row in DB
-        const { data: jobRow, error: insertError } = await supabase
-          .from("processing_jobs")
+        const { data: jobRow, error: insertError } = await (supabase
+          .from("processing_jobs") as any)
           .insert({
             lead_id: lead.id,
             lead_name: lead.name,
