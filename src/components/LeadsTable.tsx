@@ -628,18 +628,11 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
   }
 
   const hasSuggestions = enrichment.suggestedUpdates && Object.keys(enrichment.suggestedUpdates).length > 0;
+  const [researchOpen, setResearchOpen] = useState(false);
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between border-b border-border pb-1">
-        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">External Research</h3>
-        <Button onClick={onEnrich} disabled={enriching} variant="ghost" size="sm" className="h-6 gap-1 text-xs text-muted-foreground">
-          <RefreshCw className={`h-3 w-3 ${enriching ? "animate-spin" : ""}`} />
-          {enriching ? "Researching..." : "Re-research"}
-        </Button>
-      </div>
-
-      {/* AI Suggested Updates - shown at top for visibility */}
+      {/* AI Suggested Updates - always visible at top */}
       {hasSuggestions && (
         <AISuggestionsPanel
           suggestions={enrichment.suggestedUpdates!}
@@ -649,56 +642,65 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
         />
       )}
 
-      <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-1 text-sm">
-        {/* Company Dossier */}
-        {enrichment.companyDossier && enrichment.companyDossier !== "Not available from current data" && (
-          <CollapsibleResearchSection icon={<Shield className="h-3.5 w-3.5" />} label="Company Dossier" content={enrichment.companyDossier} />
-        )}
-
-        {/* Prospect Profile */}
-        {enrichment.prospectProfile && enrichment.prospectProfile !== "Not available from current data" && (
-          <CollapsibleResearchSection icon={<Users className="h-3.5 w-3.5" />} label="Prospect Profile" content={enrichment.prospectProfile} />
-        )}
-
-        {/* Pre-Meeting Ammunition */}
-        {enrichment.preMeetingAmmo && enrichment.preMeetingAmmo !== "Not available from current data" && (
-          <CollapsibleResearchSection icon={<Zap className="h-3.5 w-3.5" />} label="Pre-Meeting Ammunition" content={enrichment.preMeetingAmmo} highlight />
-        )}
-
-        {/* Competitive Positioning */}
-        {enrichment.competitivePositioning && enrichment.competitivePositioning !== "Not available from current data" && (
-          <CollapsibleResearchSection icon={<Target className="h-3.5 w-3.5" />} label="Competitive Positioning" content={enrichment.competitivePositioning} />
-        )}
-
-        {/* Core fields */}
-        {enrichment.companyDescription && enrichment.companyDescription !== "Not available from current data" && (
-          <CollapsibleResearchSection label="Company Overview" content={enrichment.companyDescription} />
-        )}
-        {enrichment.acquisitionCriteria && enrichment.acquisitionCriteria !== "Not available from current data" && (
-          <CollapsibleResearchSection label="Acquisition Criteria" content={enrichment.acquisitionCriteria} />
-        )}
-        {enrichment.buyerMotivation && enrichment.buyerMotivation !== "Not available from current data" && (
-          <CollapsibleResearchSection label="Buyer Motivation" content={enrichment.buyerMotivation} />
-        )}
-        {enrichment.urgency && enrichment.urgency !== "Not available from current data" && (
-          <CollapsibleResearchSection label="Urgency" content={enrichment.urgency} />
-        )}
-        {enrichment.decisionMakers && enrichment.decisionMakers !== "Not available from current data" && (
-          <CollapsibleResearchSection icon={<Users className="h-3.5 w-3.5" />} label="Key People" content={enrichment.decisionMakers} />
-        )}
-        {enrichment.competitorTools && enrichment.competitorTools !== "Not available from current data" && (
-          <CollapsibleResearchSection label="Other Advisors/Tools" content={enrichment.competitorTools} />
-        )}
-        {enrichment.keyInsights && (
-          <CollapsibleResearchSection label="Key Insights" content={enrichment.keyInsights} />
-        )}
-        <div className="pt-1 border-t border-border/50 space-y-0.5">
-          <p className="text-[10px] text-muted-foreground">Researched {new Date(enrichment.enrichedAt).toLocaleDateString()}</p>
-          {enrichment.dataSources && (
-            <p className="text-[10px] text-muted-foreground">Sources: {enrichment.dataSources}</p>
-          )}
+      <Collapsible open={researchOpen} onOpenChange={setResearchOpen}>
+        <div className="flex items-center justify-between border-b border-border pb-1">
+          <CollapsibleTrigger className="flex items-center gap-1.5 group">
+            <ChevronRight className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-200", researchOpen && "rotate-90")} />
+            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">External Research</h3>
+            {!researchOpen && (
+              <span className="text-[10px] text-muted-foreground/60 ml-1">· {new Date(enrichment.enrichedAt).toLocaleDateString()}</span>
+            )}
+          </CollapsibleTrigger>
+          <Button onClick={(e) => { e.stopPropagation(); onEnrich(); }} disabled={enriching} variant="ghost" size="sm" className="h-6 gap-1 text-xs text-muted-foreground">
+            <RefreshCw className={`h-3 w-3 ${enriching ? "animate-spin" : ""}`} />
+            {enriching ? "Researching..." : "Re-research"}
+          </Button>
         </div>
-      </div>
+
+        <CollapsibleContent>
+          <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-1 text-sm mt-2">
+            {enrichment.companyDossier && enrichment.companyDossier !== "Not available from current data" && (
+              <CollapsibleResearchSection icon={<Shield className="h-3.5 w-3.5" />} label="Company Dossier" content={enrichment.companyDossier} />
+            )}
+            {enrichment.prospectProfile && enrichment.prospectProfile !== "Not available from current data" && (
+              <CollapsibleResearchSection icon={<Users className="h-3.5 w-3.5" />} label="Prospect Profile" content={enrichment.prospectProfile} />
+            )}
+            {enrichment.preMeetingAmmo && enrichment.preMeetingAmmo !== "Not available from current data" && (
+              <CollapsibleResearchSection icon={<Zap className="h-3.5 w-3.5" />} label="Pre-Meeting Ammunition" content={enrichment.preMeetingAmmo} highlight />
+            )}
+            {enrichment.competitivePositioning && enrichment.competitivePositioning !== "Not available from current data" && (
+              <CollapsibleResearchSection icon={<Target className="h-3.5 w-3.5" />} label="Competitive Positioning" content={enrichment.competitivePositioning} />
+            )}
+            {enrichment.companyDescription && enrichment.companyDescription !== "Not available from current data" && (
+              <CollapsibleResearchSection label="Company Overview" content={enrichment.companyDescription} />
+            )}
+            {enrichment.acquisitionCriteria && enrichment.acquisitionCriteria !== "Not available from current data" && (
+              <CollapsibleResearchSection label="Acquisition Criteria" content={enrichment.acquisitionCriteria} />
+            )}
+            {enrichment.buyerMotivation && enrichment.buyerMotivation !== "Not available from current data" && (
+              <CollapsibleResearchSection label="Buyer Motivation" content={enrichment.buyerMotivation} />
+            )}
+            {enrichment.urgency && enrichment.urgency !== "Not available from current data" && (
+              <CollapsibleResearchSection label="Urgency" content={enrichment.urgency} />
+            )}
+            {enrichment.decisionMakers && enrichment.decisionMakers !== "Not available from current data" && (
+              <CollapsibleResearchSection icon={<Users className="h-3.5 w-3.5" />} label="Key People" content={enrichment.decisionMakers} />
+            )}
+            {enrichment.competitorTools && enrichment.competitorTools !== "Not available from current data" && (
+              <CollapsibleResearchSection label="Other Advisors/Tools" content={enrichment.competitorTools} />
+            )}
+            {enrichment.keyInsights && (
+              <CollapsibleResearchSection label="Key Insights" content={enrichment.keyInsights} />
+            )}
+            <div className="pt-1 border-t border-border/50 space-y-0.5">
+              <p className="text-[10px] text-muted-foreground">Researched {new Date(enrichment.enrichedAt).toLocaleDateString()}</p>
+              {enrichment.dataSources && (
+                <p className="text-[10px] text-muted-foreground">Sources: {enrichment.dataSources}</p>
+              )}
+            </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }
