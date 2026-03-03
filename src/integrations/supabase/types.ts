@@ -14,6 +14,180 @@ export type Database = {
   }
   public: {
     Tables: {
+      leads: {
+        Row: {
+          acquisition_strategy: string
+          assigned_to: string
+          billing_frequency: string
+          brand: string
+          buyer_type: string
+          close_reason: string
+          closed_date: string
+          company: string
+          company_url: string
+          contract_end: string
+          contract_start: string
+          created_at: string
+          current_sourcing: string
+          date_submitted: string
+          days_in_current_stage: number
+          deal_intelligence: Json | null
+          deal_value: number
+          deals_planned: string
+          duplicate_of: string
+          email: string
+          enrichment: Json | null
+          fireflies_next_steps: string
+          fireflies_summary: string
+          fireflies_transcript: string
+          fireflies_url: string
+          forecast_category: string
+          geography: string
+          hear_about_us: string
+          hours_to_meeting_set: number | null
+          icp_fit: string
+          id: string
+          is_duplicate: boolean
+          last_contact_date: string
+          lost_reason: string
+          meeting_date: string
+          meeting_outcome: string
+          meeting_set_date: string
+          meetings: Json
+          message: string
+          name: string
+          next_follow_up: string
+          notes: string
+          phone: string
+          priority: string
+          role: string
+          service_interest: string
+          source: string
+          stage: string
+          stage_entered_date: string
+          submissions: Json
+          subscription_value: number
+          target_criteria: string
+          target_revenue: string
+          updated_at: string
+          won_reason: string
+        }
+        Insert: {
+          acquisition_strategy?: string
+          assigned_to?: string
+          billing_frequency?: string
+          brand?: string
+          buyer_type?: string
+          close_reason?: string
+          closed_date?: string
+          company?: string
+          company_url?: string
+          contract_end?: string
+          contract_start?: string
+          created_at?: string
+          current_sourcing?: string
+          date_submitted?: string
+          days_in_current_stage?: number
+          deal_intelligence?: Json | null
+          deal_value?: number
+          deals_planned?: string
+          duplicate_of?: string
+          email?: string
+          enrichment?: Json | null
+          fireflies_next_steps?: string
+          fireflies_summary?: string
+          fireflies_transcript?: string
+          fireflies_url?: string
+          forecast_category?: string
+          geography?: string
+          hear_about_us?: string
+          hours_to_meeting_set?: number | null
+          icp_fit?: string
+          id: string
+          is_duplicate?: boolean
+          last_contact_date?: string
+          lost_reason?: string
+          meeting_date?: string
+          meeting_outcome?: string
+          meeting_set_date?: string
+          meetings?: Json
+          message?: string
+          name?: string
+          next_follow_up?: string
+          notes?: string
+          phone?: string
+          priority?: string
+          role?: string
+          service_interest?: string
+          source?: string
+          stage?: string
+          stage_entered_date?: string
+          submissions?: Json
+          subscription_value?: number
+          target_criteria?: string
+          target_revenue?: string
+          updated_at?: string
+          won_reason?: string
+        }
+        Update: {
+          acquisition_strategy?: string
+          assigned_to?: string
+          billing_frequency?: string
+          brand?: string
+          buyer_type?: string
+          close_reason?: string
+          closed_date?: string
+          company?: string
+          company_url?: string
+          contract_end?: string
+          contract_start?: string
+          created_at?: string
+          current_sourcing?: string
+          date_submitted?: string
+          days_in_current_stage?: number
+          deal_intelligence?: Json | null
+          deal_value?: number
+          deals_planned?: string
+          duplicate_of?: string
+          email?: string
+          enrichment?: Json | null
+          fireflies_next_steps?: string
+          fireflies_summary?: string
+          fireflies_transcript?: string
+          fireflies_url?: string
+          forecast_category?: string
+          geography?: string
+          hear_about_us?: string
+          hours_to_meeting_set?: number | null
+          icp_fit?: string
+          id?: string
+          is_duplicate?: boolean
+          last_contact_date?: string
+          lost_reason?: string
+          meeting_date?: string
+          meeting_outcome?: string
+          meeting_set_date?: string
+          meetings?: Json
+          message?: string
+          name?: string
+          next_follow_up?: string
+          notes?: string
+          phone?: string
+          priority?: string
+          role?: string
+          service_interest?: string
+          source?: string
+          stage?: string
+          stage_entered_date?: string
+          submissions?: Json
+          subscription_value?: number
+          target_criteria?: string
+          target_revenue?: string
+          updated_at?: string
+          won_reason?: string
+        }
+        Relationships: []
+      }
       processing_jobs: {
         Row: {
           acknowledged: boolean | null

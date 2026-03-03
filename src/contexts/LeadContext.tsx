@@ -1,93 +1,12 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from "react";
-import { Lead, Meeting, LeadStage, LeadSource, PipelineMetrics } from "@/types/lead";
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
+import { Lead, Meeting, LeadStage, PipelineMetrics } from "@/types/lead";
 import { getInitialLeads } from "@/data/leadData";
-
-const SCHEMA_VERSION = 8;
-
-const LEAD_DEFAULTS: Partial<Lead> = {
-  meetingOutcome: "",
-  forecastCategory: "",
-  icpFit: "",
-  wonReason: "",
-  lostReason: "",
-  closeReason: "",
-  closedDate: "",
-  targetCriteria: "",
-  targetRevenue: "",
-  geography: "",
-  currentSourcing: "",
-  brand: "Captarget",
-  isDuplicate: false,
-  duplicateOf: "",
-  hearAboutUs: "",
-  acquisitionStrategy: "",
-  buyerType: "",
-  meetings: [],
-  submissions: [],
-  dealIntelligence: undefined,
-  subscriptionValue: 0,
-  billingFrequency: "",
-  contractStart: "",
-  contractEnd: "",
-  firefliesUrl: "",
-  firefliesTranscript: "",
-  firefliesSummary: "",
-  firefliesNextSteps: "",
-};
-
-const SERVICE_MIGRATION: Record<string, string> = {
-  "Deal Origination": "Off-Market Email Origination",
-  "Managed Outreach": "Direct Calling",
-  "Pipeline Building": "Full Platform (All 3)",
-  "Add-on Sourcing": "Off-Market Email Origination",
-  "Custom Campaign": "Full Platform (All 3)",
-};
-
-const SOURCE_MIGRATION: Record<string, string> = {
-  "Contact Form": "CT Contact Form",
-  "Free Targets Form": "CT Free Targets Form",
-};
-
-function migrateLeads(leads: Lead[]): Lead[] {
-  return leads.map((l) => {
-    const migrated = { ...l };
-    for (const [key, defaultVal] of Object.entries(LEAD_DEFAULTS)) {
-      if ((migrated as any)[key] === undefined) {
-        (migrated as any)[key] = Array.isArray(defaultVal)
-          ? [...defaultVal]
-          : (typeof defaultVal === 'object' && defaultVal !== null)
-            ? { ...defaultVal }
-            : defaultVal;
-      }
-    }
-    // Migrate old service interest names
-    if (SERVICE_MIGRATION[migrated.serviceInterest]) {
-      migrated.serviceInterest = SERVICE_MIGRATION[migrated.serviceInterest] as any;
-    }
-    // Migrate old source names
-    if (SOURCE_MIGRATION[migrated.source]) {
-      migrated.source = SOURCE_MIGRATION[migrated.source] as any;
-    }
-    // Migrate old flat fireflies fields to meetings array
-    if (!migrated.meetings) migrated.meetings = [];
-    if (migrated.firefliesTranscript && migrated.meetings.length === 0) {
-      migrated.meetings.push({
-        id: `migrated-${migrated.id}`,
-        date: migrated.meetingDate || migrated.lastContactDate || new Date().toISOString().split("T")[0],
-        title: "Imported Meeting",
-        firefliesUrl: migrated.firefliesUrl || "",
-        transcript: migrated.firefliesTranscript,
-        summary: migrated.firefliesSummary || "",
-        nextSteps: migrated.firefliesNextSteps || "",
-        addedAt: new Date().toISOString(),
-      });
-    }
-    return migrated;
-  });
-}
+import { supabase } from "@/integrations/supabase/client";
+import { leadToRow, rowToLead, leadUpdatesToRow } from "@/lib/leadDbMapping";
 
 interface LeadContextType {
   leads: Lead[];
+  loading: boolean;
   updateLead: (id: string, updates: Partial<Lead>) => void;
   addLead: (lead: Omit<Lead, "id" | "daysInCurrentStage" | "stageEnteredDate" | "hoursToMeetingSet">) => void;
   addMeeting: (leadId: string, meeting: Meeting) => void;
@@ -103,19 +22,61 @@ const STAGES: LeadStage[] = [
   "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Closed Lost", "Went Dark",
 ];
 
+async function fetchLeadsFromDb(): Promise<Lead[] | null> {
+  const { data, error } = await supabase.from("leads").select("*");
+  if (error) {
+    console.error("Failed to fetch leads:", error);
+    return null;
+  }
+  if (!data || data.length === 0) return null;
+  return data.map((row: any) => rowToLead(row));
+}
+
+async function seedLeadsToDb(leads: Lead[]) {
+  const rows = leads.map(leadToRow);
+  // Batch insert in chunks of 50
+  for (let i = 0; i < rows.length; i += 50) {
+    const chunk = rows.slice(i, i + 50);
+    const { error } = await supabase.from("leads").upsert(chunk as any, { onConflict: "id" });
+    if (error) console.error("Seed error:", error);
+  }
+}
+
+async function upsertLeadToDb(lead: Lead) {
+  const row = leadToRow(lead);
+  const { error } = await supabase.from("leads").upsert(row as any, { onConflict: "id" });
+  if (error) console.error("Upsert error:", error);
+}
+
+async function updateLeadInDb(id: string, updates: Partial<Lead>) {
+  const dbUpdates = leadUpdatesToRow(updates);
+  dbUpdates.updated_at = new Date().toISOString();
+  const { error } = await supabase.from("leads").update(dbUpdates).eq("id", id);
+  if (error) console.error("Update error:", error);
+}
+
 export function LeadProvider({ children }: { children: ReactNode }) {
-  const [leads, setLeads] = useState<Lead[]>(() => {
-    const ver = localStorage.getItem("captarget-schema-version");
-    const saved = localStorage.getItem("captarget-leads");
-    if (saved && ver === String(SCHEMA_VERSION)) {
-      return migrateLeads(JSON.parse(saved));
-    }
-    // Force re-initialize on schema version change to pick up new SC leads
-    const initial = getInitialLeads();
-    localStorage.setItem("captarget-leads", JSON.stringify(initial));
-    localStorage.setItem("captarget-schema-version", String(SCHEMA_VERSION));
-    return initial;
-  });
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load leads from DB on mount, seed if empty
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const dbLeads = await fetchLeadsFromDb();
+      if (cancelled) return;
+      if (dbLeads && dbLeads.length > 0) {
+        setLeads(dbLeads);
+      } else {
+        // Seed from hardcoded data
+        const initial = getInitialLeads();
+        setLeads(initial);
+        await seedLeadsToDb(initial);
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const updateLead = useCallback((id: string, updates: Partial<Lead>) => {
     setLeads((prev) => {
@@ -136,9 +97,10 @@ export function LeadProvider({ children }: { children: ReactNode }) {
           const set = new Date(updates.meetingSetDate).getTime();
           updated.hoursToMeetingSet = Math.round((set - submitted) / (1000 * 60 * 60));
         }
+        // Persist to DB (fire and forget)
+        updateLeadInDb(id, updated);
         return updated;
       });
-      localStorage.setItem("captarget-leads", JSON.stringify(next));
       return next;
     });
   }, []);
@@ -153,9 +115,9 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         stageEnteredDate: today,
         hoursToMeetingSet: null,
       };
-      const next = [newLead, ...prev];
-      localStorage.setItem("captarget-leads", JSON.stringify(next));
-      return next;
+      // Persist to DB
+      upsertLeadToDb(newLead);
+      return [newLead, ...prev];
     });
   }, []);
 
@@ -164,13 +126,13 @@ export function LeadProvider({ children }: { children: ReactNode }) {
       const next = prev.map((l) => {
         if (l.id !== leadId) return l;
         const updated = { ...l, meetings: [...(l.meetings || []), meeting] };
-        // Auto-update lastContactDate if meeting date is more recent
         if (meeting.date && (!l.lastContactDate || meeting.date > l.lastContactDate)) {
           updated.lastContactDate = meeting.date;
         }
+        // Persist to DB
+        updateLeadInDb(leadId, { meetings: updated.meetings, lastContactDate: updated.lastContactDate });
         return updated;
       });
-      localStorage.setItem("captarget-leads", JSON.stringify(next));
       return next;
     });
   }, []);
@@ -189,28 +151,20 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         value: inStage.reduce((sum, l) => sum + l.dealValue, 0),
       };
     }
-
     const activePipeline = leads.filter(
       (l) => !["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)
     );
     const meetingLeads = leads.filter((l) => l.hoursToMeetingSet !== null);
     const avgDaysToMeeting = meetingLeads.length
-      ? Math.round(
-          meetingLeads.reduce((s, l) => s + (l.hoursToMeetingSet || 0), 0) /
-            meetingLeads.length / 24
-        )
+      ? Math.round(meetingLeads.reduce((s, l) => s + (l.hoursToMeetingSet || 0), 0) / meetingLeads.length / 24)
       : 0;
 
     return {
       totalLeads: leads.length,
       totalPipelineValue: activePipeline.reduce((s, l) => s + l.dealValue, 0),
-      avgDealValue:
-        activePipeline.length
-          ? Math.round(
-              activePipeline.reduce((s, l) => s + l.dealValue, 0) /
-                activePipeline.filter((l) => l.dealValue > 0).length || 0
-            )
-          : 0,
+      avgDealValue: activePipeline.length
+        ? Math.round(activePipeline.reduce((s, l) => s + l.dealValue, 0) / (activePipeline.filter((l) => l.dealValue > 0).length || 1))
+        : 0,
       meetingsSet: stageValues["Meeting Set"].count + stageValues["Meeting Held"].count,
       closedWon: stageValues["Closed Won"].count,
       closedLost: stageValues["Closed Lost"].count,
@@ -239,7 +193,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <LeadContext.Provider value={{ leads, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads }}>
+    <LeadContext.Provider value={{ leads, loading, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads }}>
       {children}
     </LeadContext.Provider>
   );
