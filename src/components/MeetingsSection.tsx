@@ -71,8 +71,8 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
 
       if (ctResult.error && scResult.error) throw ctResult.error;
 
-      const ctMeetings = ctResult.data?.meetings || [];
-      const scMeetings = scResult.data?.meetings || [];
+      const ctMeetings = (ctResult.data?.meetings || []).map((m: any) => ({ ...m, sourceBrand: "Captarget" }));
+      const scMeetings = (scResult.data?.meetings || []).map((m: any) => ({ ...m, sourceBrand: "SourceCo" }));
 
       // Merge and deduplicate by firefliesId
       const seenIds = new Set<string>();
