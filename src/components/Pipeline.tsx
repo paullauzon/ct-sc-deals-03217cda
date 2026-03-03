@@ -132,7 +132,10 @@ export function Pipeline() {
                       {/* Row 5: Days in stage + meeting outcome */}
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className={`tabular-nums ${days > 14 ? "text-foreground font-medium" : ""}`}>{days}d in stage</span>
-                        {lead.meetingOutcome && <span>{lead.meetingOutcome}</span>}
+                        <div className="flex items-center gap-1.5">
+                          {lead.firefliesUrl && <span title="Fireflies recording linked" className="text-xs">🔥</span>}
+                          {lead.meetingOutcome && <span>{lead.meetingOutcome}</span>}
+                        </div>
                       </div>
                       {closed && lead.closeReason && (
                         <p className="text-xs text-muted-foreground">Reason: {lead.closeReason}</p>

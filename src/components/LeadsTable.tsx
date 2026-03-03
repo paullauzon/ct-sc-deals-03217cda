@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner } from "@/types/lead";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -120,6 +122,9 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             </div>
           </Section>
 
+          {/* Meeting Recording (Fireflies) */}
+          <FirefliesSection lead={lead} onSave={save} />
+
           {/* Close Reasons */}
           {lead.stage === "Closed Won" && (
             <Section title="Won Details">
@@ -163,6 +168,91 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function FirefliesSection({ lead, onSave }: { lead: Lead; onSave: (updates: Partial<Lead>) => void }) {
+  const [summarizing, setSummarizing] = useState(false);
+
+  const handleSummarize = async () => {
+    if (!lead.firefliesTranscript.trim()) return;
+    setSummarizing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("summarize-meeting", {
+        body: { transcript: lead.firefliesTranscript },
+      });
+      if (error) throw error;
+      onSave({
+        firefliesSummary: data.summary || "",
+        firefliesNextSteps: data.nextSteps || "",
+      });
+      toast.success("Meeting summarized successfully");
+    } catch (e: any) {
+      console.error("Summarize error:", e);
+      toast.error(e.message || "Failed to summarize meeting");
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
+  return (
+    <Section title="Meeting Recording">
+      <div className="space-y-3">
+        <div>
+          <label className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+            <span className="text-base">🔥</span> Fireflies URL
+          </label>
+          <Input
+            value={lead.firefliesUrl}
+            onChange={(e) => onSave({ firefliesUrl: e.target.value })}
+            className="mt-1"
+            placeholder="https://app.fireflies.ai/view/..."
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground uppercase tracking-wider">Transcript</label>
+          <Textarea
+            value={lead.firefliesTranscript}
+            onChange={(e) => onSave({ firefliesTranscript: e.target.value })}
+            className="mt-1"
+            placeholder="Paste your Fireflies transcript after the meeting..."
+            rows={6}
+          />
+        </div>
+        {lead.firefliesTranscript.trim() && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleSummarize}
+            disabled={summarizing}
+            className="w-full"
+          >
+            {summarizing ? "Summarizing..." : "✨ Summarize with AI"}
+          </Button>
+        )}
+        {lead.firefliesSummary && (
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider">Discussion Summary</label>
+            <div className="mt-1 text-sm leading-relaxed p-3 bg-secondary/30 rounded-md">
+              {lead.firefliesSummary}
+            </div>
+          </div>
+        )}
+        {lead.firefliesNextSteps && (
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wider">Next Steps</label>
+            <div className="mt-1 text-sm leading-relaxed p-3 bg-secondary/30 rounded-md whitespace-pre-line">
+              {lead.firefliesNextSteps}
+            </div>
+          </div>
+        )}
+        {!lead.firefliesTranscript && !lead.firefliesUrl && (
+          <p className="text-xs text-muted-foreground/60 text-center py-2">
+            Paste your Fireflies transcript after the meeting
+          </p>
+        )}
+      </div>
+    </Section>
   );
 }
 
@@ -389,6 +479,7 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
       meetingOutcome: "" as const, forecastCategory: "" as const, icpFit: "" as const,
       wonReason: "", lostReason: "", targetCriteria: "", targetRevenue: "", geography: "", currentSourcing: "",
       isDuplicate: false, duplicateOf: "", hearAboutUs: "", acquisitionStrategy: "", buyerType: "",
+      firefliesUrl: "", firefliesTranscript: "", firefliesSummary: "", firefliesNextSteps: "",
     });
     setForm({ name: "", email: "", phone: "", company: "", companyUrl: "", role: "", message: "", dealsPlanned: "0-2" });
     onClose();
