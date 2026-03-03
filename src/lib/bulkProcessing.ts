@@ -152,8 +152,16 @@ export function processSuggestedUpdates(
   const applied: string[] = [];
   const pending: Array<{ field: string; label: string; value: string | number; evidence: string }> = [];
 
+  const today = new Date().toISOString().split("T")[0];
+
   for (const [field, suggestion] of Object.entries(suggestions)) {
     if (!suggestion || !suggestion.value) continue;
+
+    // Reject past dates for nextFollowUp
+    if (field === "nextFollowUp" && typeof suggestion.value === "string" && suggestion.value < today) {
+      console.warn(`Skipping past nextFollowUp date: ${suggestion.value}`);
+      continue;
+    }
 
     if (suggestion.confidence === "Certain") {
       (certainUpdates as any)[field] = suggestion.value;
