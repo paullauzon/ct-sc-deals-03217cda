@@ -645,6 +645,33 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
 }
 
 
+function CollapsibleResearchSection({ icon, label, content, highlight }: { icon?: React.ReactNode; label: string; content: string; highlight?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const preview = content.length > 90 ? content.slice(0, 90).trim() + "…" : content;
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className={cn(
+        "w-full flex items-center gap-1.5 py-1.5 px-2 rounded-md text-left transition-colors hover:bg-background/60",
+        highlight && "border border-primary/20 bg-primary/5"
+      )}>
+        <ChevronRight className={cn("h-3 w-3 shrink-0 text-muted-foreground transition-transform duration-200", open && "rotate-90")} />
+        {icon && <span className={highlight ? "text-primary" : "text-muted-foreground"}>{icon}</span>}
+        <span className={cn("text-xs font-medium uppercase tracking-wider", highlight ? "text-primary" : "text-muted-foreground")}>{label}</span>
+        {!open && <span className="text-xs text-muted-foreground/60 truncate ml-1 font-normal normal-case">{preview}</span>}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className={cn(
+          "rounded-md p-2.5 ml-4 mt-1 mb-1",
+          highlight ? "border border-primary/20 bg-primary/5" : "border border-border bg-background/50"
+        )}>
+          <p className="text-sm leading-relaxed whitespace-pre-line">{content}</p>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function EnrichField({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
   return (
     <div>
