@@ -13,7 +13,8 @@ import { computeDaysInStage, getCompanyAssociates, getSharedIntelligence } from 
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap } from "lucide-react";
+import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -589,66 +590,48 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
         />
       )}
 
-      <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-3 text-sm">
-        {/* Company Dossier — the headline section */}
+      <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-1 text-sm">
+        {/* Company Dossier */}
         {enrichment.companyDossier && enrichment.companyDossier !== "Not available from current data" && (
-          <div className="rounded-md border border-border bg-background/50 p-2.5 space-y-1.5">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              <Shield className="h-3.5 w-3.5" />
-              Company Dossier
-            </div>
-            <p className="text-sm leading-relaxed whitespace-pre-line">{enrichment.companyDossier}</p>
-          </div>
+          <CollapsibleResearchSection icon={<Shield className="h-3.5 w-3.5" />} label="Company Dossier" content={enrichment.companyDossier} />
         )}
 
         {/* Prospect Profile */}
         {enrichment.prospectProfile && enrichment.prospectProfile !== "Not available from current data" && (
-          <div className="rounded-md border border-border bg-background/50 p-2.5 space-y-1.5">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              <Users className="h-3.5 w-3.5" />
-              Prospect Profile
-            </div>
-            <p className="text-sm leading-relaxed whitespace-pre-line">{enrichment.prospectProfile}</p>
-          </div>
+          <CollapsibleResearchSection icon={<Users className="h-3.5 w-3.5" />} label="Prospect Profile" content={enrichment.prospectProfile} />
         )}
 
         {/* Pre-Meeting Ammunition */}
         {enrichment.preMeetingAmmo && enrichment.preMeetingAmmo !== "Not available from current data" && (
-          <div className="rounded-md border-2 border-primary/20 bg-primary/5 p-2.5 space-y-1.5">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-primary uppercase tracking-wider">
-              <Zap className="h-3.5 w-3.5" />
-              Pre-Meeting Ammunition
-            </div>
-            <p className="text-sm leading-relaxed whitespace-pre-line">{enrichment.preMeetingAmmo}</p>
-          </div>
+          <CollapsibleResearchSection icon={<Zap className="h-3.5 w-3.5" />} label="Pre-Meeting Ammunition" content={enrichment.preMeetingAmmo} highlight />
         )}
 
         {/* Competitive Positioning */}
         {enrichment.competitivePositioning && enrichment.competitivePositioning !== "Not available from current data" && (
-          <EnrichField label="Competitive Positioning" value={enrichment.competitivePositioning} icon={<Target className="h-3.5 w-3.5" />} />
+          <CollapsibleResearchSection icon={<Target className="h-3.5 w-3.5" />} label="Competitive Positioning" content={enrichment.competitivePositioning} />
         )}
 
         {/* Core fields */}
         {enrichment.companyDescription && enrichment.companyDescription !== "Not available from current data" && (
-          <EnrichField label="Company Overview" value={enrichment.companyDescription} />
+          <CollapsibleResearchSection label="Company Overview" content={enrichment.companyDescription} />
         )}
         {enrichment.acquisitionCriteria && enrichment.acquisitionCriteria !== "Not available from current data" && (
-          <EnrichField label="Acquisition Criteria" value={enrichment.acquisitionCriteria} />
+          <CollapsibleResearchSection label="Acquisition Criteria" content={enrichment.acquisitionCriteria} />
         )}
         {enrichment.buyerMotivation && enrichment.buyerMotivation !== "Not available from current data" && (
-          <EnrichField label="Buyer Motivation" value={enrichment.buyerMotivation} />
+          <CollapsibleResearchSection label="Buyer Motivation" content={enrichment.buyerMotivation} />
         )}
         {enrichment.urgency && enrichment.urgency !== "Not available from current data" && (
-          <EnrichField label="Urgency" value={enrichment.urgency} />
+          <CollapsibleResearchSection label="Urgency" content={enrichment.urgency} />
         )}
         {enrichment.decisionMakers && enrichment.decisionMakers !== "Not available from current data" && (
-          <EnrichField label="Key People" value={enrichment.decisionMakers} icon={<Users className="h-3.5 w-3.5" />} />
+          <CollapsibleResearchSection icon={<Users className="h-3.5 w-3.5" />} label="Key People" content={enrichment.decisionMakers} />
         )}
         {enrichment.competitorTools && enrichment.competitorTools !== "Not available from current data" && (
-          <EnrichField label="Other Advisors/Tools" value={enrichment.competitorTools} />
+          <CollapsibleResearchSection label="Other Advisors/Tools" content={enrichment.competitorTools} />
         )}
         {enrichment.keyInsights && (
-          <EnrichField label="Key Insights" value={enrichment.keyInsights} />
+          <CollapsibleResearchSection label="Key Insights" content={enrichment.keyInsights} />
         )}
         <div className="pt-1 border-t border-border/50 space-y-0.5">
           <p className="text-[10px] text-muted-foreground">Researched {new Date(enrichment.enrichedAt).toLocaleDateString()}</p>
