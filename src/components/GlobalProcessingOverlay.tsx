@@ -11,7 +11,6 @@ export function GlobalProcessingOverlay() {
     bulkJob, leadJobs,
     cancelBulk, dismissBulk,
     acceptBulkSuggestion, dismissBulkSuggestion, acceptAllBulkSuggestions, skipAllBulkSuggestions,
-    acceptLeadSuggestion, dismissLeadSuggestion, acceptAllLeadSuggestions, dismissLeadJob,
   } = useProcessing();
 
   const progressPercent = bulkJob.progress && bulkJob.progress.total > 0
@@ -21,8 +20,7 @@ export function GlobalProcessingOverlay() {
     r.pendingSuggestions.map(s => ({ ...s, leadId: r.leadId, leadName: r.leadName }))
   );
 
-  // Lead jobs with pending suggestions
-  const pendingLeadJobs = Object.values(leadJobs).filter(j => !j.searching && j.pendingSuggestions.length > 0);
+  const searchingLeadJobs = Object.values(leadJobs).filter(j => j.searching);
   const searchingLeadJobs = Object.values(leadJobs).filter(j => j.searching);
 
   return (
