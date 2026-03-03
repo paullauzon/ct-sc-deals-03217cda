@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lead, Meeting, MeetingIntelligence, DealIntelligence } from "@/types/lead";
+import { Lead, Meeting, MeetingIntelligence, DealIntelligence, MeetingPrepBrief } from "@/types/lead";
 import { useLeads } from "@/contexts/LeadContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { FileText, Mail, Copy, Check } from "lucide-react";
 
 function generateMeetingId(): string {
   return `mtg-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
@@ -29,6 +30,13 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
   const { updateLead } = useLeads();
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [showPrepDialog, setShowPrepDialog] = useState(false);
+  const [prepBrief, setPrepBrief] = useState<MeetingPrepBrief | null>(null);
+  const [generatingPrep, setGeneratingPrep] = useState(false);
+  const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
+  const [followUpEmail, setFollowUpEmail] = useState("");
+  const [followUpMeetingId, setFollowUpMeetingId] = useState<string | null>(null);
+  const [generatingFollowUp, setGeneratingFollowUp] = useState(false);
 
   const meetings = lead.meetings || [];
 
@@ -54,7 +62,6 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
       const searchCompanies: string[] = [];
       if (lead.company?.trim()) searchCompanies.push(lead.company.trim());
 
-      // Search BOTH Fireflies accounts in parallel to find meetings regardless of which account recorded them
       const searchBody = {
         searchEmails: lead.email ? [lead.email] : [],
         searchNames: lead.name ? [lead.name] : [],
@@ -74,7 +81,6 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
       const ctMeetings = (ctResult.data?.meetings || []).map((m: any) => ({ ...m, sourceBrand: "Captarget" }));
       const scMeetings = (scResult.data?.meetings || []).map((m: any) => ({ ...m, sourceBrand: "SourceCo" }));
 
-      // Merge and deduplicate by firefliesId
       const seenIds = new Set<string>();
       const foundMeetings: any[] = [];
       for (const m of [...ctMeetings, ...scMeetings]) {
@@ -130,14 +136,12 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
       }
 
       const updatedMeetings = [...meetings, ...addedMeetings];
-      // Auto-update lastContactDate to the latest meeting date
       const allDates = updatedMeetings.map(m => m.date).filter(Boolean).sort();
       const latestDate = allDates[allDates.length - 1] || "";
       const updates: Partial<Lead> = { meetings: updatedMeetings };
       if (latestDate && (!lead.lastContactDate || latestDate > lead.lastContactDate)) {
         updates.lastContactDate = latestDate;
       }
-      // Auto-suggest nextFollowUp from meeting next steps with deadlines
       const allNextSteps = addedMeetings
         .flatMap(m => m.intelligence?.nextSteps || [])
         .filter(ns => ns.deadline)
@@ -150,7 +154,6 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
       updateLead(lead.id, updates);
       toast.success(`Found and processed ${addedMeetings.length} new meeting${addedMeetings.length !== 1 ? "s" : ""} from Fireflies`);
 
-      // Auto-trigger deal intelligence synthesis if we have meetings with intelligence
       const meetingsWithIntel = updatedMeetings.filter(m => m.intelligence);
       if (meetingsWithIntel.length > 0) {
         synthesizeDealIntelligence(updatedMeetings, lead);
@@ -194,6 +197,75 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
     }
   };
 
+  const handleGeneratePrep = async () => {
+    setGeneratingPrep(true);
+    setPrepBrief(null);
+    setShowPrepDialog(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-meeting-prep", {
+        body: {
+          meetings: meetings,
+          leadFields: {
+            name: lead.name,
+            company: lead.company,
+            role: lead.role,
+            stage: lead.stage,
+            priority: lead.priority,
+            dealValue: lead.dealValue,
+            serviceInterest: lead.serviceInterest,
+            brand: lead.brand,
+          },
+          dealIntelligence: lead.dealIntelligence || null,
+        },
+      });
+      if (error) throw error;
+      if (data?.brief) {
+        setPrepBrief(data.brief);
+      } else {
+        throw new Error("No brief generated");
+      }
+    } catch (e: any) {
+      console.error("Prep brief error:", e);
+      toast.error(e.message || "Failed to generate prep brief");
+      setShowPrepDialog(false);
+    } finally {
+      setGeneratingPrep(false);
+    }
+  };
+
+  const handleDraftFollowUp = async (meeting: Meeting) => {
+    setGeneratingFollowUp(true);
+    setFollowUpEmail("");
+    setFollowUpMeetingId(meeting.id);
+    setShowFollowUpDialog(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("draft-followup", {
+        body: {
+          meeting,
+          leadFields: {
+            name: lead.name,
+            company: lead.company,
+            role: lead.role,
+            brand: lead.brand,
+          },
+          dealIntelligence: lead.dealIntelligence || null,
+        },
+      });
+      if (error) throw error;
+      if (data?.email) {
+        setFollowUpEmail(data.email);
+      } else {
+        throw new Error("No email generated");
+      }
+    } catch (e: any) {
+      console.error("Follow-up draft error:", e);
+      toast.error(e.message || "Failed to draft follow-up");
+      setShowFollowUpDialog(false);
+    } finally {
+      setGeneratingFollowUp(false);
+    }
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between border-b border-border pb-1">
@@ -201,6 +273,12 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
           Meetings ({meetings.length})
         </h3>
         <div className="flex gap-1.5">
+          {meetings.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={handleGeneratePrep} disabled={generatingPrep} className="text-xs h-7 gap-1">
+              <FileText className="h-3 w-3" />
+              {generatingPrep ? "Generating..." : "Prep Brief"}
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={handleAutoFind} disabled={searching} className="text-xs h-7">
             {searching ? "Searching..." : (
               <><img src="/fireflies-icon.svg" alt="" className="w-3.5 h-3.5 mr-1" />Auto-find</>
@@ -229,6 +307,8 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
                   updateLead(lead.id, { meetings: updated });
                   toast.success("Meeting removed");
                 }}
+                onDraftFollowUp={() => handleDraftFollowUp(meeting)}
+                generatingFollowUp={generatingFollowUp && followUpMeetingId === meeting.id}
               />
             ))}
         </div>
@@ -242,7 +322,6 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
         onAdd={(meeting) => {
           const updatedMeetings = [...meetings, meeting];
           updateLead(lead.id, { meetings: updatedMeetings });
-          // Auto-trigger synthesis if the new meeting has intelligence
           if (meeting.intelligence) {
             const meetingsWithIntel = updatedMeetings.filter(m => m.intelligence);
             if (meetingsWithIntel.length > 0) {
@@ -251,9 +330,36 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
           }
         }}
       />
+
+      {/* Prep Brief Dialog */}
+      <PrepBriefDialog open={showPrepDialog} onOpenChange={setShowPrepDialog} brief={prepBrief} loading={generatingPrep} leadName={lead.name} />
+
+      {/* Follow-Up Email Dialog */}
+      <FollowUpDialog open={showFollowUpDialog} onOpenChange={setShowFollowUpDialog} email={followUpEmail} loading={generatingFollowUp} />
     </div>
   );
 }
+
+// ─── Coaching Badge Colors ───
+
+const talkRatioColor = (ratio?: number): string => {
+  if (ratio === undefined) return "";
+  if (ratio <= 40) return "bg-green-500/15 text-green-700 border-green-500/30";
+  if (ratio <= 60) return "bg-yellow-500/15 text-yellow-700 border-yellow-500/30";
+  return "bg-red-500/15 text-red-700 border-red-500/30";
+};
+
+const questionQualityColors: Record<string, string> = {
+  "Strong": "bg-green-500/15 text-green-700 border-green-500/30",
+  "Adequate": "bg-yellow-500/15 text-yellow-700 border-yellow-500/30",
+  "Weak": "bg-red-500/15 text-red-700 border-red-500/30",
+};
+
+const objectionHandlingColors: Record<string, string> = {
+  "Effective": "bg-green-500/15 text-green-700 border-green-500/30",
+  "Partial": "bg-yellow-500/15 text-yellow-700 border-yellow-500/30",
+  "Missed": "bg-red-500/15 text-red-700 border-red-500/30",
+};
 
 // ─── Sentiment / Intent badge colors ───
 
@@ -297,6 +403,9 @@ function IntelligenceDisplay({ intel }: { intel: MeetingIntelligence }) {
         <TabsTrigger value="insights" className="text-xs h-7">Insights</TabsTrigger>
         {intel.priorFollowUps?.length > 0 && (
           <TabsTrigger value="followups" className="text-xs h-7">Follow-ups</TabsTrigger>
+        )}
+        {(intel.talkRatio !== undefined || intel.questionQuality || intel.objectionHandling) && (
+          <TabsTrigger value="coaching" className="text-xs h-7">Coaching</TabsTrigger>
         )}
       </TabsList>
 
@@ -519,6 +628,42 @@ function IntelligenceDisplay({ intel }: { intel: MeetingIntelligence }) {
           </div>
         </TabsContent>
       )}
+
+      {/* Coaching Tab */}
+      {(intel.talkRatio !== undefined || intel.questionQuality || intel.objectionHandling) && (
+        <TabsContent value="coaching" className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            {intel.talkRatio !== undefined && (
+              <div className="p-2.5 bg-secondary/20 rounded text-center space-y-1">
+                <label className="text-[10px] text-muted-foreground uppercase">Talk Ratio</label>
+                <div className="text-lg font-bold">{intel.talkRatio}%</div>
+                <Badge className={`text-[9px] ${talkRatioColor(intel.talkRatio)}`}>
+                  {intel.talkRatio <= 40 ? "Great Listening" : intel.talkRatio <= 60 ? "Balanced" : "Too Much Talking"}
+                </Badge>
+              </div>
+            )}
+            {intel.questionQuality && (
+              <div className="p-2.5 bg-secondary/20 rounded text-center space-y-1">
+                <label className="text-[10px] text-muted-foreground uppercase">Question Quality</label>
+                <Badge className={`text-xs mt-1 ${questionQualityColors[intel.questionQuality] || ""}`}>
+                  {intel.questionQuality}
+                </Badge>
+              </div>
+            )}
+            {intel.objectionHandling && (
+              <div className="p-2.5 bg-secondary/20 rounded text-center space-y-1">
+                <label className="text-[10px] text-muted-foreground uppercase">Objection Handling</label>
+                <Badge className={`text-xs mt-1 ${objectionHandlingColors[intel.objectionHandling] || ""}`}>
+                  {intel.objectionHandling}
+                </Badge>
+              </div>
+            )}
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            💡 Ideal: Talk ratio ≤40%, strong discovery questions, effective objection handling.
+          </p>
+        </TabsContent>
+      )}
     </Tabs>
   );
 }
@@ -552,7 +697,7 @@ function TagList({ label, items, emoji, variant }: { label: string; items?: stri
 
 // ─── Meeting Card ───
 
-function MeetingCard({ meeting, onRemove }: { meeting: Meeting; onRemove: () => void }) {
+function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp }: { meeting: Meeting; onRemove: () => void; onDraftFollowUp: () => void; generatingFollowUp: boolean }) {
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const intel = meeting.intelligence;
@@ -583,6 +728,12 @@ function MeetingCard({ meeting, onRemove }: { meeting: Meeting; onRemove: () => 
                       {intel.engagementLevel}
                     </Badge>
                   )}
+                  {/* Coaching badges in collapsed view */}
+                  {intel.talkRatio !== undefined && (
+                    <Badge className={`text-[9px] h-4 ${talkRatioColor(intel.talkRatio)}`}>
+                      🎤 {intel.talkRatio}%
+                    </Badge>
+                  )}
                 </div>
               )}
             </div>
@@ -608,6 +759,16 @@ function MeetingCard({ meeting, onRemove }: { meeting: Meeting; onRemove: () => 
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border border-t-0 border-border rounded-b-lg p-3 space-y-3 -mt-1">
+          {/* Draft Follow-Up button */}
+          {(intel || meeting.summary) && (
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={onDraftFollowUp} disabled={generatingFollowUp}>
+                <Mail className="h-3 w-3" />
+                {generatingFollowUp ? "Drafting..." : "Draft Follow-Up"}
+              </Button>
+            </div>
+          )}
+
           {intel ? (
             <IntelligenceDisplay intel={intel} />
           ) : (
@@ -647,6 +808,200 @@ function MeetingCard({ meeting, onRemove }: { meeting: Meeting; onRemove: () => 
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+// ─── Prep Brief Dialog ───
+
+function PrepBriefDialog({ open, onOpenChange, brief, loading, leadName }: { open: boolean; onOpenChange: (v: boolean) => void; brief: MeetingPrepBrief | null; loading: boolean; leadName: string }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Meeting Prep Brief — {leadName}
+          </DialogTitle>
+        </DialogHeader>
+        {loading ? (
+          <div className="text-center py-12 space-y-2">
+            <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full mx-auto" />
+            <p className="text-sm text-muted-foreground">Generating your battle-ready prep brief...</p>
+          </div>
+        ) : brief ? (
+          <div className="space-y-5 text-sm">
+            {/* Executive Summary */}
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+              <p className="leading-relaxed">{brief.executiveSummary}</p>
+            </div>
+
+            {/* Action Items We Owe */}
+            {brief.openActionItemsWeOwe?.length > 0 && (
+              <PrepSection title="⚡ Action Items WE Owe (Critical)" variant="destructive">
+                {brief.openActionItemsWeOwe.map((a, i) => (
+                  <div key={i} className="p-2 bg-secondary/20 rounded space-y-0.5">
+                    <p className="font-medium text-xs">{a.item}</p>
+                    {a.deadline && <p className="text-[10px] text-muted-foreground">📅 {a.deadline}</p>}
+                    <p className="text-[10px] text-muted-foreground">{a.context}</p>
+                  </div>
+                ))}
+              </PrepSection>
+            )}
+
+            {/* Action Items They Owe */}
+            {brief.openActionItemsTheyOwe?.length > 0 && (
+              <PrepSection title="📋 Action Items THEY Owe (Follow-up Leverage)">
+                {brief.openActionItemsTheyOwe.map((a, i) => (
+                  <div key={i} className="p-2 bg-secondary/20 rounded space-y-0.5">
+                    <p className="font-medium text-xs">{a.item}</p>
+                    <p className="text-[10px] text-muted-foreground">Approach: {a.followUpApproach}</p>
+                  </div>
+                ))}
+              </PrepSection>
+            )}
+
+            {/* Unresolved Objections */}
+            {brief.unresolvedObjections?.length > 0 && (
+              <PrepSection title="⚠️ Unresolved Objections" variant="destructive">
+                {brief.unresolvedObjections.map((o, i) => (
+                  <div key={i} className="p-2 bg-secondary/20 rounded space-y-0.5">
+                    <p className="font-medium text-xs">{o.objection}</p>
+                    <p className="text-[10px] text-muted-foreground">Strategy: {o.recommendedApproach}</p>
+                    <p className="text-[10px] text-muted-foreground">Evidence: {o.evidence}</p>
+                  </div>
+                ))}
+              </PrepSection>
+            )}
+
+            {/* Stakeholder Briefing */}
+            {brief.stakeholderBriefing?.length > 0 && (
+              <PrepSection title="👥 Stakeholder Briefing">
+                {brief.stakeholderBriefing.map((s, i) => (
+                  <div key={i} className="p-2 bg-secondary/20 rounded space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-xs">{s.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{s.role}</span>
+                      <Badge variant="outline" className="text-[9px] h-4">{s.stance}</Badge>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Interests: {s.keyInterests}</p>
+                    <p className="text-[10px] text-muted-foreground">Approach: {s.approachTips}</p>
+                  </div>
+                ))}
+              </PrepSection>
+            )}
+
+            {/* Competitive Threats */}
+            {brief.competitiveThreats?.length > 0 && (
+              <PrepSection title="⚔️ Competitive Threats">
+                {brief.competitiveThreats.map((c, i) => (
+                  <div key={i} className="p-2 bg-secondary/20 rounded space-y-0.5">
+                    <p className="font-medium text-xs">{c.competitor}</p>
+                    <p className="text-[10px] text-muted-foreground">Threat: {c.threat}</p>
+                    <p className="text-[10px] text-muted-foreground">Counter: {c.counterStrategy}</p>
+                  </div>
+                ))}
+              </PrepSection>
+            )}
+
+            {/* Talking Points */}
+            {brief.talkingPoints?.length > 0 && (
+              <PrepSection title="💬 Talking Points">
+                <ul className="space-y-0.5">
+                  {brief.talkingPoints.map((tp, i) => (
+                    <li key={i} className="text-xs flex items-start gap-1.5">
+                      <span className="text-primary shrink-0">{i + 1}.</span> {tp}
+                    </li>
+                  ))}
+                </ul>
+              </PrepSection>
+            )}
+
+            {/* Questions to Ask */}
+            {brief.questionsToAsk?.length > 0 && (
+              <PrepSection title="❓ Questions to Ask">
+                <ul className="space-y-0.5">
+                  {brief.questionsToAsk.map((q, i) => (
+                    <li key={i} className="text-xs text-muted-foreground">• {q}</li>
+                  ))}
+                </ul>
+              </PrepSection>
+            )}
+
+            {/* Risks & Desired Outcomes side by side */}
+            <div className="grid grid-cols-2 gap-3">
+              {brief.risksToWatch?.length > 0 && (
+                <PrepSection title="🚩 Risks to Watch">
+                  <ul className="space-y-0.5">
+                    {brief.risksToWatch.map((r, i) => (
+                      <li key={i} className="text-xs text-destructive/80">• {r}</li>
+                    ))}
+                  </ul>
+                </PrepSection>
+              )}
+              {brief.desiredOutcomes?.length > 0 && (
+                <PrepSection title="🎯 Desired Outcomes">
+                  <ul className="space-y-0.5">
+                    {brief.desiredOutcomes.map((o, i) => (
+                      <li key={i} className="text-xs text-green-700">• {o}</li>
+                    ))}
+                  </ul>
+                </PrepSection>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PrepSection({ title, children, variant }: { title: string; children: React.ReactNode; variant?: string }) {
+  return (
+    <div className="space-y-1.5">
+      <h4 className={`text-xs font-medium uppercase tracking-wider ${variant === "destructive" ? "text-destructive" : "text-muted-foreground"}`}>{title}</h4>
+      <div className="space-y-1">{children}</div>
+    </div>
+  );
+}
+
+// ─── Follow-Up Email Dialog ───
+
+function FollowUpDialog({ open, onOpenChange, email, loading }: { open: boolean; onOpenChange: (v: boolean) => void; email: string; loading: boolean }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(email);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Mail className="h-4 w-4" />
+            Follow-Up Email Draft
+          </DialogTitle>
+        </DialogHeader>
+        {loading ? (
+          <div className="text-center py-12 space-y-2">
+            <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full mx-auto" />
+            <p className="text-sm text-muted-foreground">Drafting your follow-up email...</p>
+          </div>
+        ) : email ? (
+          <div className="space-y-3">
+            <div className="rounded-md border border-border bg-secondary/20 p-4">
+              <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed">{email}</pre>
+            </div>
+            <Button onClick={handleCopy} variant="outline" size="sm" className="w-full gap-2">
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? "Copied!" : "Copy to Clipboard"}
+            </Button>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -751,7 +1106,7 @@ function AddMeetingDialog({
           </div>
           {transcript.trim().length > 20 && (
             <p className="text-xs text-muted-foreground">
-              ✨ AI will extract full intelligence: summary, action items, deal signals, sentiment & more
+              ✨ AI will extract full intelligence: summary, action items, deal signals, sentiment, coaching metrics & more
               {existingMeetings.length > 0 && ` — informed by ${existingMeetings.length} prior meeting${existingMeetings.length !== 1 ? "s" : ""}`}
             </p>
           )}
