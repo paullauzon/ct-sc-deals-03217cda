@@ -167,6 +167,7 @@ serve(async (req) => {
       `- Web search results: ${webSearchContent ? `YES (${webSearchUrls.length})` : "NO"}`,
       `- Deal fields: ${dealFields.length > 0 ? "YES" : "NO"}`,
       `- Meeting intelligence (aggregated): ${meetingIntelStr.length > 0 ? "YES" : "NO"}`,
+      `- Deal intelligence (cross-meeting synthesis): ${dealIntelStr.length > 0 ? "YES" : "NO"}`,
       `- Notes: ${leadNotes ? "YES" : "NO"}`,
     ].join("\n");
 
@@ -179,6 +180,7 @@ serve(async (req) => {
     if (companyUrl) contextParts.push(`Website: ${companyUrl}`);
     if (dealFields.length) contextParts.push(`DEAL FIELDS:\n${dealFields.join("\n")}`);
     if (meetingIntelStr.length) contextParts.push(`AGGREGATED MEETING INTELLIGENCE:\n${meetingIntelStr.join("\n")}`);
+    if (dealIntelStr.length) contextParts.push(`ACCUMULATED DEAL INTELLIGENCE (cross-meeting synthesis):\n${dealIntelStr.join("\n")}`);
     if (leadMessage) contextParts.push(`Original Form Submission:\n${leadMessage}`);
     if (leadNotes) contextParts.push(`Internal Notes:\n${leadNotes}`);
     if (websiteContent) contextParts.push(`Company Website Content:\n${websiteContent}`);
