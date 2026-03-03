@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.draft-followup]
 verify_jwt = false
+
+[functions.run-lead-job]
+verify_jwt = false
