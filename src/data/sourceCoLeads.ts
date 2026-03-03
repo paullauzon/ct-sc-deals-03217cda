@@ -71,6 +71,7 @@ function makeSCLead(
     acquisitionStrategy: r.acquisitionStrategy || "",
     buyerType: "",
     meetings: [],
+    submissions: [],
     subscriptionValue: 0,
     billingFrequency: "",
     contractStart: "",
