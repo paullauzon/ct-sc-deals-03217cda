@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, ReactNode } from "rea
 import { Lead, Meeting, LeadStage, LeadSource, PipelineMetrics } from "@/types/lead";
 import { getInitialLeads } from "@/data/leadData";
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 const LEAD_DEFAULTS: Partial<Lead> = {
   meetingOutcome: "",
