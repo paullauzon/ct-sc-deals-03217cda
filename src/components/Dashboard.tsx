@@ -213,6 +213,50 @@ export function Dashboard() {
       };
     });
 
+    // Intelligence metrics
+    const closedWonLeads = leads.filter((l) => l.stage === "Closed Won");
+    const totalMRR = closedWonLeads.reduce((s, l) => {
+      if (!l.subscriptionValue) return s;
+      if (l.billingFrequency === "Quarterly") return s + l.subscriptionValue / 3;
+      if (l.billingFrequency === "Annually") return s + l.subscriptionValue / 12;
+      return s + l.subscriptionValue; // Monthly or default
+    }, 0);
+    const totalContractValue = closedWonLeads.reduce((s, l) => s + (l.subscriptionValue || 0), 0);
+
+    const leadsWithMeetings = leads.filter((l) => l.meetings?.length > 0).length;
+    const leadsWithIntel = leads.filter((l) => l.meetings?.some((m) => m.intelligence)).length;
+    const leadsWithDealIntel = leads.filter((l) => l.dealIntelligence).length;
+
+    const momentumDist = { Accelerating: 0, Steady: 0, Stalling: 0, Stalled: 0 };
+    for (const l of leads) {
+      const mom = l.dealIntelligence?.momentumSignals?.momentum;
+      if (mom && mom in momentumDist) momentumDist[mom as keyof typeof momentumDist]++;
+    }
+
+    // Coaching aggregates
+    const allMeetingsWithCoaching = leads.flatMap((l) => l.meetings || []).filter((m) => m.intelligence?.talkRatio);
+    const avgTalkRatio = allMeetingsWithCoaching.length
+      ? Math.round(allMeetingsWithCoaching.reduce((s, m) => s + (m.intelligence?.talkRatio || 0), 0) / allMeetingsWithCoaching.length)
+      : null;
+    const questionQualityDist = { Strong: 0, Adequate: 0, Weak: 0 };
+    for (const m of allMeetingsWithCoaching) {
+      const q = m.intelligence?.questionQuality;
+      if (q && q in questionQualityDist) questionQualityDist[q as keyof typeof questionQualityDist]++;
+    }
+
+    // Deal health summary
+    const activeLeads = leads.filter((l) => !closedStages.has(l.stage));
+    let criticalAlerts = 0;
+    let warningAlerts = 0;
+    for (const l of activeLeads) {
+      const daysSinceContact = l.lastContactDate ? Math.floor((Date.now() - new Date(l.lastContactDate).getTime()) / 86400000) : 999;
+      const overdueItems = l.dealIntelligence?.actionItemTracker?.filter((a) => a.status === "Overdue" || a.status === "Open").length || 0;
+      const unmitigatedRisks = l.dealIntelligence?.riskRegister?.filter((r) => r.mitigationStatus === "Unmitigated" && (r.severity === "Critical" || r.severity === "High")).length || 0;
+      if (daysSinceContact > 21 || unmitigatedRisks > 0) criticalAlerts++;
+      else if (daysSinceContact > 14 || overdueItems > 2) warningAlerts++;
+    }
+    const cleanDeals = activeLeads.length - criticalAlerts - warningAlerts;
+
     return {
       leadsThisWeek, leadsThisMonth, momGrowth, lvrCurrent, lvrChange,
       ctLeads, scLeads, weeklyData, sourceBreakdown, roleData,
@@ -220,6 +264,9 @@ export function Dashboard() {
       serviceData, serviceByBrand, dealsData, dayOfWeek,
       stageFunnel, maxStageCount, conversionByBrand,
       staleLeads, priorityData, forecastData, ownerData,
+      totalMRR, totalContractValue, leadsWithMeetings, leadsWithIntel, leadsWithDealIntel,
+      momentumDist, avgTalkRatio, questionQualityDist,
+      criticalAlerts, warningAlerts, cleanDeals,
     };
   }, [leads, m]);
 
