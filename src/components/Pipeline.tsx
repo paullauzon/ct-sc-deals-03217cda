@@ -188,7 +188,9 @@ export function Pipeline() {
                       </div>
                       {/* Row 2: Source */}
                       <p className="text-[10px] text-muted-foreground">{brandAbbr} · {sourceShort}</p>
-                      {lead.isDuplicate && <p className="text-[10px] text-muted-foreground">⚑ Also via {lead.brand === "Captarget" ? "SC" : "CT"}</p>}
+                      {lead.submissions?.length > 1 && (
+                        <p className="text-[10px] text-muted-foreground">🔄 {lead.submissions.length} submissions{new Set(lead.submissions.map(s => s.brand)).size > 1 ? " (CT+SC)" : ""}</p>
+                      )}
                       {associates.length > 0 && (
                         <p className="text-[10px] text-muted-foreground">👥 {associates.length + 1} contacts at {lead.company}</p>
                       )}
