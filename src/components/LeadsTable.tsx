@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { computeDaysInStage, getCompanyAssociates, getSharedIntelligence } from "@/lib/leadUtils";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
+import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -729,6 +730,7 @@ export function LeadsTable() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [showNewLead, setShowNewLead] = useState(false);
   const [showFireflies, setShowFireflies] = useState(false);
+  const [showBulkProcess, setShowBulkProcess] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("dateSubmitted");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -811,6 +813,7 @@ export function LeadsTable() {
           <p className="text-sm text-muted-foreground mt-1">{sorted.length} of {leads.length} leads</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowBulkProcess(true)}><Zap className="w-4 h-4" /> Process All Leads</Button>
           <Button variant="outline" size="sm" onClick={() => setShowFireflies(true)}><img src="/fireflies-icon.svg" alt="" className="w-4 h-4" /> Import Fireflies</Button>
           <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
           <Button size="sm" onClick={() => setShowNewLead(true)}>New Lead</Button>
@@ -887,6 +890,7 @@ export function LeadsTable() {
       <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
       <NewLeadDialog open={showNewLead} onClose={() => setShowNewLead(false)} onSave={addLead} />
       <FirefliesImportDialog open={showFireflies} onOpenChange={setShowFireflies} />
+      <BulkProcessingDialog open={showBulkProcess} onOpenChange={setShowBulkProcess} />
     </div>
   );
 }
