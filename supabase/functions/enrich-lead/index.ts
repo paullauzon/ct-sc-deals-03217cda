@@ -24,26 +24,17 @@ async function scrapeWebsite(companyUrl: string, apiKey: string): Promise<string
   const data = await res.json();
   let content = data.data?.markdown || data.markdown || "";
   if (content.length > 5000) content = content.substring(0, 5000) + "\n[...truncated]";
-  console.log("Website scraped, length:", content.length);
   return content;
 }
 
 async function searchWeb(query: string, apiKey: string): Promise<{ content: string; urls: string[] }> {
-  console.log("Web search query:", query);
   try {
     const res = await fetch("https://api.firecrawl.dev/v1/search", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query,
-        limit: 3,
-        scrapeOptions: { formats: ["markdown"] },
-      }),
+      body: JSON.stringify({ query, limit: 3, scrapeOptions: { formats: ["markdown"] } }),
     });
-    if (!res.ok) {
-      console.error("Firecrawl search error:", res.status);
-      return { content: "", urls: [] };
-    }
+    if (!res.ok) return { content: "", urls: [] };
     const data = await res.json();
     const results = data.data || [];
     const urls: string[] = [];
@@ -51,12 +42,9 @@ async function searchWeb(query: string, apiKey: string): Promise<{ content: stri
     for (const r of results) {
       if (r.url) urls.push(r.url);
       const snippet = r.markdown || r.description || "";
-      if (snippet) {
-        combined += `--- Source: ${r.url || "unknown"} ---\n${snippet}\n\n`;
-      }
+      if (snippet) combined += `--- Source: ${r.url || "unknown"} ---\n${snippet}\n\n`;
     }
     if (combined.length > 3000) combined = combined.substring(0, 3000) + "\n[...truncated]";
-    console.log("Web search results:", results.length, "urls, length:", combined.length);
     return { content: combined, urls };
   } catch (e) {
     console.error("Web search failed:", e);
@@ -70,24 +58,33 @@ serve(async (req) => {
   }
 
   try {
-    const { companyUrl, meetings, leadName, leadMessage, leadRole, leadCompany } = await req.json();
+    const body = await req.json();
+    const {
+      companyUrl, meetings, leadName, leadMessage, leadRole, leadCompany,
+      // Full lead context
+      leadStage, leadPriority, leadDealValue, leadServiceInterest,
+      leadForecastCategory, leadIcpFit, leadSubscriptionValue,
+      leadContractStart, leadContractEnd, leadCloseReason, leadWonReason,
+      leadLostReason, leadNotes, leadTargetCriteria, leadTargetRevenue,
+      leadGeography, leadAcquisitionStrategy, leadBuyerType,
+      leadDaysInStage, leadStageEnteredDate,
+      // Aggregated meeting intelligence
+      meetingIntelligence,
+    } = body;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-
     const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
 
-    // Step 1: Scrape website + web search in parallel
+    // Step 1: Scrape + search in parallel
     let websiteContent = "";
     let webSearchContent = "";
     let webSearchUrls: string[] = [];
-
     const tasks: Promise<void>[] = [];
 
     if (companyUrl && FIRECRAWL_API_KEY) {
       tasks.push(scrapeWebsite(companyUrl, FIRECRAWL_API_KEY).then(c => { websiteContent = c; }));
     }
-
     if (FIRECRAWL_API_KEY && (leadCompany || leadName)) {
       const searchQuery = `"${leadCompany || ""}" ${leadName || ""} ${leadRole || "acquisitions"}`.trim();
       tasks.push(searchWeb(searchQuery, FIRECRAWL_API_KEY).then(r => {
@@ -95,46 +92,80 @@ serve(async (req) => {
         webSearchUrls = r.urls;
       }));
     }
-
     await Promise.all(tasks);
 
-    // Step 2: Combine meeting transcripts
+    // Step 2: Meeting transcripts + intelligence
     const meetingsWithTranscripts = (meetings || []).filter((m: any) => m.transcript);
     const transcripts = meetingsWithTranscripts
       .map((m: any) => `--- Meeting: ${m.title} (${m.date}) ---\n${m.transcript}`)
       .join("\n\n");
 
-    // Step 3: Build source inventory
+    // Step 3: Build deal context
+    const dealFields: string[] = [];
+    if (leadStage) dealFields.push(`Current Stage: ${leadStage} (${leadDaysInStage || 0} days, entered ${leadStageEnteredDate || "unknown"})`);
+    if (leadPriority) dealFields.push(`Priority: ${leadPriority}`);
+    if (leadDealValue) dealFields.push(`Deal Value: $${leadDealValue}`);
+    if (leadServiceInterest) dealFields.push(`Service Interest: ${leadServiceInterest}`);
+    if (leadForecastCategory) dealFields.push(`Forecast Category: ${leadForecastCategory}`);
+    if (leadIcpFit) dealFields.push(`ICP Fit: ${leadIcpFit}`);
+    if (leadSubscriptionValue) dealFields.push(`Subscription Value: $${leadSubscriptionValue}/mo`);
+    if (leadContractStart) dealFields.push(`Contract Start: ${leadContractStart}`);
+    if (leadContractEnd) dealFields.push(`Contract End: ${leadContractEnd}`);
+    if (leadTargetCriteria) dealFields.push(`Target Criteria: ${leadTargetCriteria}`);
+    if (leadTargetRevenue) dealFields.push(`Target Revenue: ${leadTargetRevenue}`);
+    if (leadGeography) dealFields.push(`Geography: ${leadGeography}`);
+    if (leadAcquisitionStrategy) dealFields.push(`Acquisition Strategy: ${leadAcquisitionStrategy}`);
+    if (leadBuyerType) dealFields.push(`Buyer Type: ${leadBuyerType}`);
+    if (leadCloseReason) dealFields.push(`Close Reason: ${leadCloseReason}`);
+    if (leadWonReason) dealFields.push(`Won Reason: ${leadWonReason}`);
+    if (leadLostReason) dealFields.push(`Lost Reason: ${leadLostReason}`);
+
+    // Step 4: Aggregated meeting intelligence
+    const meetingIntelStr: string[] = [];
+    if (meetingIntelligence) {
+      const mi = meetingIntelligence;
+      if (mi.objections?.length) meetingIntelStr.push(`Objections (from meetings): ${mi.objections.join("; ")}`);
+      if (mi.painPoints?.length) meetingIntelStr.push(`Pain Points: ${mi.painPoints.join("; ")}`);
+      if (mi.competitors?.length) meetingIntelStr.push(`Competitors Mentioned: ${mi.competitors.join(", ")}`);
+      if (mi.champions?.length) meetingIntelStr.push(`Champions Identified: ${mi.champions.join(", ")}`);
+      if (mi.sentiments?.length) meetingIntelStr.push(`Sentiment Progression: ${mi.sentiments.join(" → ")}`);
+      if (mi.intents?.length) meetingIntelStr.push(`Intent Progression: ${mi.intents.join(" → ")}`);
+      if (mi.actionItems?.length) meetingIntelStr.push(`Outstanding Actions: ${mi.actionItems.slice(0, 10).join("; ")}`);
+    }
+
+    // Step 5: Source inventory
     const sourceInventory = [
-      `- Website content: ${websiteContent ? `YES (scraped from ${companyUrl})` : "NO"}`,
+      `- Website content: ${websiteContent ? "YES" : "NO"}`,
       `- Form submission: ${leadMessage ? "YES" : "NO"}`,
-      `- Meeting transcripts: ${meetingsWithTranscripts.length > 0 ? `YES (${meetingsWithTranscripts.length} meeting${meetingsWithTranscripts.length > 1 ? "s" : ""})` : "NO (0 meetings)"}`,
-      `- Web search results: ${webSearchContent ? `YES (${webSearchUrls.length} results)` : "NO"}`,
+      `- Meeting transcripts: ${meetingsWithTranscripts.length > 0 ? `YES (${meetingsWithTranscripts.length})` : "NO"}`,
+      `- Web search results: ${webSearchContent ? `YES (${webSearchUrls.length})` : "NO"}`,
+      `- Deal fields: ${dealFields.length > 0 ? "YES" : "NO"}`,
+      `- Meeting intelligence (aggregated): ${meetingIntelStr.length > 0 ? "YES" : "NO"}`,
+      `- Notes: ${leadNotes ? "YES" : "NO"}`,
     ].join("\n");
 
-    // Step 4: Build context
-    const contextParts = [];
-    contextParts.push(`AVAILABLE SOURCES:\n${sourceInventory}\n\nYou may ONLY cite sources marked YES. Any claim without a valid citation from the source material must say "Not available from current data."`);
-
+    // Step 6: Build context
+    const contextParts: string[] = [];
+    contextParts.push(`AVAILABLE SOURCES:\n${sourceInventory}\n\nYou may ONLY cite sources marked YES.`);
     if (leadName) contextParts.push(`Lead Name: ${leadName}`);
     if (leadRole) contextParts.push(`Role: ${leadRole}`);
     if (leadCompany) contextParts.push(`Company: ${leadCompany}`);
     if (companyUrl) contextParts.push(`Website: ${companyUrl}`);
+    if (dealFields.length) contextParts.push(`DEAL FIELDS:\n${dealFields.join("\n")}`);
+    if (meetingIntelStr.length) contextParts.push(`AGGREGATED MEETING INTELLIGENCE:\n${meetingIntelStr.join("\n")}`);
     if (leadMessage) contextParts.push(`Original Form Submission:\n${leadMessage}`);
+    if (leadNotes) contextParts.push(`Internal Notes:\n${leadNotes}`);
     if (websiteContent) contextParts.push(`Company Website Content:\n${websiteContent}`);
     if (transcripts) contextParts.push(`Meeting Transcripts:\n${transcripts}`);
     if (webSearchContent) contextParts.push(`Web Search Results:\n${webSearchContent}`);
 
     const userContent = contextParts.join("\n\n");
-
     if (!userContent.trim()) {
-      return new Response(
-        JSON.stringify({ error: "No data available to enrich this lead" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "No data available to enrich this lead" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Step 5: Call AI
+    // Step 7: Call AI with expanded tool schema
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -146,28 +177,25 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an M&A deal intelligence analyst for a buy-side deal origination firm. Your job is to extract deal-qualifying intelligence from prospect data to help the sales team qualify leads faster.
+            content: `You are an M&A deal intelligence analyst for a buy-side deal origination firm. Your job is to extract AND SYNTHESIZE deal-qualifying intelligence from ALL available data — prospect research, meeting transcripts, deal fields, and aggregated meeting intelligence.
 
-CRITICAL RULES — FOLLOW EXACTLY:
-1. Every single claim you make MUST have an inline citation in parentheses indicating its source:
-   - (website) — from the scraped company website
-   - (form submission) — from the lead's original form submission
-   - (meeting: {title}) — from a specific meeting transcript, include the meeting title
-   - (web search: {URL}) — from web search results, include the source URL
-2. If a field has NO factual data from ANY available source, return EXACTLY: "Not available from current data"
-3. Do NOT infer, estimate, or guess revenue figures, employee counts, deal sizes, or company valuations unless explicitly stated in source material.
-4. Do NOT fabricate names, titles, companies, or relationships not found in the sources.
-5. Do NOT extrapolate or assume information based on industry norms or common patterns.
-6. Check the AVAILABLE SOURCES block at the top of the user message — you may ONLY cite sources marked YES.
+CRITICAL RULES:
+1. Every claim must have an inline citation: (website), (form submission), (meeting: {title}), (web search: {URL}), (deal fields), (meeting intelligence), (notes).
+2. If a field has NO data from ANY source, return EXACTLY: "Not available from current data"
+3. Do NOT infer, estimate, or guess.
+4. Cross-reference deal fields with meeting intelligence. Flag contradictions (e.g., stage is "Negotiation" but sentiment is "Negative" — flag this risk).
+5. When objections exist from meetings, provide specific recommendations to overcome each one.
+6. When assessing deal health, consider: stage velocity (days in stage), sentiment trends, engagement level, outstanding action items, and competitive threats.
+7. For recommended actions, be SPECIFIC to this deal's current stage and context — not generic advice.
 
-Focus on what matters for M&A deal origination:
-- What does their company do and how big are they?
-- What are they looking to acquire? (sectors, size, geography)
-- Why are they acquiring? (roll-up, platform build, diversification, PE mandate)
-- How urgent is their timeline?
-- Who are the decision makers?
-- What other tools/services are they using or evaluating?
-- What are the key deal-critical insights?`,
+Focus areas for M&A deal origination:
+- Company profile and acquisition appetite
+- Deal signals and buying intent
+- Objection handling with specific rebuttals
+- Risk factors and mitigation strategies
+- Relationship dynamics and key stakeholders
+- Competitive positioning
+- Deal health and likelihood to close`,
           },
           { role: "user", content: userContent },
         ],
@@ -176,46 +204,35 @@ Focus on what matters for M&A deal origination:
             type: "function",
             function: {
               name: "enrich_lead",
-              description: "Return structured deal intelligence about a prospect. Every claim must have an inline source citation.",
+              description: "Return comprehensive deal intelligence synthesized from all available sources.",
               parameters: {
                 type: "object",
                 properties: {
-                  companyDescription: {
-                    type: "string",
-                    description: "1-2 sentence description of what the company does, industry, and size indicators. Each fact must cite its source.",
-                  },
-                  acquisitionCriteria: {
-                    type: "string",
-                    description: "What they're looking to acquire: target sectors, deal size range, geography preferences. Each fact must cite its source. If not available, say 'Not available from current data'.",
-                  },
-                  buyerMotivation: {
-                    type: "string",
-                    description: "Why they're acquiring. Each fact must cite its source. If not available, say 'Not available from current data'.",
-                  },
-                  urgency: {
-                    type: "string",
-                    description: "Timeline signals with specific dates/timeframes mentioned. Each fact must cite its source. If not available, say 'Not available from current data'.",
-                  },
-                  decisionMakers: {
-                    type: "string",
-                    description: "Key people involved — names, roles, influence. ONLY include people explicitly mentioned in the sources. If not available, say 'Not available from current data'.",
-                  },
-                  competitorTools: {
-                    type: "string",
-                    description: "Other deal sourcing services, platforms, brokers, or advisors mentioned. If not available, say 'Not available from current data'.",
-                  },
-                  keyInsights: {
-                    type: "string",
-                    description: "3-5 bullet points of deal-critical intelligence. Each bullet on a new line starting with •. Every bullet must cite its source.",
-                  },
-                  dataSources: {
-                    type: "string",
-                    description: "List each source actually used with specifics, e.g. 'Website (atriumhomeservices.com), Form Submission, Web Search (linkedin.com/in/..., crunchbase.com/...)'. Only list sources you actually cited.",
-                  },
+                  companyDescription: { type: "string", description: "Company overview with size indicators. Cite sources." },
+                  acquisitionCriteria: { type: "string", description: "Target sectors, deal size, geography. Cite sources." },
+                  buyerMotivation: { type: "string", description: "Why they're acquiring. Cite sources." },
+                  urgency: { type: "string", description: "Timeline signals with dates. Cite sources." },
+                  decisionMakers: { type: "string", description: "Key people, roles, influence. Only from sources." },
+                  competitorTools: { type: "string", description: "Other sourcing services/platforms/advisors mentioned." },
+                  keyInsights: { type: "string", description: "5-7 bullet points of deal-critical intelligence. Each on new line starting with •. Cite sources." },
+                  dataSources: { type: "string", description: "List each source actually used." },
+                  // New holistic fields
+                  objectionsSummary: { type: "string", description: "Consolidated objections from all meetings with specific recommendations to overcome each. Format: '• [Objection]: [Recommendation]'. If none, say 'Not available from current data'." },
+                  dealRiskAssessment: { type: "string", description: "Overall deal risk assessment. Consider stage velocity, sentiment, engagement, competition, outstanding items. Cross-reference deal fields with meeting signals. Rate as High/Medium/Low risk with specific factors." },
+                  recommendedNextActions: { type: "string", description: "3-5 specific next actions based on current stage, objections, and intelligence. Not generic — tailored to this deal. Format as bullet points." },
+                  competitiveLandscape: { type: "string", description: "Aggregated competitive intel: who else is in play, their positioning, our advantages/disadvantages." },
+                  relationshipMap: { type: "string", description: "Key stakeholders: champions, blockers, decision makers, influencers. Include their stance and engagement level." },
+                  dealHealthScore: { type: "string", description: "One of: Strong, Good, Fair, At Risk, Poor. Based on all signals." },
+                  engagementTrend: { type: "string", description: "One of: Increasing, Stable, Declining, New. Based on meeting frequency, responsiveness, sentiment." },
+                  likelihoodToClose: { type: "string", description: "One of: High, Medium, Low, Unknown. With brief justification." },
+                  sentimentAnalysis: { type: "string", description: "Sentiment progression across meetings with analysis. If single meeting, overall tone. If no meetings, say 'Not available from current data'." },
                 },
                 required: [
                   "companyDescription", "acquisitionCriteria", "buyerMotivation",
                   "urgency", "decisionMakers", "competitorTools", "keyInsights", "dataSources",
+                  "objectionsSummary", "dealRiskAssessment", "recommendedNextActions",
+                  "competitiveLandscape", "relationshipMap",
+                  "dealHealthScore", "engagementTrend", "likelihoodToClose", "sentimentAnalysis",
                 ],
                 additionalProperties: false,
               },

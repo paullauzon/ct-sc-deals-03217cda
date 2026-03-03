@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
-import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment } from "@/types/lead";
+import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency } from "@/types/lead";
 import { toast } from "sonner";
 import { MeetingsSection } from "@/components/MeetingsSection";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -11,9 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, RefreshCw } from "lucide-react";
+import { Sparkles, RefreshCw, AlertTriangle, TrendingUp, Shield, Users, Target, BarChart3 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 const STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Closed Lost", "Went Dark"];
+const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 const SERVICES: ServiceInterest[] = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"];
 const PRIORITIES = ["High", "Medium", "Low"] as const;
 const OWNERS: DealOwner[] = ["Malik", "Valeria", "Tomos"];
@@ -21,6 +24,7 @@ const CLOSE_REASONS: CloseReason[] = ["Budget", "Timing", "Competitor", "No Fit"
 const MEETING_OUTCOMES: MeetingOutcome[] = ["Scheduled", "Held", "No-Show", "Rescheduled", "Cancelled"];
 const FORECAST_CATEGORIES: ForecastCategory[] = ["Commit", "Best Case", "Pipeline", "Omit"];
 const ICP_FITS: IcpFit[] = ["Strong", "Moderate", "Weak"];
+const BILLING_FREQUENCIES: BillingFrequency[] = ["Monthly", "Quarterly", "Annually"];
 
 const SOURCE_LABELS: Record<LeadSource, string> = {
   "CT Contact Form": "CT Contact",
@@ -34,6 +38,44 @@ type SortDir = "asc" | "desc";
 
 const PRIORITY_ORDER: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
 
+function DealProgressBar({ currentStage }: { currentStage: LeadStage }) {
+  const currentIdx = ACTIVE_STAGES.indexOf(currentStage);
+  const isClosed = ["Closed Won", "Closed Lost", "Went Dark"].includes(currentStage);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Deal Progress</p>
+        {isClosed && (
+          <Badge variant={currentStage === "Closed Won" ? "default" : "destructive"} className="text-[10px]">
+            {currentStage}
+          </Badge>
+        )}
+      </div>
+      <div className="flex gap-0.5">
+        {ACTIVE_STAGES.map((stage, i) => (
+          <div
+            key={stage}
+            className={cn(
+              "h-2 flex-1 rounded-sm transition-colors",
+              isClosed
+                ? "bg-muted"
+                : i <= currentIdx
+                  ? i === currentIdx ? "bg-primary" : "bg-primary/50"
+                  : "bg-muted"
+            )}
+            title={stage}
+          />
+        ))}
+      </div>
+      <div className="flex justify-between text-[10px] text-muted-foreground">
+        <span>New Lead</span>
+        <span>Contract Sent</span>
+      </div>
+    </div>
+  );
+}
+
 export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; open: boolean; onClose: () => void }) {
   const { leads, updateLead } = useLeads();
   const lead = leads.find((l) => l.id === leadId) || null;
@@ -44,9 +86,44 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
   const days = computeDaysInStage(lead.stageEnteredDate);
   const duplicate = lead.isDuplicate ? leads.find((l) => l.id === lead.duplicateOf) : null;
 
+  // Aggregate meeting intelligence for enrichment
+  const aggregateMeetingIntelligence = () => {
+    const meetings = lead.meetings || [];
+    const allObjections: string[] = [];
+    const allPainPoints: string[] = [];
+    const allCompetitors: string[] = [];
+    const allChampions: string[] = [];
+    const allActionItems: string[] = [];
+    const sentiments: string[] = [];
+    const intents: string[] = [];
+
+    for (const m of meetings) {
+      if (!m.intelligence) continue;
+      const intel = m.intelligence;
+      if (intel.dealSignals?.objections) allObjections.push(...intel.dealSignals.objections);
+      if (intel.dealSignals?.competitors) allCompetitors.push(...intel.dealSignals.competitors);
+      if (intel.dealSignals?.champions) allChampions.push(...intel.dealSignals.champions);
+      if (intel.painPoints) allPainPoints.push(...intel.painPoints);
+      if (intel.actionItems) allActionItems.push(...intel.actionItems.map(a => `${a.item} (${a.owner})`));
+      if (intel.dealSignals?.sentiment) sentiments.push(intel.dealSignals.sentiment);
+      if (intel.dealSignals?.buyingIntent) intents.push(intel.dealSignals.buyingIntent);
+    }
+
+    return {
+      objections: [...new Set(allObjections)],
+      painPoints: [...new Set(allPainPoints)],
+      competitors: [...new Set(allCompetitors)],
+      champions: [...new Set(allChampions)],
+      actionItems: allActionItems,
+      sentiments,
+      intents,
+    };
+  };
+
   const handleEnrich = async () => {
     setEnriching(true);
     try {
+      const meetingIntel = aggregateMeetingIntelligence();
       const { data, error } = await supabase.functions.invoke("enrich-lead", {
         body: {
           companyUrl: lead.companyUrl,
@@ -55,6 +132,29 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           leadMessage: lead.message,
           leadRole: lead.role,
           leadCompany: lead.company,
+          // Full lead context
+          leadStage: lead.stage,
+          leadPriority: lead.priority,
+          leadDealValue: lead.dealValue,
+          leadServiceInterest: lead.serviceInterest,
+          leadForecastCategory: lead.forecastCategory,
+          leadIcpFit: lead.icpFit,
+          leadSubscriptionValue: lead.subscriptionValue,
+          leadContractStart: lead.contractStart,
+          leadContractEnd: lead.contractEnd,
+          leadCloseReason: lead.closeReason,
+          leadWonReason: lead.wonReason,
+          leadLostReason: lead.lostReason,
+          leadNotes: lead.notes,
+          leadTargetCriteria: lead.targetCriteria,
+          leadTargetRevenue: lead.targetRevenue,
+          leadGeography: lead.geography,
+          leadAcquisitionStrategy: lead.acquisitionStrategy,
+          leadBuyerType: lead.buyerType,
+          leadDaysInStage: days,
+          leadStageEnteredDate: lead.stageEnteredDate,
+          // Aggregated meeting intelligence
+          meetingIntelligence: meetingIntel,
         },
       });
       if (error) throw error;
@@ -86,6 +186,9 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
         </SheetHeader>
 
         <div className="space-y-8 mt-4">
+          {/* Deal Progress Bar */}
+          <DealProgressBar currentStage={lead.stage} />
+
           {/* AI Enrichment */}
           <EnrichmentSection enrichment={lead.enrichment} onEnrich={handleEnrich} enriching={enriching} />
 
@@ -134,26 +237,51 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             </Section>
           )}
 
-          {/* Deal Management */}
+          {/* Deal Management - 4 column grid */}
           <Section title="Deal Management">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-4 gap-3">
               <SelectField label="Stage" value={lead.stage} options={STAGES} onChange={(v) => save({ stage: v as LeadStage })} />
-              <SelectField label="Service Interest" value={lead.serviceInterest} options={SERVICES} onChange={(v) => save({ serviceInterest: v as ServiceInterest })} />
               <SelectField label="Priority" value={lead.priority} options={[...PRIORITIES]} onChange={(v) => save({ priority: v as "High" | "Medium" | "Low" })} />
-              <ClearableSelectField label="Forecast Category" value={lead.forecastCategory} options={FORECAST_CATEGORIES} onChange={(v) => save({ forecastCategory: v as ForecastCategory })} />
+              <ClearableSelectField label="Forecast" value={lead.forecastCategory} options={FORECAST_CATEGORIES} onChange={(v) => save({ forecastCategory: v as ForecastCategory })} />
               <ClearableSelectField label="ICP Fit" value={lead.icpFit} options={ICP_FITS} onChange={(v) => save({ icpFit: v as IcpFit })} />
+            </div>
+            <div className="grid grid-cols-4 gap-3 mt-3">
+              <SelectField label="Service" value={lead.serviceInterest} options={SERVICES} onChange={(v) => save({ serviceInterest: v as ServiceInterest })} />
+              <ClearableSelectField label="Owner" value={lead.assignedTo} options={[...OWNERS]} onChange={(v) => save({ assignedTo: v as DealOwner })} />
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider">Deal Value ($)</label>
-                <Input type="number" value={lead.dealValue || ""} onChange={(e) => save({ dealValue: Number(e.target.value) || 0 })} className="mt-1" placeholder="Enter deal value" />
+                <Input type="number" value={lead.dealValue || ""} onChange={(e) => save({ dealValue: Number(e.target.value) || 0 })} className="mt-1" placeholder="0" />
               </div>
-              <ClearableSelectField label="Assigned To" value={lead.assignedTo} options={[...OWNERS]} onChange={(v) => save({ assignedTo: v as DealOwner })} />
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Close Date</label>
+                <Input type="date" value={lead.closedDate} onChange={(e) => save({ closedDate: e.target.value })} className="mt-1" />
+              </div>
+            </div>
+          </Section>
+
+          {/* Revenue & Contract */}
+          <Section title="Revenue & Contract">
+            <div className="grid grid-cols-4 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Subscription ($/mo)</label>
+                <Input type="number" value={lead.subscriptionValue || ""} onChange={(e) => save({ subscriptionValue: Number(e.target.value) || 0 })} className="mt-1" placeholder="0" />
+              </div>
+              <ClearableSelectField label="Billing" value={lead.billingFrequency} options={BILLING_FREQUENCIES} onChange={(v) => save({ billingFrequency: v as BillingFrequency })} />
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Contract Start</label>
+                <Input type="date" value={lead.contractStart} onChange={(e) => save({ contractStart: e.target.value })} className="mt-1" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider">Contract End</label>
+                <Input type="date" value={lead.contractEnd} onChange={(e) => save({ contractEnd: e.target.value })} className="mt-1" />
+              </div>
             </div>
           </Section>
 
           {/* Meeting Management */}
           <Section title="Meeting">
-            <div className="grid grid-cols-2 gap-4">
-              <ClearableSelectField label="Meeting Outcome" value={lead.meetingOutcome} options={MEETING_OUTCOMES} onChange={(v) => save({ meetingOutcome: v as MeetingOutcome })} />
+            <div className="grid grid-cols-4 gap-3">
+              <ClearableSelectField label="Outcome" value={lead.meetingOutcome} options={MEETING_OUTCOMES} onChange={(v) => save({ meetingOutcome: v as MeetingOutcome })} />
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-wider">Meeting Date</label>
                 <Input type="date" value={lead.meetingDate} onChange={(e) => save({ meetingDate: e.target.value, meetingSetDate: lead.meetingSetDate || new Date().toISOString().split("T")[0] })} className="mt-1" />
@@ -228,10 +356,12 @@ function EnrichmentSection({ enrichment, onEnrich, enriching }: { enrichment?: L
           <Sparkles className="h-4 w-4" />
           {enriching ? "Enriching..." : "Enrich with AI"}
         </Button>
-        <p className="text-xs text-muted-foreground">Analyzes meeting transcripts + company website to extract deal intelligence.</p>
+        <p className="text-xs text-muted-foreground">Analyzes transcripts, deal fields, company website, and web data to synthesize deal intelligence.</p>
       </div>
     );
   }
+
+  const hasScorecard = enrichment.dealHealthScore || enrichment.engagementTrend || enrichment.likelihoodToClose;
 
   return (
     <div className="space-y-3">
@@ -243,6 +373,36 @@ function EnrichmentSection({ enrichment, onEnrich, enriching }: { enrichment?: L
         </Button>
       </div>
       <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-3 text-sm">
+        {/* Deal Scorecard */}
+        {hasScorecard && (
+          <div className="rounded-md border border-border bg-background/50 p-2.5 space-y-2">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <BarChart3 className="h-3.5 w-3.5" />
+              Deal Scorecard
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {enrichment.dealHealthScore && (
+                <div className="text-center">
+                  <p className="text-[10px] text-muted-foreground">Health</p>
+                  <ScorecardBadge value={enrichment.dealHealthScore} />
+                </div>
+              )}
+              {enrichment.engagementTrend && (
+                <div className="text-center">
+                  <p className="text-[10px] text-muted-foreground">Engagement</p>
+                  <ScorecardBadge value={enrichment.engagementTrend} />
+                </div>
+              )}
+              {enrichment.likelihoodToClose && (
+                <div className="text-center">
+                  <p className="text-[10px] text-muted-foreground">Close Likelihood</p>
+                  <ScorecardBadge value={enrichment.likelihoodToClose} />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {enrichment.companyDescription && enrichment.companyDescription !== "Not available from current data" && (
           <EnrichField label="Company" value={enrichment.companyDescription} />
         )}
@@ -256,7 +416,27 @@ function EnrichmentSection({ enrichment, onEnrich, enriching }: { enrichment?: L
           <EnrichField label="Urgency" value={enrichment.urgency} />
         )}
         {enrichment.decisionMakers && enrichment.decisionMakers !== "Not available from current data" && (
-          <EnrichField label="Decision Makers" value={enrichment.decisionMakers} />
+          <EnrichField label="Decision Makers" value={enrichment.decisionMakers} icon={<Users className="h-3.5 w-3.5" />} />
+        )}
+
+        {/* New enrichment fields */}
+        {enrichment.objectionsSummary && enrichment.objectionsSummary !== "Not available from current data" && (
+          <EnrichField label="Objections" value={enrichment.objectionsSummary} icon={<AlertTriangle className="h-3.5 w-3.5" />} />
+        )}
+        {enrichment.dealRiskAssessment && enrichment.dealRiskAssessment !== "Not available from current data" && (
+          <EnrichField label="Risk Assessment" value={enrichment.dealRiskAssessment} icon={<Shield className="h-3.5 w-3.5" />} />
+        )}
+        {enrichment.recommendedNextActions && enrichment.recommendedNextActions !== "Not available from current data" && (
+          <EnrichField label="Recommended Actions" value={enrichment.recommendedNextActions} icon={<Target className="h-3.5 w-3.5" />} />
+        )}
+        {enrichment.competitiveLandscape && enrichment.competitiveLandscape !== "Not available from current data" && (
+          <EnrichField label="Competitive Landscape" value={enrichment.competitiveLandscape} />
+        )}
+        {enrichment.relationshipMap && enrichment.relationshipMap !== "Not available from current data" && (
+          <EnrichField label="Relationship Map" value={enrichment.relationshipMap} icon={<Users className="h-3.5 w-3.5" />} />
+        )}
+        {enrichment.sentimentAnalysis && enrichment.sentimentAnalysis !== "Not available from current data" && (
+          <EnrichField label="Sentiment Analysis" value={enrichment.sentimentAnalysis} icon={<TrendingUp className="h-3.5 w-3.5" />} />
         )}
         {enrichment.competitorTools && enrichment.competitorTools !== "Not available from current data" && (
           <EnrichField label="Competitor Tools" value={enrichment.competitorTools} />
@@ -275,10 +455,23 @@ function EnrichmentSection({ enrichment, onEnrich, enriching }: { enrichment?: L
   );
 }
 
-function EnrichField({ label, value }: { label: string; value: string }) {
+function ScorecardBadge({ value }: { value: string }) {
+  const lower = value.toLowerCase();
+  const variant = lower.includes("high") || lower.includes("strong") || lower.includes("good")
+    ? "default"
+    : lower.includes("low") || lower.includes("poor") || lower.includes("weak") || lower.includes("at risk")
+      ? "destructive"
+      : "secondary";
+  return <Badge variant={variant} className="text-[10px] mt-0.5">{value}</Badge>;
+}
+
+function EnrichField({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
   return (
     <div>
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+      <div className="flex items-center gap-1">
+        {icon && <span className="text-muted-foreground">{icon}</span>}
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+      </div>
       <p className="text-sm leading-relaxed whitespace-pre-line">{value}</p>
     </div>
   );
