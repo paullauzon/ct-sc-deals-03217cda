@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
-import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency } from "@/types/lead";
+import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency, SuggestedUpdates, SuggestedFieldUpdate } from "@/types/lead";
 import { toast } from "sonner";
 import { MeetingsSection } from "@/components/MeetingsSection";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, RefreshCw, AlertTriangle, TrendingUp, Shield, Users, Target, BarChart3 } from "lucide-react";
+import { Sparkles, RefreshCw, AlertTriangle, TrendingUp, Shield, Users, Target, BarChart3, Check, X, ArrowRight, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -161,7 +161,9 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
       if (data?.error) throw new Error(data.error);
       if (data?.enrichment) {
         save({ enrichment: data.enrichment });
-        toast.success("Lead enriched with AI intelligence");
+        const suggestions = data.enrichment.suggestedUpdates;
+        const hasSuggestions = suggestions && Object.keys(suggestions).length > 0;
+        toast.success(hasSuggestions ? "Lead enriched — review AI suggested updates" : "Lead enriched with AI intelligence");
       }
     } catch (e: any) {
       console.error("Enrichment failed:", e);
@@ -190,7 +192,27 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           <DealProgressBar currentStage={lead.stage} />
 
           {/* AI Enrichment */}
-          <EnrichmentSection enrichment={lead.enrichment} onEnrich={handleEnrich} enriching={enriching} />
+          <EnrichmentSection enrichment={lead.enrichment} onEnrich={handleEnrich} enriching={enriching} lead={lead} onAcceptSuggestion={(field, value) => {
+            const updates: Partial<Lead> = { [field]: value };
+            // When accepting stage, update stageEnteredDate
+            if (field === "stage") {
+              updates.stageEnteredDate = new Date().toISOString().split("T")[0];
+            }
+            save(updates);
+            // Remove this suggestion from enrichment
+            if (lead.enrichment?.suggestedUpdates) {
+              const newSuggested = { ...lead.enrichment.suggestedUpdates };
+              delete (newSuggested as any)[field];
+              save({ enrichment: { ...lead.enrichment, suggestedUpdates: Object.keys(newSuggested).length > 0 ? newSuggested : undefined } });
+            }
+            toast.success(`Updated ${field} to "${value}"`);
+          }} onDismissSuggestion={(field) => {
+            if (lead.enrichment?.suggestedUpdates) {
+              const newSuggested = { ...lead.enrichment.suggestedUpdates };
+              delete (newSuggested as any)[field];
+              save({ enrichment: { ...lead.enrichment, suggestedUpdates: Object.keys(newSuggested).length > 0 ? newSuggested : undefined } });
+            }
+          }} />
 
           {/* Contact Info */}
           <Section title="Contact">
@@ -347,7 +369,91 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
 }
 
 
-function EnrichmentSection({ enrichment, onEnrich, enriching }: { enrichment?: LeadEnrichment; onEnrich: () => void; enriching: boolean }) {
+const SUGGESTION_LABELS: Record<string, string> = {
+  stage: "Stage", priority: "Priority", forecastCategory: "Forecast",
+  icpFit: "ICP Fit", nextFollowUp: "Next Follow-up", dealValue: "Deal Value",
+  serviceInterest: "Service Interest", meetingOutcome: "Meeting Outcome",
+};
+
+function AISuggestionsPanel({ suggestions, lead, onAccept, onDismiss }: {
+  suggestions: SuggestedUpdates;
+  lead: Lead;
+  onAccept: (field: string, value: string | number) => void;
+  onDismiss: (field: string) => void;
+}) {
+  const entries = Object.entries(suggestions).filter(([, v]) => v && (v as SuggestedFieldUpdate).value !== undefined);
+  if (entries.length === 0) return null;
+
+  const getCurrentValue = (field: string): string => {
+    const val = (lead as any)[field];
+    if (val === undefined || val === null || val === "") return "Not set";
+    if (field === "dealValue") return `$${val.toLocaleString()}`;
+    return String(val);
+  };
+
+  const formatValue = (field: string, value: string | number): string => {
+    if (field === "dealValue") return `$${Number(value).toLocaleString()}`;
+    return String(value);
+  };
+
+  return (
+    <div className="rounded-md border-2 border-primary/30 bg-primary/5 p-3 space-y-2.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-primary uppercase tracking-wider">
+          <Zap className="h-3.5 w-3.5" />
+          AI Suggested Updates
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 text-[10px] text-primary hover:text-primary"
+          onClick={() => entries.forEach(([field, update]) => onAccept(field, (update as SuggestedFieldUpdate).value))}
+        >
+          Accept All
+        </Button>
+      </div>
+      <div className="space-y-1.5">
+        {entries.map(([field, update]) => {
+          const suggestion = update as SuggestedFieldUpdate;
+          const current = getCurrentValue(field);
+          const proposed = formatValue(field, suggestion.value);
+          const isChange = current !== proposed && current !== "Not set";
+
+          return (
+            <div key={field} className="rounded border border-border bg-background p-2 space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                  <span className="text-xs font-medium">{SUGGESTION_LABELS[field] || field}</span>
+                  <span className="text-xs text-muted-foreground truncate">{current}</span>
+                  <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                  <Badge variant="default" className="text-[10px] shrink-0">{proposed}</Badge>
+                </div>
+                <div className="flex gap-0.5 shrink-0 ml-2">
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => onAccept(field, suggestion.value)}>
+                    <Check className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive" onClick={() => onDismiss(field)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">{suggestion.reason}</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSuggestion, onDismissSuggestion }: {
+  enrichment?: LeadEnrichment;
+  onEnrich: () => void;
+  enriching: boolean;
+  lead: Lead;
+  onAcceptSuggestion: (field: string, value: string | number) => void;
+  onDismissSuggestion: (field: string) => void;
+}) {
   if (!enrichment) {
     return (
       <div className="space-y-2">
@@ -362,6 +468,7 @@ function EnrichmentSection({ enrichment, onEnrich, enriching }: { enrichment?: L
   }
 
   const hasScorecard = enrichment.dealHealthScore || enrichment.engagementTrend || enrichment.likelihoodToClose;
+  const hasSuggestions = enrichment.suggestedUpdates && Object.keys(enrichment.suggestedUpdates).length > 0;
 
   return (
     <div className="space-y-3">
@@ -372,6 +479,17 @@ function EnrichmentSection({ enrichment, onEnrich, enriching }: { enrichment?: L
           {enriching ? "Enriching..." : "Re-enrich"}
         </Button>
       </div>
+
+      {/* AI Suggested Updates - shown at top for visibility */}
+      {hasSuggestions && (
+        <AISuggestionsPanel
+          suggestions={enrichment.suggestedUpdates!}
+          lead={lead}
+          onAccept={onAcceptSuggestion}
+          onDismiss={onDismissSuggestion}
+        />
+      )}
+
       <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-3 text-sm">
         {/* Deal Scorecard */}
         {hasScorecard && (
@@ -419,7 +537,6 @@ function EnrichmentSection({ enrichment, onEnrich, enriching }: { enrichment?: L
           <EnrichField label="Decision Makers" value={enrichment.decisionMakers} icon={<Users className="h-3.5 w-3.5" />} />
         )}
 
-        {/* New enrichment fields */}
         {enrichment.objectionsSummary && enrichment.objectionsSummary !== "Not available from current data" && (
           <EnrichField label="Objections" value={enrichment.objectionsSummary} icon={<AlertTriangle className="h-3.5 w-3.5" />} />
         )}

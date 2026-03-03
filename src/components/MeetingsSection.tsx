@@ -130,7 +130,24 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
       }
 
       const updatedMeetings = [...meetings, ...addedMeetings];
-      updateLead(lead.id, { meetings: updatedMeetings });
+      // Auto-update lastContactDate to the latest meeting date
+      const allDates = updatedMeetings.map(m => m.date).filter(Boolean).sort();
+      const latestDate = allDates[allDates.length - 1] || "";
+      const updates: Partial<Lead> = { meetings: updatedMeetings };
+      if (latestDate && (!lead.lastContactDate || latestDate > lead.lastContactDate)) {
+        updates.lastContactDate = latestDate;
+      }
+      // Auto-suggest nextFollowUp from meeting next steps with deadlines
+      const allNextSteps = addedMeetings
+        .flatMap(m => m.intelligence?.nextSteps || [])
+        .filter(ns => ns.deadline)
+        .map(ns => ns.deadline)
+        .filter(Boolean)
+        .sort();
+      if (allNextSteps.length > 0 && (!lead.nextFollowUp || allNextSteps[0] < lead.nextFollowUp)) {
+        updates.nextFollowUp = allNextSteps[0];
+      }
+      updateLead(lead.id, updates);
       toast.success(`Found and processed ${addedMeetings.length} new meeting${addedMeetings.length !== 1 ? "s" : ""} from Fireflies`);
     } catch (e: any) {
       console.error("Auto-find error:", e);
