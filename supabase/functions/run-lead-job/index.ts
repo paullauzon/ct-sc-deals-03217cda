@@ -104,19 +104,21 @@ serve(async (req) => {
         summarize: false,
       };
 
-      // Fetch from both brands in parallel
-      const [ctRes, scRes] = await Promise.all([
-        fetch(`${funcUrl}/fetch-fireflies`, {
-          method: "POST",
-          headers: funcHeaders,
-          body: JSON.stringify({ ...searchBody, brand: "Captarget" }),
-        }),
-        fetch(`${funcUrl}/fetch-fireflies`, {
-          method: "POST",
-          headers: funcHeaders,
-          body: JSON.stringify({ ...searchBody, brand: "SourceCo" }),
-        }),
-      ]);
+      // Fetch from both brands sequentially to avoid Fireflies 429s
+      const ctRes = await fetch(`${funcUrl}/fetch-fireflies`, {
+        method: "POST",
+        headers: funcHeaders,
+        body: JSON.stringify({ ...searchBody, brand: "Captarget" }),
+      });
+
+      // Small delay between brands to respect rate limits
+      await new Promise((r) => setTimeout(r, 2000));
+
+      const scRes = await fetch(`${funcUrl}/fetch-fireflies`, {
+        method: "POST",
+        headers: funcHeaders,
+        body: JSON.stringify({ ...searchBody, brand: "SourceCo" }),
+      });
 
       const ctData = ctRes.ok ? await ctRes.json() : { meetings: [] };
       const scData = scRes.ok ? await scRes.json() : { meetings: [] };
