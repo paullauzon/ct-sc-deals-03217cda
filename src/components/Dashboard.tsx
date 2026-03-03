@@ -200,13 +200,25 @@ export function Dashboard() {
       return { category: cat, count: inCat.length, value: inCat.reduce((s, l) => s + l.dealValue, 0) };
     }).filter((f) => f.count > 0);
 
+    // Owner breakdown
+    const owners = ["Malik", "Valeria", "Tomos", ""] as const;
+    const ownerData = owners.map((owner) => {
+      const owned = leads.filter((l) => l.assignedTo === owner && !closedStages.has(l.stage));
+      return {
+        owner: owner || "Unassigned",
+        count: owned.length,
+        value: owned.reduce((s, l) => s + l.dealValue, 0),
+        won: leads.filter((l) => l.assignedTo === owner && l.stage === "Closed Won").length,
+      };
+    });
+
     return {
       leadsThisWeek, leadsThisMonth, momGrowth, lvrCurrent, lvrChange,
       ctLeads, scLeads, weeklyData, sourceBreakdown, roleData,
       companyLeaderboard, duplicates, duplicatePairs, hearData,
       serviceData, serviceByBrand, dealsData, dayOfWeek,
       stageFunnel, maxStageCount, conversionByBrand,
-      staleLeads, priorityData, forecastData,
+      staleLeads, priorityData, forecastData, ownerData,
     };
   }, [leads, m]);
 
@@ -466,6 +478,30 @@ export function Dashboard() {
               <p className="text-xs text-muted-foreground mt-1">Set forecast categories on individual leads to see projections here</p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Owner Workload */}
+      <div>
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Owner Workload</h2>
+        <div className="grid grid-cols-4 gap-4">
+          {analytics.ownerData.map((o) => (
+            <div key={o.owner} className="border border-border rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                {o.owner !== "Unassigned" ? (
+                  <span className="w-7 h-7 rounded-full bg-foreground text-background flex items-center justify-center text-xs font-semibold">{o.owner[0]}</span>
+                ) : (
+                  <span className="w-7 h-7 rounded-full border border-dashed border-muted-foreground/40 flex items-center justify-center text-xs text-muted-foreground/50">?</span>
+                )}
+                <span className="text-sm font-medium">{o.owner}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <div><p className="text-xs text-muted-foreground">Active</p><p className="font-semibold tabular-nums">{o.count}</p></div>
+                <div><p className="text-xs text-muted-foreground">Pipeline</p><p className="font-semibold tabular-nums">${o.value.toLocaleString()}</p></div>
+                <div><p className="text-xs text-muted-foreground">Won</p><p className="font-semibold tabular-nums">{o.won}</p></div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

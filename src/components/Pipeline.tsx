@@ -11,6 +11,32 @@ const ALL_STAGES: LeadStage[] = [
 
 const CLOSED_STAGES: LeadStage[] = ["Closed Won", "Closed Lost", "Went Dark"];
 
+const OWNER_COLORS: Record<string, string> = {
+  Malik: "bg-foreground text-background",
+  Valeria: "bg-foreground/70 text-background",
+  Tomos: "bg-foreground/40 text-background",
+};
+
+function OwnerBadge({ owner }: { owner: string }) {
+  if (!owner) {
+    return (
+      <span className="w-6 h-6 rounded-full border border-dashed border-muted-foreground/40 flex items-center justify-center text-[10px] text-muted-foreground/50 shrink-0" title="Unassigned">
+        ?
+      </span>
+    );
+  }
+  const initial = owner[0];
+  const colorClass = OWNER_COLORS[owner] || "bg-muted text-muted-foreground";
+  return (
+    <span
+      className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 ${colorClass}`}
+      title={owner}
+    >
+      {initial}
+    </span>
+  );
+}
+
 export function Pipeline() {
   const { getLeadsByStage, updateLead, leads } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -82,24 +108,30 @@ export function Pipeline() {
                       onClick={() => setSelectedLeadId(lead.id)}
                       className="border border-border rounded-md p-3 cursor-grab active:cursor-grabbing hover:bg-secondary/30 transition-colors space-y-1.5"
                     >
+                      {/* Row 1: Brand badge + Name + Owner initial */}
                       <div className="flex items-start gap-1.5">
                         <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded shrink-0 mt-0.5">{brandAbbr}</span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium">{lead.name}</p>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium leading-tight">{lead.name}</p>
                           <p className="text-xs text-muted-foreground">{lead.company || "—"} · {lead.role}</p>
                         </div>
+                        <OwnerBadge owner={lead.assignedTo} />
                       </div>
+                      {/* Row 2: Source */}
                       <p className="text-[10px] text-muted-foreground">{brandAbbr} · {sourceShort}</p>
                       {lead.isDuplicate && <p className="text-[10px] text-muted-foreground">⚑ Cross-brand duplicate</p>}
+                      {/* Row 3: Service interest */}
                       {lead.serviceInterest && lead.serviceInterest !== "TBD" && (
                         <p className="text-xs text-muted-foreground">{lead.serviceInterest}</p>
                       )}
+                      {/* Row 4: Value + Priority */}
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className="tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</span>
-                        <span>{lead.priority}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.priority === "High" ? "bg-foreground/10 font-medium" : ""}`}>{lead.priority}</span>
                       </div>
+                      {/* Row 5: Days in stage + meeting outcome */}
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span className="tabular-nums">{days}d in stage</span>
+                        <span className={`tabular-nums ${days > 14 ? "text-foreground font-medium" : ""}`}>{days}d in stage</span>
                         {lead.meetingOutcome && <span>{lead.meetingOutcome}</span>}
                       </div>
                       {closed && lead.closeReason && (

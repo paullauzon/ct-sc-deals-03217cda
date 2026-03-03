@@ -1,5 +1,7 @@
 export type Brand = "Captarget" | "SourceCo";
 
+export type DealOwner = "Malik" | "Valeria" | "Tomos" | "";
+
 export type LeadSource =
   | "CT Contact Form"
   | "CT Free Targets Form"
