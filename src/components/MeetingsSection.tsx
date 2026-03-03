@@ -54,20 +54,34 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
       const searchCompanies: string[] = [];
       if (lead.company?.trim()) searchCompanies.push(lead.company.trim());
 
-      const { data, error } = await supabase.functions.invoke("fetch-fireflies", {
-        body: {
-          searchEmails: [lead.email],
-          searchNames: [lead.name],
-          searchDomains,
-          searchCompanies,
-          limit: 100,
-          summarize: false,
-          brand: lead.brand,
-        },
-      });
-      if (error) throw error;
+      // Search BOTH Fireflies accounts in parallel to find meetings regardless of which account recorded them
+      const searchBody = {
+        searchEmails: lead.email ? [lead.email] : [],
+        searchNames: lead.name ? [lead.name] : [],
+        searchDomains,
+        searchCompanies,
+        limit: 100,
+        summarize: false,
+      };
 
-      const foundMeetings = data.meetings || [];
+      const [ctResult, scResult] = await Promise.all([
+        supabase.functions.invoke("fetch-fireflies", { body: { ...searchBody, brand: "Captarget" } }),
+        supabase.functions.invoke("fetch-fireflies", { body: { ...searchBody, brand: "SourceCo" } }),
+      ]);
+
+      if (ctResult.error && scResult.error) throw ctResult.error;
+
+      const ctMeetings = ctResult.data?.meetings || [];
+      const scMeetings = scResult.data?.meetings || [];
+
+      // Merge and deduplicate by firefliesId
+      const seenIds = new Set<string>();
+      const foundMeetings: any[] = [];
+      for (const m of [...ctMeetings, ...scMeetings]) {
+        if (m.firefliesId && seenIds.has(m.firefliesId)) continue;
+        if (m.firefliesId) seenIds.add(m.firefliesId);
+        foundMeetings.push(m);
+      }
       const existingIds = new Set(meetings.map((m) => m.firefliesId).filter(Boolean));
       const newMeetings = foundMeetings.filter((m: any) => !existingIds.has(m.firefliesId));
 
