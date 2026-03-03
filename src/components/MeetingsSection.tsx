@@ -308,7 +308,14 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
                   const latestDate = updated.length > 0
                     ? updated.reduce((latest, m) => m.date > latest ? m.date : latest, updated[0].date)
                     : "";
-                  updateLead(lead.id, { meetings: updated, lastContactDate: latestDate });
+                  const meetingsWithIntel = updated.filter(m => m.intelligence);
+                  // Clear or re-synthesize deal intelligence
+                  if (meetingsWithIntel.length === 0) {
+                    updateLead(lead.id, { meetings: updated, lastContactDate: latestDate, dealIntelligence: undefined });
+                  } else {
+                    updateLead(lead.id, { meetings: updated, lastContactDate: latestDate });
+                    synthesizeDealIntelligence(updated, lead);
+                  }
                   toast.success("Meeting removed");
                 }}
                 onDraftFollowUp={() => handleDraftFollowUp(meeting)}
@@ -325,7 +332,12 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
         existingMeetings={meetings}
         onAdd={(meeting) => {
           const updatedMeetings = [...meetings, meeting];
-          updateLead(lead.id, { meetings: updatedMeetings });
+          // Update lastContactDate if this meeting is more recent
+          const updates: Partial<typeof lead> = { meetings: updatedMeetings };
+          if (meeting.date && (!lead.lastContactDate || meeting.date > lead.lastContactDate)) {
+            updates.lastContactDate = meeting.date;
+          }
+          updateLead(lead.id, updates);
           if (meeting.intelligence) {
             const meetingsWithIntel = updatedMeetings.filter(m => m.intelligence);
             if (meetingsWithIntel.length > 0) {
