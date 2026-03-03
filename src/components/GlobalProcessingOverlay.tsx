@@ -21,7 +21,6 @@ export function GlobalProcessingOverlay() {
   );
 
   const searchingLeadJobs = Object.values(leadJobs).filter(j => j.searching);
-  const searchingLeadJobs = Object.values(leadJobs).filter(j => j.searching);
 
   return (
     <>
