@@ -4,8 +4,6 @@ import { useLeads } from "@/contexts/LeadContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  fetchAllTranscripts,
-  matchTranscriptToLeads,
   FirefliesTranscript,
 } from "@/lib/bulkProcessing";
 
