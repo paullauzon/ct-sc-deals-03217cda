@@ -163,7 +163,7 @@ export function Pipeline() {
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mb-2 tabular-nums">${totalValue.toLocaleString()}</p>
-              <div className="space-y-2 max-h-[600px] overflow-y-auto">
+              <div className="space-y-2">
                 {stageLeads.map((lead) => {
                   const days = computeDaysInStage(lead.stageEnteredDate);
                   const brandAbbr = lead.brand === "Captarget" ? "CT" : "SC";
