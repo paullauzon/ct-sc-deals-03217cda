@@ -6,6 +6,30 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// ─── Suggested Lead Updates Schema ───
+
+const SUGGESTED_UPDATE_FIELD = {
+  type: "object",
+  properties: {
+    value: { type: "string", description: "The suggested value for this field" },
+    confidence: { type: "string", enum: ["Certain", "Likely", "Possible"], description: "How confident you are. Certain = explicit in transcript. Likely = strongly implied. Possible = inferred but not explicit." },
+    evidence: { type: "string", description: "Direct quote or paraphrase from the transcript supporting this suggestion." },
+  },
+  required: ["value", "confidence", "evidence"],
+};
+
+const SUGGESTED_UPDATE_FIELD_NUMBER = {
+  type: "object",
+  properties: {
+    value: { type: "number", description: "The suggested numeric value" },
+    confidence: { type: "string", enum: ["Certain", "Likely", "Possible"] },
+    evidence: { type: "string" },
+  },
+  required: ["value", "confidence", "evidence"],
+};
+
+// ─── Main Intelligence Tool Schema ───
+
 const INTELLIGENCE_TOOL = {
   type: "function" as const,
   function: {
@@ -143,6 +167,53 @@ const INTELLIGENCE_TOOL = {
           enum: ["Effective", "Partial", "Missed"],
           description: "When objections were raised, did our team address them effectively? Effective = acknowledged and provided compelling response. Missed = ignored or deflected.",
         },
+        // ─── CRM Field Suggestions ───
+        suggestedLeadUpdates: {
+          type: "object",
+          description: "CRM field updates suggested based on transcript evidence. ONLY include fields you have evidence for. Omit any field you're unsure about.",
+          properties: {
+            stage: {
+              ...SUGGESTED_UPDATE_FIELD,
+              description: "Pipeline stage. Values: 'Meeting Held', 'Proposal Sent', 'Negotiation', 'Contract Sent', 'Closed Won', 'Closed Lost', 'Went Dark'. A transcript of a meeting that happened = at minimum 'Meeting Held'.",
+            },
+            meetingOutcome: {
+              ...SUGGESTED_UPDATE_FIELD,
+              description: "Meeting outcome. Values: 'Held', 'No-Show', 'Rescheduled', 'Cancelled'. If a real meeting happened with discussion, this is 'Held'.",
+            },
+            meetingDate: {
+              ...SUGGESTED_UPDATE_FIELD,
+              description: "The date of THIS meeting in YYYY-MM-DD format, extracted from transcript metadata or discussion.",
+            },
+            nextFollowUp: {
+              ...SUGGESTED_UPDATE_FIELD,
+              description: "Next follow-up date in YYYY-MM-DD format, if a specific date/timeframe was discussed.",
+            },
+            priority: {
+              ...SUGGESTED_UPDATE_FIELD,
+              description: "Priority level. Values: 'High', 'Medium', 'Low'. Based on buying intent + engagement + deal size signals.",
+            },
+            forecastCategory: {
+              ...SUGGESTED_UPDATE_FIELD,
+              description: "Forecast category. Values: 'Commit', 'Best Case', 'Pipeline', 'Omit'. Only suggest 'Commit' if prospect verbally committed. 'Omit' if clearly dead.",
+            },
+            icpFit: {
+              ...SUGGESTED_UPDATE_FIELD,
+              description: "ICP fit. Values: 'Strong', 'Moderate', 'Weak'. Based on company profile, deal strategy, and needs alignment with our services.",
+            },
+            serviceInterest: {
+              ...SUGGESTED_UPDATE_FIELD,
+              description: "Service interest. Values: 'Off-Market Email Origination', 'Direct Calling', 'Banker/Broker Coverage', 'Full Platform (All 3)', 'SourceCo Retained Search', 'Other', 'TBD'. Only suggest if explicitly discussed.",
+            },
+            dealValue: {
+              ...SUGGESTED_UPDATE_FIELD_NUMBER,
+              description: "Estimated deal value in dollars. Only suggest if pricing/budget was explicitly discussed.",
+            },
+            assignedTo: {
+              ...SUGGESTED_UPDATE_FIELD,
+              description: "Deal owner name. Values: 'Malik', 'Valeria', 'Tomos'. Only suggest if a specific person from our team is clearly leading this deal based on the transcript.",
+            },
+          },
+        },
       },
       required: [
         "summary", "attendees", "keyTopics", "nextSteps", "actionItems",
@@ -150,11 +221,48 @@ const INTELLIGENCE_TOOL = {
         "questionsAsked", "painPoints", "valueProposition", "engagementLevel",
         "talkingPoints", "competitiveIntel", "pricingDiscussion",
         "talkRatio", "questionQuality", "objectionHandling",
+        "suggestedLeadUpdates",
       ],
       additionalProperties: false,
     },
   },
 };
+
+// ─── Build Prior Context ───
+
+function buildPriorContext(priorMeetings: any[]): string {
+  if (!priorMeetings || priorMeetings.length === 0) return "";
+
+  let ctx = "\n\nPRIOR MEETING HISTORY (oldest first):\n";
+  for (const m of priorMeetings) {
+    ctx += `\n--- Meeting: ${m.title || "Untitled"} (${m.date || "unknown date"}) ---\n`;
+    if (m.intelligence) {
+      const intel = m.intelligence;
+      ctx += `Summary: ${intel.summary}\n`;
+      if (intel.nextSteps?.length) {
+        ctx += `Next Steps: ${intel.nextSteps.map((ns: any) => `${ns.action} (${ns.owner})`).join("; ")}\n`;
+      }
+      if (intel.actionItems?.length) {
+        ctx += `Action Items: ${intel.actionItems.map((ai: any) => `${ai.item} [${ai.status}]`).join("; ")}\n`;
+      }
+      if (intel.dealSignals) {
+        ctx += `Deal Signals: Intent=${intel.dealSignals.buyingIntent}, Sentiment=${intel.dealSignals.sentiment}\n`;
+      }
+      if (intel.painPoints?.length) {
+        ctx += `Pain Points: ${intel.painPoints.join("; ")}\n`;
+      }
+      if (intel.decisions?.length) {
+        ctx += `Decisions: ${intel.decisions.join("; ")}\n`;
+      }
+    } else {
+      if (m.summary) ctx += `Summary: ${m.summary}\n`;
+      if (m.nextSteps) ctx += `Next Steps: ${m.nextSteps}\n`;
+    }
+  }
+  return ctx;
+}
+
+// ─── Server ───
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -180,38 +288,7 @@ serve(async (req) => {
       );
     }
 
-    // Build prior context from intelligence objects when available
-    let priorContext = "";
-    if (priorMeetings && priorMeetings.length > 0) {
-      priorContext = "\n\nPRIOR MEETING HISTORY (oldest first):\n";
-      for (const m of priorMeetings) {
-        priorContext += `\n--- Meeting: ${m.title || "Untitled"} (${m.date || "unknown date"}) ---\n`;
-        if (m.intelligence) {
-          const intel = m.intelligence;
-          priorContext += `Summary: ${intel.summary}\n`;
-          if (intel.nextSteps?.length) {
-            priorContext += `Next Steps: ${intel.nextSteps.map((ns: any) => `${ns.action} (${ns.owner})`).join("; ")}\n`;
-          }
-          if (intel.actionItems?.length) {
-            priorContext += `Action Items: ${intel.actionItems.map((ai: any) => `${ai.item} [${ai.status}]`).join("; ")}\n`;
-          }
-          if (intel.dealSignals) {
-            priorContext += `Deal Signals: Intent=${intel.dealSignals.buyingIntent}, Sentiment=${intel.dealSignals.sentiment}\n`;
-          }
-          if (intel.painPoints?.length) {
-            priorContext += `Pain Points: ${intel.painPoints.join("; ")}\n`;
-          }
-          if (intel.decisions?.length) {
-            priorContext += `Decisions: ${intel.decisions.join("; ")}\n`;
-          }
-        } else {
-          if (m.summary) priorContext += `Summary: ${m.summary}\n`;
-          if (m.nextSteps) priorContext += `Next Steps: ${m.nextSteps}\n`;
-        }
-      }
-    }
-
-    // Truncate transcript to 25k chars
+    const priorContext = buildPriorContext(priorMeetings);
     const truncated = transcript.length > 25000
       ? transcript.substring(0, 25000) + "\n\n[Transcript truncated...]"
       : transcript;
@@ -224,7 +301,55 @@ Context: The firm helps private equity firms and strategic acquirers find and cl
 
 Your analysis must be thorough, specific, and actionable. Extract every signal that could inform the deal process. Use concrete details from the transcript — never be vague or generic.
 
-${hasPrior ? "IMPORTANT: You have prior meeting history. Track which prior action items were addressed, which are outstanding, and how the relationship has progressed. Note changes in sentiment, intent, or engagement." : "This is the first meeting with this prospect."}`;
+${hasPrior ? "IMPORTANT: You have prior meeting history. Track which prior action items were addressed, which are outstanding, and how the relationship has progressed. Note changes in sentiment, intent, or engagement." : "This is the first meeting with this prospect."}
+
+## CRM FIELD UPDATE RULES (suggestedLeadUpdates)
+
+You MUST also recommend CRM field updates based on transcript evidence. Follow these rules with absolute discipline:
+
+### Confidence Levels
+- **Certain**: The transcript EXPLICITLY states or directly demonstrates this. A meeting transcript existing = the meeting was "Held" (Certain). An explicit date mentioned = Certain.
+- **Likely**: Strongly implied by multiple signals but not explicitly stated. E.g., strong buying intent + pricing discussion + timeline = "Best Case" forecast is Likely.
+- **Possible**: Inferred from indirect signals. DO NOT auto-apply these. Only include if the inference is reasonable.
+
+### Stage Mapping (from transcript content)
+- Transcript of a real meeting with discussion → stage = "Meeting Held" (Certain)
+- Detailed pricing/proposal discussed → stage = "Proposal Sent" (Certain if they said "send the proposal" or we presented pricing; Likely if pricing was just explored)
+- Negotiating terms, pushing back on pricing, discussing contract details → stage = "Negotiation" (Certain if explicit negotiation; Likely if just pricing pushback)
+- "Send us the contract" / "let's get the paperwork going" → stage = "Contract Sent" (Certain)
+- Verbal commitment, "we're moving forward", "let's do this" → stage = "Closed Won" (Certain only if unambiguous commitment with no caveats)
+- "We've decided to go another direction" / clear rejection → stage = "Closed Lost" (Certain)
+
+### Priority Mapping
+- Strong buying intent + Highly Engaged + clear timeline → "High" (Likely)
+- Moderate intent + Engaged → "Medium" (Likely)
+- Low intent + Passive/Disengaged → "Low" (Likely)
+
+### Service Interest
+- Only suggest if they EXPLICITLY discussed which service(s) they want. Never guess.
+
+### Deal Value
+- Only suggest if specific pricing, budget numbers, or deal size was discussed. Use the number mentioned.
+
+### Owner (assignedTo)
+- Only suggest if you can identify a specific team member (Malik, Valeria, or Tomos) who is clearly leading the conversation from our side.
+
+### Dates
+- meetingDate: Extract from transcript metadata if available. Otherwise Possible.
+- nextFollowUp: Only if a specific follow-up date was discussed. "Next week" = calculate from meeting date if known.
+
+### ICP Fit
+- Strong: They match our ideal customer perfectly (PE firm or strategic acquirer actively doing deals, clear M&A strategy, budget)
+- Moderate: Some fit but missing elements (exploring M&A, no clear budget, early stage)  
+- Weak: Poor fit (not doing M&A, no budget, wrong segment)
+
+### Forecast Category
+- Commit: ONLY if they verbally committed and there are no blockers
+- Best Case: Strong signals, high probability but not committed
+- Pipeline: Active opportunity, outcome uncertain
+- Omit: Dead deal or not a real opportunity
+
+CRITICAL: When in doubt, OMIT the field entirely. A missing suggestion is always better than a wrong one. We are data strategists with 50+ years of experience — we do not guess.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -271,13 +396,11 @@ ${hasPrior ? "IMPORTANT: You have prior meeting history. Track which prior actio
 
     const data = await response.json();
 
-    // Extract tool call result
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall || toolCall.function.name !== "meeting_intelligence") {
-      // Fallback: try to use content directly
       const content = data.choices?.[0]?.message?.content || "";
       return new Response(
-        JSON.stringify({ summary: content, nextSteps: "", intelligence: null }),
+        JSON.stringify({ summary: content, nextSteps: "", intelligence: null, suggestedLeadUpdates: null }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -299,8 +422,13 @@ ${hasPrior ? "IMPORTANT: You have prior meeting history. Track which prior actio
       .map((ns: any) => `- ${ns.action}${ns.owner ? ` (${ns.owner})` : ""}${ns.deadline ? ` — by ${ns.deadline}` : ""}`)
       .join("\n");
 
+    // Extract suggested lead updates separately
+    const suggestedLeadUpdates = intelligence.suggestedLeadUpdates || null;
+    // Remove from intelligence object to keep it clean
+    delete intelligence.suggestedLeadUpdates;
+
     return new Response(
-      JSON.stringify({ summary, nextSteps, intelligence }),
+      JSON.stringify({ summary, nextSteps, intelligence, suggestedLeadUpdates }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {

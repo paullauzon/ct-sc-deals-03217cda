@@ -11,7 +11,77 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Mail, Copy, Check } from "lucide-react";
+import { FileText, Mail, Copy, Check, CheckCircle, X } from "lucide-react";
+
+// ─── Suggested Lead Update Types ───
+
+interface SuggestedUpdate {
+  value: string | number;
+  confidence: "Certain" | "Likely" | "Possible";
+  evidence: string;
+}
+
+interface SuggestedLeadUpdates {
+  stage?: SuggestedUpdate;
+  meetingOutcome?: SuggestedUpdate;
+  meetingDate?: SuggestedUpdate;
+  nextFollowUp?: SuggestedUpdate;
+  priority?: SuggestedUpdate;
+  forecastCategory?: SuggestedUpdate;
+  icpFit?: SuggestedUpdate;
+  serviceInterest?: SuggestedUpdate;
+  dealValue?: SuggestedUpdate;
+  assignedTo?: SuggestedUpdate;
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  stage: "Pipeline Stage",
+  meetingOutcome: "Meeting Outcome",
+  meetingDate: "Meeting Date",
+  nextFollowUp: "Next Follow-Up",
+  priority: "Priority",
+  forecastCategory: "Forecast Category",
+  icpFit: "ICP Fit",
+  serviceInterest: "Service Interest",
+  dealValue: "Deal Value",
+  assignedTo: "Assigned To",
+};
+
+/** Apply "Certain" updates automatically, return "Likely" ones for review */
+function processSuggestedUpdates(
+  suggestions: SuggestedLeadUpdates | null,
+  leadId: string,
+  updateLead: (id: string, updates: Partial<Lead>) => void
+): { applied: string[]; pending: Array<{ field: string; label: string; value: string | number; evidence: string }> } {
+  if (!suggestions) return { applied: [], pending: [] };
+
+  const certainUpdates: Partial<Lead> = {};
+  const applied: string[] = [];
+  const pending: Array<{ field: string; label: string; value: string | number; evidence: string }> = [];
+
+  for (const [field, suggestion] of Object.entries(suggestions)) {
+    if (!suggestion || !suggestion.value) continue;
+
+    if (suggestion.confidence === "Certain") {
+      (certainUpdates as any)[field] = suggestion.value;
+      applied.push(`${FIELD_LABELS[field] || field}: ${suggestion.value}`);
+    } else if (suggestion.confidence === "Likely") {
+      pending.push({
+        field,
+        label: FIELD_LABELS[field] || field,
+        value: suggestion.value,
+        evidence: suggestion.evidence,
+      });
+    }
+    // "Possible" is intentionally ignored
+  }
+
+  if (Object.keys(certainUpdates).length > 0) {
+    updateLead(leadId, certainUpdates);
+  }
+
+  return { applied, pending };
+}
 
 function generateMeetingId(): string {
   return `mtg-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
@@ -37,8 +107,42 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
   const [followUpEmail, setFollowUpEmail] = useState("");
   const [followUpMeetingId, setFollowUpMeetingId] = useState<string | null>(null);
   const [generatingFollowUp, setGeneratingFollowUp] = useState(false);
+  const [pendingSuggestions, setPendingSuggestions] = useState<Array<{ field: string; label: string; value: string | number; evidence: string }>>([]);
+  const [showSuggestionsDialog, setShowSuggestionsDialog] = useState(false);
 
   const meetings = lead.meetings || [];
+
+  /** Process AI suggestions: auto-apply certain, show dialog for likely */
+  const handleSuggestedUpdates = (allSuggestions: SuggestedLeadUpdates[]) => {
+    const mergedApplied: string[] = [];
+    const mergedPending: Array<{ field: string; label: string; value: string | number; evidence: string }> = [];
+
+    for (const suggestions of allSuggestions) {
+      const { applied, pending } = processSuggestedUpdates(suggestions, lead.id, updateLead);
+      mergedApplied.push(...applied);
+      mergedPending.push(...pending);
+    }
+
+    // Deduplicate pending by field (keep latest)
+    const seen = new Set<string>();
+    const uniquePending = mergedPending.reverse().filter(p => {
+      if (seen.has(p.field)) return false;
+      seen.add(p.field);
+      return true;
+    }).reverse();
+
+    if (mergedApplied.length > 0) {
+      toast.success(`Auto-updated ${mergedApplied.length} field${mergedApplied.length !== 1 ? "s" : ""} from transcript`, {
+        description: mergedApplied.join(" · "),
+        duration: 6000,
+      });
+    }
+
+    if (uniquePending.length > 0) {
+      setPendingSuggestions(uniquePending);
+      setShowSuggestionsDialog(true);
+    }
+  };
 
   const handleAutoFind = async () => {
     setSearching(true);
@@ -97,6 +201,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
       }
 
       const addedMeetings: Meeting[] = [];
+      const collectedSuggestions: SuggestedLeadUpdates[] = [];
       for (const m of newMeetings) {
         const transcript = m.transcript || "";
         const allMeetings = [...meetings, ...addedMeetings].sort(
@@ -116,6 +221,9 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
               summary = aiData.summary || summary;
               nextSteps = aiData.nextSteps || nextSteps;
               intelligence = aiData.intelligence || undefined;
+              if (aiData.suggestedLeadUpdates) {
+                collectedSuggestions.push(aiData.suggestedLeadUpdates);
+              }
             }
           } catch { /* fallback */ }
         }
@@ -153,6 +261,11 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
       }
       updateLead(lead.id, updates);
       toast.success(`Found and processed ${addedMeetings.length} new meeting${addedMeetings.length !== 1 ? "s" : ""} from Fireflies`);
+
+      // Apply AI-suggested CRM updates
+      if (collectedSuggestions.length > 0) {
+        handleSuggestedUpdates(collectedSuggestions);
+      }
 
       const meetingsWithIntel = updatedMeetings.filter(m => m.intelligence);
       if (meetingsWithIntel.length > 0) {
@@ -330,9 +443,8 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
         onOpenChange={setShowAddDialog}
         lead={lead}
         existingMeetings={meetings}
-        onAdd={(meeting) => {
+        onAdd={(meeting, suggestedUpdates) => {
           const updatedMeetings = [...meetings, meeting];
-          // Update lastContactDate if this meeting is more recent
           const updates: Partial<typeof lead> = { meetings: updatedMeetings };
           if (meeting.date && (!lead.lastContactDate || meeting.date > lead.lastContactDate)) {
             updates.lastContactDate = meeting.date;
@@ -344,6 +456,10 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
               synthesizeDealIntelligence(updatedMeetings, lead);
             }
           }
+          // Apply AI-suggested CRM updates from manual add
+          if (suggestedUpdates) {
+            handleSuggestedUpdates([suggestedUpdates]);
+          }
         }}
       />
 
@@ -352,6 +468,15 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
 
       {/* Follow-Up Email Dialog */}
       <FollowUpDialog open={showFollowUpDialog} onOpenChange={setShowFollowUpDialog} email={followUpEmail} loading={generatingFollowUp} />
+
+      {/* Suggested CRM Updates Dialog */}
+      <SuggestedUpdatesDialog
+        open={showSuggestionsDialog}
+        onOpenChange={setShowSuggestionsDialog}
+        suggestions={pendingSuggestions}
+        leadId={lead.id}
+        updateLead={updateLead}
+      />
     </div>
   );
 }
@@ -1034,7 +1159,7 @@ function AddMeetingDialog({
   onOpenChange: (open: boolean) => void;
   lead: Lead;
   existingMeetings: Meeting[];
-  onAdd: (meeting: Meeting) => void;
+  onAdd: (meeting: Meeting, suggestedUpdates?: SuggestedLeadUpdates) => void;
 }) {
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -1052,6 +1177,7 @@ function AddMeetingDialog({
     let summary = "";
     let nextSteps = "";
     let intelligence: MeetingIntelligence | undefined;
+    let suggestedUpdates: SuggestedLeadUpdates | undefined;
 
     if (transcript.trim().length > 20) {
       try {
@@ -1065,6 +1191,7 @@ function AddMeetingDialog({
         summary = data.summary || "";
         nextSteps = data.nextSteps || "";
         intelligence = data.intelligence || undefined;
+        suggestedUpdates = data.suggestedLeadUpdates || undefined;
       } catch (e: any) {
         console.error("AI processing error:", e);
         toast.error("AI processing failed, saving without summary");
@@ -1083,7 +1210,7 @@ function AddMeetingDialog({
       intelligence,
     };
 
-    onAdd(meeting);
+    onAdd(meeting, suggestedUpdates);
     toast.success("Meeting added and processed");
     setTitle("");
     setDate(new Date().toISOString().split("T")[0]);
@@ -1122,7 +1249,7 @@ function AddMeetingDialog({
           </div>
           {transcript.trim().length > 20 && (
             <p className="text-xs text-muted-foreground">
-              ✨ AI will extract full intelligence: summary, action items, deal signals, sentiment, coaching metrics & more
+              ✨ AI will extract full intelligence + auto-update CRM fields from transcript
               {existingMeetings.length > 0 && ` — informed by ${existingMeetings.length} prior meeting${existingMeetings.length !== 1 ? "s" : ""}`}
             </p>
           )}
@@ -1133,6 +1260,107 @@ function AddMeetingDialog({
             {processing ? "Extracting intelligence..." : "Save & Process"}
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Suggested CRM Updates Dialog ───
+
+function SuggestedUpdatesDialog({
+  open,
+  onOpenChange,
+  suggestions,
+  leadId,
+  updateLead,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  suggestions: Array<{ field: string; label: string; value: string | number; evidence: string }>;
+  leadId: string;
+  updateLead: (id: string, updates: Partial<Lead>) => void;
+}) {
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+
+  const remaining = suggestions.filter(s => !dismissed.has(s.field));
+
+  const handleAccept = (field: string, value: string | number) => {
+    updateLead(leadId, { [field]: value } as Partial<Lead>);
+    setDismissed(prev => new Set([...prev, field]));
+    toast.success(`Updated ${FIELD_LABELS[field] || field}`);
+  };
+
+  const handleDismiss = (field: string) => {
+    setDismissed(prev => new Set([...prev, field]));
+  };
+
+  const handleAcceptAll = () => {
+    const updates: Partial<Lead> = {};
+    for (const s of remaining) {
+      (updates as any)[s.field] = s.value;
+    }
+    updateLead(leadId, updates);
+    toast.success(`Applied ${remaining.length} suggested updates`);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CheckCircle className="h-4 w-4 text-primary" />
+            AI Suggested CRM Updates
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground">
+          These updates are <strong>likely</strong> based on transcript evidence but not 100% certain. Review and accept or dismiss each one.
+        </p>
+        {remaining.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">All suggestions reviewed ✓</p>
+        ) : (
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+            {remaining.map((s) => (
+              <div key={s.field} className="border border-border rounded-lg p-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs text-muted-foreground uppercase tracking-wider">{s.label}</span>
+                    <p className="text-sm font-medium">{String(s.value)}</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-primary hover:bg-primary/10"
+                      onClick={() => handleAccept(s.field, s.value)}
+                      title="Accept"
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => handleDismiss(s.field)}
+                      title="Dismiss"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  📝 {s.evidence}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+        {remaining.length > 1 && (
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Dismiss All</Button>
+            <Button size="sm" onClick={handleAcceptAll}>Accept All ({remaining.length})</Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );
