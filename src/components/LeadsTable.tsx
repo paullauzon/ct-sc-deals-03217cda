@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
+import { useProcessing } from "@/contexts/ProcessingContext";
 import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency, SuggestedUpdates, SuggestedFieldUpdate, Submission } from "@/types/lead";
 import { toast } from "sonner";
 import { MeetingsSection } from "@/components/MeetingsSection";
@@ -81,9 +82,11 @@ function DealProgressBar({ currentStage }: { currentStage: LeadStage }) {
 
 export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; open: boolean; onClose: () => void }) {
   const { leads, updateLead } = useLeads();
+  const { leadJobs, acceptLeadSuggestion, dismissLeadSuggestion, acceptAllLeadSuggestions, dismissLeadJob } = useProcessing();
   const lead = leads.find((l) => l.id === leadId) || null;
   const [enriching, setEnriching] = useState(false);
   if (!lead) return null;
+  const autoFindJob = leadJobs[lead.id];
 
   const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
   const days = computeDaysInStage(lead.stageEnteredDate);

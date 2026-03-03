@@ -159,49 +159,6 @@ export function GlobalProcessingOverlay() {
         </DialogContent>
       </Dialog>
 
-      {/* ─── Individual Lead Suggestion Modals ─── */}
-      {pendingLeadJobs.map(job => (
-        <Dialog key={job.leadId} open onOpenChange={() => dismissLeadJob(job.leadId)}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-sm">Suggestions for {job.leadName}</DialogTitle>
-              <DialogDescription>
-                {job.pendingSuggestions.length} field{job.pendingSuggestions.length !== 1 ? "s" : ""} to review.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-2">
-              {job.pendingSuggestions.map(s => (
-                <div key={s.field} className="flex items-start justify-between gap-3 text-xs bg-secondary/30 rounded px-2.5 py-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{s.label}</span>
-                      <span className="text-primary">→ {s.value}</span>
-                    </div>
-                    <p className="text-muted-foreground mt-0.5">{s.evidence}</p>
-                  </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-primary hover:bg-primary/10"
-                      onClick={() => acceptLeadSuggestion(job.leadId, s.field, s.value)}>
-                      <Check className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:bg-destructive/10"
-                      onClick={() => dismissLeadSuggestion(job.leadId, s.field)}>
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <DialogFooter className="gap-2">
-              <Button variant="outline" size="sm" onClick={() => dismissLeadJob(job.leadId)}>Skip All</Button>
-              <Button size="sm" onClick={() => acceptAllLeadSuggestions(job.leadId)}>
-                <Check className="h-3.5 w-3.5 mr-1" />
-                Accept All
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      ))}
     </>
   );
 }
