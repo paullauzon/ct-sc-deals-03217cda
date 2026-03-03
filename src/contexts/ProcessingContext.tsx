@@ -294,54 +294,16 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
   const startBulkProcessing = useCallback(() => {
     if (bulkJobRef.current.phase !== "idle" && bulkJobRef.current.phase !== "done") return;
 
-    setBulkJob({ phase: "fetching", totalJobs: 0, completedJobs: 0, failedJobs: 0, progressMessage: "Fetching all transcripts...", bulkJobIds: [] });
+    setBulkJob({ phase: "running", totalJobs: 0, completedJobs: 0, failedJobs: 0, progressMessage: "Creating jobs for all leads...", bulkJobIds: [] });
 
     (async () => {
       try {
         const currentLeads = leadsRef.current;
 
-        // Phase 1: Fetch all transcripts from both brands
-        const [ctTranscripts, scTranscripts] = await Promise.all([
-          fetchAllTranscripts("Captarget"),
-          fetchAllTranscripts("SourceCo"),
-        ]);
+        // Create a run-lead-job for every lead — each job fetches its own transcripts via targeted search
+        const jobQueue: Array<{ jobId: string; leadId: string; leadName: string; leadPayload: any }> = [];
 
-        // Deduplicate
-        const allTranscripts: FirefliesTranscript[] = [];
-        const seenIds = new Set<string>();
-        for (const t of [...ctTranscripts, ...scTranscripts]) {
-          if (t.firefliesId && seenIds.has(t.firefliesId)) continue;
-          if (t.firefliesId) seenIds.add(t.firefliesId);
-          allTranscripts.push(t);
-        }
-
-        setBulkJob(prev => ({ ...prev, phase: "matching", progressMessage: `Matching ${allTranscripts.length} transcripts to ${currentLeads.length} leads...` }));
-
-        // Phase 2: Match transcripts to leads
-        const leadMatches = new Map<string, FirefliesTranscript[]>();
-        for (const transcript of allTranscripts) {
-          const matchedLeads = matchTranscriptToLeads(transcript, currentLeads);
-          for (const lead of matchedLeads) {
-            const existingIds = new Set((lead.meetings || []).map(m => m.firefliesId).filter(Boolean));
-            if (existingIds.has(transcript.firefliesId)) continue;
-            if (!leadMatches.has(lead.id)) leadMatches.set(lead.id, []);
-            leadMatches.get(lead.id)!.push(transcript);
-          }
-        }
-
-        if (leadMatches.size === 0) {
-          toast.info("No new meetings found for any leads.");
-          setBulkJob(INITIAL_BULK);
-          return;
-        }
-
-        // Phase 3: Create DB job rows and build invocation queue
-        const jobQueue: Array<{ jobId: string; leadId: string; leadName: string; leadPayload: any; prefetchedMeetings: any[] }> = [];
-
-        for (const [leadId, transcripts] of leadMatches.entries()) {
-          const lead = currentLeads.find(l => l.id === leadId);
-          if (!lead) continue;
-
+        for (const lead of currentLeads) {
           const existingMeetingIds = (lead.meetings || []).map(m => m.firefliesId).filter(Boolean);
           const existingMeetings = (lead.meetings || []).map(m => ({
             ...m,
@@ -366,7 +328,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           const { data: jobRow, error: insertError } = await (supabase
             .from("processing_jobs") as any)
             .insert({
-              lead_id: leadId,
+              lead_id: lead.id,
               lead_name: lead.name,
               job_type: "bulk",
               status: "queued",
@@ -380,22 +342,13 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             continue;
           }
 
-          // Prepare prefetched meetings — truncate transcripts to 15K chars to avoid payload overflow
-          const prefetchedMeetings = transcripts.map(t => ({
-            firefliesId: t.firefliesId,
-            title: t.title,
-            date: t.date,
-            duration: t.duration,
-            attendees: t.attendees,
-            attendeeEmails: t.attendeeEmails,
-            transcriptUrl: t.transcriptUrl,
-            transcript: (t.transcript || "").substring(0, 15000),
-            summary: t.summary,
-            nextSteps: t.nextSteps,
-            sourceBrand: t.sourceBrand,
-          }));
+          jobQueue.push({ jobId: jobRow.id, leadId: lead.id, leadName: lead.name, leadPayload });
+        }
 
-          jobQueue.push({ jobId: jobRow.id, leadId, leadName: lead.name, leadPayload, prefetchedMeetings });
+        if (jobQueue.length === 0) {
+          toast.info("No leads to process.");
+          setBulkJob(INITIAL_BULK);
+          return;
         }
 
         const jobIds = jobQueue.map(j => j.jobId);
@@ -420,11 +373,10 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           }));
           try {
             const { error } = await supabase.functions.invoke("run-lead-job", {
-              body: { jobId: item.jobId, lead: item.leadPayload, prefetchedMeetings: item.prefetchedMeetings },
+              body: { jobId: item.jobId, lead: item.leadPayload },
             });
             if (error) {
               console.error(`Edge function error for ${item.leadName}:`, error);
-              // Mark job as failed in DB so realtime picks it up
               await (supabase.from("processing_jobs") as any)
                 .update({ status: "failed", error: error.message || "Invocation failed" })
                 .eq("id", item.jobId);
