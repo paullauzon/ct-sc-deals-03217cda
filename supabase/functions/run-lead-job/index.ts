@@ -170,7 +170,7 @@ serve(async (req) => {
 
     // Process each new meeting through AI
     await supabase.from("processing_jobs").update({
-      progress_message: `Processing ${newMeetings.length} new meeting(s)...`,
+      progress_message: `Found ${newMeetings.length} meeting(s), analyzing with AI...`,
       updated_at: new Date().toISOString(),
     }).eq("id", jobId);
 
@@ -190,7 +190,7 @@ serve(async (req) => {
       if (transcript.length > 20) {
         try {
           await supabase.from("processing_jobs").update({
-            progress_message: `AI analyzing meeting ${i + 1}/${newMeetings.length}: "${m.title || "Untitled"}"...`,
+            progress_message: `AI analyzing meeting ${i + 1}/${newMeetings.length}: "${(m.title || "Untitled").substring(0, 40)}"`,
             updated_at: new Date().toISOString(),
           }).eq("id", jobId);
 
