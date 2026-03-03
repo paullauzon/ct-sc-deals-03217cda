@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
-import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency } from "@/types/lead";
+import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency, SuggestedUpdates, SuggestedFieldUpdate } from "@/types/lead";
 import { toast } from "sonner";
 import { MeetingsSection } from "@/components/MeetingsSection";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, RefreshCw, AlertTriangle, TrendingUp, Shield, Users, Target, BarChart3 } from "lucide-react";
+import { Sparkles, RefreshCw, AlertTriangle, TrendingUp, Shield, Users, Target, BarChart3, Check, X, ArrowRight, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -161,7 +161,9 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
       if (data?.error) throw new Error(data.error);
       if (data?.enrichment) {
         save({ enrichment: data.enrichment });
-        toast.success("Lead enriched with AI intelligence");
+        const suggestions = data.enrichment.suggestedUpdates;
+        const hasSuggestions = suggestions && Object.keys(suggestions).length > 0;
+        toast.success(hasSuggestions ? "Lead enriched — review AI suggested updates" : "Lead enriched with AI intelligence");
       }
     } catch (e: any) {
       console.error("Enrichment failed:", e);
@@ -190,7 +192,27 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           <DealProgressBar currentStage={lead.stage} />
 
           {/* AI Enrichment */}
-          <EnrichmentSection enrichment={lead.enrichment} onEnrich={handleEnrich} enriching={enriching} />
+          <EnrichmentSection enrichment={lead.enrichment} onEnrich={handleEnrich} enriching={enriching} lead={lead} onAcceptSuggestion={(field, value) => {
+            const updates: Partial<Lead> = { [field]: value };
+            // When accepting stage, update stageEnteredDate
+            if (field === "stage") {
+              updates.stageEnteredDate = new Date().toISOString().split("T")[0];
+            }
+            save(updates);
+            // Remove this suggestion from enrichment
+            if (lead.enrichment?.suggestedUpdates) {
+              const newSuggested = { ...lead.enrichment.suggestedUpdates };
+              delete (newSuggested as any)[field];
+              save({ enrichment: { ...lead.enrichment, suggestedUpdates: Object.keys(newSuggested).length > 0 ? newSuggested : undefined } });
+            }
+            toast.success(`Updated ${field} to "${value}"`);
+          }} onDismissSuggestion={(field) => {
+            if (lead.enrichment?.suggestedUpdates) {
+              const newSuggested = { ...lead.enrichment.suggestedUpdates };
+              delete (newSuggested as any)[field];
+              save({ enrichment: { ...lead.enrichment, suggestedUpdates: Object.keys(newSuggested).length > 0 ? newSuggested : undefined } });
+            }
+          }} />
 
           {/* Contact Info */}
           <Section title="Contact">
