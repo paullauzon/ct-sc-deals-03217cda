@@ -250,7 +250,28 @@ export function Pipeline() {
                           )}
                         </div>
                       )}
-                      {closed && lead.closeReason && (
+                      {/* Pending suggestions indicator */}
+                      {(() => {
+                        const job = leadJobs[lead.id];
+                        if (!job) return null;
+                        if (job.searching) {
+                          return (
+                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground animate-pulse">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              <span>Processing…</span>
+                            </div>
+                          );
+                        }
+                        if (job.pendingSuggestions?.length > 0) {
+                          return (
+                            <div className="flex items-center gap-1.5 text-[10px] px-1.5 py-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 font-medium">
+                              <Sparkles className="h-3 w-3" />
+                              <span>{job.pendingSuggestions.length} to review</span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                         <p className="text-xs text-muted-foreground">Reason: {lead.closeReason}</p>
                       )}
                       {lead.nextFollowUp && (
