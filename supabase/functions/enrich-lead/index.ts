@@ -70,6 +70,8 @@ serve(async (req) => {
       leadDaysInStage, leadStageEnteredDate,
       // Aggregated meeting intelligence
       meetingIntelligence,
+      // Accumulated deal intelligence
+      dealIntelligence,
     } = body;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -131,6 +133,30 @@ serve(async (req) => {
       if (mi.sentiments?.length) meetingIntelStr.push(`Sentiment Progression: ${mi.sentiments.join(" → ")}`);
       if (mi.intents?.length) meetingIntelStr.push(`Intent Progression: ${mi.intents.join(" → ")}`);
       if (mi.actionItems?.length) meetingIntelStr.push(`Outstanding Actions: ${mi.actionItems.slice(0, 10).join("; ")}`);
+    }
+
+    // Step 4b: Accumulated deal intelligence
+    const dealIntelStr: string[] = [];
+    if (dealIntelligence) {
+      const di = dealIntelligence;
+      if (di.dealNarrative) dealIntelStr.push(`Deal Narrative: ${di.dealNarrative}`);
+      if (di.momentumSignals?.momentum) dealIntelStr.push(`Momentum: ${di.momentumSignals.momentum} (frequency: ${di.momentumSignals.meetingFrequencyDays}d, completion: ${di.momentumSignals.completionRate}%)`);
+      if (di.buyingCommittee) {
+        const bc = di.buyingCommittee;
+        dealIntelStr.push(`Buying Committee: DM=${bc.decisionMaker || "Unknown"}, Champion=${bc.champion || "None"}, Blockers=${bc.blockers?.join(", ") || "None"}`);
+      }
+      if (di.objectionTracker?.length) {
+        const open = di.objectionTracker.filter((o: any) => o.status === "Open" || o.status === "Recurring");
+        if (open.length) dealIntelStr.push(`Open/Recurring Objections: ${open.map((o: any) => o.objection).join("; ")}`);
+      }
+      if (di.riskRegister?.length) {
+        const critical = di.riskRegister.filter((r: any) => r.severity === "Critical" || r.severity === "High");
+        if (critical.length) dealIntelStr.push(`High/Critical Risks: ${critical.map((r: any) => `${r.risk} (${r.mitigationStatus})`).join("; ")}`);
+      }
+      if (di.dealStageEvidence) dealIntelStr.push(`Stage Evidence: ${di.dealStageEvidence}`);
+      if (di.stakeholderMap?.length) {
+        dealIntelStr.push(`Key Stakeholders: ${di.stakeholderMap.map((s: any) => `${s.name} (${s.stance}, ${s.influence})`).join("; ")}`);
+      }
     }
 
     // Step 5: Source inventory

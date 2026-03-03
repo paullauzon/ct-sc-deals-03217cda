@@ -156,6 +156,8 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           leadStageEnteredDate: lead.stageEnteredDate,
           // Aggregated meeting intelligence
           meetingIntelligence: meetingIntel,
+          // Accumulated deal intelligence
+          dealIntelligence: lead.dealIntelligence || null,
         },
       });
       if (error) throw error;
@@ -322,6 +324,11 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
 
           {/* Meetings (Multi-meeting with AI processing) */}
           <MeetingsSection lead={lead} />
+
+          {/* Deal Intelligence (Cross-Meeting Synthesis) */}
+          {lead.dealIntelligence && (
+            <DealIntelligencePanel intel={lead.dealIntelligence} />
+          )}
 
           {/* Close Reasons */}
           {lead.stage === "Closed Won" && (
