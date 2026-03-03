@@ -64,6 +64,7 @@ function OwnerBadge({ owner }: { owner: string }) {
 
 export function Pipeline() {
   const { getLeadsByStage, updateLead, leads } = useLeads();
+  const { leadJobs } = useProcessing();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
