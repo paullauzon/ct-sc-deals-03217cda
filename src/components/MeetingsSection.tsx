@@ -133,7 +133,15 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
           {[...meetings]
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             .map((meeting) => (
-              <MeetingCard key={meeting.id} meeting={meeting} />
+              <MeetingCard
+                key={meeting.id}
+                meeting={meeting}
+                onRemove={() => {
+                  const updated = meetings.filter((m) => m.id !== meeting.id);
+                  updateLead(lead.id, { meetings: updated });
+                  toast.success("Meeting removed");
+                }}
+              />
             ))}
         </div>
       )}
@@ -151,8 +159,9 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
   );
 }
 
-function MeetingCard({ meeting }: { meeting: Meeting }) {
+function MeetingCard({ meeting, onRemove }: { meeting: Meeting; onRemove: () => void }) {
   const [open, setOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -175,6 +184,18 @@ function MeetingCard({ meeting }: { meeting: Meeting }) {
                 >
                   🔗
                 </a>
+              )}
+              {confirmingDelete ? (
+                <span className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => { onRemove(); setConfirmingDelete(false); }} className="text-xs text-destructive font-medium hover:underline">Yes</button>
+                  <button onClick={() => setConfirmingDelete(false)} className="text-xs text-muted-foreground hover:underline">No</button>
+                </span>
+              ) : (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }}
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                  title="Remove meeting"
+                >✕</button>
               )}
             </div>
           </div>

@@ -164,25 +164,40 @@ serve(async (req) => {
     // Filter by search criteria if provided
     if (searchEmails.length > 0 || searchNames.length > 0) {
       const lowerEmails = searchEmails.map((e: string) => e.toLowerCase());
-      // Extract both first and last name parts for matching
-      const lowerNameParts = searchNames.flatMap((n: string) =>
-        n.toLowerCase().split(/\s+/).filter((part: string) => part.length >= 3)
-      );
+      // Build full names for strict matching
+      const lowerFullNames = searchNames.map((n: string) => n.toLowerCase().trim());
 
       transcripts = transcripts.filter((t: any) => {
         const participants = (t.participants || []).map((p: string) => p.toLowerCase());
         const organizerEmail = (t.organizer_email || "").toLowerCase();
         const firefliesUsers = (t.fireflies_users || []).map((u: string) => u.toLowerCase());
         const allEmailFields = [...participants, organizerEmail, ...firefliesUsers];
+        const titleLower = (t.title || "").toLowerCase();
 
-        // Check email match against participants, organizer, and fireflies_users
+        // Check email match (emails are unique enough)
         for (const email of lowerEmails) {
           if (allEmailFields.some((f: string) => f.includes(email))) return true;
         }
-        // Check name match (first AND last) in title, participants, organizer, fireflies_users
-        for (const namePart of lowerNameParts) {
-          if (t.title?.toLowerCase().includes(namePart)) return true;
-          if (allEmailFields.some((f: string) => f.includes(namePart))) return true;
+
+        // Check full name match — require ALL parts of the name to appear in the SAME field
+        for (const fullName of lowerFullNames) {
+          const nameParts = fullName.split(/\s+/).filter((p: string) => p.length >= 2);
+          if (nameParts.length === 0) continue;
+
+          // Check if ALL name parts appear in the title
+          if (nameParts.every((part: string) => titleLower.includes(part))) return true;
+
+          // Check if ALL name parts appear in any single participant/email field
+          for (const field of allEmailFields) {
+            if (nameParts.every((part: string) => field.includes(part))) return true;
+          }
+
+          // Check sentences speaker names for full name match
+          const speakers = (t.sentences || []).map((s: any) => (s.speaker_name || "").toLowerCase());
+          const uniqueSpeakers = [...new Set(speakers)];
+          for (const speaker of uniqueSpeakers) {
+            if (nameParts.every((part: string) => speaker.includes(part))) return true;
+          }
         }
         return false;
       });
