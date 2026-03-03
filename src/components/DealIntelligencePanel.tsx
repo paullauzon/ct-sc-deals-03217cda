@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Lead, Meeting, DealIntelligence } from "@/types/lead";
+import { Lead, DealIntelligence, PowerDynamics, PsychologicalProfile, WinStrategy } from "@/types/lead";
 import { useLeads } from "@/contexts/LeadContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Users, AlertTriangle, Target, TrendingUp, Shield, Clock, Crosshair, Activity, RefreshCw } from "lucide-react";
+import { Users, AlertTriangle, Target, TrendingUp, Shield, Clock, Crosshair, Activity, RefreshCw, Brain, Flame, Eye, Zap, Swords, Crown, Heart, Lock } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const stanceColors: Record<string, string> = {
@@ -16,6 +16,20 @@ const stanceColors: Record<string, string> = {
   "Skeptic": "bg-yellow-500/15 text-yellow-700 border-yellow-500/30",
   "Blocker": "bg-red-500/15 text-red-700 border-red-500/30",
   "Unknown": "bg-muted text-muted-foreground border-border",
+};
+
+const commStyleEmoji: Record<string, string> = {
+  "Analytical": "📊",
+  "Driver": "🎯",
+  "Amiable": "🤝",
+  "Expressive": "💡",
+};
+
+const commStyleColors: Record<string, string> = {
+  "Analytical": "bg-blue-500/15 text-blue-700 border-blue-500/30",
+  "Driver": "bg-orange-500/15 text-orange-700 border-orange-500/30",
+  "Amiable": "bg-green-500/15 text-green-700 border-green-500/30",
+  "Expressive": "bg-purple-500/15 text-purple-700 border-purple-500/30",
 };
 
 const objectionStatusColors: Record<string, string> = {
@@ -38,6 +52,22 @@ const momentumColors: Record<string, string> = {
   "Stalled": "bg-red-500/15 text-red-700 border-red-500/30",
 };
 
+const temperatureColors: Record<string, string> = {
+  "On Fire": "bg-red-500/20 text-red-700 border-red-500/40",
+  "Warm": "bg-orange-500/15 text-orange-700 border-orange-500/30",
+  "Lukewarm": "bg-yellow-500/15 text-yellow-700 border-yellow-500/30",
+  "Cold": "bg-blue-500/15 text-blue-700 border-blue-500/30",
+  "Ice Cold": "bg-blue-800/15 text-blue-900 border-blue-800/30",
+};
+
+const temperatureEmoji: Record<string, string> = {
+  "On Fire": "🔥",
+  "Warm": "☀️",
+  "Lukewarm": "🌤",
+  "Cold": "❄️",
+  "Ice Cold": "🧊",
+};
+
 const severityColors: Record<string, string> = {
   "Critical": "bg-red-500/15 text-red-700 border-red-500/30",
   "High": "bg-orange-500/15 text-orange-700 border-orange-500/30",
@@ -45,13 +75,9 @@ const severityColors: Record<string, string> = {
   "Low": "bg-muted text-muted-foreground border-border",
 };
 
-// Map signal strings to numeric values for charting
 const signalToValue: Record<string, number> = {
-  // Sentiment
   "Very Positive": 5, "Positive": 4, "Neutral": 3, "Cautious": 2, "Negative": 1,
-  // Intent
   "Strong": 4, "Moderate": 3, "Low": 2, "None detected": 1,
-  // Engagement
   "Highly Engaged": 4, "Engaged": 3, "Passive": 2, "Disengaged": 1,
 };
 
@@ -71,13 +97,10 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
         body: {
           meetings: sorted,
           leadFields: {
-            name: lead.name,
-            company: lead.company,
-            role: lead.role,
-            stage: lead.stage,
-            priority: lead.priority,
-            dealValue: lead.dealValue,
-            serviceInterest: lead.serviceInterest,
+            name: lead.name, company: lead.company, role: lead.role,
+            stage: lead.stage, priority: lead.priority, dealValue: lead.dealValue,
+            serviceInterest: lead.serviceInterest, message: lead.message,
+            targetCriteria: lead.targetCriteria, acquisitionStrategy: lead.acquisitionStrategy,
           },
         },
       });
@@ -94,7 +117,6 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
     }
   };
 
-  // Build momentum chart data
   const chartData = (() => {
     const ms = intel.momentumSignals;
     if (!ms) return [];
@@ -111,6 +133,10 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
       engagement: signalToValue[ms.engagementTrajectory?.[i]] || 0,
     }));
   })();
+
+  const ws = intel.winStrategy;
+  const psych = intel.psychologicalProfile;
+  const pd = intel.powerDynamics;
 
   return (
     <div className="space-y-3">
@@ -131,6 +157,54 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
           )}
         </div>
       </div>
+
+      {/* Win Strategy Hero — the 30-second pre-call view */}
+      {ws && (
+        <div className="rounded-md border-2 border-primary/30 bg-primary/5 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-primary uppercase tracking-wider">
+              <Swords className="h-3.5 w-3.5" /> Win Strategy
+            </div>
+            {ws.dealTemperature && (
+              <Badge className={`text-[10px] font-bold ${temperatureColors[ws.dealTemperature] || ""}`}>
+                {temperatureEmoji[ws.dealTemperature] || ""} {ws.dealTemperature}
+              </Badge>
+            )}
+          </div>
+          <div className="rounded bg-primary/10 p-2.5 border border-primary/20">
+            <p className="text-[10px] uppercase tracking-wider text-primary/70 font-semibold mb-0.5">#1 Thing That Closes This Deal</p>
+            <p className="text-sm font-semibold leading-snug">{ws.numberOneCloser}</p>
+          </div>
+          <div className="rounded bg-accent/50 p-2.5 border border-accent">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">⚡ Power Move</p>
+            <p className="text-xs leading-snug">{ws.powerMove}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="text-[10px] space-y-0.5">
+              <p className="font-semibold text-muted-foreground uppercase tracking-wider">🎯 Closing Window</p>
+              <p className="text-xs">{ws.closingWindow}</p>
+            </div>
+            <div className="text-[10px] space-y-0.5">
+              <p className="font-semibold text-muted-foreground uppercase tracking-wider">🤝 Negotiation</p>
+              <p className="text-xs">{ws.negotiationStyle}</p>
+            </div>
+          </div>
+          {ws.landmines?.length > 0 && (
+            <div className="rounded bg-destructive/5 border border-destructive/20 p-2">
+              <p className="text-[10px] uppercase tracking-wider text-destructive font-semibold mb-1">💣 Landmines — Do NOT</p>
+              {ws.landmines.map((l, i) => (
+                <p key={i} className="text-[11px] leading-snug text-destructive/80">• {l}</p>
+              ))}
+            </div>
+          )}
+          {ws.relationshipLeverage && (
+            <div className="text-[10px] space-y-0.5">
+              <p className="font-semibold text-muted-foreground uppercase tracking-wider">👥 Relationship Leverage</p>
+              <p className="text-xs leading-snug">{ws.relationshipLeverage}</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Deal Narrative */}
       <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
@@ -188,8 +262,9 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
         </div>
       )}
 
-      <Tabs defaultValue="stakeholders" className="w-full">
+      <Tabs defaultValue="psychology" className="w-full">
         <TabsList className="w-full justify-start flex-wrap h-auto gap-0.5 p-1">
+          <TabsTrigger value="psychology" className="text-xs h-7">🧠 Psychology</TabsTrigger>
           <TabsTrigger value="stakeholders" className="text-xs h-7">Stakeholders</TabsTrigger>
           <TabsTrigger value="objections" className="text-xs h-7">Objections</TabsTrigger>
           <TabsTrigger value="actions" className="text-xs h-7">Actions</TabsTrigger>
@@ -198,7 +273,121 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
           <TabsTrigger value="stage" className="text-xs h-7">Stage Evidence</TabsTrigger>
         </TabsList>
 
-        {/* Stakeholders */}
+        {/* Psychology Tab */}
+        <TabsContent value="psychology" className="space-y-3">
+          {psych ? (
+            <>
+              {/* The Unspoken Ask — the crown jewel */}
+              <div className="rounded-md border-2 border-amber-500/30 bg-amber-500/5 p-3 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 uppercase tracking-wider">
+                  <Eye className="h-3.5 w-3.5" /> The Unspoken Ask
+                </div>
+                <p className="text-sm leading-relaxed italic">"{psych.unspokenAsk}"</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {/* The Real Why */}
+                <div className="rounded-md border border-border bg-secondary/30 p-2.5 space-y-1">
+                  <div className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    <Heart className="h-3 w-3" /> The Real "Why"
+                  </div>
+                  <p className="text-xs leading-snug">{psych.realWhy}</p>
+                </div>
+                {/* Fear Factor */}
+                <div className="rounded-md border border-destructive/20 bg-destructive/5 p-2.5 space-y-1">
+                  <div className="flex items-center gap-1 text-[10px] font-semibold text-destructive uppercase tracking-wider">
+                    <AlertTriangle className="h-3 w-3" /> Fear Factor
+                  </div>
+                  <p className="text-xs leading-snug">{psych.fearFactor}</p>
+                </div>
+              </div>
+
+              {/* Trust Level */}
+              <div className="rounded-md border border-border bg-secondary/20 p-2.5 space-y-1.5">
+                <div className="flex items-center gap-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  <Lock className="h-3 w-3" /> Trust Assessment
+                </div>
+                <p className="text-xs leading-snug">{psych.trustLevel}</p>
+                {psych.trustEvidence?.length > 0 && (
+                  <div className="space-y-0.5 mt-1">
+                    {psych.trustEvidence.map((e, i) => (
+                      <p key={i} className="text-[10px] text-muted-foreground">• {e}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Emotional Triggers */}
+              {psych.emotionalTriggers?.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">⚡ Emotional Triggers — Language That Resonated</p>
+                  <div className="flex flex-wrap gap-1">
+                    {psych.emotionalTriggers.map((t, i) => (
+                      <Badge key={i} variant="outline" className="text-[10px] bg-accent/50">{t}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Cognitive Biases */}
+              {psych.cognitivebiases?.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">🧩 Cognitive Biases at Play</p>
+                  {psych.cognitivebiases.map((b, i) => (
+                    <p key={i} className="text-[11px] leading-snug text-muted-foreground">• {b}</p>
+                  ))}
+                </div>
+              )}
+
+              {/* Recommended Approach */}
+              <div className="rounded-md border border-primary/20 bg-primary/5 p-2.5 space-y-1">
+                <p className="text-[10px] font-semibold text-primary uppercase tracking-wider">🎯 Recommended Psychological Approach</p>
+                <p className="text-xs leading-snug">{psych.recommendedApproach}</p>
+              </div>
+
+              {/* Power Dynamics */}
+              {pd && (
+                <div className="space-y-2 pt-2 border-t border-border">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    <Crown className="h-3.5 w-3.5" /> Power Dynamics
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-[10px] space-y-0.5">
+                      <p className="font-semibold text-muted-foreground uppercase tracking-wider">Real Influence Map</p>
+                      <p className="text-xs leading-snug">{pd.realInfluenceMap}</p>
+                    </div>
+                    {pd.internalPolitics && (
+                      <div className="text-[10px] space-y-0.5">
+                        <p className="font-semibold text-muted-foreground uppercase tracking-wider">🏛 Internal Politics</p>
+                        <p className="text-xs leading-snug">{pd.internalPolitics}</p>
+                      </div>
+                    )}
+                    {pd.relationshipTensions && (
+                      <div className="text-[10px] space-y-0.5">
+                        <p className="font-semibold text-muted-foreground uppercase tracking-wider">⚡ Relationship Tensions</p>
+                        <p className="text-xs leading-snug">{pd.relationshipTensions}</p>
+                      </div>
+                    )}
+                    {pd.winningOrder?.length > 0 && (
+                      <div className="text-[10px] space-y-0.5">
+                        <p className="font-semibold text-muted-foreground uppercase tracking-wider">🏆 Win Order (who to convert first)</p>
+                        {pd.winningOrder.map((w, i) => (
+                          <p key={i} className="text-xs leading-snug">{i + 1}. {w}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-4">
+              Psychological analysis not yet available. Re-synthesize to generate.
+            </p>
+          )}
+        </TabsContent>
+
+        {/* Stakeholders — enhanced with psychographic badges */}
         <TabsContent value="stakeholders" className="space-y-2">
           {intel.stakeholderMap.map((s, i) => (
             <div key={i} className="rounded border border-border bg-background p-2 space-y-1">
@@ -208,10 +397,27 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
                   <span className="text-[10px] text-muted-foreground">{s.role} @ {s.company}</span>
                 </div>
                 <div className="flex gap-1">
+                  {s.communicationStyle && (
+                    <Badge className={`text-[9px] h-4 ${commStyleColors[s.communicationStyle] || ""}`}>
+                      {commStyleEmoji[s.communicationStyle] || ""} {s.communicationStyle}
+                    </Badge>
+                  )}
                   <Badge className={`text-[9px] h-4 ${stanceColors[s.stance] || ""}`}>{s.stance}</Badge>
                   <Badge variant="outline" className="text-[9px] h-4">{s.influence}</Badge>
                 </div>
               </div>
+              {s.personalWin && (
+                <p className="text-[10px] text-primary/80">🏆 <span className="font-medium">Personal Win:</span> {s.personalWin}</p>
+              )}
+              {s.hiddenConcern && (
+                <p className="text-[10px] text-amber-600">👁 <span className="font-medium">Hidden Concern:</span> {s.hiddenConcern}</p>
+              )}
+              {s.decisionTrigger && (
+                <p className="text-[10px] text-muted-foreground">⚡ <span className="font-medium">Decision Trigger:</span> {s.decisionTrigger}</p>
+              )}
+              {s.careerRisk && (
+                <p className="text-[10px] text-destructive/70">⚠️ <span className="font-medium">Career Risk:</span> {s.careerRisk}</p>
+              )}
               {s.concerns?.length > 0 && (
                 <p className="text-[10px] text-muted-foreground">Concerns: {s.concerns.join("; ")}</p>
               )}
@@ -302,7 +508,6 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
             </div>
           )}
 
-          {/* Competitive Timeline */}
           {intel.competitiveTimeline?.length > 0 && (
             <div className="mt-3 pt-2 border-t border-border">
               <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
@@ -324,7 +529,6 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
             <p className="text-sm leading-relaxed whitespace-pre-line">{intel.dealStageEvidence}</p>
           </div>
 
-          {/* Trajectory Visualization (text fallback for single meeting) */}
           {chartData.length <= 1 && intel.momentumSignals.sentimentTrajectory?.length > 0 && (
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Signal Trajectory</label>
