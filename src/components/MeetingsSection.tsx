@@ -11,7 +11,77 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Mail, Copy, Check } from "lucide-react";
+import { FileText, Mail, Copy, Check, CheckCircle, X } from "lucide-react";
+
+// ─── Suggested Lead Update Types ───
+
+interface SuggestedUpdate {
+  value: string | number;
+  confidence: "Certain" | "Likely" | "Possible";
+  evidence: string;
+}
+
+interface SuggestedLeadUpdates {
+  stage?: SuggestedUpdate;
+  meetingOutcome?: SuggestedUpdate;
+  meetingDate?: SuggestedUpdate;
+  nextFollowUp?: SuggestedUpdate;
+  priority?: SuggestedUpdate;
+  forecastCategory?: SuggestedUpdate;
+  icpFit?: SuggestedUpdate;
+  serviceInterest?: SuggestedUpdate;
+  dealValue?: SuggestedUpdate;
+  assignedTo?: SuggestedUpdate;
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  stage: "Pipeline Stage",
+  meetingOutcome: "Meeting Outcome",
+  meetingDate: "Meeting Date",
+  nextFollowUp: "Next Follow-Up",
+  priority: "Priority",
+  forecastCategory: "Forecast Category",
+  icpFit: "ICP Fit",
+  serviceInterest: "Service Interest",
+  dealValue: "Deal Value",
+  assignedTo: "Assigned To",
+};
+
+/** Apply "Certain" updates automatically, return "Likely" ones for review */
+function processSuggestedUpdates(
+  suggestions: SuggestedLeadUpdates | null,
+  leadId: string,
+  updateLead: (id: string, updates: Partial<Lead>) => void
+): { applied: string[]; pending: Array<{ field: string; label: string; value: string | number; evidence: string }> } {
+  if (!suggestions) return { applied: [], pending: [] };
+
+  const certainUpdates: Partial<Lead> = {};
+  const applied: string[] = [];
+  const pending: Array<{ field: string; label: string; value: string | number; evidence: string }> = [];
+
+  for (const [field, suggestion] of Object.entries(suggestions)) {
+    if (!suggestion || !suggestion.value) continue;
+
+    if (suggestion.confidence === "Certain") {
+      (certainUpdates as any)[field] = suggestion.value;
+      applied.push(`${FIELD_LABELS[field] || field}: ${suggestion.value}`);
+    } else if (suggestion.confidence === "Likely") {
+      pending.push({
+        field,
+        label: FIELD_LABELS[field] || field,
+        value: suggestion.value,
+        evidence: suggestion.evidence,
+      });
+    }
+    // "Possible" is intentionally ignored
+  }
+
+  if (Object.keys(certainUpdates).length > 0) {
+    updateLead(leadId, certainUpdates);
+  }
+
+  return { applied, pending };
+}
 
 function generateMeetingId(): string {
   return `mtg-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
