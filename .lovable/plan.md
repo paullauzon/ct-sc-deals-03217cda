@@ -1,22 +1,28 @@
 
+# Implementation Complete
 
-# Add "Pending Suggestions" Indicator to Pipeline Deal Cards
+## Architecture
 
-## What
-After auto-processing completes, leads with pending suggestions to review will show a small visual indicator on their pipeline deal card — a sparkle icon with a count badge, signaling the user should open the panel to review suggestions.
+### Individual Auto-Find
+- Client creates `processing_jobs` row → invokes `run-lead-job` edge function
+- Edge function runs server-side: fetches Fireflies, AI processing, writes results to DB
+- Client receives results via Supabase Realtime subscription
+- Survives tab close ✓
 
-## How
+### Bulk Processing (NEW — backend-powered)
+- Client fetches all transcripts from both Fireflies accounts (via `fetch-fireflies` edge function)
+- Client matches transcripts to leads locally
+- For each matched lead: creates `processing_jobs` row (job_type: "bulk") and invokes `run-lead-job` with prefetched meetings
+- Each `run-lead-job` runs independently server-side — survives tab close ✓
+- On tab re-open: hydration finds queued/processing bulk jobs, re-invokes queued ones
+- Progress tracked via Realtime: completedJobs/totalJobs counter
 
-### 1. Import `useProcessing` in Pipeline.tsx
-Access `leadJobs` from `ProcessingContext` to check which leads have pending suggestions.
+### Unified Suggestion UX
+- All suggestions (individual + bulk) render inline inside lead detail panels
+- No popup dialogs for bulk review — removed `Dialog` modals from GlobalProcessingOverlay
+- GlobalProcessingOverlay shows only a floating progress bar (bottom-right)
 
-### 2. Add indicator to deal cards (around line 248, after the intelligence indicators block)
-For each lead, check if `leadJobs[lead.id]` exists:
-- If `searching: true` → show a small spinning/pulsing indicator ("Processing…")
-- If `pendingSuggestions.length > 0` → show a sparkle icon with count badge (e.g., `✨ 3 to review`) in a highlighted style
-
-The indicator will be a small row at the bottom of the card, styled distinctly (e.g., amber/yellow background) so it stands out.
-
-### Files Changed
-- `src/components/Pipeline.tsx` — import `useProcessing`, add indicator UI inside deal card
-
+### `run-lead-job` Enhancement
+- Accepts optional `prefetchedMeetings` param
+- If provided, skips Fireflies fetch and uses pre-matched meetings directly
+- Used by bulk processing to avoid redundant per-lead Fireflies API calls

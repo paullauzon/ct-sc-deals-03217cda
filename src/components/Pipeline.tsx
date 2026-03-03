@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, DragEvent } from "react";
 import { useLeads } from "@/contexts/LeadContext";
+import { useProcessing } from "@/contexts/ProcessingContext";
 import { LeadStage, Lead } from "@/types/lead";
 import { LeadDetail } from "@/components/LeadsTable";
 import { computeDaysInStage, getCompanyAssociates } from "@/lib/leadUtils";
-import { Search, X } from "lucide-react";
+import { Search, X, Sparkles, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 const ALL_STAGES: LeadStage[] = [
@@ -63,6 +64,7 @@ function OwnerBadge({ owner }: { owner: string }) {
 
 export function Pipeline() {
   const { getLeadsByStage, updateLead, leads } = useLeads();
+  const { leadJobs } = useProcessing();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -248,6 +250,28 @@ export function Pipeline() {
                           )}
                         </div>
                       )}
+                      {/* Pending suggestions indicator */}
+                      {(() => {
+                        const job = leadJobs[lead.id];
+                        if (!job) return null;
+                        if (job.searching) {
+                          return (
+                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground animate-pulse">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              <span>Processing…</span>
+                            </div>
+                          );
+                        }
+                        if (job.pendingSuggestions?.length > 0) {
+                          return (
+                            <div className="flex items-center gap-1.5 text-[10px] px-1.5 py-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 font-medium">
+                              <Sparkles className="h-3 w-3" />
+                              <span>{job.pendingSuggestions.length} to review</span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                       {closed && lead.closeReason && (
                         <p className="text-xs text-muted-foreground">Reason: {lead.closeReason}</p>
                       )}
