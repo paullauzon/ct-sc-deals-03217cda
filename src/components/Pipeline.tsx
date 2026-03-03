@@ -43,6 +43,30 @@ export function Pipeline() {
   const { getLeadsByStage, updateLead, leads } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (e.key === "Escape" && document.activeElement === searchRef.current) {
+        setSearchQuery("");
+        searchRef.current?.blur();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const matchesSearch = (lead: Lead) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return [lead.name, lead.company, lead.role, lead.email, lead.serviceInterest, lead.notes]
+      .some(f => f?.toLowerCase().includes(q));
+  };
 
   const handleDragStart = (e: DragEvent, leadId: string) => {
     e.dataTransfer.setData("text/plain", leadId);
@@ -70,12 +94,29 @@ export function Pipeline() {
 
   return (
     <div className="p-6 max-w-full mx-auto space-y-6">
-      <div>
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Pipeline</h1>
-          <span className="text-sm text-muted-foreground tabular-nums">${leads.reduce((s, l) => s + l.dealValue, 0).toLocaleString()} total value</span>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight">Pipeline</h1>
+            <span className="text-sm text-muted-foreground tabular-nums">${leads.reduce((s, l) => s + l.dealValue, 0).toLocaleString()} total value</span>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">Drag deals between stages</p>
         </div>
-        <p className="text-sm text-muted-foreground mt-1">Drag deals between stages</p>
+        <div className="relative w-full max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            ref={searchRef}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search deals… ⌘K"
+            className="pl-9 pr-8"
+          />
+          {searchQuery && (
+            <button onClick={() => { setSearchQuery(""); searchRef.current?.focus(); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-4 overflow-x-auto pb-4 scroll-smooth snap-x snap-mandatory">
