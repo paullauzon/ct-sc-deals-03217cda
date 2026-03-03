@@ -1,8 +1,10 @@
-import { useState, DragEvent } from "react";
+import { useState, useEffect, useRef, DragEvent } from "react";
 import { useLeads } from "@/contexts/LeadContext";
-import { LeadStage } from "@/types/lead";
+import { LeadStage, Lead } from "@/types/lead";
 import { LeadDetail } from "@/components/LeadsTable";
 import { computeDaysInStage } from "@/lib/leadUtils";
+import { Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
