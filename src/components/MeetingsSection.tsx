@@ -1159,7 +1159,7 @@ function AddMeetingDialog({
   onOpenChange: (open: boolean) => void;
   lead: Lead;
   existingMeetings: Meeting[];
-  onAdd: (meeting: Meeting) => void;
+  onAdd: (meeting: Meeting, suggestedUpdates?: SuggestedLeadUpdates) => void;
 }) {
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -1177,6 +1177,7 @@ function AddMeetingDialog({
     let summary = "";
     let nextSteps = "";
     let intelligence: MeetingIntelligence | undefined;
+    let suggestedUpdates: SuggestedLeadUpdates | undefined;
 
     if (transcript.trim().length > 20) {
       try {
@@ -1190,6 +1191,7 @@ function AddMeetingDialog({
         summary = data.summary || "";
         nextSteps = data.nextSteps || "";
         intelligence = data.intelligence || undefined;
+        suggestedUpdates = data.suggestedLeadUpdates || undefined;
       } catch (e: any) {
         console.error("AI processing error:", e);
         toast.error("AI processing failed, saving without summary");
@@ -1208,7 +1210,7 @@ function AddMeetingDialog({
       intelligence,
     };
 
-    onAdd(meeting);
+    onAdd(meeting, suggestedUpdates);
     toast.success("Meeting added and processed");
     setTitle("");
     setDate(new Date().toISOString().split("T")[0]);
@@ -1247,7 +1249,7 @@ function AddMeetingDialog({
           </div>
           {transcript.trim().length > 20 && (
             <p className="text-xs text-muted-foreground">
-              ✨ AI will extract full intelligence: summary, action items, deal signals, sentiment, coaching metrics & more
+              ✨ AI will extract full intelligence + auto-update CRM fields from transcript
               {existingMeetings.length > 0 && ` — informed by ${existingMeetings.length} prior meeting${existingMeetings.length !== 1 ? "s" : ""}`}
             </p>
           )}
@@ -1258,6 +1260,107 @@ function AddMeetingDialog({
             {processing ? "Extracting intelligence..." : "Save & Process"}
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Suggested CRM Updates Dialog ───
+
+function SuggestedUpdatesDialog({
+  open,
+  onOpenChange,
+  suggestions,
+  leadId,
+  updateLead,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  suggestions: Array<{ field: string; label: string; value: string | number; evidence: string }>;
+  leadId: string;
+  updateLead: (id: string, updates: Partial<Lead>) => void;
+}) {
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+
+  const remaining = suggestions.filter(s => !dismissed.has(s.field));
+
+  const handleAccept = (field: string, value: string | number) => {
+    updateLead(leadId, { [field]: value } as Partial<Lead>);
+    setDismissed(prev => new Set([...prev, field]));
+    toast.success(`Updated ${FIELD_LABELS[field] || field}`);
+  };
+
+  const handleDismiss = (field: string) => {
+    setDismissed(prev => new Set([...prev, field]));
+  };
+
+  const handleAcceptAll = () => {
+    const updates: Partial<Lead> = {};
+    for (const s of remaining) {
+      (updates as any)[s.field] = s.value;
+    }
+    updateLead(leadId, updates);
+    toast.success(`Applied ${remaining.length} suggested updates`);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CheckCircle className="h-4 w-4 text-primary" />
+            AI Suggested CRM Updates
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground">
+          These updates are <strong>likely</strong> based on transcript evidence but not 100% certain. Review and accept or dismiss each one.
+        </p>
+        {remaining.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">All suggestions reviewed ✓</p>
+        ) : (
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+            {remaining.map((s) => (
+              <div key={s.field} className="border border-border rounded-lg p-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs text-muted-foreground uppercase tracking-wider">{s.label}</span>
+                    <p className="text-sm font-medium">{String(s.value)}</p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-primary hover:bg-primary/10"
+                      onClick={() => handleAccept(s.field, s.value)}
+                      title="Accept"
+                    >
+                      <Check className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => handleDismiss(s.field)}
+                      title="Dismiss"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  📝 {s.evidence}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+        {remaining.length > 1 && (
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Dismiss All</Button>
+            <Button size="sm" onClick={handleAcceptAll}>Accept All ({remaining.length})</Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );
