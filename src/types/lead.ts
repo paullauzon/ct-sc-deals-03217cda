@@ -58,6 +58,10 @@ export type ForecastCategory =
 
 export type IcpFit = "Strong" | "Moderate" | "Weak" | "";
 
+export type BillingFrequency = "Monthly" | "Quarterly" | "Annually" | "";
+
+// ─── Meeting Intelligence Types ───
+
 export interface MeetingAttendee {
   name: string;
   role: string;
@@ -128,7 +132,129 @@ export interface Meeting {
   intelligence?: MeetingIntelligence;
 }
 
-export type BillingFrequency = "Monthly" | "Quarterly" | "Annually" | "";
+// ─── Deal Intelligence (Accumulated Cross-Meeting Synthesis) ───
+
+export interface StakeholderProfile {
+  name: string;
+  role: string;
+  company: string;
+  stance: "Champion" | "Supporter" | "Neutral" | "Skeptic" | "Blocker" | "Unknown";
+  influence: "Decision Maker" | "High" | "Medium" | "Low" | "Unknown";
+  concerns: string[];
+  mentions: number;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+export interface ObjectionRecord {
+  objection: string;
+  raisedIn: string;
+  status: "Open" | "Addressed" | "Recurring";
+  addressedIn: string;
+  resolution: string;
+}
+
+export interface ActionItemRecord {
+  item: string;
+  owner: string;
+  createdIn: string;
+  status: "Open" | "Completed" | "Overdue" | "Dropped";
+  resolvedIn: string;
+  deadline: string;
+}
+
+export interface DealMilestone {
+  date: string;
+  event: string;
+  significance: string;
+}
+
+export interface RiskRecord {
+  risk: string;
+  severity: "Critical" | "High" | "Medium" | "Low";
+  source: string;
+  mitigationStatus: "Unmitigated" | "Partially Mitigated" | "Mitigated";
+}
+
+export interface CompetitiveEvent {
+  date: string;
+  event: string;
+}
+
+export interface MomentumSignals {
+  meetingFrequencyDays: number;
+  sentimentTrajectory: string[];
+  intentTrajectory: string[];
+  engagementTrajectory: string[];
+  completionRate: number;
+  momentum: "Accelerating" | "Steady" | "Stalling" | "Stalled";
+}
+
+export interface BuyingCommittee {
+  decisionMaker: string;
+  champion: string;
+  influencers: string[];
+  blockers: string[];
+  unknowns: string[];
+}
+
+export interface DealIntelligence {
+  dealNarrative: string;
+  stakeholderMap: StakeholderProfile[];
+  objectionTracker: ObjectionRecord[];
+  actionItemTracker: ActionItemRecord[];
+  momentumSignals: MomentumSignals;
+  keyMilestones: DealMilestone[];
+  riskRegister: RiskRecord[];
+  competitiveTimeline: CompetitiveEvent[];
+  buyingCommittee: BuyingCommittee;
+  dealStageEvidence: string;
+  synthesizedAt: string;
+}
+
+// ─── AI Enrichment Types ───
+
+export interface SuggestedFieldUpdate {
+  value: string | number;
+  reason: string;
+}
+
+export interface SuggestedUpdates {
+  stage?: SuggestedFieldUpdate;
+  priority?: SuggestedFieldUpdate;
+  forecastCategory?: SuggestedFieldUpdate;
+  icpFit?: SuggestedFieldUpdate;
+  nextFollowUp?: SuggestedFieldUpdate;
+  dealValue?: SuggestedFieldUpdate;
+  serviceInterest?: SuggestedFieldUpdate;
+  meetingOutcome?: SuggestedFieldUpdate;
+}
+
+export interface LeadEnrichment {
+  companyDescription: string;
+  acquisitionCriteria: string;
+  buyerMotivation: string;
+  urgency: string;
+  decisionMakers: string;
+  competitorTools: string;
+  keyInsights: string;
+  dataSources?: string;
+  enrichedAt: string;
+  // Holistic deal intelligence fields
+  objectionsSummary?: string;
+  dealRiskAssessment?: string;
+  recommendedNextActions?: string;
+  competitiveLandscape?: string;
+  relationshipMap?: string;
+  dealHealthScore?: string;
+  engagementTrend?: string;
+  likelihoodToClose?: string;
+  sentimentAnalysis?: string;
+  // AI-suggested field updates
+  suggestedUpdates?: SuggestedUpdates;
+}
+
+// ─── Lead ───
 
 export interface Lead {
   id: string;
@@ -185,51 +311,13 @@ export interface Lead {
   meetings: Meeting[];
   // AI Enrichment
   enrichment?: LeadEnrichment;
+  // Accumulated Deal Intelligence
+  dealIntelligence?: DealIntelligence;
   // Legacy fields (kept for migration)
   firefliesUrl: string;
   firefliesTranscript: string;
   firefliesSummary: string;
   firefliesNextSteps: string;
-}
-
-export interface SuggestedFieldUpdate {
-  value: string | number;
-  reason: string;
-}
-
-export interface SuggestedUpdates {
-  stage?: SuggestedFieldUpdate;
-  priority?: SuggestedFieldUpdate;
-  forecastCategory?: SuggestedFieldUpdate;
-  icpFit?: SuggestedFieldUpdate;
-  nextFollowUp?: SuggestedFieldUpdate;
-  dealValue?: SuggestedFieldUpdate;
-  serviceInterest?: SuggestedFieldUpdate;
-  meetingOutcome?: SuggestedFieldUpdate;
-}
-
-export interface LeadEnrichment {
-  companyDescription: string;
-  acquisitionCriteria: string;
-  buyerMotivation: string;
-  urgency: string;
-  decisionMakers: string;
-  competitorTools: string;
-  keyInsights: string;
-  dataSources?: string;
-  enrichedAt: string;
-  // Holistic deal intelligence fields
-  objectionsSummary?: string;
-  dealRiskAssessment?: string;
-  recommendedNextActions?: string;
-  competitiveLandscape?: string;
-  relationshipMap?: string;
-  dealHealthScore?: string;
-  engagementTrend?: string;
-  likelihoodToClose?: string;
-  sentimentAnalysis?: string;
-  // AI-suggested field updates
-  suggestedUpdates?: SuggestedUpdates;
 }
 
 export interface PipelineMetrics {
