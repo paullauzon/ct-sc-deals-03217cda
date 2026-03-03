@@ -3,6 +3,7 @@ import { Lead, Meeting, MeetingIntelligence, DealIntelligence, MeetingPrepBrief 
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
 import { supabase } from "@/integrations/supabase/client";
+import { processSuggestedUpdates as processSuggUpdates } from "@/lib/bulkProcessing";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -306,8 +307,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
           }
           // For manual adds with suggested updates, apply certain ones directly
           if (suggestedUpdates) {
-            const { processSuggestedUpdates: processSugg } = require("@/lib/bulkProcessing");
-            const { applied } = processSugg(suggestedUpdates, lead.id, updateLead);
+            const { applied } = processSuggUpdates(suggestedUpdates, lead.id, updateLead);
             if (applied.length > 0) {
               toast.success(`Auto-updated ${applied.length} field${applied.length !== 1 ? "s" : ""}`, {
                 description: applied.join(" · "),
