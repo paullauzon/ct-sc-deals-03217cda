@@ -4,8 +4,8 @@ import { Lead, LeadSource, Brand } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { LeadDetail } from "@/components/LeadsTable";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell,
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Cell, Legend,
 } from "recharts";
 
 const SOURCE_LABELS: Record<LeadSource, string> = {
@@ -17,12 +17,13 @@ const SOURCE_LABELS: Record<LeadSource, string> = {
 
 const ACTIVE_STAGES = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"] as const;
 
+const ALL_SERVICES = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"] as const;
+
 export function Dashboard() {
   const { getMetrics, leads } = useLeads();
   const m = getMetrics();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
-  // ---- Computed data ----
   const analytics = useMemo(() => {
     const now = new Date("2026-03-03");
     const oneWeekAgo = new Date(now.getTime() - 7 * 86400000);
@@ -37,21 +38,20 @@ export function Dashboard() {
     }).length;
     const momGrowth = leadsLastMonth > 0 ? Math.round(((leadsThisMonth - leadsLastMonth) / leadsLastMonth) * 100) : 0;
 
-    // Brand breakdown
     const ctLeads = leads.filter((l) => l.brand === "Captarget");
     const scLeads = leads.filter((l) => l.brand === "SourceCo");
 
-    // Weekly volume (last 16 weeks)
-    const weeklyData: { week: string; CT: number; SC: number }[] = [];
+    // Weekly volume (last 16 weeks) with cumulative
+    const weeklyData: { week: string; CT: number; SC: number; total: number; cumulative: number }[] = [];
+    let cumulative = 0;
     for (let i = 15; i >= 0; i--) {
       const weekStart = new Date(now.getTime() - (i + 1) * 7 * 86400000);
       const weekEnd = new Date(now.getTime() - i * 7 * 86400000);
       const label = `${weekStart.getMonth() + 1}/${weekStart.getDate()}`;
-      weeklyData.push({
-        week: label,
-        CT: leads.filter((l) => l.brand === "Captarget" && new Date(l.dateSubmitted) >= weekStart && new Date(l.dateSubmitted) < weekEnd).length,
-        SC: leads.filter((l) => l.brand === "SourceCo" && new Date(l.dateSubmitted) >= weekStart && new Date(l.dateSubmitted) < weekEnd).length,
-      });
+      const ct = leads.filter((l) => l.brand === "Captarget" && new Date(l.dateSubmitted) >= weekStart && new Date(l.dateSubmitted) < weekEnd).length;
+      const sc = leads.filter((l) => l.brand === "SourceCo" && new Date(l.dateSubmitted) >= weekStart && new Date(l.dateSubmitted) < weekEnd).length;
+      cumulative += ct + sc;
+      weeklyData.push({ week: label, CT: ct, SC: sc, total: ct + sc, cumulative });
     }
 
     // Source breakdown
@@ -119,15 +119,26 @@ export function Dashboard() {
       }
     }
     const hearData = Array.from(hearMap.entries())
-      .map(([channel, count]) => ({ channel, count }))
+      .map(([channel, count]) => ({ channel, count, pct: Math.round((count / scLeads.length) * 100) }))
       .sort((a, b) => b.count - a.count);
 
-    // Service Interest
-    const serviceData = (["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "Other", "TBD"] as const).map((s) => ({
+    // Service Interest (all brands)
+    const serviceData = ALL_SERVICES.map((s) => ({
       label: s, count: leads.filter((l) => l.serviceInterest === s).length,
     })).filter((s) => s.count > 0);
 
-    // Deals planned distribution
+    // Service Interest by Brand
+    const serviceByBrand = ALL_SERVICES.map((s) => ({
+      service: s === "Off-Market Email Origination" ? "Email Orig." :
+        s === "Banker/Broker Coverage" ? "Banker/Broker" :
+        s === "Full Platform (All 3)" ? "Full Platform" :
+        s === "SourceCo Retained Search" ? "SC Retained" :
+        s,
+      CT: ctLeads.filter((l) => l.serviceInterest === s).length,
+      SC: scLeads.filter((l) => l.serviceInterest === s).length,
+    })).filter((s) => s.CT > 0 || s.SC > 0);
+
+    // Deals planned
     const dealsMap = new Map<string, number>();
     for (const l of leads) {
       if (l.dealsPlanned) dealsMap.set(l.dealsPlanned, (dealsMap.get(l.dealsPlanned) || 0) + 1);
@@ -136,7 +147,7 @@ export function Dashboard() {
       .map(([range, count]) => ({ range, count }))
       .sort((a, b) => b.count - a.count);
 
-    // Day of week heatmap
+    // Day of week
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const dayOfWeek = dayNames.map((day, i) => ({
       day,
@@ -151,21 +162,61 @@ export function Dashboard() {
     }));
     const maxStageCount = Math.max(...stageFunnel.map((s) => s.count), 1);
 
+    // Conversion funnel by brand
+    const conversionByBrand = ACTIVE_STAGES.map((stage) => ({
+      stage,
+      CT: ctLeads.filter((l) => l.stage === stage).length,
+      SC: scLeads.filter((l) => l.stage === stage).length,
+    }));
+
+    // Lead Velocity Rate: qualified leads per week (last 4 weeks vs prior 4 weeks)
+    const fourWeeksAgo = new Date(now.getTime() - 28 * 86400000);
+    const eightWeeksAgo = new Date(now.getTime() - 56 * 86400000);
+    const qualifiedStages = new Set(["Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won"]);
+    const qualifiedRecent = leads.filter((l) => new Date(l.dateSubmitted) >= fourWeeksAgo && qualifiedStages.has(l.stage)).length;
+    const qualifiedPrior = leads.filter((l) => {
+      const d = new Date(l.dateSubmitted);
+      return d >= eightWeeksAgo && d < fourWeeksAgo && qualifiedStages.has(l.stage);
+    }).length;
+    const lvrCurrent = Math.round(qualifiedRecent / 4 * 10) / 10;
+    const lvrPrior = Math.round(qualifiedPrior / 4 * 10) / 10;
+    const lvrChange = lvrPrior > 0 ? Math.round(((lvrCurrent - lvrPrior) / lvrPrior) * 100) : 0;
+
+    // Stale leads (>14 days in stage, excluding closed)
+    const closedStages = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+    const staleLeads = leads
+      .filter((l) => !closedStages.has(l.stage) && computeDaysInStage(l.stageEnteredDate) > 14)
+      .sort((a, b) => computeDaysInStage(b.stageEnteredDate) - computeDaysInStage(a.stageEnteredDate));
+
+    // Priority distribution
+    const priorityData = (["High", "Medium", "Low"] as const).map((p) => ({
+      priority: p,
+      count: leads.filter((l) => l.priority === p && !closedStages.has(l.stage)).length,
+    }));
+
+    // Forecast summary
+    const forecastData = (["Commit", "Best Case", "Pipeline", "Omit"] as const).map((cat) => {
+      const inCat = leads.filter((l) => l.forecastCategory === cat);
+      return { category: cat, count: inCat.length, value: inCat.reduce((s, l) => s + l.dealValue, 0) };
+    }).filter((f) => f.count > 0);
+
     return {
-      leadsThisWeek, leadsThisMonth, momGrowth,
+      leadsThisWeek, leadsThisMonth, momGrowth, lvrCurrent, lvrChange,
       ctLeads, scLeads, weeklyData, sourceBreakdown, roleData,
       companyLeaderboard, duplicates, duplicatePairs, hearData,
-      serviceData, dealsData, dayOfWeek, stageFunnel, maxStageCount,
+      serviceData, serviceByBrand, dealsData, dayOfWeek,
+      stageFunnel, maxStageCount, conversionByBrand,
+      staleLeads, priorityData, forecastData,
     };
   }, [leads, m]);
 
   const secondaryMetrics = [
-    { label: "Leads This Week", value: analytics.leadsThisWeek },
-    { label: "Leads This Month", value: analytics.leadsThisMonth },
+    { label: "This Week", value: analytics.leadsThisWeek },
+    { label: "This Month", value: analytics.leadsThisMonth },
     { label: "MoM Growth", value: `${analytics.momGrowth > 0 ? "+" : ""}${analytics.momGrowth}%` },
+    { label: "LVR / wk", value: analytics.lvrCurrent, sub: analytics.lvrChange !== 0 ? `${analytics.lvrChange > 0 ? "+" : ""}${analytics.lvrChange}%` : undefined },
     { label: "Meetings Set", value: m.meetingsSet },
-    { label: "Closed Won", value: m.closedWon },
-    { label: "Closed Lost", value: m.closedLost },
+    { label: "Won / Lost", value: `${m.closedWon} / ${m.closedLost}` },
   ];
 
   return (
@@ -195,7 +246,10 @@ export function Dashboard() {
         {secondaryMetrics.map((stat) => (
           <div key={stat.label} className="border border-border rounded-lg px-4 py-3">
             <p className="text-xs text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-            <p className="text-lg font-semibold tabular-nums mt-0.5">{stat.value}</p>
+            <div className="flex items-baseline gap-1.5 mt-0.5">
+              <p className="text-lg font-semibold tabular-nums">{stat.value}</p>
+              {stat.sub && <span className={`text-xs tabular-nums ${stat.sub.startsWith("+") ? "text-emerald-600" : "text-red-500"}`}>{stat.sub}</span>}
+            </div>
           </div>
         ))}
       </div>
@@ -223,63 +277,200 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Weekly Volume Chart */}
+      {/* Lead Volume — Stacked Area Chart */}
       <div>
         <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Lead Volume Over Time (16 weeks)</h2>
         <div className="border border-border rounded-lg p-4">
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={analytics.weeklyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,85%)" />
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={analytics.weeklyData}>
+              <defs>
+                <linearGradient id="gradCT" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(0,0%,15%)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(0,0%,15%)" stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="gradSC" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(0,0%,55%)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(0,0%,55%)" stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
               <XAxis dataKey="week" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-              <YAxis tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-              <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", background: "hsl(0,0%,100%)" }} />
-              <Line type="monotone" dataKey="CT" stroke="hsl(0,0%,15%)" strokeWidth={2} dot={{ r: 2 }} name="Captarget" />
-              <Line type="monotone" dataKey="SC" stroke="hsl(0,0%,60%)" strokeWidth={2} dot={{ r: 2 }} name="SourceCo" />
-            </LineChart>
+              <YAxis yAxisId="left" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} stroke="hsl(0,0%,75%)" />
+              <Tooltip
+                contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", background: "hsl(0,0%,100%)", borderRadius: 6 }}
+                formatter={(value: number, name: string) => {
+                  const labels: Record<string, string> = { CT: "Captarget", SC: "SourceCo", cumulative: "Cumulative Total" };
+                  return [value, labels[name] || name];
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Area yAxisId="left" type="monotone" dataKey="CT" stackId="1" stroke="hsl(0,0%,15%)" fill="url(#gradCT)" strokeWidth={2} name="Captarget" />
+              <Area yAxisId="left" type="monotone" dataKey="SC" stackId="1" stroke="hsl(0,0%,55%)" fill="url(#gradSC)" strokeWidth={2} name="SourceCo" />
+              <Line yAxisId="right" type="monotone" dataKey="cumulative" stroke="hsl(0,0%,40%)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} name="Cumulative" />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Pipeline Funnel */}
-      <div>
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Pipeline Funnel</h2>
-        <div className="space-y-2">
-          {analytics.stageFunnel.map((s, i) => {
-            const prev = i > 0 ? analytics.stageFunnel[i - 1].count : null;
-            const dropOff = prev && prev > 0 ? Math.round(((prev - s.count) / prev) * 100) : null;
-            return (
-              <div key={s.label} className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground w-32 shrink-0 text-right">{s.label}</span>
-                <div className="flex-1 h-6 bg-secondary/50 rounded overflow-hidden">
-                  <div className="h-full bg-foreground/20 rounded transition-all" style={{ width: `${Math.max((s.count / analytics.maxStageCount) * 100, 2)}%` }} />
+      {/* Pipeline Funnel + Conversion by Brand */}
+      <div className="grid grid-cols-2 gap-6">
+        <div>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Pipeline Funnel</h2>
+          <div className="space-y-2">
+            {analytics.stageFunnel.map((s, i) => {
+              const prev = i > 0 ? analytics.stageFunnel[i - 1].count : null;
+              const dropOff = prev && prev > 0 ? Math.round(((prev - s.count) / prev) * 100) : null;
+              return (
+                <div key={s.label} className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground w-28 shrink-0 text-right">{s.label}</span>
+                  <div className="flex-1 h-6 bg-secondary/50 rounded overflow-hidden">
+                    <div className="h-full bg-foreground/20 rounded transition-all" style={{ width: `${Math.max((s.count / analytics.maxStageCount) * 100, 2)}%` }} />
+                  </div>
+                  <span className="text-xs tabular-nums w-8 text-right font-medium">{s.count}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground w-16 text-right">${s.value.toLocaleString()}</span>
+                  {dropOff !== null && dropOff > 0 && (
+                    <span className="text-xs text-muted-foreground w-12 text-right">-{dropOff}%</span>
+                  )}
                 </div>
-                <span className="text-xs tabular-nums w-8 text-right font-medium">{s.count}</span>
-                <span className="text-xs tabular-nums text-muted-foreground w-20 text-right">${s.value.toLocaleString()}</span>
-                {dropOff !== null && dropOff > 0 && (
-                  <span className="text-xs text-muted-foreground w-12 text-right">-{dropOff}%</span>
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+        </div>
+        <div>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Stage Distribution by Brand</h2>
+          <div className="border border-border rounded-lg p-4">
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={analytics.conversionByBrand} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                <YAxis dataKey="stage" type="category" tick={{ fontSize: 9 }} stroke="hsl(0,0%,60%)" width={85} />
+                <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
+                <Bar dataKey="CT" fill="hsl(0,0%,20%)" radius={[0, 3, 3, 0]} name="Captarget" />
+                <Bar dataKey="SC" fill="hsl(0,0%,65%)" radius={[0, 3, 3, 0]} name="SourceCo" />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 
-      {/* Source Form Breakdown + Role Distribution */}
+      {/* Stale Leads Alert */}
+      {analytics.staleLeads.length > 0 && (
+        <div>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
+            ⚠ Stale Leads <span className="text-xs font-normal ml-1">({analytics.staleLeads.length} leads stuck &gt;14 days)</span>
+          </h2>
+          <div className="border border-border border-l-2 border-l-foreground/40 rounded-md divide-y divide-border">
+            {analytics.staleLeads.slice(0, 8).map((lead) => (
+              <div
+                key={lead.id}
+                onClick={() => setSelectedLeadId(lead.id)}
+                className="flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer hover:bg-secondary/30 transition-colors"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
+                  <span className="font-medium">{lead.name}</span>
+                  <span className="text-muted-foreground truncate text-xs">{lead.company}</span>
+                </div>
+                <div className="flex items-center gap-3 text-muted-foreground shrink-0">
+                  <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
+                  <span className="text-xs tabular-nums font-medium">{computeDaysInStage(lead.stageEnteredDate)}d</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Source Form Breakdown + How SC Found Us */}
       <div className="grid grid-cols-2 gap-6">
         <div>
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Source Breakdown</h2>
           <div className="border border-border rounded-lg p-4">
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={analytics.sourceBreakdown} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,85%)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
                 <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
                 <YAxis dataKey="source" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={80} />
-                <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)" }} />
+                <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
                 <Bar dataKey="count" fill="hsl(0,0%,25%)" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
+        {analytics.hearData.length > 0 && (
+          <div>
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">How SC Leads Found Us</h2>
+            <div className="border border-border rounded-lg p-4">
+              <ResponsiveContainer width="100%" height={Math.max(180, analytics.hearData.length * 32)}>
+                <BarChart data={analytics.hearData} layout="vertical" margin={{ left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                  <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                  <YAxis dataKey="channel" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={90} />
+                  <Tooltip
+                    contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }}
+                    formatter={(value: number, _: string, props: any) => [`${value} (${props.payload.pct}%)`, "Leads"]}
+                  />
+                  <Bar dataKey="count" fill="hsl(0,0%,45%)" radius={[0, 4, 4, 0]}>
+                    {analytics.hearData.map((_, i) => (
+                      <Cell key={i} fill={`hsl(0,0%,${25 + i * 5}%)`} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Service Interest by Brand + Forecast Summary */}
+      <div className="grid grid-cols-2 gap-6">
+        <div>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Service Interest by Brand</h2>
+          <div className="border border-border rounded-lg p-4">
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={analytics.serviceByBrand} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                <YAxis dataKey="service" type="category" tick={{ fontSize: 9 }} stroke="hsl(0,0%,60%)" width={85} />
+                <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
+                <Bar dataKey="CT" fill="hsl(0,0%,20%)" radius={[0, 3, 3, 0]} name="Captarget" />
+                <Bar dataKey="SC" fill="hsl(0,0%,65%)" radius={[0, 3, 3, 0]} name="SourceCo" />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <div>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Forecast Summary</h2>
+          {analytics.forecastData.length > 0 ? (
+            <div className="border border-border rounded-md divide-y divide-border">
+              {analytics.forecastData.map((f) => (
+                <div key={f.category} className="flex items-center justify-between px-4 py-3 text-sm">
+                  <span className="font-medium">{f.category}</span>
+                  <div className="flex items-center gap-4">
+                    <span className="tabular-nums text-muted-foreground">{f.count} leads</span>
+                    <span className="tabular-nums font-semibold">${f.value.toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+              <div className="flex items-center justify-between px-4 py-3 text-sm bg-secondary/30">
+                <span className="font-medium">Total Forecasted</span>
+                <span className="tabular-nums font-semibold">${analytics.forecastData.reduce((s, f) => s + f.value, 0).toLocaleString()}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="border border-border rounded-md px-4 py-8 text-center">
+              <p className="text-sm text-muted-foreground">No forecast categories assigned yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Set forecast categories on individual leads to see projections here</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Role Distribution + Priority Distribution */}
+      <div className="grid grid-cols-2 gap-6">
         <div>
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Role / Buyer Type</h2>
           <div className="border border-border rounded-md divide-y divide-border max-h-[240px] overflow-y-auto">
@@ -292,6 +483,29 @@ export function Dashboard() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+        <div>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Active Pipeline by Priority</h2>
+          <div className="border border-border rounded-md divide-y divide-border">
+            {analytics.priorityData.map((p) => {
+              const total = analytics.priorityData.reduce((s, x) => s + x.count, 0);
+              return (
+                <div key={p.priority} className="flex items-center justify-between px-4 py-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${p.priority === "High" ? "bg-foreground" : p.priority === "Medium" ? "bg-foreground/50" : "bg-foreground/20"}`} />
+                    <span className="font-medium">{p.priority}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-24 h-3 bg-secondary/50 rounded overflow-hidden">
+                      <div className="h-full bg-foreground/20 rounded" style={{ width: `${total > 0 ? (p.count / total) * 100 : 0}%` }} />
+                    </div>
+                    <span className="tabular-nums font-medium w-8 text-right">{p.count}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">{total > 0 ? Math.round((p.count / total) * 100) : 0}%</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -326,7 +540,7 @@ export function Dashboard() {
       {/* Service Interest + Deals Planned + Day of Week */}
       <div className="grid grid-cols-3 gap-6">
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Service Interest</h2>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Service Interest (All)</h2>
           <div className="border border-border rounded-md divide-y divide-border">
             {analytics.serviceData.map((s) => (
               <div key={s.label} className="flex items-center justify-between px-4 py-2.5 text-sm">
@@ -365,42 +579,27 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Where Heard About Us (SC) + Duplicate Analysis */}
-      <div className="grid grid-cols-2 gap-6">
-        {analytics.hearData.length > 0 && (
-          <div>
-            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">How SC Leads Found Us</h2>
-            <div className="border border-border rounded-md divide-y divide-border">
-              {analytics.hearData.map((h) => (
-                <div key={h.channel} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                  <span className="text-muted-foreground">{h.channel}</span>
-                  <span className="font-medium tabular-nums">{h.count}</span>
+      {/* Duplicates */}
+      <div>
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          Cross-Brand Duplicates <span className="text-xs font-normal ml-1">({analytics.duplicatePairs.length} pairs)</span>
+        </h2>
+        {analytics.duplicatePairs.length > 0 ? (
+          <div className="border border-border rounded-md divide-y divide-border max-h-[300px] overflow-y-auto">
+            {analytics.duplicatePairs.map((pair, i) => (
+              <div key={i} className="px-4 py-2.5 text-sm space-y-0.5">
+                <p className="font-medium">{pair.ctLead.name}</p>
+                <p className="text-xs text-muted-foreground">{pair.ctLead.email}</p>
+                <div className="flex gap-2 text-xs">
+                  <span className="px-1 py-0.5 border border-border rounded">CT: {pair.ctLead.source.replace("CT ", "")}</span>
+                  <span className="px-1 py-0.5 border border-border rounded">SC: {pair.scLead.source.replace("SC ", "")}</span>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No cross-brand duplicates found</p>
         )}
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
-            Cross-Brand Duplicates <span className="text-xs font-normal ml-1">({analytics.duplicatePairs.length} pairs)</span>
-          </h2>
-          {analytics.duplicatePairs.length > 0 ? (
-            <div className="border border-border rounded-md divide-y divide-border max-h-[300px] overflow-y-auto">
-              {analytics.duplicatePairs.map((pair, i) => (
-                <div key={i} className="px-4 py-2.5 text-sm space-y-0.5">
-                  <p className="font-medium">{pair.ctLead.name}</p>
-                  <p className="text-xs text-muted-foreground">{pair.ctLead.email}</p>
-                  <div className="flex gap-2 text-xs">
-                    <span className="px-1 py-0.5 border border-border rounded">CT: {pair.ctLead.source.replace("CT ", "")}</span>
-                    <span className="px-1 py-0.5 border border-border rounded">SC: {pair.scLead.source.replace("SC ", "")}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No cross-brand duplicates found</p>
-          )}
-        </div>
       </div>
 
       {/* Recent Leads */}
