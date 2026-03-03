@@ -186,7 +186,7 @@ const INTELLIGENCE_TOOL = {
             },
             nextFollowUp: {
               ...SUGGESTED_UPDATE_FIELD,
-              description: "Next follow-up date in YYYY-MM-DD format, if a specific date/timeframe was discussed.",
+              description: "Next follow-up date in YYYY-MM-DD format. MUST be a future date relative to TODAY'S DATE. If the discussed date/timeframe resolves to a past date, calculate a reasonable future follow-up instead (e.g., 1-2 weeks from today). Never output a date before today.",
             },
             priority: {
               ...SUGGESTED_UPDATE_FIELD,
@@ -295,7 +295,11 @@ serve(async (req) => {
 
     const hasPrior = priorMeetings?.length > 0;
 
+    const todayDate = new Date().toISOString().split("T")[0];
+
     const systemPrompt = `You are an elite sales intelligence analyst for an M&A deal origination firm (Captarget / SourceCo). You extract comprehensive, structured intelligence from meeting transcripts to inform the sales process.
+
+TODAY'S DATE: ${todayDate}
 
 Context: The firm helps private equity firms and strategic acquirers find and close acquisitions. Services include off-market email origination, direct calling campaigns, and broker/banker coverage.
 
@@ -336,7 +340,7 @@ You MUST also recommend CRM field updates based on transcript evidence. Follow t
 
 ### Dates
 - meetingDate: Extract from transcript metadata if available. Otherwise Possible.
-- nextFollowUp: Only if a specific follow-up date was discussed. "Next week" = calculate from meeting date if known.
+- nextFollowUp: Only if a specific follow-up date was discussed. "Next week" = calculate from TODAY'S DATE (${todayDate}), NOT from the meeting date. The nextFollowUp MUST ALWAYS be a future date (after ${todayDate}). If the transcript mentions a date that has already passed, suggest a reasonable future date instead (e.g., 1-2 weeks from today).
 
 ### ICP Fit
 - Strong: They match our ideal customer perfectly (PE firm or strategic acquirer actively doing deals, clear M&A strategy, budget)
