@@ -47,7 +47,11 @@ function migrateLeads(leads: Lead[]): Lead[] {
     const migrated = { ...l };
     for (const [key, defaultVal] of Object.entries(LEAD_DEFAULTS)) {
       if ((migrated as any)[key] === undefined) {
-        (migrated as any)[key] = defaultVal;
+        (migrated as any)[key] = Array.isArray(defaultVal)
+          ? [...defaultVal]
+          : (typeof defaultVal === 'object' && defaultVal !== null)
+            ? { ...defaultVal }
+            : defaultVal;
       }
     }
     // Migrate old service interest names
