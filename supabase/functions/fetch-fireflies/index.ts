@@ -132,10 +132,16 @@ serve(async (req) => {
   }
 
   try {
-    const FIREFLIES_API_KEY = Deno.env.get("FIREFLIES_API_KEY");
+    const body = await req.json().catch(() => ({}));
+    const brand: string = body.brand || "Captarget";
+
+    const FIREFLIES_API_KEY = brand === "SourceCo"
+      ? Deno.env.get("FIREFLIES_API_KEY_SOURCECO")
+      : Deno.env.get("FIREFLIES_API_KEY");
+
     if (!FIREFLIES_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "FIREFLIES_API_KEY is not configured" }),
+        JSON.stringify({ error: `Fireflies API key for ${brand} is not configured` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -148,7 +154,6 @@ serve(async (req) => {
       );
     }
 
-    const body = await req.json().catch(() => ({}));
     const limit = body.limit || 50;
     const since = body.since || null;
     const summarize = body.summarize !== false; // default true

@@ -39,6 +39,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
           searchNames: [lead.name],
           limit: 20,
           summarize: false,
+          brand: lead.brand,
         },
       });
       if (error) throw error;
