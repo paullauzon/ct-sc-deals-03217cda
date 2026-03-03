@@ -165,7 +165,7 @@ export function Pipeline() {
                       </div>
                       {/* Row 2: Source */}
                       <p className="text-[10px] text-muted-foreground">{brandAbbr} · {sourceShort}</p>
-                      {lead.isDuplicate && <p className="text-[10px] text-muted-foreground">⚑ Cross-brand duplicate</p>}
+                      {lead.isDuplicate && <p className="text-[10px] text-muted-foreground">⚑ Also via {lead.brand === "Captarget" ? "SC" : "CT"}</p>}
                       {/* Row 3: Service interest */}
                       {lead.serviceInterest && lead.serviceInterest !== "TBD" && (
                         <p className="text-xs text-muted-foreground">{lead.serviceInterest}</p>
@@ -179,7 +179,12 @@ export function Pipeline() {
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className={`tabular-nums ${days > 14 ? "text-foreground font-medium" : ""}`}>{days}d in stage</span>
                         <div className="flex items-center gap-1.5">
-                          {lead.firefliesUrl && <img src="/fireflies-icon.svg" alt="Fireflies recording" className="w-3.5 h-3.5" title="Fireflies recording linked" />}
+                          {lead.meetings?.length > 0 && (
+                            <div className="flex items-center gap-0.5">
+                              <img src="/fireflies-icon.svg" alt="Meetings" className="w-3.5 h-3.5" />
+                              <span className="text-[10px] tabular-nums font-medium">{lead.meetings.length}</span>
+                            </div>
+                          )}
                           {lead.meetingOutcome && <span>{lead.meetingOutcome}</span>}
                         </div>
                       </div>
