@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useRef, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useRef, useCallback, useEffect, ReactNode } from "react";
 import { Lead, Meeting, MeetingIntelligence } from "@/types/lead";
 import { useLeads } from "@/contexts/LeadContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -46,10 +46,6 @@ interface ProcessingContextType {
 
 const ProcessingContext = createContext<ProcessingContextType | null>(null);
 
-function generateMeetingId(): string {
-  return `mtg-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-}
-
 export function ProcessingProvider({ children }: { children: ReactNode }) {
   const { leads, updateLead } = useLeads();
   const [bulkJob, setBulkJob] = useState<BulkJobState>({ phase: "idle", progress: null, results: [] });
@@ -60,16 +56,178 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
   const leadsRef = useRef(leads);
   leadsRef.current = leads;
 
-  // ─── Bulk Processing ───
+  // Ref to latest updateLead to avoid stale closures in realtime handler
+  const updateLeadRef = useRef(updateLead);
+  updateLeadRef.current = updateLead;
+
+  // Track which job IDs we've already applied (to prevent double-applying on realtime re-delivery)
+  const appliedJobsRef = useRef(new Set<string>());
+
+  // ─── Apply completed job results to lead ───
+
+  const applyCompletedJob = useCallback((job: any) => {
+    if (appliedJobsRef.current.has(job.id)) return;
+    appliedJobsRef.current.add(job.id);
+
+    const currentLead = leadsRef.current.find(l => l.id === job.lead_id);
+    if (!currentLead) return;
+
+    const newMeetings: Meeting[] = job.new_meetings || [];
+    const appliedUpdates: Record<string, any> = job.applied_updates || {};
+    const pendingSuggestions: Array<{ field: string; label: string; value: string | number; evidence: string }> = job.pending_suggestions || [];
+    const dealIntelligence = job.deal_intelligence;
+
+    if (newMeetings.length > 0) {
+      const updatedMeetings = [...(currentLead.meetings || []), ...newMeetings];
+      const updates: Partial<Lead> = { meetings: updatedMeetings, ...appliedUpdates };
+
+      // Update lastContactDate
+      const allDates = updatedMeetings.map(m => m.date).filter(Boolean).sort();
+      const latestDate = allDates[allDates.length - 1] || "";
+      if (latestDate && (!currentLead.lastContactDate || latestDate > currentLead.lastContactDate)) {
+        updates.lastContactDate = latestDate;
+      }
+
+      // Update nextFollowUp from intelligence
+      const today = new Date().toISOString().split("T")[0];
+      const nextStepDates = newMeetings
+        .flatMap(m => (m.intelligence as MeetingIntelligence)?.nextSteps || [])
+        .filter(ns => ns.deadline && ns.deadline >= today)
+        .map(ns => ns.deadline)
+        .sort();
+      if (nextStepDates.length > 0 && (!currentLead.nextFollowUp || nextStepDates[0]! > today)) {
+        updates.nextFollowUp = nextStepDates[0];
+      }
+
+      if (dealIntelligence) {
+        updates.dealIntelligence = dealIntelligence;
+      }
+
+      updateLeadRef.current(job.lead_id, updates);
+
+      if (Object.keys(appliedUpdates).length > 0) {
+        const appliedFields: string[] = job.applied_fields || [];
+        if (appliedFields.length > 0) {
+          toast.success(`Auto-updated ${appliedFields.length} field(s) for ${job.lead_name}`, {
+            description: appliedFields.join(" · "),
+            duration: 6000,
+          });
+        }
+      }
+
+      toast.success(`Found ${newMeetings.length} new meeting${newMeetings.length !== 1 ? "s" : ""} for ${job.lead_name}`);
+    } else {
+      toast.info(`No new meetings found for ${job.lead_name}`);
+    }
+
+    if (pendingSuggestions.length > 0) {
+      setLeadJobs(prev => ({
+        ...prev,
+        [job.lead_id]: {
+          searching: false,
+          pendingSuggestions,
+          leadId: job.lead_id,
+          leadName: job.lead_name,
+        },
+      }));
+      toast.info(`${job.lead_name}: ${pendingSuggestions.length} suggestion${pendingSuggestions.length !== 1 ? "s" : ""} to review`);
+    } else {
+      setLeadJobs(prev => {
+        const copy = { ...prev };
+        delete copy[job.lead_id];
+        return copy;
+      });
+    }
+
+    // Mark as acknowledged in DB
+    (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
+  }, []);
+
+  // ─── Realtime subscription + hydration on mount ───
+
+  useEffect(() => {
+    // Subscribe to processing_jobs changes
+    const channel = supabase
+      .channel("processing-jobs-realtime")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "processing_jobs" },
+        (payload) => {
+          const job = payload.new as any;
+          if (job.acknowledged) return;
+
+          if (job.status === "processing") {
+            setLeadJobs(prev => ({
+              ...prev,
+              [job.lead_id]: {
+                searching: true,
+                pendingSuggestions: [],
+                leadId: job.lead_id,
+                leadName: job.lead_name,
+              },
+            }));
+          }
+
+          if (job.status === "completed") {
+            applyCompletedJob(job);
+          }
+
+          if (job.status === "failed") {
+            toast.error(`Auto-find failed for ${job.lead_name}: ${job.error || "Unknown error"}`);
+            setLeadJobs(prev => {
+              const copy = { ...prev };
+              delete copy[job.lead_id];
+              return copy;
+            });
+            (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
+          }
+        }
+      )
+      .subscribe();
+
+    // Hydrate from any unacknowledged jobs on mount (survives tab close!)
+    (async () => {
+      const { data: activeJobs } = await (supabase
+        .from("processing_jobs") as any)
+        .select("*")
+        .eq("acknowledged", false)
+        .order("created_at", { ascending: true });
+
+      if (activeJobs && activeJobs.length > 0) {
+        for (const job of activeJobs) {
+          if (job.status === "completed") {
+            applyCompletedJob(job);
+          } else if (job.status === "queued" || job.status === "processing") {
+            setLeadJobs(prev => ({
+              ...prev,
+              [job.lead_id]: {
+                searching: true,
+                pendingSuggestions: [],
+                leadId: job.lead_id,
+                leadName: job.lead_name,
+              },
+            }));
+          } else if (job.status === "failed") {
+            toast.error(`Auto-find failed for ${job.lead_name}: ${job.error || "Unknown error"}`);
+            (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
+          }
+        }
+      }
+    })();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [applyCompletedJob]);
+
+  // ─── Bulk Processing (remains client-side) ───
 
   const startBulkProcessing = useCallback(() => {
     cancelRef.current = { current: false };
     setBulkJob({ phase: "running", progress: null, results: [] });
 
-    // Run async — not awaited so it's truly background
     (async () => {
       const currentLeads = leadsRef.current;
-      const liveResults: BulkLeadResult[] = [];
 
       const finalResults = await runBulkProcessing(
         currentLeads,
@@ -83,7 +241,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
       const totalMeetings = finalResults.reduce((s, r) => s + r.newMeetingsCount, 0);
       const totalApplied = finalResults.reduce((s, r) => s + r.appliedFields.length, 0);
-      
+
       if (hasPending) {
         toast.info("Bulk processing complete — suggestions need review", { duration: 10000 });
       } else if (totalMeetings > 0) {
@@ -154,9 +312,10 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     setBulkJob(prev => ({ ...prev, phase: "done" }));
   }, []);
 
-  // ─── Individual Lead Auto-Find ───
+  // ─── Individual Lead Auto-Find (now backend-powered) ───
 
   const startAutoFind = useCallback((lead: Lead) => {
+    // Show searching state immediately
     setLeadJobs(prev => ({
       ...prev,
       [lead.id]: { searching: true, pendingSuggestions: [], leadId: lead.id, leadName: lead.name },
@@ -164,179 +323,56 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
     (async () => {
       try {
-        const genericDomains = new Set([
-          "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com",
-          "icloud.com", "mail.com", "protonmail.com", "live.com", "msn.com",
-        ]);
-        const searchDomains: string[] = [];
-        if (lead.email) {
-          const domain = lead.email.split("@")[1]?.toLowerCase();
-          if (domain && !genericDomains.has(domain)) searchDomains.push(domain);
-        }
-        if (searchDomains.length === 0 && lead.companyUrl) {
-          try {
-            const urlDomain = new URL(lead.companyUrl.startsWith("http") ? lead.companyUrl : `https://${lead.companyUrl}`).hostname.replace(/^www\./, "").toLowerCase();
-            if (urlDomain && !genericDomains.has(urlDomain)) searchDomains.push(urlDomain);
-          } catch { /* skip */ }
-        }
+        // Prepare lead data for the backend (trim transcripts to reduce payload)
+        const existingMeetingIds = (lead.meetings || []).map(m => m.firefliesId).filter(Boolean);
+        const existingMeetings = (lead.meetings || []).map(m => ({
+          ...m,
+          transcript: (m.transcript || "").substring(0, 3000),
+        }));
 
-        const searchBody = {
-          searchEmails: lead.email ? [lead.email] : [],
-          searchNames: lead.name ? [lead.name] : [],
-          searchDomains,
-          searchCompanies: lead.company?.trim() ? [lead.company.trim()] : [],
-          limit: 100,
-          summarize: false,
+        const leadPayload = {
+          id: lead.id,
+          name: lead.name,
+          email: lead.email,
+          company: lead.company,
+          companyUrl: lead.companyUrl,
+          role: lead.role,
+          stage: lead.stage,
+          priority: lead.priority,
+          dealValue: lead.dealValue,
+          serviceInterest: lead.serviceInterest,
+          existingMeetingIds,
+          existingMeetings,
         };
 
-        const [ctResult, scResult] = await Promise.all([
-          supabase.functions.invoke("fetch-fireflies", { body: { ...searchBody, brand: "Captarget" } }),
-          supabase.functions.invoke("fetch-fireflies", { body: { ...searchBody, brand: "SourceCo" } }),
-        ]);
+        // Create job row in DB
+        const { data: jobRow, error: insertError } = await (supabase
+          .from("processing_jobs") as any)
+          .insert({
+            lead_id: lead.id,
+            lead_name: lead.name,
+            job_type: "individual",
+            status: "queued",
+            lead_data: leadPayload,
+          })
+          .select("id")
+          .single();
 
-        if (ctResult.error && scResult.error) throw ctResult.error;
-
-        const ctMeetings = (ctResult.data?.meetings || []).map((m: any) => ({ ...m, sourceBrand: "Captarget" }));
-        const scMeetings = (scResult.data?.meetings || []).map((m: any) => ({ ...m, sourceBrand: "SourceCo" }));
-
-        const seenIds = new Set<string>();
-        const foundMeetings: any[] = [];
-        for (const m of [...ctMeetings, ...scMeetings]) {
-          if (m.firefliesId && seenIds.has(m.firefliesId)) continue;
-          if (m.firefliesId) seenIds.add(m.firefliesId);
-          foundMeetings.push(m);
+        if (insertError || !jobRow) {
+          throw new Error(`Failed to create job: ${insertError?.message || "Unknown"}`);
         }
 
-        const currentLead = leadsRef.current.find(l => l.id === lead.id) || lead;
-        const meetings = currentLead.meetings || [];
-        const existingIds = new Set(meetings.map(m => m.firefliesId).filter(Boolean));
-        const newMeetings = foundMeetings.filter((m: any) => !existingIds.has(m.firefliesId));
-
-        if (newMeetings.length === 0) {
-          toast.info(`No new meetings found for ${lead.name}`);
-          setLeadJobs(prev => {
-            const copy = { ...prev };
-            delete copy[lead.id];
-            return copy;
-          });
-          return;
-        }
-
-        const addedMeetings: Meeting[] = [];
-        const collectedSuggestions: SuggestedLeadUpdates[] = [];
-
-        for (const m of newMeetings) {
-          const transcript = m.transcript || "";
-          const allMeetings = [...meetings, ...addedMeetings].sort(
-            (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-          );
-
-          let summary = m.summary || "";
-          let nextSteps = m.nextSteps || "";
-          let intelligence: MeetingIntelligence | undefined;
-
-          if (transcript.length > 20) {
-            try {
-              const { data: aiData, error: aiError } = await supabase.functions.invoke("process-meeting", {
-                body: { transcript, priorMeetings: allMeetings },
-              });
-              if (!aiError && aiData) {
-                summary = aiData.summary || summary;
-                nextSteps = aiData.nextSteps || nextSteps;
-                intelligence = aiData.intelligence || undefined;
-                if (aiData.suggestedLeadUpdates) {
-                  collectedSuggestions.push(aiData.suggestedLeadUpdates);
-                }
-              }
-            } catch { /* fallback */ }
-          }
-
-          addedMeetings.push({
-            id: generateMeetingId(),
-            date: m.date || new Date().toISOString().split("T")[0],
-            title: m.title || "Untitled Meeting",
-            firefliesId: m.firefliesId,
-            firefliesUrl: m.transcriptUrl || "",
-            transcript,
-            summary,
-            nextSteps,
-            addedAt: new Date().toISOString(),
-            intelligence,
-            sourceBrand: m.sourceBrand || undefined,
-          });
-        }
-
-        const updatedMeetings = [...meetings, ...addedMeetings];
-        const allDates = updatedMeetings.map(m => m.date).filter(Boolean).sort();
-        const latestDate = allDates[allDates.length - 1] || "";
-        const updates: Partial<Lead> = { meetings: updatedMeetings };
-        if (latestDate && (!currentLead.lastContactDate || latestDate > currentLead.lastContactDate)) {
-          updates.lastContactDate = latestDate;
-        }
-        const today = new Date().toISOString().split("T")[0];
-        const allNextSteps = addedMeetings
-          .flatMap(m => m.intelligence?.nextSteps || [])
-          .filter(ns => ns.deadline && ns.deadline >= today)
-          .map(ns => ns.deadline)
-          .filter(Boolean)
-          .sort();
-        if (allNextSteps.length > 0 && (!currentLead.nextFollowUp || allNextSteps[0]! > today)) {
-          updates.nextFollowUp = allNextSteps[0];
-        }
-        updateLead(lead.id, updates);
-        toast.success(`Found ${addedMeetings.length} new meeting${addedMeetings.length !== 1 ? "s" : ""} for ${lead.name}`);
-
-        // Process suggestions
-        const mergedPending: Array<{ field: string; label: string; value: string | number; evidence: string }> = [];
-        for (const suggestions of collectedSuggestions) {
-          const { applied, pending } = processSuggestedUpdates(suggestions, lead.id, updateLead);
-          if (applied.length > 0) {
-            toast.success(`Auto-updated ${applied.length} field${applied.length !== 1 ? "s" : ""} for ${lead.name}`, {
-              description: applied.join(" · "),
-              duration: 6000,
-            });
-          }
-          mergedPending.push(...pending);
-        }
-
-        // Deduplicate pending
-        const seen = new Set<string>();
-        const uniquePending = mergedPending.filter(p => {
-          if (seen.has(p.field)) return false;
-          seen.add(p.field);
-          return true;
+        // Fire-and-forget call to edge function
+        supabase.functions.invoke("run-lead-job", {
+          body: { jobId: jobRow.id, lead: leadPayload },
+        }).catch((e) => {
+          console.error("Edge function invocation error:", e);
+          // The edge function itself will update the job row on failure
         });
 
-        // Synthesize deal intelligence
-        const meetingsWithIntel = updatedMeetings.filter(m => m.intelligence);
-        if (meetingsWithIntel.length > 0) {
-          try {
-            const dealIntel = await synthesizeDealIntelligence(updatedMeetings, currentLead);
-            if (dealIntel) {
-              updateLead(lead.id, { dealIntelligence: dealIntel });
-              toast.success(`Deal intelligence synthesized for ${lead.name}`);
-            }
-          } catch (e) {
-            console.error("Deal intelligence synthesis error:", e);
-            toast.error(`Failed to synthesize deal intelligence for ${lead.name}`);
-          }
-        }
-
-        if (uniquePending.length > 0) {
-          setLeadJobs(prev => ({
-            ...prev,
-            [lead.id]: { searching: false, pendingSuggestions: uniquePending, leadId: lead.id, leadName: lead.name },
-          }));
-          toast.info(`${lead.name}: ${uniquePending.length} suggestion${uniquePending.length !== 1 ? "s" : ""} to review`);
-        } else {
-          setLeadJobs(prev => {
-            const copy = { ...prev };
-            delete copy[lead.id];
-            return copy;
-          });
-        }
+        // Results will arrive via realtime subscription — no need to await
       } catch (e: any) {
-        console.error("Auto-find error:", e);
+        console.error("Auto-find setup error:", e);
         toast.error(`Auto-find failed for ${lead.name}: ${e.message || "Unknown error"}`);
         setLeadJobs(prev => {
           const copy = { ...prev };
@@ -345,7 +381,9 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         });
       }
     })();
-  }, [updateLead]);
+  }, []);
+
+  // ─── Lead Suggestion Handlers ───
 
   const acceptLeadSuggestion = useCallback((leadId: string, field: string, value: string | number) => {
     updateLead(leadId, { [field]: value });

@@ -14,7 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      processing_jobs: {
+        Row: {
+          acknowledged: boolean | null
+          applied_fields: Json | null
+          applied_updates: Json | null
+          created_at: string | null
+          deal_intelligence: Json | null
+          error: string | null
+          id: string
+          job_type: string
+          lead_data: Json
+          lead_id: string
+          lead_name: string
+          new_meetings: Json | null
+          pending_suggestions: Json | null
+          progress_message: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          acknowledged?: boolean | null
+          applied_fields?: Json | null
+          applied_updates?: Json | null
+          created_at?: string | null
+          deal_intelligence?: Json | null
+          error?: string | null
+          id?: string
+          job_type?: string
+          lead_data?: Json
+          lead_id: string
+          lead_name: string
+          new_meetings?: Json | null
+          pending_suggestions?: Json | null
+          progress_message?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          acknowledged?: boolean | null
+          applied_fields?: Json | null
+          applied_updates?: Json | null
+          created_at?: string | null
+          deal_intelligence?: Json | null
+          error?: string | null
+          id?: string
+          job_type?: string
+          lead_data?: Json
+          lead_id?: string
+          lead_name?: string
+          new_meetings?: Json | null
+          pending_suggestions?: Json | null
+          progress_message?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
