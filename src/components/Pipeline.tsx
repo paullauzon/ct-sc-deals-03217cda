@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, DragEvent } from "react";
 import { useLeads } from "@/contexts/LeadContext";
+import { useProcessing } from "@/contexts/ProcessingContext";
 import { LeadStage, Lead } from "@/types/lead";
 import { LeadDetail } from "@/components/LeadsTable";
 import { computeDaysInStage, getCompanyAssociates } from "@/lib/leadUtils";
-import { Search, X } from "lucide-react";
+import { Search, X, Sparkles, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 const ALL_STAGES: LeadStage[] = [
