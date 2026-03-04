@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.run-lead-job]
 verify_jwt = false
+
+[functions.ingest-lead]
+verify_jwt = false
