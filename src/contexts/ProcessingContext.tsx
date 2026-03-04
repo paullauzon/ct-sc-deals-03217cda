@@ -449,7 +449,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             progressMessage: `${label} ${lead.name}: ${result.status === "completed" ? (result.newMeetingsCount > 0 ? `Found ${result.newMeetingsCount} meeting(s)` : "No new meetings") : "Failed"}`,
           }));
 
-          if (i < currentLeads.length - 1) {
+          if (i < leadsToProcess.length - 1) {
             await new Promise(r => setTimeout(r, 1500));
           }
 
