@@ -362,7 +362,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const lead = currentLeads[i];
+        const lead = leadsToProcess[i];
         const label = `[${i + 1}/${total}]`;
 
         setBulkJob(prev => ({
