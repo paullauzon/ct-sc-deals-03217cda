@@ -1,12 +1,15 @@
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from "react";
 import { Lead, Meeting, LeadStage, PipelineMetrics } from "@/types/lead";
 import { getInitialLeads } from "@/data/leadData";
 import { supabase } from "@/integrations/supabase/client";
 import { leadToRow, rowToLead, leadUpdatesToRow } from "@/lib/leadDbMapping";
+import { toast } from "sonner";
 
 interface LeadContextType {
   leads: Lead[];
   loading: boolean;
+  unseenCount: number;
+  clearUnseen: () => void;
   updateLead: (id: string, updates: Partial<Lead>) => void;
   addLead: (lead: Omit<Lead, "id" | "daysInCurrentStage" | "stageEnteredDate" | "hoursToMeetingSet">) => void;
   addMeeting: (leadId: string, meeting: Meeting) => void;
@@ -58,6 +61,10 @@ async function updateLeadInDb(id: string, updates: Partial<Lead>) {
 export function LeadProvider({ children }: { children: ReactNode }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unseenCount, setUnseenCount] = useState(0);
+  const leadIdsRef = useRef<Set<string>>(new Set());
+
+  const clearUnseen = useCallback(() => setUnseenCount(0), []);
 
   // Load leads from DB on mount, seed if empty
   useEffect(() => {
@@ -67,15 +74,42 @@ export function LeadProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       if (dbLeads && dbLeads.length > 0) {
         setLeads(dbLeads);
+        leadIdsRef.current = new Set(dbLeads.map(l => l.id));
       } else {
-        // Seed from hardcoded data
         const initial = getInitialLeads();
         setLeads(initial);
+        leadIdsRef.current = new Set(initial.map(l => l.id));
         await seedLeadsToDb(initial);
       }
       setLoading(false);
     })();
     return () => { cancelled = true; };
+  }, []);
+
+  // Realtime subscription for new leads
+  useEffect(() => {
+    const channel = supabase
+      .channel('leads-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'leads' },
+        (payload) => {
+          const newRow = payload.new;
+          if (!newRow || leadIdsRef.current.has(newRow.id)) return;
+          const newLead = rowToLead(newRow);
+          leadIdsRef.current.add(newLead.id);
+          setLeads(prev => [newLead, ...prev]);
+          setUnseenCount(prev => prev + 1);
+          const brandLabel = newLead.brand === "Captarget" ? "CT" : "SC";
+          toast(`New lead: ${newLead.name}`, {
+            description: `${newLead.company || "No company"} · ${brandLabel} · ${newLead.source}`,
+            duration: 8000,
+          });
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const updateLead = useCallback((id: string, updates: Partial<Lead>) => {
@@ -193,7 +227,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <LeadContext.Provider value={{ leads, loading, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads }}>
+    <LeadContext.Provider value={{ leads, loading, unseenCount, clearUnseen, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads }}>
       {children}
     </LeadContext.Provider>
   );

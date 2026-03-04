@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { computeDaysInStage, getCompanyAssociates, getSharedIntelligence } from "@/lib/leadUtils";
+import { isNewLead } from "@/lib/newLeadUtils";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
 import { supabase } from "@/integrations/supabase/client";
@@ -1015,7 +1016,12 @@ export function LeadsTable() {
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded shrink-0">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
                     <div>
-                      <div className="font-medium">{lead.name}</div>
+                      <div className="font-medium flex items-center gap-1.5">
+                        {lead.name}
+                        {isNewLead(lead) && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse">NEW</span>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground">{lead.email}</div>
                     </div>
                     {lead.isDuplicate && <span className="text-[10px] px-1 py-0.5 bg-secondary rounded ml-1">DUP</span>}
