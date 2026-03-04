@@ -307,23 +307,46 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     pausedRef.current = false;
 
     const currentLeads = leadsRef.current;
-    const total = currentLeads.length;
 
-    if (total === 0) {
+    if (currentLeads.length === 0) {
       toast.info("No leads to process.");
       return;
     }
 
+    // Show a loading state while we check for already-processed leads
     setBulkJob({
-      phase: "running", totalJobs: total, completedJobs: 0, failedJobs: 0, foundMeetings: 0, noMeetings: 0,
-      currentLeadIndex: 0, currentLeadName: currentLeads[0]?.name || "",
-      progressMessage: `[1/${total}] Starting...`, bulkJobIds: [], cancelled: false,
+      phase: "running", totalJobs: 0, completedJobs: 0, failedJobs: 0, foundMeetings: 0, noMeetings: 0,
+      currentLeadIndex: 0, currentLeadName: "",
+      progressMessage: "Checking for already-processed leads...", bulkJobIds: [], cancelled: false,
       paused: false, failedLeads: [], processedLeads: [],
     });
 
-    toast.info(`Starting sequential processing of ${total} leads...`);
-
     (async () => {
+      // Filter out leads that already have a completed bulk job
+      const { data: completedJobs } = await (supabase
+        .from("processing_jobs") as any)
+        .select("lead_id")
+        .eq("status", "completed")
+        .eq("job_type", "bulk");
+
+      const completedLeadIds = new Set((completedJobs || []).map((j: any) => j.lead_id));
+      const leadsToProcess = currentLeads.filter(l => !completedLeadIds.has(l.id));
+      const total = leadsToProcess.length;
+
+      if (total === 0) {
+        toast.info("All leads have already been processed.");
+        setBulkJob(INITIAL_BULK);
+        return;
+      }
+
+      setBulkJob(prev => ({
+        ...prev,
+        totalJobs: total,
+        currentLeadName: leadsToProcess[0]?.name || "",
+        progressMessage: `[1/${total}] Starting...`,
+      }));
+
+      toast.info(`Starting sequential processing of ${total} leads (${completedLeadIds.size} already done)...`);
       let completedCount = 0;
       let failedCount = 0;
       let foundMeetingsTotal = 0;
