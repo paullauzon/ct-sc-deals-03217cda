@@ -114,10 +114,25 @@ export function LeadProvider({ children }: { children: ReactNode }) {
       if (dbLeads && dbLeads.length > 0) {
         setLeads(dbLeads);
         leadIdsRef.current = new Set(dbLeads.map(l => l.id));
+        // Mark all existing leads as seen on first load (so they don't all show as NEW)
+        setSeenLeadIds(prev => {
+          const next = new Set(prev);
+          let changed = false;
+          dbLeads.forEach(l => { if (!next.has(l.id)) { next.add(l.id); changed = true; } });
+          if (changed) persistSeenIds(next);
+          return changed ? next : prev;
+        });
       } else {
         const initial = getInitialLeads();
         setLeads(initial);
         leadIdsRef.current = new Set(initial.map(l => l.id));
+        // Mark seeded leads as seen
+        setSeenLeadIds(prev => {
+          const next = new Set(prev);
+          initial.forEach(l => next.add(l.id));
+          persistSeenIds(next);
+          return next;
+        });
         await seedLeadsToDb(initial);
       }
       setLoading(false);
