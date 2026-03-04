@@ -151,6 +151,15 @@ serve(async (req) => {
       newMeetings = foundMeetings.filter((m: any) => !existingIds.has(m.firefliesId));
     }
 
+    // Cap at 20 meetings to prevent edge function timeouts
+    const MAX_MEETINGS = 20;
+    if (newMeetings.length > MAX_MEETINGS) {
+      console.log(`Capping meetings from ${newMeetings.length} to ${MAX_MEETINGS} for lead ${lead.name}`);
+      // Sort by date descending to keep the most recent meetings
+      newMeetings.sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""));
+      newMeetings = newMeetings.slice(0, MAX_MEETINGS);
+    }
+
     if (newMeetings.length === 0) {
       await supabase.from("processing_jobs").update({
         status: "completed",
@@ -194,11 +203,17 @@ serve(async (req) => {
             updated_at: new Date().toISOString(),
           }).eq("id", jobId);
 
+          // Per-meeting timeout: skip if AI takes >25s rather than killing the whole job
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 25000);
+
           const aiRes = await fetch(`${funcUrl}/process-meeting`, {
             method: "POST",
             headers: funcHeaders,
             body: JSON.stringify({ transcript, priorMeetings }),
+            signal: controller.signal,
           });
+          clearTimeout(timeout);
 
           if (aiRes.ok) {
             const aiData = await aiRes.json();
@@ -211,8 +226,12 @@ serve(async (req) => {
           } else {
             console.error(`process-meeting failed for meeting ${i}:`, aiRes.status);
           }
-        } catch (e) {
-          console.error(`AI processing error for meeting ${i}:`, e);
+        } catch (e: any) {
+          if (e.name === "AbortError") {
+            console.warn(`Meeting ${i} ("${m.title}") AI call timed out after 25s, skipping`);
+          } else {
+            console.error(`AI processing error for meeting ${i}:`, e);
+          }
         }
       }
 
