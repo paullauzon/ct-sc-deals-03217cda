@@ -1,28 +1,33 @@
 
-# Implementation Complete
 
-## Architecture
+# Plan: Skip Already-Processed Leads in Bulk Processing
 
-### Individual Auto-Find
-- Client creates `processing_jobs` row → invokes `run-lead-job` edge function
-- Edge function runs server-side: fetches Fireflies, AI processing, writes results to DB
-- Client receives results via Supabase Realtime subscription
-- Survives tab close ✓
+## Problem
+`startBulkProcessing` iterates over **all** leads and reprocesses every one. It doesn't check if a lead already has a completed `processing_jobs` record, so clicking "Process All" again reruns the entire 168-lead pipeline.
 
-### Bulk Processing (NEW — backend-powered)
-- Client fetches all transcripts from both Fireflies accounts (via `fetch-fireflies` edge function)
-- Client matches transcripts to leads locally
-- For each matched lead: creates `processing_jobs` row (job_type: "bulk") and invokes `run-lead-job` with prefetched meetings
-- Each `run-lead-job` runs independently server-side — survives tab close ✓
-- On tab re-open: hydration finds queued/processing bulk jobs, re-invokes queued ones
-- Progress tracked via Realtime: completedJobs/totalJobs counter
+## Solution
+Before starting the bulk loop, query `processing_jobs` for all leads with `status = 'completed'` and `job_type = 'bulk'`, then filter them out so only unprocessed leads enter the loop.
 
-### Unified Suggestion UX
-- All suggestions (individual + bulk) render inline inside lead detail panels
-- No popup dialogs for bulk review — removed `Dialog` modals from GlobalProcessingOverlay
-- GlobalProcessingOverlay shows only a floating progress bar (bottom-right)
+## Changes
 
-### `run-lead-job` Enhancement
-- Accepts optional `prefetchedMeetings` param
-- If provided, skips Fireflies fetch and uses pre-matched meetings directly
-- Used by bulk processing to avoid redundant per-lead Fireflies API calls
+### `src/contexts/ProcessingContext.tsx`
+In `startBulkProcessing` (around line 304):
+
+1. Before the loop, fetch completed lead IDs:
+```typescript
+const { data: completedJobs } = await supabase
+  .from("processing_jobs")
+  .select("lead_id")
+  .eq("status", "completed")
+  .eq("job_type", "bulk");
+
+const completedLeadIds = new Set((completedJobs || []).map(j => j.lead_id));
+const leadsToProcess = currentLeads.filter(l => !completedLeadIds.has(l.id));
+```
+
+2. Use `leadsToProcess` instead of `currentLeads` for `total` and the `for` loop.
+
+3. If `leadsToProcess` is empty, show a toast "All leads already processed" and return.
+
+This is the only file that needs changing. No database or edge function changes required.
+
