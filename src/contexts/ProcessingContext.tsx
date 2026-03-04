@@ -81,6 +81,22 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
   const pausedRef = useRef(false);
   const resumeResolverRef = useRef<(() => void) | null>(null);
 
+  // ─── Stale job detection (>10 min old) ───
+
+  const isStaleJob = useCallback((job: any): boolean => {
+    const updatedAt = job.updated_at || job.created_at;
+    if (!updatedAt) return false;
+    const ageMs = Date.now() - new Date(updatedAt).getTime();
+    return ageMs > 10 * 60 * 1000; // 10 minutes
+  }, []);
+
+  const markJobAsTimedOut = useCallback((jobId: string) => {
+    (supabase.from("processing_jobs") as any)
+      .update({ status: "failed", error: "Timed out — edge function did not complete", acknowledged: true })
+      .eq("id", jobId)
+      .then();
+  }, []);
+
   // ─── Apply completed job results to lead ───
 
   const applyCompletedJob = useCallback((job: any) => {
@@ -176,6 +192,11 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           }
 
           if (job.status === "processing") {
+            // Skip stale jobs — they timed out
+            if (isStaleJob(job)) {
+              markJobAsTimedOut(job.id);
+              return;
+            }
             setLeadJobs(prev => ({
               ...prev,
               [job.lead_id]: {
@@ -217,10 +238,16 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           if (job.status === "completed") {
             applyCompletedJob(job);
           } else if (job.status === "queued" || job.status === "processing") {
-            setLeadJobs(prev => ({
-              ...prev,
-              [job.lead_id]: { searching: true, pendingSuggestions: [], leadId: job.lead_id, leadName: job.lead_name },
-            }));
+            // Check if stale before showing as active
+            if (isStaleJob(job)) {
+              markJobAsTimedOut(job.id);
+              toast.error(`Processing timed out for ${job.lead_name}`);
+            } else {
+              setLeadJobs(prev => ({
+                ...prev,
+                [job.lead_id]: { searching: true, pendingSuggestions: [], leadId: job.lead_id, leadName: job.lead_name },
+              }));
+            }
           } else if (job.status === "failed") {
             toast.error(`Processing failed for ${job.lead_name}: ${job.error || "Unknown error"}`);
             (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
