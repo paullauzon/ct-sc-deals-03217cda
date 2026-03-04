@@ -1,28 +1,20 @@
 
-# Implementation Complete
 
-## Architecture
+# Add 2 Missing Recent Leads from CSVs
 
-### Individual Auto-Find
-- Client creates `processing_jobs` row → invokes `run-lead-job` edge function
-- Edge function runs server-side: fetches Fireflies, AI processing, writes results to DB
-- Client receives results via Supabase Realtime subscription
-- Survives tab close ✓
+After cross-referencing all four CSVs with the database, I found **2 leads** from the last two days that are missing (the others — Nathan Hendrix, Shelby Craig, Bakari Akil, Abhinav Agrawal — are already in the DB):
 
-### Bulk Processing (NEW — backend-powered)
-- Client fetches all transcripts from both Fireflies accounts (via `fetch-fireflies` edge function)
-- Client matches transcripts to leads locally
-- For each matched lead: creates `processing_jobs` row (job_type: "bulk") and invokes `run-lead-job` with prefetched meetings
-- Each `run-lead-job` runs independently server-side — survives tab close ✓
-- On tab re-open: hydration finds queued/processing bulk jobs, re-invokes queued ones
-- Progress tracked via Realtime: completedJobs/totalJobs counter
+### Leads to insert
 
-### Unified Suggestion UX
-- All suggestions (individual + bulk) render inline inside lead detail panels
-- No popup dialogs for bulk review — removed `Dialog` modals from GlobalProcessingOverlay
-- GlobalProcessingOverlay shows only a floating progress bar (bottom-right)
+1. **Leonardo Obodoeke** — `leo@cmbb.ca`, 03/04/2026, Captarget Contact Form, Corporate, cmbb.ca, phone: 6472264652, message: "Actively acquiring targets in the security and manufacturing space", deals planned: 0-2 → ID: `CT-080`
 
-### `run-lead-job` Enhancement
-- Accepts optional `prefetchedMeetings` param
-- If provided, skips Fireflies fetch and uses pre-matched meetings directly
-- Used by bulk processing to avoid redundant per-lead Fireflies API calls
+2. **Valentine Moroz** — `valentine@softinway.com`, 03/04/2026, Captarget Free Targets Form, Business Owner, softinway.com, target criteria about simulation software resellers, revenue $1M-$5M, geography: California, deals planned: 0-2 → ID: `TGT-021`
+
+### Implementation
+- Insert both leads directly into the `leads` table using the database insert tool
+- They'll follow the same schema and defaults as existing leads
+- Since they're new inserts, the realtime subscription will NOT fire (direct DB insert, not via the edge function), but the next page load will pick them up
+- They won't be in the `seenLeadIds` localStorage set, so they'll show as "NEW" with badges
+
+Note: I could only read the CSV content from the initial upload preview. The SourceCo Intro Call CSV header was too long to display any data rows, so if there are recent entries there beyond Abhinav Agrawal (already in DB), they wouldn't be visible to me. If you know of specific missing leads from that form, let me know.
+
