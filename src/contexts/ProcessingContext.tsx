@@ -476,12 +476,18 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
   const cancelBulk = useCallback(() => {
     cancelledRef.current = true;
-    // If paused, resume to let the loop exit
     if (resumeResolverRef.current) {
       resumeResolverRef.current();
       resumeResolverRef.current = null;
     }
-    setBulkJob(prev => ({ ...prev, cancelled: true, progressMessage: "Cancelling..." }));
+    setLeadJobs({});
+    setBulkJob(prev => ({ ...prev, cancelled: true, phase: "done", progressMessage: "Cancelled" }));
+
+    (supabase.from("processing_jobs") as any)
+      .update({ acknowledged: true })
+      .eq("job_type", "bulk")
+      .in("status", ["queued", "processing"])
+      .then();
   }, []);
 
   const pauseBulk = useCallback(() => {
@@ -500,6 +506,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
   const dismissBulk = useCallback(() => {
     setBulkJob(INITIAL_BULK);
+    setLeadJobs({});
   }, []);
 
   // ─── Individual Lead Auto-Find (backend-powered) ───
