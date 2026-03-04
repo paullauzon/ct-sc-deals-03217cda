@@ -81,6 +81,22 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
   const pausedRef = useRef(false);
   const resumeResolverRef = useRef<(() => void) | null>(null);
 
+  // ─── Stale job detection (>10 min old) ───
+
+  const isStaleJob = useCallback((job: any): boolean => {
+    const updatedAt = job.updated_at || job.created_at;
+    if (!updatedAt) return false;
+    const ageMs = Date.now() - new Date(updatedAt).getTime();
+    return ageMs > 10 * 60 * 1000; // 10 minutes
+  }, []);
+
+  const markJobAsTimedOut = useCallback((jobId: string) => {
+    (supabase.from("processing_jobs") as any)
+      .update({ status: "failed", error: "Timed out — edge function did not complete", acknowledged: true })
+      .eq("id", jobId)
+      .then();
+  }, []);
+
   // ─── Apply completed job results to lead ───
 
   const applyCompletedJob = useCallback((job: any) => {
