@@ -138,7 +138,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
           const newLead = rowToLead(newRow);
           leadIdsRef.current.add(newLead.id);
           setLeads(prev => [newLead, ...prev]);
-          setUnseenCount(prev => prev + 1);
+          // Don't add to seenLeadIds — it will show as "NEW"
           const brandLabel = newLead.brand === "Captarget" ? "CT" : "SC";
           toast(`New lead: ${newLead.name}`, {
             description: `${newLead.company || "No company"} · ${brandLabel} · ${newLead.source}`,
@@ -266,7 +266,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <LeadContext.Provider value={{ leads, loading, unseenCount, clearUnseen, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads }}>
+    <LeadContext.Provider value={{ leads, loading, unseenCount, clearUnseen, isLeadNew, markLeadSeen, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads }}>
       {children}
     </LeadContext.Provider>
   );
