@@ -4,7 +4,7 @@ import { useProcessing } from "@/contexts/ProcessingContext";
 import { LeadStage, Lead } from "@/types/lead";
 import { LeadDetail } from "@/components/LeadsTable";
 import { computeDaysInStage, getCompanyAssociates } from "@/lib/leadUtils";
-import { isNewLead } from "@/lib/newLeadUtils";
+
 import { Search, X, Sparkles, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
