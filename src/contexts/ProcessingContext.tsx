@@ -352,7 +352,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
       let foundMeetingsTotal = 0;
       const failedLeadsList: FailedLead[] = [];
 
-      for (let i = 0; i < currentLeads.length; i++) {
+      for (let i = 0; i < leadsToProcess.length; i++) {
         // Check pause
         await waitIfPaused();
 
