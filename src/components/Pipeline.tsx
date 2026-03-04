@@ -4,6 +4,7 @@ import { useProcessing } from "@/contexts/ProcessingContext";
 import { LeadStage, Lead } from "@/types/lead";
 import { LeadDetail } from "@/components/LeadsTable";
 import { computeDaysInStage, getCompanyAssociates } from "@/lib/leadUtils";
+import { isNewLead } from "@/lib/newLeadUtils";
 import { Search, X, Sparkles, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
@@ -183,7 +184,12 @@ export function Pipeline() {
                       <div className="flex items-start gap-1.5">
                         <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded shrink-0 mt-0.5">{brandAbbr}</span>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium leading-tight">{lead.name}</p>
+                          <p className="text-sm font-medium leading-tight flex items-center gap-1.5">
+                            {lead.name}
+                            {isNewLead(lead) && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse">NEW</span>
+                            )}
+                          </p>
                           <p className="text-xs text-muted-foreground">{lead.company || "—"} · {lead.role}</p>
                         </div>
                         <OwnerBadge owner={lead.assignedTo} />

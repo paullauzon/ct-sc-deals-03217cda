@@ -1,47 +1,61 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dashboard } from "@/components/Dashboard";
 import { LeadsTable } from "@/components/LeadsTable";
 import { Pipeline } from "@/components/Pipeline";
-import { LeadProvider } from "@/contexts/LeadContext";
+import { LeadProvider, useLeads } from "@/contexts/LeadContext";
 import { ProcessingProvider } from "@/contexts/ProcessingContext";
 import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";
 
 type View = "dashboard" | "leads" | "pipeline";
 
-const Index = () => {
+function AppContent() {
   const [view, setView] = useState<View>("dashboard");
+  const { unseenCount, clearUnseen } = useLeads();
 
+  useEffect(() => {
+    if (view === "leads") clearUnseen();
+  }, [view, clearUnseen]);
+
+  return (
+    <div className="min-h-screen bg-background">
+      <nav className="border-b border-border shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 flex items-center h-14 gap-8">
+          <span className="text-sm font-bold tracking-tight">CAPTARGET</span>
+          <div className="flex gap-1">
+            {(["dashboard", "leads", "pipeline"] as View[]).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`relative px-3 py-1.5 text-sm transition-colors border-b-2 ${
+                  view === v
+                    ? "border-foreground text-foreground font-medium"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {v.charAt(0).toUpperCase() + v.slice(1)}
+                {v === "leads" && unseenCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1 animate-pulse">
+                    {unseenCount}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </nav>
+
+      {view === "dashboard" && <Dashboard />}
+      {view === "leads" && <LeadsTable />}
+      {view === "pipeline" && <Pipeline />}
+    </div>
+  );
+}
+
+const Index = () => {
   return (
     <LeadProvider>
       <ProcessingProvider>
-        <div className="min-h-screen bg-background">
-          {/* Navigation */}
-          <nav className="border-b border-border shadow-sm">
-            <div className="max-w-7xl mx-auto px-6 flex items-center h-14 gap-8">
-              <span className="text-sm font-bold tracking-tight">CAPTARGET</span>
-              <div className="flex gap-1">
-                {(["dashboard", "leads", "pipeline"] as View[]).map((v) => (
-                  <button
-                    key={v}
-                    onClick={() => setView(v)}
-                    className={`px-3 py-1.5 text-sm transition-colors border-b-2 ${
-                      view === v
-                        ? "border-foreground text-foreground font-medium"
-                        : "border-transparent text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {v.charAt(0).toUpperCase() + v.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </nav>
-
-          {/* Content */}
-          {view === "dashboard" && <Dashboard />}
-          {view === "leads" && <LeadsTable />}
-          {view === "pipeline" && <Pipeline />}
-        </div>
+        <AppContent />
         <GlobalProcessingOverlay />
       </ProcessingProvider>
     </LeadProvider>
