@@ -1,28 +1,35 @@
 
-# Implementation Complete
 
-## Architecture
+# New Lead Notification System
 
-### Individual Auto-Find
-- Client creates `processing_jobs` row → invokes `run-lead-job` edge function
-- Edge function runs server-side: fetches Fireflies, AI processing, writes results to DB
-- Client receives results via Supabase Realtime subscription
-- Survives tab close ✓
+## What it does
+When leads arrive via Zapier/Webflow, the app will detect them in real-time and surface them visibly so you never miss an incoming lead.
 
-### Bulk Processing (NEW — backend-powered)
-- Client fetches all transcripts from both Fireflies accounts (via `fetch-fireflies` edge function)
-- Client matches transcripts to leads locally
-- For each matched lead: creates `processing_jobs` row (job_type: "bulk") and invokes `run-lead-job` with prefetched meetings
-- Each `run-lead-job` runs independently server-side — survives tab close ✓
-- On tab re-open: hydration finds queued/processing bulk jobs, re-invokes queued ones
-- Progress tracked via Realtime: completedJobs/totalJobs counter
+## Three components
 
-### Unified Suggestion UX
-- All suggestions (individual + bulk) render inline inside lead detail panels
-- No popup dialogs for bulk review — removed `Dialog` modals from GlobalProcessingOverlay
-- GlobalProcessingOverlay shows only a floating progress bar (bottom-right)
+### 1. Real-time subscription on the `leads` table
+- Enable Supabase realtime on the `leads` table (`ALTER PUBLICATION supabase_realtime ADD TABLE public.leads`)
+- In `LeadContext`, subscribe to `INSERT` events on the `leads` table
+- When a new row arrives that isn't already in local state, add it to the leads array and trigger a toast notification
 
-### `run-lead-job` Enhancement
-- Accepts optional `prefetchedMeetings` param
-- If provided, skips Fireflies fetch and uses pre-matched meetings directly
-- Used by bulk processing to avoid redundant per-lead Fireflies API calls
+### 2. Toast notification on new lead arrival
+- When a new lead is detected via realtime, show a sonner toast:
+  **"New lead: John Smith from Acme Corp"** with brand badge (CT/SC) and source label
+- Clicking the toast navigates to the Leads view and opens that lead's detail panel
+
+### 3. "New" badge on recently ingested leads
+- Add a `isNew` computed property: leads created within the last 24 hours (based on `created_at`) that are still in "New Lead" stage get a pulsing green "NEW" badge
+- Show this badge in the LeadsTable rows and on Pipeline deal cards
+- Badge disappears once the lead is moved out of "New Lead" stage or after 24 hours
+
+### 4. Nav bar indicator
+- Show a small count badge on the "Leads" nav tab when there are unseen new leads (leads inserted since the user last viewed the Leads tab)
+- Clear the count when the user switches to the Leads view
+
+## Files changed
+- **Migration**: Enable realtime on `leads` table
+- **`src/contexts/LeadContext.tsx`**: Add realtime subscription for `INSERT` events, toast on new lead, track "unseen" count
+- **`src/pages/Index.tsx`**: Pass unseen count to nav, clear on tab switch
+- **`src/components/LeadsTable.tsx`**: Add "NEW" badge to table rows for recent leads
+- **`src/components/Pipeline.tsx`**: Add "NEW" badge to pipeline cards for recent leads
+
