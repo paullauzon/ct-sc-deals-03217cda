@@ -1,15 +1,30 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo, ReactNode } from "react";
 import { Lead, Meeting, LeadStage, PipelineMetrics } from "@/types/lead";
 import { getInitialLeads } from "@/data/leadData";
 import { supabase } from "@/integrations/supabase/client";
 import { leadToRow, rowToLead, leadUpdatesToRow } from "@/lib/leadDbMapping";
 import { toast } from "sonner";
 
+const SEEN_LEADS_KEY = "captarget_seen_leads";
+
+function loadSeenIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(SEEN_LEADS_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch { return new Set(); }
+}
+
+function persistSeenIds(ids: Set<string>) {
+  localStorage.setItem(SEEN_LEADS_KEY, JSON.stringify([...ids]));
+}
+
 interface LeadContextType {
   leads: Lead[];
   loading: boolean;
   unseenCount: number;
   clearUnseen: () => void;
+  isLeadNew: (id: string) => boolean;
+  markLeadSeen: (id: string) => void;
   updateLead: (id: string, updates: Partial<Lead>) => void;
   addLead: (lead: Omit<Lead, "id" | "daysInCurrentStage" | "stageEnteredDate" | "hoursToMeetingSet">) => void;
   addMeeting: (leadId: string, meeting: Meeting) => void;
@@ -61,10 +76,34 @@ async function updateLeadInDb(id: string, updates: Partial<Lead>) {
 export function LeadProvider({ children }: { children: ReactNode }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
-  const [unseenCount, setUnseenCount] = useState(0);
+  const [seenLeadIds, setSeenLeadIds] = useState<Set<string>>(() => loadSeenIds());
   const leadIdsRef = useRef<Set<string>>(new Set());
 
-  const clearUnseen = useCallback(() => setUnseenCount(0), []);
+  const unseenCount = useMemo(
+    () => leads.filter(l => !seenLeadIds.has(l.id)).length,
+    [leads, seenLeadIds]
+  );
+
+  const isLeadNew = useCallback((id: string) => !seenLeadIds.has(id), [seenLeadIds]);
+
+  const markLeadSeen = useCallback((id: string) => {
+    setSeenLeadIds(prev => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      persistSeenIds(next);
+      return next;
+    });
+  }, []);
+
+  const clearUnseen = useCallback(() => {
+    setSeenLeadIds(prev => {
+      const next = new Set(prev);
+      leads.forEach(l => next.add(l.id));
+      persistSeenIds(next);
+      return next;
+    });
+  }, [leads]);
 
   // Load leads from DB on mount, seed if empty
   useEffect(() => {
@@ -75,10 +114,25 @@ export function LeadProvider({ children }: { children: ReactNode }) {
       if (dbLeads && dbLeads.length > 0) {
         setLeads(dbLeads);
         leadIdsRef.current = new Set(dbLeads.map(l => l.id));
+        // Mark all existing leads as seen on first load (so they don't all show as NEW)
+        setSeenLeadIds(prev => {
+          const next = new Set(prev);
+          let changed = false;
+          dbLeads.forEach(l => { if (!next.has(l.id)) { next.add(l.id); changed = true; } });
+          if (changed) persistSeenIds(next);
+          return changed ? next : prev;
+        });
       } else {
         const initial = getInitialLeads();
         setLeads(initial);
         leadIdsRef.current = new Set(initial.map(l => l.id));
+        // Mark seeded leads as seen
+        setSeenLeadIds(prev => {
+          const next = new Set(prev);
+          initial.forEach(l => next.add(l.id));
+          persistSeenIds(next);
+          return next;
+        });
         await seedLeadsToDb(initial);
       }
       setLoading(false);
@@ -99,7 +153,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
           const newLead = rowToLead(newRow);
           leadIdsRef.current.add(newLead.id);
           setLeads(prev => [newLead, ...prev]);
-          setUnseenCount(prev => prev + 1);
+          // Don't add to seenLeadIds — it will show as "NEW"
           const brandLabel = newLead.brand === "Captarget" ? "CT" : "SC";
           toast(`New lead: ${newLead.name}`, {
             description: `${newLead.company || "No company"} · ${brandLabel} · ${newLead.source}`,
@@ -227,7 +281,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <LeadContext.Provider value={{ leads, loading, unseenCount, clearUnseen, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads }}>
+    <LeadContext.Provider value={{ leads, loading, unseenCount, clearUnseen, isLeadNew, markLeadSeen, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads }}>
       {children}
     </LeadContext.Provider>
   );
