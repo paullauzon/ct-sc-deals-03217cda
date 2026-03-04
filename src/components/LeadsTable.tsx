@@ -875,7 +875,7 @@ function ClearableSelectField({ label, value, options, onChange }: { label: stri
 }
 
 export function LeadsTable() {
-  const { leads, addLead } = useLeads();
+  const { leads, addLead, isLeadNew, markLeadSeen } = useLeads();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [brandFilter, setBrandFilter] = useState<string>("all");
@@ -1011,14 +1011,14 @@ export function LeadsTable() {
           </thead>
           <tbody className="divide-y divide-border">
             {sorted.map((lead) => (
-              <tr key={lead.id} onClick={() => setSelectedLeadId(lead.id)} className="cursor-pointer hover:bg-secondary/30 transition-colors">
+              <tr key={lead.id} onClick={() => { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }} className="cursor-pointer hover:bg-secondary/30 transition-colors">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded shrink-0">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
                     <div>
                       <div className="font-medium flex items-center gap-1.5">
                         {lead.name}
-                        {isNewLead(lead) && (
+                        {isLeadNew(lead.id) && (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse">NEW</span>
                         )}
                       </div>

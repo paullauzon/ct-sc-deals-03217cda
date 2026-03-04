@@ -64,7 +64,7 @@ function OwnerBadge({ owner }: { owner: string }) {
 }
 
 export function Pipeline() {
-  const { getLeadsByStage, updateLead, leads } = useLeads();
+  const { getLeadsByStage, updateLead, leads, isLeadNew, markLeadSeen } = useLeads();
   const { leadJobs } = useProcessing();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
@@ -177,7 +177,7 @@ export function Pipeline() {
                       key={lead.id}
                       draggable
                       onDragStart={(e) => handleDragStart(e, lead.id)}
-                      onClick={() => setSelectedLeadId(lead.id)}
+                      onClick={() => { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }}
                       className="border border-border rounded-md p-3 cursor-grab active:cursor-grabbing hover:bg-secondary/30 transition-colors space-y-1.5"
                     >
                       {/* Row 1: Brand badge + Name + Owner initial */}
@@ -186,7 +186,7 @@ export function Pipeline() {
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium leading-tight flex items-center gap-1.5">
                             {lead.name}
-                            {isNewLead(lead) && (
+                            {isLeadNew(lead.id) && (
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse">NEW</span>
                             )}
                           </p>
