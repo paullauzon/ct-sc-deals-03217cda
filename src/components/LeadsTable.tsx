@@ -4,6 +4,8 @@ import { useProcessing } from "@/contexts/ProcessingContext";
 import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency, SuggestedUpdates, SuggestedFieldUpdate, Submission } from "@/types/lead";
 import { toast } from "sonner";
 import { MeetingsSection } from "@/components/MeetingsSection";
+import { EmailsSection } from "@/components/EmailsSection";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
@@ -387,8 +389,19 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             </div>
           </Section>
 
-          {/* Meetings (Multi-meeting with AI processing) */}
-          <MeetingsSection lead={lead} />
+          {/* Meetings & Emails Tabs */}
+          <Tabs defaultValue="meetings" className="w-full">
+            <TabsList className="w-full justify-start h-9 p-1">
+              <TabsTrigger value="meetings" className="text-xs h-7">Meetings</TabsTrigger>
+              <TabsTrigger value="emails" className="text-xs h-7">Emails</TabsTrigger>
+            </TabsList>
+            <TabsContent value="meetings">
+              <MeetingsSection lead={lead} />
+            </TabsContent>
+            <TabsContent value="emails">
+              <EmailsSection leadId={lead.id} />
+            </TabsContent>
+          </Tabs>
 
           {/* Deal Intelligence (Cross-Meeting Synthesis) */}
           {lead.dealIntelligence && (
