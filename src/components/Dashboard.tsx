@@ -249,14 +249,46 @@ export function Dashboard() {
     const activeLeads = leads.filter((l) => !closedStages.has(l.stage));
     let criticalAlerts = 0;
     let warningAlerts = 0;
+    let atRiskRevenue = 0;
+    const atRiskLeads: Lead[] = [];
     for (const l of activeLeads) {
       const daysSinceContact = l.lastContactDate ? Math.floor((Date.now() - new Date(l.lastContactDate).getTime()) / 86400000) : 999;
       const overdueItems = l.dealIntelligence?.actionItemTracker?.filter((a) => a.status === "Overdue" || a.status === "Open").length || 0;
       const unmitigatedRisks = l.dealIntelligence?.riskRegister?.filter((r) => r.mitigationStatus === "Unmitigated" && (r.severity === "Critical" || r.severity === "High")).length || 0;
+      const momentum = l.dealIntelligence?.momentumSignals?.momentum;
+      const isAtRisk = daysSinceContact > 21 || unmitigatedRisks > 0 || momentum === "Stalling" || momentum === "Stalled";
+      if (isAtRisk) {
+        atRiskRevenue += l.dealValue;
+        atRiskLeads.push(l);
+      }
       if (daysSinceContact > 21 || unmitigatedRisks > 0) criticalAlerts++;
       else if (daysSinceContact > 14 || overdueItems > 2) warningAlerts++;
     }
     const cleanDeals = activeLeads.length - criticalAlerts - warningAlerts;
+
+    // Stage-to-stage conversion rates
+    const stageConversions = ACTIVE_STAGES.slice(0, -1).map((stage, i) => {
+      const nextStage = ACTIVE_STAGES[i + 1];
+      const inThisOrLater = leads.filter(l => {
+        const idx = ACTIVE_STAGES.indexOf(l.stage as any);
+        return idx >= i || l.stage === "Closed Won";
+      }).length;
+      const inNextOrLater = leads.filter(l => {
+        const idx = ACTIVE_STAGES.indexOf(l.stage as any);
+        return idx >= i + 1 || l.stage === "Closed Won";
+      }).length;
+      const rate = inThisOrLater > 0 ? Math.round((inNextOrLater / inThisOrLater) * 100) : 0;
+      return { from: stage, to: nextStage, rate, fromCount: inThisOrLater, toCount: inNextOrLater };
+    });
+    const weakestLink = stageConversions.reduce((min, s) => s.rate < min.rate ? s : min, stageConversions[0]);
+
+    // Forecast gap analysis
+    const forecastTarget = parseInt(localStorage.getItem("captarget_quarterly_target") || "500000");
+    const commitValue = leads.filter(l => l.forecastCategory === "Commit").reduce((s, l) => s + l.dealValue, 0);
+    const bestCaseValue = leads.filter(l => l.forecastCategory === "Best Case").reduce((s, l) => s + l.dealValue, 0);
+    const pipelineValue = leads.filter(l => l.forecastCategory === "Pipeline").reduce((s, l) => s + l.dealValue, 0);
+    const coverageRatio = forecastTarget > 0 ? ((commitValue + bestCaseValue) / forecastTarget) : 0;
+    const forecastGap = Math.max(0, forecastTarget - commitValue);
 
     return {
       leadsThisWeek, leadsThisMonth, momGrowth, lvrCurrent, lvrChange,
