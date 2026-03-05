@@ -66,6 +66,48 @@ function OwnerBadge({ owner }: { owner: string }) {
   );
 }
 
+function QuickNote({ lead, onSave }: { lead: Lead; onSave: (id: string, note: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const handleSave = () => {
+    if (!text.trim()) return;
+    const timestamp = new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const newNote = `[${timestamp}] ${text.trim()}`;
+    const existing = lead.notes ? `${lead.notes}\n${newNote}` : newNote;
+    onSave(lead.id, existing);
+    setText("");
+    setOpen(false);
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+          className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground/50 hover:text-foreground hover:bg-secondary transition-colors"
+          title="Quick note"
+        >
+          <Plus className="h-3 w-3" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-3" onClick={(e) => e.stopPropagation()}>
+        <p className="text-xs font-medium mb-1.5">Quick Note — {lead.name}</p>
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="After the call…"
+          className="text-xs min-h-[60px] mb-2"
+          autoFocus
+          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave(); }}
+        />
+        <div className="flex justify-end gap-2">
+          <button onClick={() => setOpen(false)} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+          <button onClick={handleSave} className="text-xs px-2.5 py-1 bg-foreground text-background rounded hover:bg-foreground/80">Save</button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function Pipeline() {
   const { getLeadsByStage, updateLead, leads, isLeadNew, markLeadSeen } = useLeads();
   const { leadJobs } = useProcessing();
