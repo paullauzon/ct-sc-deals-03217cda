@@ -4,6 +4,7 @@ import { Lead, LeadSource, Brand } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { LeadDetail } from "@/components/LeadsTable";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics";
 import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, Legend,
@@ -375,6 +376,9 @@ export function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Advanced Metrics: Sales Velocity, Weighted Pipeline, Win/Loss, Rep Scorecard, Source ROI */}
+      <DashboardAdvancedMetrics leads={leads} onSelectLead={setSelectedLeadId} />
 
       {/* Row 3: Pipeline Funnel + Owner Workload */}
       <div className="grid grid-cols-2 gap-6">
