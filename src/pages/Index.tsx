@@ -6,6 +6,7 @@ import { ActionQueue } from "@/components/ActionQueue";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useLeads } from "@/contexts/LeadContext";
 import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";
+import { Search } from "lucide-react";
 
 type View = "today" | "dashboard" | "leads" | "pipeline";
 
@@ -13,6 +14,7 @@ function AppContent() {
   const [view, setView] = useState<View>("today");
   const { unseenCount, clearUnseen } = useLeads();
   const [cmdLeadId, setCmdLeadId] = useState<string | null>(null);
+  const [cmdOpen, setCmdOpen] = useState(false);
 
   useEffect(() => {
     if (view === "leads") clearUnseen();
@@ -53,11 +55,12 @@ function AppContent() {
           </div>
           <div className="ml-auto">
             <button
-              onClick={() => setCmdLeadId(null)}
-              className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 border border-border rounded"
-              title="Cmd+K"
+              onClick={() => setCmdOpen(true)}
+              className="flex items-center gap-2 w-52 h-8 px-3 rounded-md border border-border bg-secondary/50 text-sm text-muted-foreground hover:bg-secondary transition-colors"
             >
-              ⌘K Search
+              <Search className="h-3.5 w-3.5" />
+              <span className="flex-1 text-left">Search…</span>
+              <kbd className="text-[10px] font-mono bg-background border border-border rounded px-1.5 py-0.5">⌘K</kbd>
             </button>
           </div>
         </div>
@@ -68,7 +71,7 @@ function AppContent() {
       {view === "leads" && <LeadsTable />}
       {view === "pipeline" && <Pipeline />}
 
-      <CommandPalette onNavigate={handleCmdNavigate} onSelectLead={handleCmdSelectLead} />
+      <CommandPalette onNavigate={handleCmdNavigate} onSelectLead={handleCmdSelectLead} externalOpen={cmdOpen} onExternalOpenChange={setCmdOpen} />
       <LeadDetail leadId={cmdLeadId} open={!!cmdLeadId} onClose={() => setCmdLeadId(null)} />
     </div>
   );

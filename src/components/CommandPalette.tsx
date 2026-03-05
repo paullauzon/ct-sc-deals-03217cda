@@ -1,46 +1,57 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandSeparator } from "@/components/ui/command";
-import { Search, BarChart3, Kanban, List, CalendarDays, User } from "lucide-react";
+import { BarChart3, Kanban, List, CalendarDays, User } from "lucide-react";
 
 interface Props {
   onNavigate: (view: string) => void;
   onSelectLead: (id: string) => void;
+  externalOpen?: boolean;
+  onExternalOpenChange?: (open: boolean) => void;
 }
 
-export function CommandPalette({ onNavigate, onSelectLead }: Props) {
+export function CommandPalette({ onNavigate, onSelectLead, externalOpen, onExternalOpenChange }: Props) {
   const [open, setOpen] = useState(false);
   const { leads } = useLeads();
+
+  // Sync external open state
+  useEffect(() => {
+    if (externalOpen !== undefined) setOpen(externalOpen);
+  }, [externalOpen]);
+
+  const handleOpenChange = (val: boolean) => {
+    setOpen(val);
+    onExternalOpenChange?.(val);
+  };
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        setOpen(prev => !prev);
+        handleOpenChange(!open);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [open]);
 
   const handleNav = useCallback((view: string) => {
     onNavigate(view);
-    setOpen(false);
+    handleOpenChange(false);
   }, [onNavigate]);
 
   const handleLead = useCallback((id: string) => {
     onSelectLead(id);
-    setOpen(false);
+    handleOpenChange(false);
   }, [onSelectLead]);
 
-  // Recent leads (last 10 by updated_at or dateSubmitted)
   const recentLeads = leads
     .slice()
     .sort((a, b) => new Date(b.dateSubmitted).getTime() - new Date(a.dateSubmitted).getTime())
     .slice(0, 8);
 
   return (
-    <CommandDialog open={open} onOpenChange={setOpen}>
+    <CommandDialog open={open} onOpenChange={handleOpenChange}>
       <CommandInput placeholder="Search leads, navigate, or run commands…" />
       <CommandList>
         <CommandEmpty>No results found.</CommandEmpty>

@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 
-import { Search, X, Sparkles, Loader2, Plus, CheckSquare } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +30,7 @@ const OWNER_COLORS: Record<string, string> = {
   Tomos: "bg-foreground/40 text-background",
 };
 
-function getClosingInsight(lead: Lead): { icon: string; text: string } | null {
+function getClosingInsight(lead: Lead): { icon: React.ReactNode; text: string } | null {
   const meetingsWithIntel = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const latest = meetingsWithIntel?.[0]?.intelligence;
   if (!latest) return null;
@@ -38,16 +38,16 @@ function getClosingInsight(lead: Lead): { icon: string; text: string } | null {
   const trunc = (s: string) => s.length > 60 ? s.slice(0, 57) + "…" : s;
 
   if (latest.dealSignals?.objections?.length > 0) {
-    return { icon: "⚡", text: trunc(latest.dealSignals.objections[0]) };
+    return { icon: <Zap className="h-2.5 w-2.5 shrink-0" />, text: trunc(latest.dealSignals.objections[0]) };
   }
   if (latest.painPoints?.length > 0) {
-    return { icon: "🎯", text: trunc(latest.painPoints[0]) };
+    return { icon: <Target className="h-2.5 w-2.5 shrink-0" />, text: trunc(latest.painPoints[0]) };
   }
   if (latest.dealSignals?.timeline && latest.dealSignals.timeline !== "Not mentioned" && latest.dealSignals.timeline !== "None mentioned") {
-    return { icon: "⏱", text: trunc(latest.dealSignals.timeline) };
+    return { icon: <Timer className="h-2.5 w-2.5 shrink-0" />, text: trunc(latest.dealSignals.timeline) };
   }
   if (latest.dealSignals?.sentiment && latest.dealSignals?.buyingIntent) {
-    return { icon: "📊", text: trunc(`${latest.dealSignals.sentiment} · ${latest.dealSignals.buyingIntent} intent`) };
+    return { icon: <BarChart3 className="h-2.5 w-2.5 shrink-0" />, text: trunc(`${latest.dealSignals.sentiment} · ${latest.dealSignals.buyingIntent} intent`) };
   }
   return null;
 }
@@ -194,14 +194,12 @@ export function Pipeline() {
   }, []);
 
   const matchesSearchAndFilters = (lead: Lead) => {
-    // Search
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       const searchMatch = [lead.name, lead.company, lead.role, lead.email, lead.serviceInterest, lead.notes]
         .some(f => f?.toLowerCase().includes(q));
       if (!searchMatch) return false;
     }
-    // Filters
     if (activeFilters) {
       if (!matchesFilters(lead, activeFilters)) return false;
     }
@@ -240,7 +238,7 @@ export function Pipeline() {
             <h1 className="text-2xl font-semibold tracking-tight">Pipeline</h1>
             <span className="text-sm text-muted-foreground tabular-nums">${leads.reduce((s, l) => s + l.dealValue, 0).toLocaleString()} total value</span>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">Drag deals between stages</p>
+          <p className="text-xs text-muted-foreground mt-1">Drag deals between stages</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -258,7 +256,7 @@ export function Pipeline() {
             ref={searchRef}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search deals… ⌘K"
+            placeholder="Search deals…"
             className="pl-9 pr-8"
           />
           {searchQuery && (
@@ -298,7 +296,6 @@ export function Pipeline() {
                 {stageLeads.map((lead) => {
                   const days = computeDaysInStage(lead.stageEnteredDate);
                   const brandAbbr = lead.brand === "Captarget" ? "CT" : "SC";
-                  const sourceShort = lead.source.replace("CT ", "").replace("SC ", "");
                   const associates = getCompanyAssociates(lead, leads);
                   return (
                     <div
@@ -315,7 +312,7 @@ export function Pipeline() {
                         selectedIds.has(lead.id) ? "border-primary bg-primary/5" : getAgingClass(days) + " hover:bg-secondary/30"
                       )}
                     >
-                      {/* Row 1: Checkbox (select mode) + Brand badge + Name + Owner initial */}
+                      {/* Row 1: Name + Owner */}
                       <div className="flex items-start gap-1.5">
                         {selectMode && (
                           <Checkbox
@@ -330,7 +327,7 @@ export function Pipeline() {
                           <p className="text-sm font-medium leading-tight flex items-center gap-1.5">
                             {lead.name}
                             {isLeadNew(lead.id) && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse">NEW</span>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-foreground/10 text-foreground animate-pulse">NEW</span>
                             )}
                           </p>
                           <p className="text-xs text-muted-foreground">{lead.company || "—"} · {lead.role}</p>
@@ -338,36 +335,34 @@ export function Pipeline() {
                         <QuickNote lead={lead} onSave={handleQuickNote} onFollowUp={handleFollowUp} />
                         <OwnerBadge owner={lead.assignedTo} />
                       </div>
-                      {/* Row 2: Source */}
-                      <p className="text-[10px] text-muted-foreground">{brandAbbr} · {sourceShort}</p>
-                      {lead.submissions?.length > 1 && (
-                        <p className="text-[10px] text-muted-foreground">🔄 {lead.submissions.length} submissions{new Set(lead.submissions.map(s => s.brand)).size > 1 ? " (CT+SC)" : ""}</p>
+                      {/* Row 2: Multi-submission / associates */}
+                      {(lead.submissions?.length > 1 || associates.length > 0) && (
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          {lead.submissions?.length > 1 && (
+                            <span className="flex items-center gap-0.5"><RefreshCw className="h-2.5 w-2.5" /> {lead.submissions.length} submissions</span>
+                          )}
+                          {associates.length > 0 && (
+                            <span className="flex items-center gap-0.5"><Users className="h-2.5 w-2.5" /> {associates.length + 1} at {lead.company}</span>
+                          )}
+                        </div>
                       )}
-                      {associates.length > 0 && (
-                        <p className="text-[10px] text-muted-foreground">👥 {associates.length + 1} contacts at {lead.company}</p>
-                      )}
-                      {/* Row 3: Service interest */}
-                      {lead.serviceInterest && lead.serviceInterest !== "TBD" && (
-                        <p className="text-xs text-muted-foreground">{lead.serviceInterest}</p>
-                      )}
-                      {/* Row 4: Value + Priority */}
+                      {/* Row 3: Value + Priority + Closing insight */}
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className="tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</span>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.priority === "High" ? "bg-foreground/10 font-medium" : ""}`}>{lead.priority}</span>
                       </div>
-                      {/* Row 4.5: Closing insight */}
-                      {(() => {
-                        const insight = getClosingInsight(lead);
-                        return insight ? (
-                          <p className="text-[10px] text-muted-foreground italic truncate" title={insight.text}>
-                            {insight.icon} {insight.text}
-                          </p>
-                        ) : null;
-                      })()}
-                      {/* Row 5: Days in stage + meeting outcome */}
+                      {/* Row 4: Days in stage + meetings + insight inline */}
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className={`tabular-nums ${days > 14 ? "text-foreground font-medium" : ""}`}>{days}d in stage</span>
                         <div className="flex items-center gap-1.5">
+                          {(() => {
+                            const insight = getClosingInsight(lead);
+                            return insight ? (
+                              <span className="text-[10px] text-muted-foreground/70 flex items-center gap-0.5 max-w-[100px] truncate" title={insight.text}>
+                                {insight.icon}
+                              </span>
+                            ) : null;
+                          })()}
                           {lead.meetings?.length > 0 && (
                             <div className="flex items-center gap-0.5">
                               <img src="/fireflies-icon.svg" alt="Meetings" className="w-3.5 h-3.5" />
@@ -377,22 +372,18 @@ export function Pipeline() {
                           {lead.meetingOutcome && <span>{lead.meetingOutcome}</span>}
                         </div>
                       </div>
-                      {/* Row 6: Intelligence indicators */}
+                      {/* Row 5: Intelligence indicators (monochrome) */}
                       {lead.dealIntelligence && (
                         <div className="flex items-center gap-1.5 text-[10px]">
                           {lead.dealIntelligence.momentumSignals?.momentum && (
-                            <span className={`px-1.5 py-0.5 rounded ${
-                              lead.dealIntelligence.momentumSignals.momentum === "Accelerating" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
-                              lead.dealIntelligence.momentumSignals.momentum === "Stalling" || lead.dealIntelligence.momentumSignals.momentum === "Stalled" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
-                              "bg-secondary text-muted-foreground"
-                            }`}>
+                            <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                               {lead.dealIntelligence.momentumSignals.momentum === "Accelerating" ? "↑" :
                                lead.dealIntelligence.momentumSignals.momentum === "Stalling" || lead.dealIntelligence.momentumSignals.momentum === "Stalled" ? "↓" : "→"} {lead.dealIntelligence.momentumSignals.momentum}
                             </span>
                           )}
                           {lead.dealIntelligence.riskRegister?.filter(r => r.mitigationStatus !== "Mitigated").length > 0 && (
-                            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                              ⚠ {lead.dealIntelligence.riskRegister.filter(r => r.mitigationStatus !== "Mitigated").length} risks
+                            <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground flex items-center gap-0.5">
+                              <AlertTriangle className="h-2.5 w-2.5" /> {lead.dealIntelligence.riskRegister.filter(r => r.mitigationStatus !== "Mitigated").length} risks
                             </span>
                           )}
                           {lead.enrichment && (
@@ -414,7 +405,7 @@ export function Pipeline() {
                         }
                         if (job.pendingSuggestions?.length > 0) {
                           return (
-                            <div className="flex items-center gap-1.5 text-[10px] px-1.5 py-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 font-medium">
+                            <div className="flex items-center gap-1.5 text-[10px] px-1.5 py-1 rounded bg-secondary text-foreground font-medium">
                               <Sparkles className="h-3 w-3" />
                               <span>{job.pendingSuggestions.length} to review</span>
                             </div>
