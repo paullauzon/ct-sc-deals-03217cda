@@ -267,7 +267,8 @@ export default function DealRoom() {
           </Tabs>
         </div>
 
-        {/* Right: Stakeholders, Risks, Actions */}
+        {/* Right: Stakeholders, Risks, Actions — only if content exists */}
+        {hasSidebarContent && (
         <div className="w-80 shrink-0 border-l border-border p-4 space-y-4 overflow-y-auto">
           {/* Stakeholder Map */}
           <div>
