@@ -374,11 +374,7 @@ export function Dashboard() {
           <p className="text-xs text-muted-foreground uppercase tracking-wider">Deal Momentum</p>
           <div className="flex items-center gap-2 mt-2">
             {Object.entries(analytics.momentumDist).map(([key, val]) => val > 0 && (
-              <span key={key} className={`text-xs px-1.5 py-0.5 rounded ${
-                key === "Accelerating" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
-                key === "Stalling" || key === "Stalled" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
-                "bg-secondary text-muted-foreground"
-              }`}>
+              <span key={key} className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                 {val} {key}
               </span>
             ))}
@@ -391,17 +387,17 @@ export function Dashboard() {
           <p className="text-xs text-muted-foreground uppercase tracking-wider">Deal Health</p>
           <div className="flex items-center gap-2 mt-2">
             {analytics.criticalAlerts > 0 && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+              <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-foreground font-medium">
                 {analytics.criticalAlerts} critical
               </span>
             )}
             {analytics.warningAlerts > 0 && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+              <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                 {analytics.warningAlerts} warning
               </span>
             )}
             {analytics.cleanDeals > 0 && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+              <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                 {analytics.cleanDeals} healthy
               </span>
             )}
