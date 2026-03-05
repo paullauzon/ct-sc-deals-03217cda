@@ -20,6 +20,7 @@ export interface PipelineFilters {
   daysInStage: string[];
   hasMeetings: string | null; // "yes" | "no" | null
   dealValueRange: string[];
+  overdue: boolean;
 }
 
 const EMPTY_FILTERS: PipelineFilters = {
@@ -33,6 +34,7 @@ const EMPTY_FILTERS: PipelineFilters = {
   daysInStage: [],
   hasMeetings: null,
   dealValueRange: [],
+  overdue: false,
 };
 
 const STORAGE_KEY = "pipeline-filters";
