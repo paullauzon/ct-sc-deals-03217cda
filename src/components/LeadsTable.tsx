@@ -89,10 +89,15 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
   const { leadJobs, acceptLeadSuggestion, dismissLeadSuggestion, acceptAllLeadSuggestions, dismissLeadJob } = useProcessing();
   const lead = leads.find((l) => l.id === leadId) || null;
   const [enriching, setEnriching] = useState(false);
+  const [activityKey, setActivityKey] = useState(0);
   if (!lead) return null;
   const autoFindJob = leadJobs[lead.id];
 
-  const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
+  const save = (updates: Partial<Lead>) => {
+    updateLead(lead.id, updates);
+    // Bump activity key so ActivityTimeline re-fetches after field/stage changes
+    setTimeout(() => setActivityKey(k => k + 1), 500);
+  };
   const days = computeDaysInStage(lead.stageEnteredDate);
   
 
@@ -404,7 +409,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
               <EmailsSection leadId={lead.id} />
             </TabsContent>
             <TabsContent value="activity">
-              <ActivityTimeline leadId={lead.id} />
+              <ActivityTimeline leadId={lead.id} refreshKey={activityKey} />
             </TabsContent>
           </Tabs>
 
@@ -1174,7 +1179,7 @@ const EVENT_ICONS: Record<string, React.ReactNode> = {
   bulk_update: <Users className="h-3.5 w-3.5 text-muted-foreground" />,
 };
 
-function ActivityTimeline({ leadId }: { leadId: string }) {
+function ActivityTimeline({ leadId, refreshKey = 0 }: { leadId: string; refreshKey?: number }) {
   const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -1188,7 +1193,7 @@ function ActivityTimeline({ leadId }: { leadId: string }) {
       }
     });
     return () => { cancelled = true; };
-  }, [leadId]);
+  }, [leadId, refreshKey]);
 
   if (loading) return <p className="text-xs text-muted-foreground py-4 text-center">Loading activity…</p>;
   if (entries.length === 0) return <p className="text-xs text-muted-foreground py-4 text-center">No activity recorded yet</p>;
