@@ -7,8 +7,13 @@ import { computeDaysInStage, getCompanyAssociates } from "@/lib/leadUtils";
 import { PipelineFilterBar, PipelineFilters, matchesFilters } from "@/components/PipelineFilters";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { logActivity } from "@/lib/activityLog";
+import { toast } from "sonner";
 
-import { Search, X, Sparkles, Loader2, Plus } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus, CheckSquare } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 const ALL_STAGES: LeadStage[] = [
