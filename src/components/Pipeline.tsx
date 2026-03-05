@@ -121,6 +121,26 @@ export function Pipeline() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState<PipelineFilters | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkAction = (field: string, value: string) => {
+    const count = selectedIds.size;
+    selectedIds.forEach(id => {
+      updateLead(id, { [field]: value } as any);
+    });
+    toast.success(`Updated ${field} to "${value}" for ${count} deal${count !== 1 ? "s" : ""}`);
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  };
 
   const handleFiltersChange = useCallback((filters: PipelineFilters) => {
     setActiveFilters(filters);
