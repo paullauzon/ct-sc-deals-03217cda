@@ -223,17 +223,17 @@ export default function DealRoom() {
               )}
             </TabsContent>
             <TabsContent value="meetings" className="p-4">
-              <MeetingsSection lead={lead} onAddMeeting={(m) => addMeeting(lead.id, m)} onUpdateLead={save} />
+              <MeetingsSection lead={lead} />
             </TabsContent>
             <TabsContent value="intelligence" className="p-4">
               {lead.dealIntelligence ? (
-                <DealIntelligencePanel lead={lead} />
+                <DealIntelligencePanel intel={lead.dealIntelligence} lead={lead} />
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-8">No deal intelligence synthesized yet. Process meetings first.</p>
               )}
             </TabsContent>
             <TabsContent value="emails" className="p-4">
-              <EmailsSection leadId={lead.id} leadEmail={lead.email} />
+              <EmailsSection leadId={lead.id} />
             </TabsContent>
             <TabsContent value="notes" className="p-4">
               <Textarea
