@@ -243,6 +243,7 @@ export function Pipeline() {
             </button>
           )}
         </div>
+        </div>
       </div>
 
       <PipelineFilterBar leads={leads} onFiltersChange={handleFiltersChange} />
