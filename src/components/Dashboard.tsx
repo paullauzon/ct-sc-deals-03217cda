@@ -5,6 +5,7 @@ import { computeDaysInStage } from "@/lib/leadUtils";
 import { LeadDetail } from "@/components/LeadsTable";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics";
+import { PipelineSnapshots } from "@/components/PipelineSnapshots";
 import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, Legend,
@@ -249,14 +250,46 @@ export function Dashboard() {
     const activeLeads = leads.filter((l) => !closedStages.has(l.stage));
     let criticalAlerts = 0;
     let warningAlerts = 0;
+    let atRiskRevenue = 0;
+    const atRiskLeads: Lead[] = [];
     for (const l of activeLeads) {
       const daysSinceContact = l.lastContactDate ? Math.floor((Date.now() - new Date(l.lastContactDate).getTime()) / 86400000) : 999;
       const overdueItems = l.dealIntelligence?.actionItemTracker?.filter((a) => a.status === "Overdue" || a.status === "Open").length || 0;
       const unmitigatedRisks = l.dealIntelligence?.riskRegister?.filter((r) => r.mitigationStatus === "Unmitigated" && (r.severity === "Critical" || r.severity === "High")).length || 0;
+      const momentum = l.dealIntelligence?.momentumSignals?.momentum;
+      const isAtRisk = daysSinceContact > 21 || unmitigatedRisks > 0 || momentum === "Stalling" || momentum === "Stalled";
+      if (isAtRisk) {
+        atRiskRevenue += l.dealValue;
+        atRiskLeads.push(l);
+      }
       if (daysSinceContact > 21 || unmitigatedRisks > 0) criticalAlerts++;
       else if (daysSinceContact > 14 || overdueItems > 2) warningAlerts++;
     }
     const cleanDeals = activeLeads.length - criticalAlerts - warningAlerts;
+
+    // Stage-to-stage conversion rates
+    const stageConversions = ACTIVE_STAGES.slice(0, -1).map((stage, i) => {
+      const nextStage = ACTIVE_STAGES[i + 1];
+      const inThisOrLater = leads.filter(l => {
+        const idx = ACTIVE_STAGES.indexOf(l.stage as any);
+        return idx >= i || l.stage === "Closed Won";
+      }).length;
+      const inNextOrLater = leads.filter(l => {
+        const idx = ACTIVE_STAGES.indexOf(l.stage as any);
+        return idx >= i + 1 || l.stage === "Closed Won";
+      }).length;
+      const rate = inThisOrLater > 0 ? Math.round((inNextOrLater / inThisOrLater) * 100) : 0;
+      return { from: stage, to: nextStage, rate, fromCount: inThisOrLater, toCount: inNextOrLater };
+    });
+    const weakestLink = stageConversions.reduce((min, s) => s.rate < min.rate ? s : min, stageConversions[0]);
+
+    // Forecast gap analysis
+    const forecastTarget = parseInt(localStorage.getItem("captarget_quarterly_target") || "500000");
+    const commitValue = leads.filter(l => l.forecastCategory === "Commit").reduce((s, l) => s + l.dealValue, 0);
+    const bestCaseValue = leads.filter(l => l.forecastCategory === "Best Case").reduce((s, l) => s + l.dealValue, 0);
+    const pipelineValue = leads.filter(l => l.forecastCategory === "Pipeline").reduce((s, l) => s + l.dealValue, 0);
+    const coverageRatio = forecastTarget > 0 ? ((commitValue + bestCaseValue) / forecastTarget) : 0;
+    const forecastGap = Math.max(0, forecastTarget - commitValue);
 
     return {
       leadsThisWeek, leadsThisMonth, momGrowth, lvrCurrent, lvrChange,
@@ -268,6 +301,8 @@ export function Dashboard() {
       totalMRR, totalContractValue, leadsWithMeetings, leadsWithIntel, leadsWithDealIntel,
       momentumDist, avgTalkRatio, questionQualityDist,
       criticalAlerts, warningAlerts, cleanDeals,
+      atRiskRevenue, atRiskLeads, stageConversions, weakestLink,
+      forecastTarget, commitValue, bestCaseValue, pipelineValue: pipelineValue, coverageRatio, forecastGap,
     };
   }, [leads, m]);
 
@@ -373,6 +408,80 @@ export function Dashboard() {
           </div>
           {analytics.avgTalkRatio !== null && (
             <p className="text-xs text-muted-foreground mt-1">Avg talk ratio: {analytics.avgTalkRatio}%</p>
+          )}
+        </div>
+      </div>
+
+      {/* Pipeline Snapshots + At Risk Revenue + Forecast Gap */}
+      <PipelineSnapshots leads={leads} />
+      <div className="grid grid-cols-3 gap-4">
+        <div className="border border-border border-l-4 border-l-red-500 dark:border-l-red-400 rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Revenue at Risk</p>
+          <p className="text-2xl font-bold tabular-nums mt-1 text-red-600 dark:text-red-400">${analytics.atRiskRevenue.toLocaleString()}</p>
+          <p className="text-xs text-muted-foreground mt-1">{analytics.atRiskLeads.length} deals stalling, dark, or high-risk</p>
+          {analytics.atRiskLeads.length > 0 && (
+            <div className="mt-2 space-y-1 max-h-[80px] overflow-y-auto">
+              {analytics.atRiskLeads.slice(0, 5).map(l => (
+                <p key={l.id} onClick={() => setSelectedLeadId(l.id)} className="text-xs text-muted-foreground cursor-pointer hover:text-foreground truncate">
+                  {l.name} · ${l.dealValue.toLocaleString()}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Forecast vs Target</p>
+            <input
+              type="number"
+              defaultValue={analytics.forecastTarget}
+              onBlur={(e) => localStorage.setItem("captarget_quarterly_target", e.target.value)}
+              className="w-24 text-xs text-right border border-border rounded px-2 py-1 bg-background tabular-nums"
+              title="Edit quarterly target"
+            />
+          </div>
+          <div className="mt-2 space-y-1">
+            <div className="flex justify-between text-xs">
+              <span>Commit</span><span className="tabular-nums font-medium">${analytics.commitValue.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Best Case</span><span className="tabular-nums">${analytics.bestCaseValue.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Pipeline</span><span className="tabular-nums">${analytics.pipelineValue.toLocaleString()}</span>
+            </div>
+            <div className="w-full h-3 bg-secondary/50 rounded overflow-hidden mt-1.5">
+              <div className="h-full bg-foreground/30 rounded transition-all" style={{ width: `${Math.min(100, (analytics.commitValue / analytics.forecastTarget) * 100)}%` }} />
+            </div>
+            <div className="flex justify-between text-xs mt-1">
+              <span className={analytics.forecastGap > 0 ? "text-red-600 dark:text-red-400 font-medium" : "text-emerald-600 dark:text-emerald-400 font-medium"}>
+                Gap: ${analytics.forecastGap.toLocaleString()}
+              </span>
+              <span className={`tabular-nums ${analytics.coverageRatio < 2 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                {analytics.coverageRatio.toFixed(1)}x coverage
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Stage Conversion Funnel</p>
+          <div className="mt-2 space-y-1">
+            {analytics.stageConversions.map(s => (
+              <div key={s.from} className="flex items-center gap-2 text-xs">
+                <span className="w-20 text-muted-foreground truncate text-right">{s.from.split(" ").map(w => w[0]).join("")}</span>
+                <span className="text-muted-foreground">→</span>
+                <div className="flex-1 h-2 bg-secondary/50 rounded overflow-hidden">
+                  <div
+                    className={`h-full rounded transition-all ${s === analytics.weakestLink ? "bg-red-400 dark:bg-red-500" : "bg-foreground/25"}`}
+                    style={{ width: `${s.rate}%` }}
+                  />
+                </div>
+                <span className={`w-10 text-right tabular-nums font-medium ${s === analytics.weakestLink ? "text-red-600 dark:text-red-400" : ""}`}>{s.rate}%</span>
+              </div>
+            ))}
+          </div>
+          {analytics.weakestLink && (
+            <p className="text-[10px] text-red-600 dark:text-red-400 mt-2">⚠ Weakest: {analytics.weakestLink.from} → {analytics.weakestLink.to} ({analytics.weakestLink.rate}%)</p>
           )}
         </div>
       </div>

@@ -269,6 +269,45 @@ export type Database = {
         }
         Relationships: []
       }
+      pipeline_snapshots: {
+        Row: {
+          created_at: string
+          deal_count: number
+          deals_advanced: number
+          deals_lost: number
+          id: string
+          new_deals: number
+          snapshot_date: string
+          stage_data: Json
+          total_pipeline_value: number
+          weighted_pipeline_value: number
+        }
+        Insert: {
+          created_at?: string
+          deal_count?: number
+          deals_advanced?: number
+          deals_lost?: number
+          id?: string
+          new_deals?: number
+          snapshot_date?: string
+          stage_data?: Json
+          total_pipeline_value?: number
+          weighted_pipeline_value?: number
+        }
+        Update: {
+          created_at?: string
+          deal_count?: number
+          deals_advanced?: number
+          deals_lost?: number
+          id?: string
+          new_deals?: number
+          snapshot_date?: string
+          stage_data?: Json
+          total_pipeline_value?: number
+          weighted_pipeline_value?: number
+        }
+        Relationships: []
+      }
       processing_jobs: {
         Row: {
           acknowledged: boolean | null

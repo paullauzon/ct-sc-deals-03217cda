@@ -122,6 +122,37 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
       };
     });
 
+    // ─── Coaching Insights (aggregated per rep) ───
+    const repCoaching = owners.filter(o => o !== "").map(owner => {
+      const ownerMeetings = leads
+        .filter(l => l.assignedTo === owner)
+        .flatMap(l => l.meetings || [])
+        .filter(m => m.intelligence?.talkRatio);
+      const avgTalk = ownerMeetings.length > 0
+        ? Math.round(ownerMeetings.reduce((s, m) => s + (m.intelligence?.talkRatio || 0), 0) / ownerMeetings.length)
+        : null;
+      const qDist = { Strong: 0, Adequate: 0, Weak: 0 };
+      const objDist = { Effective: 0, Partial: 0, Missed: 0 };
+      for (const m of ownerMeetings) {
+        const q = m.intelligence?.questionQuality;
+        if (q && q in qDist) qDist[q as keyof typeof qDist]++;
+        const o = m.intelligence?.objectionHandling;
+        if (o && o in objDist) objDist[o as keyof typeof objDist]++;
+      }
+      const totalQ = qDist.Strong + qDist.Adequate + qDist.Weak;
+      const weakPct = totalQ > 0 ? Math.round((qDist.Weak / totalQ) * 100) : 0;
+      const needsCoaching = (avgTalk !== null && avgTalk > 60) || weakPct > 50;
+      return {
+        owner: owner as string,
+        meetingCount: ownerMeetings.length,
+        avgTalkRatio: avgTalk,
+        questionQuality: qDist,
+        objectionHandling: objDist,
+        weakPct,
+        needsCoaching,
+      };
+    });
+
     // ─── Contract Renewals ───
     const now = new Date();
     const renewals30 = wonLeads.filter(l => {
@@ -146,7 +177,7 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
       rawPipeline, weightedPipeline: Math.round(weightedPipeline),
       closeReasonData, avgCycleWon, avgCycleLost, winRateBySource,
       wonCount: wonLeads.length, lostCount: lostLeads.length,
-      repScorecard, sourceROI,
+      repScorecard, sourceROI, repCoaching,
       renewals30, renewals60, renewals90,
     };
   }, [leads]);
@@ -323,6 +354,52 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
           </table>
         </div>
       </div>
+
+      {/* Coaching Insights */}
+      {data.repCoaching.some(r => r.meetingCount > 0) && (
+        <div>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">🎯 Coaching Insights</h2>
+          <div className="border border-border rounded-md overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/50">
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Rep</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Meetings</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Talk Ratio</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Q Quality</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Objections</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Flag</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {data.repCoaching.map(r => (
+                  <tr key={r.owner} className="hover:bg-secondary/30 transition-colors">
+                    <td className="px-4 py-2.5 font-medium flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">{r.owner[0]}</span>
+                      {r.owner}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{r.meetingCount}</td>
+                    <td className={`px-3 py-2.5 text-right tabular-nums ${r.avgTalkRatio && r.avgTalkRatio > 60 ? "text-red-600 dark:text-red-400 font-medium" : ""}`}>
+                      {r.avgTalkRatio !== null ? `${r.avgTalkRatio}%` : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <span className="text-xs">{r.questionQuality.Strong}S / {r.questionQuality.Adequate}A / {r.questionQuality.Weak}W</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <span className="text-xs">{r.objectionHandling.Effective}E / {r.objectionHandling.Partial}P / {r.objectionHandling.Missed}M</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      {r.needsCoaching && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Needs coaching</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Contract Renewals */}
       {(data.renewals30.length > 0 || data.renewals60.length > 0 || data.renewals90.length > 0) && (
