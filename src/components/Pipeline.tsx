@@ -203,10 +203,6 @@ export function Pipeline() {
     }
     // Filters
     if (activeFilters) {
-      // Handle overdue preset
-      if ((activeFilters as any)._overdue) {
-        if (!lead.nextFollowUp || new Date(lead.nextFollowUp) >= new Date()) return false;
-      }
       if (!matchesFilters(lead, activeFilters)) return false;
     }
     return true;
