@@ -389,8 +389,19 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             </div>
           </Section>
 
-          {/* Meetings (Multi-meeting with AI processing) */}
-          <MeetingsSection lead={lead} />
+          {/* Meetings & Emails Tabs */}
+          <Tabs defaultValue="meetings" className="w-full">
+            <TabsList className="w-full justify-start h-9 p-1">
+              <TabsTrigger value="meetings" className="text-xs h-7">Meetings</TabsTrigger>
+              <TabsTrigger value="emails" className="text-xs h-7">Emails</TabsTrigger>
+            </TabsList>
+            <TabsContent value="meetings">
+              <MeetingsSection lead={lead} />
+            </TabsContent>
+            <TabsContent value="emails">
+              <EmailsSection leadId={lead.id} />
+            </TabsContent>
+          </Tabs>
 
           {/* Deal Intelligence (Cross-Meeting Synthesis) */}
           {lead.dealIntelligence && (
