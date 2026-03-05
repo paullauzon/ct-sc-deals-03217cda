@@ -13,8 +13,35 @@ interface ActionItem {
   type: "overdue" | "meeting" | "dark" | "untouched" | "renewal" | "stale";
   label: string;
   detail: string;
-  urgency: number; // higher = more urgent
+  urgency: number;
 }
+
+const TYPE_LABELS: Record<ActionItem["type"], string> = {
+  overdue: "Overdue",
+  meeting: "Meetings",
+  dark: "Going Dark",
+  untouched: "Untouched",
+  renewal: "Renewals",
+  stale: "Stale",
+};
+
+const TYPE_BORDER_COLORS: Record<ActionItem["type"], string> = {
+  overdue: "border-l-red-500 dark:border-l-red-400",
+  meeting: "border-l-blue-500 dark:border-l-blue-400",
+  dark: "border-l-amber-500 dark:border-l-amber-400",
+  untouched: "border-l-emerald-500 dark:border-l-emerald-400",
+  renewal: "border-l-purple-500 dark:border-l-purple-400",
+  stale: "border-l-muted-foreground/40",
+};
+
+const TYPE_TEXT_COLORS: Record<ActionItem["type"], string> = {
+  overdue: "text-red-600 dark:text-red-400",
+  meeting: "text-blue-600 dark:text-blue-400",
+  dark: "text-amber-600 dark:text-amber-400",
+  untouched: "text-emerald-600 dark:text-emerald-400",
+  renewal: "text-purple-600 dark:text-purple-400",
+  stale: "text-muted-foreground",
+};
 
 export function ActionQueue() {
   const { leads } = useLeads();
@@ -32,7 +59,6 @@ export function ActionQueue() {
 
     for (const lead of filteredLeads) {
       if (CLOSED_STAGES.has(lead.stage)) {
-        // Check contract renewals for won deals
         if (lead.stage === "Closed Won" && lead.contractEnd) {
           const end = new Date(lead.contractEnd);
           const daysUntil = Math.floor((end.getTime() - now.getTime()) / 86400000);
@@ -48,7 +74,6 @@ export function ActionQueue() {
         continue;
       }
 
-      // Overdue follow-ups
       if (lead.nextFollowUp) {
         const followUp = new Date(lead.nextFollowUp);
         if (followUp < now) {
@@ -62,7 +87,6 @@ export function ActionQueue() {
         }
       }
 
-      // Meetings today/this week
       if (lead.meetingDate) {
         const meetDate = new Date(lead.meetingDate);
         const daysUntil = Math.floor((meetDate.getTime() - now.getTime()) / 86400000);
@@ -76,7 +100,6 @@ export function ActionQueue() {
         }
       }
 
-      // Went dark recently (within 7d of last contact, in "Contacted" or later but no activity)
       const daysSinceContact = lead.lastContactDate
         ? Math.floor((now.getTime() - new Date(lead.lastContactDate).getTime()) / 86400000)
         : 999;
@@ -89,7 +112,6 @@ export function ActionQueue() {
         });
       }
 
-      // New leads not yet touched
       if (lead.stage === "New Lead" && !lead.lastContactDate && !lead.assignedTo) {
         const daysOld = Math.floor((now.getTime() - new Date(lead.dateSubmitted).getTime()) / 86400000);
         actions.push({
@@ -100,7 +122,6 @@ export function ActionQueue() {
         });
       }
 
-      // Stale deals (>14d in stage)
       const daysInStage = computeDaysInStage(lead.stageEnteredDate);
       if (daysInStage > 14 && !["New Lead"].includes(lead.stage)) {
         actions.push({
@@ -114,15 +135,6 @@ export function ActionQueue() {
 
     return actions.sort((a, b) => b.urgency - a.urgency);
   }, [leads, ownerFilter]);
-
-  const typeConfig: Record<ActionItem["type"], { icon: typeof Clock; color: string; bg: string }> = {
-    overdue: { icon: Clock, color: "text-red-600 dark:text-red-400", bg: "bg-red-100 dark:bg-red-900/30" },
-    meeting: { icon: CalendarDays, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-100 dark:bg-blue-900/30" },
-    dark: { icon: AlertTriangle, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-100 dark:bg-amber-900/30" },
-    untouched: { icon: UserPlus, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-100 dark:bg-emerald-900/30" },
-    renewal: { icon: FileWarning, color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-100 dark:bg-purple-900/30" },
-    stale: { icon: Clock, color: "text-muted-foreground", bg: "bg-secondary" },
-  };
 
   const typeCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -139,7 +151,7 @@ export function ActionQueue() {
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           {items.length} action items across your pipeline
         </p>
       </div>
@@ -156,19 +168,13 @@ export function ActionQueue() {
           {(["overdue", "meeting", "dark", "untouched", "renewal", "stale"] as const).map(type => {
             const count = typeCounts[type] || 0;
             if (count === 0) return null;
-            const cfg = typeConfig[type];
             return (
               <button
                 key={type}
                 onClick={() => setTypeFilter(typeFilter === type ? null : type)}
                 className={`text-xs px-2.5 py-1.5 rounded-md border transition-colors ${typeFilter === type ? "border-foreground bg-foreground text-background" : "border-border hover:bg-secondary"}`}
               >
-                {type === "overdue" ? "🔴 Overdue" :
-                 type === "meeting" ? "📅 Meetings" :
-                 type === "dark" ? "⚠️ Going Dark" :
-                 type === "untouched" ? "🆕 Untouched" :
-                 type === "renewal" ? "📋 Renewals" :
-                 "⏳ Stale"} ({count})
+                {TYPE_LABELS[type]} ({count})
               </button>
             );
           })}
@@ -189,21 +195,18 @@ export function ActionQueue() {
       <div className="border border-border rounded-md divide-y divide-border">
         {filteredItems.length === 0 ? (
           <div className="px-6 py-12 text-center">
-            <p className="text-sm text-muted-foreground">✓ No action items — you're all caught up!</p>
+            <p className="text-sm text-muted-foreground">No action items — you're all caught up</p>
           </div>
         ) : (
           filteredItems.map((item, i) => {
-            const cfg = typeConfig[item.type];
-            const Icon = cfg.icon;
+            const borderColor = TYPE_BORDER_COLORS[item.type];
+            const textColor = TYPE_TEXT_COLORS[item.type];
             return (
               <div
                 key={`${item.lead.id}-${item.type}-${i}`}
                 onClick={() => setSelectedLeadId(item.lead.id)}
-                className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-secondary/30 transition-colors"
+                className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-secondary/30 transition-colors border-l-[3px] ${borderColor}`}
               >
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${cfg.bg}`}>
-                  <Icon className={`h-4 w-4 ${cfg.color}`} />
-                </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded">
@@ -211,18 +214,16 @@ export function ActionQueue() {
                     </span>
                     <span className="text-sm font-medium">{item.lead.name}</span>
                     {item.lead.assignedTo && (
-                      <span className="w-5 h-5 rounded-full bg-foreground text-background flex items-center justify-center text-[9px] font-semibold shrink-0">
+                      <span className="w-5 h-5 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">
                         {item.lead.assignedTo[0]}
                       </span>
                     )}
+                    <span className={`text-xs font-medium ml-auto ${textColor}`}>
+                      {item.label}
+                      {item.lead.dealValue > 0 && <span className="text-muted-foreground font-normal ml-2 tabular-nums">${item.lead.dealValue.toLocaleString()}</span>}
+                    </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">{item.detail}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className={`text-xs font-medium ${cfg.color}`}>{item.label}</p>
-                  {item.lead.dealValue > 0 && (
-                    <p className="text-xs text-muted-foreground tabular-nums">${item.lead.dealValue.toLocaleString()}</p>
-                  )}
                 </div>
               </div>
             );

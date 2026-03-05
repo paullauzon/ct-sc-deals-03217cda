@@ -374,11 +374,7 @@ export function Dashboard() {
           <p className="text-xs text-muted-foreground uppercase tracking-wider">Deal Momentum</p>
           <div className="flex items-center gap-2 mt-2">
             {Object.entries(analytics.momentumDist).map(([key, val]) => val > 0 && (
-              <span key={key} className={`text-xs px-1.5 py-0.5 rounded ${
-                key === "Accelerating" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
-                key === "Stalling" || key === "Stalled" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
-                "bg-secondary text-muted-foreground"
-              }`}>
+              <span key={key} className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                 {val} {key}
               </span>
             ))}
@@ -391,17 +387,17 @@ export function Dashboard() {
           <p className="text-xs text-muted-foreground uppercase tracking-wider">Deal Health</p>
           <div className="flex items-center gap-2 mt-2">
             {analytics.criticalAlerts > 0 && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+              <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-foreground font-medium">
                 {analytics.criticalAlerts} critical
               </span>
             )}
             {analytics.warningAlerts > 0 && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+              <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                 {analytics.warningAlerts} warning
               </span>
             )}
             {analytics.cleanDeals > 0 && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+              <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                 {analytics.cleanDeals} healthy
               </span>
             )}
@@ -415,9 +411,9 @@ export function Dashboard() {
       {/* Pipeline Snapshots + At Risk Revenue + Forecast Gap */}
       <PipelineSnapshots leads={leads} />
       <div className="grid grid-cols-3 gap-4">
-        <div className="border border-border border-l-4 border-l-red-500 dark:border-l-red-400 rounded-lg px-5 py-4">
+        <div className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wider">Revenue at Risk</p>
-          <p className="text-2xl font-bold tabular-nums mt-1 text-red-600 dark:text-red-400">${analytics.atRiskRevenue.toLocaleString()}</p>
+          <p className="text-2xl font-bold tabular-nums mt-1">${analytics.atRiskRevenue.toLocaleString()}</p>
           <p className="text-xs text-muted-foreground mt-1">{analytics.atRiskLeads.length} deals stalling, dark, or high-risk</p>
           {analytics.atRiskLeads.length > 0 && (
             <div className="mt-2 space-y-1 max-h-[80px] overflow-y-auto">
@@ -481,7 +477,7 @@ export function Dashboard() {
             ))}
           </div>
           {analytics.weakestLink && (
-            <p className="text-[10px] text-red-600 dark:text-red-400 mt-2">⚠ Weakest: {analytics.weakestLink.from} → {analytics.weakestLink.to} ({analytics.weakestLink.rate}%)</p>
+            <p className="text-[10px] text-muted-foreground mt-2">Weakest: {analytics.weakestLink.from} → {analytics.weakestLink.to} ({analytics.weakestLink.rate}%)</p>
           )}
         </div>
       </div>
@@ -551,10 +547,10 @@ export function Dashboard() {
       <div className="grid grid-cols-2 gap-6">
         {analytics.staleLeads.length > 0 ? (
           <div>
-            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
-              ⚠ Stale Leads <span className="text-xs font-normal ml-1">({analytics.staleLeads.length} stuck &gt;14d)</span>
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+              Stale Leads <span className="text-xs font-normal ml-1">({analytics.staleLeads.length} stuck &gt;14d)</span>
             </h2>
-            <div className="border border-border border-l-2 border-l-foreground/40 rounded-md divide-y divide-border max-h-[280px] overflow-y-auto">
+            <div className="border border-border rounded-md divide-y divide-border max-h-[280px] overflow-y-auto">
               {analytics.staleLeads.slice(0, 10).map((lead) => (
                 <div
                   key={lead.id}
@@ -578,7 +574,7 @@ export function Dashboard() {
           <div>
             <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Stale Leads</h2>
             <div className="border border-border rounded-md px-4 py-8 text-center">
-              <p className="text-sm text-muted-foreground">✓ No stale leads — all deals are moving</p>
+              <p className="text-sm text-muted-foreground">No stale leads — all deals are moving</p>
             </div>
           </div>
         )}

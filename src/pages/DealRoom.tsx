@@ -9,7 +9,7 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
-import { ArrowLeft, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -76,6 +76,12 @@ export default function DealRoom() {
   const actionItems = lead.dealIntelligence?.actionItemTracker || [];
   const unmitigatedRisks = risks.filter(r => r.mitigationStatus !== "Mitigated");
   const openActions = actionItems.filter(a => a.status === "Open" || a.status === "Overdue");
+  const hasSidebarContent = stakeholders.length > 0 || unmitigatedRisks.length > 0 || openActions.length > 0 || lead.dealIntelligence?.winStrategy || lead.dealIntelligence?.buyingCommittee;
+
+  // Prev/Next navigation
+  const currentIdx = leads.findIndex(l => l.id === id);
+  const prevLead = currentIdx > 0 ? leads[currentIdx - 1] : null;
+  const nextLead = currentIdx < leads.length - 1 ? leads[currentIdx + 1] : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -91,11 +97,7 @@ export default function DealRoom() {
               <span className="text-xs font-mono px-1.5 py-0.5 border border-border rounded">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
               <Badge variant="outline" className="text-xs">{lead.stage}</Badge>
               {momentum && (
-                <span className={cn("text-xs px-1.5 py-0.5 rounded", 
-                  momentum === "Accelerating" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
-                  momentum === "Stalling" || momentum === "Stalled" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
-                  "bg-secondary text-muted-foreground"
-                )}>
+                <span className={cn("text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground")}>
                   {momentum}
                 </span>
               )}
@@ -105,10 +107,28 @@ export default function DealRoom() {
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">{lead.company} · {lead.role} · {days}d in stage · ${lead.dealValue.toLocaleString()}</p>
           </div>
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex items-center gap-2">
             {lead.assignedTo && (
               <span className="w-7 h-7 rounded-full bg-foreground text-background flex items-center justify-center text-xs font-semibold">{lead.assignedTo[0]}</span>
             )}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => prevLead && navigate(`/deal/${prevLead.id}`)}
+                disabled={!prevLead}
+                className="w-7 h-7 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Previous deal"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => nextLead && navigate(`/deal/${nextLead.id}`)}
+                disabled={!nextLead}
+                className="w-7 h-7 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Next deal"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -247,7 +267,8 @@ export default function DealRoom() {
           </Tabs>
         </div>
 
-        {/* Right: Stakeholders, Risks, Actions */}
+        {/* Right: Stakeholders, Risks, Actions — only if content exists */}
+        {hasSidebarContent && (
         <div className="w-80 shrink-0 border-l border-border p-4 space-y-4 overflow-y-auto">
           {/* Stakeholder Map */}
           <div>
@@ -260,11 +281,7 @@ export default function DealRoom() {
                   <div key={i} className="border border-border rounded-md p-2.5">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium">{s.name}</p>
-                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded",
-                        s.stance === "Champion" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
-                        s.stance === "Blocker" || s.stance === "Skeptic" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
-                        "bg-secondary text-muted-foreground"
-                      )}>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                         {s.stance}
                       </span>
                     </div>
@@ -334,7 +351,7 @@ export default function DealRoom() {
           {/* Win Strategy */}
           {lead.dealIntelligence?.winStrategy && (
             <div>
-              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">⚡ Win Strategy</h3>
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Win Strategy</h3>
               <div className="space-y-2 text-xs text-muted-foreground">
                 <div>
                   <p className="font-medium text-foreground">#1 Closer</p>
@@ -376,6 +393,7 @@ export default function DealRoom() {
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );
