@@ -260,6 +260,7 @@ export function Pipeline() {
                           </p>
                           <p className="text-xs text-muted-foreground">{lead.company || "—"} · {lead.role}</p>
                         </div>
+                        <QuickNote lead={lead} onSave={handleQuickNote} />
                         <OwnerBadge owner={lead.assignedTo} />
                       </div>
                       {/* Row 2: Source */}
