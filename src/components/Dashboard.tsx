@@ -412,7 +412,8 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* At Risk Revenue + Forecast Gap */}
+      {/* Pipeline Snapshots + At Risk Revenue + Forecast Gap */}
+      <PipelineSnapshots leads={leads} />
       <div className="grid grid-cols-3 gap-4">
         <div className="border border-border border-l-4 border-l-red-500 dark:border-l-red-400 rounded-lg px-5 py-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wider">Revenue at Risk</p>
