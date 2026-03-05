@@ -72,16 +72,30 @@ function OwnerBadge({ owner }: { owner: string }) {
   );
 }
 
-function QuickNote({ lead, onSave }: { lead: Lead; onSave: (id: string, note: string) => void }) {
+function getAgingClass(days: number): string {
+  if (days >= 21) return "border-red-500 dark:border-red-400 animate-pulse";
+  if (days >= 14) return "border-orange-400 dark:border-orange-500";
+  if (days >= 7) return "border-yellow-400 dark:border-yellow-500";
+  return "border-border";
+}
+
+function QuickNote({ lead, onSave, onFollowUp }: { lead: Lead; onSave: (id: string, note: string) => void; onFollowUp: (id: string, date: string) => void }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [followUpDate, setFollowUpDate] = useState("");
   const handleSave = () => {
-    if (!text.trim()) return;
-    const timestamp = new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-    const newNote = `[${timestamp}] ${text.trim()}`;
-    const existing = lead.notes ? `${lead.notes}\n${newNote}` : newNote;
-    onSave(lead.id, existing);
+    if (!text.trim() && !followUpDate) return;
+    if (text.trim()) {
+      const timestamp = new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      const newNote = `[${timestamp}] ${text.trim()}`;
+      const existing = lead.notes ? `${lead.notes}\n${newNote}` : newNote;
+      onSave(lead.id, existing);
+    }
+    if (followUpDate) {
+      onFollowUp(lead.id, followUpDate);
+    }
     setText("");
+    setFollowUpDate("");
     setOpen(false);
   };
   return (
@@ -90,12 +104,12 @@ function QuickNote({ lead, onSave }: { lead: Lead; onSave: (id: string, note: st
         <button
           onClick={(e) => { e.stopPropagation(); setOpen(true); }}
           className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground/50 hover:text-foreground hover:bg-secondary transition-colors"
-          title="Quick note"
+          title="Quick note + follow-up"
         >
           <Plus className="h-3 w-3" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-3" onClick={(e) => e.stopPropagation()}>
+      <PopoverContent className="w-72 p-3" onClick={(e) => e.stopPropagation()}>
         <p className="text-xs font-medium mb-1.5">Quick Note — {lead.name}</p>
         <Textarea
           value={text}
@@ -105,6 +119,15 @@ function QuickNote({ lead, onSave }: { lead: Lead; onSave: (id: string, note: st
           autoFocus
           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave(); }}
         />
+        <div className="mb-2">
+          <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Next Follow-up</label>
+          <input
+            type="date"
+            value={followUpDate}
+            onChange={(e) => setFollowUpDate(e.target.value)}
+            className="w-full mt-0.5 text-xs border border-border rounded px-2 py-1.5 bg-background"
+          />
+        </div>
         <div className="flex justify-end gap-2">
           <button onClick={() => setOpen(false)} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
           <button onClick={handleSave} className="text-xs px-2.5 py-1 bg-foreground text-background rounded hover:bg-foreground/80">Save</button>
@@ -149,6 +172,10 @@ export function Pipeline() {
 
   const handleQuickNote = useCallback((id: string, notes: string) => {
     updateLead(id, { notes });
+  }, [updateLead]);
+
+  const handleFollowUp = useCallback((id: string, date: string) => {
+    updateLead(id, { nextFollowUp: date });
   }, [updateLead]);
 
   useEffect(() => {
