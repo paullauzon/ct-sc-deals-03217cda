@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      lead_activity_log: {
+        Row: {
+          created_at: string
+          description: string
+          event_type: string
+          id: string
+          lead_id: string
+          new_value: string | null
+          old_value: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string
+          event_type?: string
+          id?: string
+          lead_id: string
+          new_value?: string | null
+          old_value?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          event_type?: string
+          id?: string
+          lead_id?: string
+          new_value?: string | null
+          old_value?: string | null
+        }
+        Relationships: []
+      }
       lead_emails: {
         Row: {
           body_preview: string | null

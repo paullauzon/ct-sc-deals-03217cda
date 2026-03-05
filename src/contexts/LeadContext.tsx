@@ -3,6 +3,7 @@ import { Lead, Meeting, LeadStage, PipelineMetrics } from "@/types/lead";
 import { getInitialLeads } from "@/data/leadData";
 import { supabase } from "@/integrations/supabase/client";
 import { leadToRow, rowToLead, leadUpdatesToRow } from "@/lib/leadDbMapping";
+import { detectFieldChanges, logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 
 const SEEN_LEADS_KEY = "captarget_seen_leads";
@@ -170,6 +171,8 @@ export function LeadProvider({ children }: { children: ReactNode }) {
     setLeads((prev) => {
       const next = prev.map((l) => {
         if (l.id !== id) return l;
+        // Log field changes before applying
+        detectFieldChanges(id, l, updates);
         const updated = { ...l, ...updates };
         if (updates.stage && updates.stage !== l.stage) {
           updated.stageEnteredDate = new Date().toISOString().split("T")[0];
@@ -217,6 +220,8 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         if (meeting.date && (!l.lastContactDate || meeting.date > l.lastContactDate)) {
           updated.lastContactDate = meeting.date;
         }
+        // Log meeting added
+        logActivity(leadId, "meeting_added", `Meeting added: ${meeting.title || meeting.date}`);
         // Persist to DB
         updateLeadInDb(leadId, { meetings: updated.meetings, lastContactDate: updated.lastContactDate });
         return updated;

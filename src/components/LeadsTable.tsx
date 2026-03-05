@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
 import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency, SuggestedUpdates, SuggestedFieldUpdate, Submission } from "@/types/lead";
@@ -13,11 +13,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { computeDaysInStage, getCompanyAssociates, getSharedIntelligence } from "@/lib/leadUtils";
+import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
 
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight } from "lucide-react";
+import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight, Clock, GitCommit, MessageSquare, Calendar, Search as SearchIcon } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -389,17 +390,21 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             </div>
           </Section>
 
-          {/* Meetings & Emails Tabs */}
+          {/* Meetings, Emails & Activity Tabs */}
           <Tabs defaultValue="meetings" className="w-full">
             <TabsList className="w-full justify-start h-9 p-1">
               <TabsTrigger value="meetings" className="text-xs h-7">Meetings</TabsTrigger>
               <TabsTrigger value="emails" className="text-xs h-7">Emails</TabsTrigger>
+              <TabsTrigger value="activity" className="text-xs h-7">Activity</TabsTrigger>
             </TabsList>
             <TabsContent value="meetings">
               <MeetingsSection lead={lead} />
             </TabsContent>
             <TabsContent value="emails">
               <EmailsSection leadId={lead.id} />
+            </TabsContent>
+            <TabsContent value="activity">
+              <ActivityTimeline leadId={lead.id} />
             </TabsContent>
           </Tabs>
 
@@ -1157,5 +1162,52 @@ function CompanyActivitySection({ lead, allLeads, onSelectLead }: { lead: Lead; 
         </div>
       )}
     </Section>
+  );
+}
+
+const EVENT_ICONS: Record<string, React.ReactNode> = {
+  stage_change: <GitCommit className="h-3.5 w-3.5 text-primary" />,
+  field_update: <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />,
+  meeting_added: <Calendar className="h-3.5 w-3.5 text-primary" />,
+  note_added: <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />,
+  enrichment_run: <Sparkles className="h-3.5 w-3.5 text-primary" />,
+  bulk_update: <Users className="h-3.5 w-3.5 text-muted-foreground" />,
+};
+
+function ActivityTimeline({ leadId }: { leadId: string }) {
+  const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchActivityLog(leadId).then((data) => {
+      if (!cancelled) {
+        setEntries(data);
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [leadId]);
+
+  if (loading) return <p className="text-xs text-muted-foreground py-4 text-center">Loading activity…</p>;
+  if (entries.length === 0) return <p className="text-xs text-muted-foreground py-4 text-center">No activity recorded yet</p>;
+
+  return (
+    <div className="space-y-1 py-2">
+      {entries.map((entry) => (
+        <div key={entry.id} className="flex items-start gap-2.5 py-1.5 border-b border-border/50 last:border-0">
+          <div className="mt-0.5 shrink-0">
+            {EVENT_ICONS[entry.event_type] || <Clock className="h-3.5 w-3.5 text-muted-foreground" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs leading-relaxed">{entry.description}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {new Date(entry.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
