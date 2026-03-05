@@ -9,7 +9,7 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
-import { ArrowLeft, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -76,6 +76,12 @@ export default function DealRoom() {
   const actionItems = lead.dealIntelligence?.actionItemTracker || [];
   const unmitigatedRisks = risks.filter(r => r.mitigationStatus !== "Mitigated");
   const openActions = actionItems.filter(a => a.status === "Open" || a.status === "Overdue");
+  const hasSidebarContent = stakeholders.length > 0 || unmitigatedRisks.length > 0 || openActions.length > 0 || lead.dealIntelligence?.winStrategy || lead.dealIntelligence?.buyingCommittee;
+
+  // Prev/Next navigation
+  const currentIdx = leads.findIndex(l => l.id === id);
+  const prevLead = currentIdx > 0 ? leads[currentIdx - 1] : null;
+  const nextLead = currentIdx < leads.length - 1 ? leads[currentIdx + 1] : null;
 
   return (
     <div className="min-h-screen bg-background">
