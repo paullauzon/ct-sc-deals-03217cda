@@ -107,10 +107,28 @@ export default function DealRoom() {
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">{lead.company} · {lead.role} · {days}d in stage · ${lead.dealValue.toLocaleString()}</p>
           </div>
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex items-center gap-2">
             {lead.assignedTo && (
               <span className="w-7 h-7 rounded-full bg-foreground text-background flex items-center justify-center text-xs font-semibold">{lead.assignedTo[0]}</span>
             )}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => prevLead && navigate(`/deal/${prevLead.id}`)}
+                disabled={!prevLead}
+                className="w-7 h-7 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Previous deal"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => nextLead && navigate(`/deal/${nextLead.id}`)}
+                disabled={!nextLead}
+                className="w-7 h-7 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title="Next deal"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
