@@ -70,7 +70,12 @@ export function Pipeline() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilters, setActiveFilters] = useState<PipelineFilters | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const handleFiltersChange = useCallback((filters: PipelineFilters) => {
+    setActiveFilters(filters);
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -87,11 +92,23 @@ export function Pipeline() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const matchesSearch = (lead: Lead) => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return [lead.name, lead.company, lead.role, lead.email, lead.serviceInterest, lead.notes]
-      .some(f => f?.toLowerCase().includes(q));
+  const matchesSearchAndFilters = (lead: Lead) => {
+    // Search
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const searchMatch = [lead.name, lead.company, lead.role, lead.email, lead.serviceInterest, lead.notes]
+        .some(f => f?.toLowerCase().includes(q));
+      if (!searchMatch) return false;
+    }
+    // Filters
+    if (activeFilters) {
+      // Handle overdue preset
+      if ((activeFilters as any)._overdue) {
+        if (!lead.nextFollowUp || new Date(lead.nextFollowUp) >= new Date()) return false;
+      }
+      if (!matchesFilters(lead, activeFilters)) return false;
+    }
+    return true;
   };
 
   const handleDragStart = (e: DragEvent, leadId: string) => {
