@@ -15,6 +15,7 @@ import { toast } from "sonner";
 
 import { Search, X, Sparkles, Loader2, Plus, CheckSquare } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
