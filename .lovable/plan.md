@@ -1,20 +1,66 @@
 
 
-# Add 2 Missing Recent Leads from CSVs
+# Email Correspondence Integration via Zapier
 
-After cross-referencing all four CSVs with the database, I found **2 leads** from the last two days that are missing (the others — Nathan Hendrix, Shelby Craig, Bakari Akil, Abhinav Agrawal — are already in the DB):
+## Overview
+Add email tracking per lead by creating a `lead_emails` table, an `ingest-email` edge function (webhook endpoint for Zapier), and a new "Emails" tab in the lead detail panel alongside the existing Meetings section.
 
-### Leads to insert
+## Zapier Setup (User Side)
+1. Create a Zap: **"New Email in Gmail/Outlook → Webhooks by Zapier (POST)"**
+2. Filter: Only forward emails matching lead domains/addresses
+3. POST to: `https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/ingest-email`
+4. Auth: Bearer token using the existing `INGEST_API_KEY`
+5. Payload maps: from, to, subject, body_preview, date, thread_id, message_id
 
-1. **Leonardo Obodoeke** — `leo@cmbb.ca`, 03/04/2026, Captarget Contact Form, Corporate, cmbb.ca, phone: 6472264652, message: "Actively acquiring targets in the security and manufacturing space", deals planned: 0-2 → ID: `CT-080`
+## Technical Implementation
 
-2. **Valentine Moroz** — `valentine@softinway.com`, 03/04/2026, Captarget Free Targets Form, Business Owner, softinway.com, target criteria about simulation software resellers, revenue $1M-$5M, geography: California, deals planned: 0-2 → ID: `TGT-021`
+### 1. New `lead_emails` table
+```sql
+CREATE TABLE lead_emails (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id text NOT NULL,
+  message_id text UNIQUE,
+  thread_id text DEFAULT '',
+  direction text NOT NULL DEFAULT 'inbound',  -- 'inbound' | 'outbound'
+  from_address text NOT NULL,
+  from_name text DEFAULT '',
+  to_addresses text[] DEFAULT '{}',
+  subject text DEFAULT '',
+  body_preview text DEFAULT '',
+  email_date timestamptz NOT NULL DEFAULT now(),
+  source text DEFAULT 'zapier',  -- 'zapier' | 'manual'
+  raw_payload jsonb DEFAULT '{}',
+  created_at timestamptz DEFAULT now()
+);
+```
+- RLS: open (matches existing `leads` table pattern)
+- Enable realtime for live updates
 
-### Implementation
-- Insert both leads directly into the `leads` table using the database insert tool
-- They'll follow the same schema and defaults as existing leads
-- Since they're new inserts, the realtime subscription will NOT fire (direct DB insert, not via the edge function), but the next page load will pick them up
-- They won't be in the `seenLeadIds` localStorage set, so they'll show as "NEW" with badges
+### 2. `ingest-email` Edge Function
+- Accepts POST with Bearer `INGEST_API_KEY` auth (same pattern as `ingest-lead`)
+- Receives: `from`, `to`, `subject`, `body_preview`, `date`, `thread_id`, `message_id`
+- **Lead matching**: looks up `leads` table by email address (checks both `from` and `to` against lead emails)
+- **Direction detection**: if sender matches internal domains (`captarget.com`, `sourcecodeals.com`) → `outbound`, otherwise → `inbound`
+- Inserts into `lead_emails` with matched `lead_id`
+- Deduplication via `message_id` UNIQUE constraint
+- If no lead match found, stores with `lead_id = 'unmatched'` for later review
 
-Note: I could only read the CSV content from the initial upload preview. The SourceCo Intro Call CSV header was too long to display any data rows, so if there are recent entries there beyond Abhinav Agrawal (already in DB), they wouldn't be visible to me. If you know of specific missing leads from that form, let me know.
+### 3. UI: "Emails" Tab in Lead Detail
+- Add an "Emails" tab next to the existing "Meetings" tab in `MeetingsSection.tsx`
+- Fetch emails from `lead_emails` where `lead_id` matches, ordered by `email_date` desc
+- Each email shows: direction badge (↗ Sent / ↙ Received), subject, from/to, date, body preview
+- Thread grouping by `thread_id` (collapsible)
+- Email count badge on the tab header
+- Realtime subscription for new emails appearing live
+
+### 4. LeadContext Integration
+- Add `emailCount` to lead display (optional badge in leads table)
+- No need to store emails in the lead JSONB — separate table is cleaner and more scalable
+
+## Files to Create/Modify
+- **Create**: `supabase/functions/ingest-email/index.ts`
+- **Create**: `src/components/EmailsSection.tsx`
+- **Modify**: `src/components/MeetingsSection.tsx` or parent component — add Emails tab
+- **Modify**: `supabase/config.toml` — add `[functions.ingest-email]` with `verify_jwt = false`
+- **Migration**: Create `lead_emails` table + realtime
 
