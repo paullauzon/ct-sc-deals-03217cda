@@ -1,0 +1,217 @@
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail } from "lucide-react";
+
+interface LeadEmail {
+  id: string;
+  lead_id: string;
+  message_id: string;
+  thread_id: string;
+  direction: "inbound" | "outbound";
+  from_address: string;
+  from_name: string;
+  to_addresses: string[];
+  subject: string;
+  body_preview: string;
+  email_date: string;
+  source: string;
+  created_at: string;
+}
+
+function formatDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    }
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch {
+    return dateStr;
+  }
+}
+
+interface ThreadGroup {
+  threadId: string;
+  subject: string;
+  emails: LeadEmail[];
+  latestDate: string;
+}
+
+function groupByThread(emails: LeadEmail[]): ThreadGroup[] {
+  const threads = new Map<string, LeadEmail[]>();
+
+  for (const email of emails) {
+    const key = email.thread_id || email.id;
+    if (!threads.has(key)) threads.set(key, []);
+    threads.get(key)!.push(email);
+  }
+
+  return Array.from(threads.entries())
+    .map(([threadId, emails]) => ({
+      threadId,
+      subject: emails[0].subject || "(No subject)",
+      emails: emails.sort((a, b) => new Date(a.email_date).getTime() - new Date(b.email_date).getTime()),
+      latestDate: emails.reduce((latest, e) => e.email_date > latest ? e.email_date : latest, emails[0].email_date),
+    }))
+    .sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
+}
+
+export function EmailsSection({ leadId }: { leadId: string }) {
+  const [emails, setEmails] = useState<LeadEmail[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchEmails() {
+      const { data, error } = await supabase
+        .from("lead_emails")
+        .select("*")
+        .eq("lead_id", leadId)
+        .order("email_date", { ascending: false })
+        .limit(100);
+
+      if (!cancelled) {
+        if (data) setEmails(data as unknown as LeadEmail[]);
+        if (error) console.error("Error fetching emails:", error);
+        setLoading(false);
+      }
+    }
+
+    fetchEmails();
+
+    // Realtime subscription
+    const channel = supabase
+      .channel(`lead-emails-${leadId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "lead_emails", filter: `lead_id=eq.${leadId}` },
+        (payload) => {
+          const newEmail = payload.new as unknown as LeadEmail;
+          setEmails((prev) => [newEmail, ...prev]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [leadId]);
+
+  if (loading) {
+    return (
+      <div className="text-xs text-muted-foreground/60 text-center py-4">
+        Loading emails...
+      </div>
+    );
+  }
+
+  if (emails.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground/60 text-center py-4">
+        No emails yet. Connect Gmail/Outlook via Zapier to see correspondence here.
+      </p>
+    );
+  }
+
+  const threads = groupByThread(emails);
+
+  return (
+    <ScrollArea className="max-h-[400px]">
+      <div className="space-y-1.5">
+        {threads.map((thread) => (
+          <ThreadCard key={thread.threadId} thread={thread} />
+        ))}
+      </div>
+    </ScrollArea>
+  );
+}
+
+function ThreadCard({ thread }: { thread: ThreadGroup }) {
+  const isSingleEmail = thread.emails.length === 1;
+
+  if (isSingleEmail) {
+    return <EmailRow email={thread.emails[0]} />;
+  }
+
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className="w-full text-left">
+        <div className="flex items-center gap-2 p-2 rounded-md hover:bg-secondary/40 transition-colors">
+          <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium truncate">{thread.subject}</span>
+              <Badge variant="outline" className="text-[10px] shrink-0">
+                {thread.emails.length}
+              </Badge>
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              {formatDate(thread.latestDate)}
+            </div>
+          </div>
+          <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0 transition-transform" />
+        </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="pl-4 space-y-0.5 border-l-2 border-border ml-3 mt-1 mb-2">
+          {thread.emails.map((email) => (
+            <EmailRow key={email.id} email={email} compact />
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function EmailRow({ email, compact }: { email: LeadEmail; compact?: boolean }) {
+  const isOutbound = email.direction === "outbound";
+  const Icon = isOutbound ? ArrowUpRight : ArrowDownLeft;
+  const dirColor = isOutbound
+    ? "text-blue-600 bg-blue-500/10"
+    : "text-emerald-600 bg-emerald-500/10";
+  const dirLabel = isOutbound ? "Sent" : "Received";
+
+  return (
+    <div className={`flex items-start gap-2 p-2 rounded-md hover:bg-secondary/30 transition-colors ${compact ? "py-1.5" : ""}`}>
+      <div className={`rounded-full p-1 shrink-0 mt-0.5 ${dirColor}`}>
+        <Icon className="h-3 w-3" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium truncate">
+            {compact ? (email.from_name || email.from_address) : (email.subject || "(No subject)")}
+          </span>
+          {!compact && (
+            <Badge variant="outline" className={`text-[9px] shrink-0 ${dirColor}`}>
+              {dirLabel}
+            </Badge>
+          )}
+        </div>
+        {!compact && (
+          <div className="text-[10px] text-muted-foreground truncate">
+            {isOutbound ? `To: ${email.to_addresses.join(", ")}` : `From: ${email.from_name || email.from_address}`}
+          </div>
+        )}
+        {email.body_preview && (
+          <p className="text-[11px] text-muted-foreground/80 line-clamp-2 mt-0.5 leading-relaxed">
+            {email.body_preview}
+          </p>
+        )}
+      </div>
+      <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
+        {formatDate(email.email_date)}
+      </span>
+    </div>
+  );
+}
