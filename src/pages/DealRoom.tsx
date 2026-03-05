@@ -397,6 +397,7 @@ export default function DealRoom() {
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );
