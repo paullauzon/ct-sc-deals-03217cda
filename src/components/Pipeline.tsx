@@ -279,13 +279,28 @@ export function Pipeline() {
                   return (
                     <div
                       key={lead.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, lead.id)}
-                      onClick={() => { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }}
-                      className="border border-border rounded-md p-3 cursor-grab active:cursor-grabbing hover:bg-secondary/30 transition-colors space-y-1.5"
+                      draggable={!selectMode}
+                      onDragStart={(e) => !selectMode && handleDragStart(e, lead.id)}
+                      onClick={() => {
+                        if (selectMode) { toggleSelect(lead.id); }
+                        else { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }
+                      }}
+                      className={cn(
+                        "border rounded-md p-3 transition-colors space-y-1.5",
+                        selectMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
+                        selectedIds.has(lead.id) ? "border-primary bg-primary/5" : "border-border hover:bg-secondary/30"
+                      )}
                     >
-                      {/* Row 1: Brand badge + Name + Owner initial */}
+                      {/* Row 1: Checkbox (select mode) + Brand badge + Name + Owner initial */}
                       <div className="flex items-start gap-1.5">
+                        {selectMode && (
+                          <Checkbox
+                            checked={selectedIds.has(lead.id)}
+                            onCheckedChange={() => toggleSelect(lead.id)}
+                            className="mt-0.5 shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        )}
                         <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded shrink-0 mt-0.5">{brandAbbr}</span>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium leading-tight flex items-center gap-1.5">
@@ -402,6 +417,35 @@ export function Pipeline() {
       </div>
 
       <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
+
+      {/* Bulk Action Bar */}
+      {selectMode && selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-background border border-border rounded-lg shadow-lg px-4 py-3">
+          <span className="text-sm font-medium tabular-nums">{selectedIds.size} selected</span>
+          <div className="h-5 w-px bg-border" />
+          <Select onValueChange={(v) => handleBulkAction("stage", v)}>
+            <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue placeholder="Move to stage…" /></SelectTrigger>
+            <SelectContent>
+              {ALL_STAGES.map(s => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select onValueChange={(v) => handleBulkAction("assignedTo", v)}>
+            <SelectTrigger className="h-8 text-xs w-[120px]"><SelectValue placeholder="Assign to…" /></SelectTrigger>
+            <SelectContent>
+              {["Malik", "Valeria", "Tomos"].map(o => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select onValueChange={(v) => handleBulkAction("priority", v)}>
+            <SelectTrigger className="h-8 text-xs w-[100px]"><SelectValue placeholder="Priority…" /></SelectTrigger>
+            <SelectContent>
+              {["High", "Medium", "Low"].map(p => <SelectItem key={p} value={p} className="text-xs">{p}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => { setSelectedIds(new Set()); }}>
+            Clear
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
