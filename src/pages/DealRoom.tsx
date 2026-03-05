@@ -91,11 +91,7 @@ export default function DealRoom() {
               <span className="text-xs font-mono px-1.5 py-0.5 border border-border rounded">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
               <Badge variant="outline" className="text-xs">{lead.stage}</Badge>
               {momentum && (
-                <span className={cn("text-xs px-1.5 py-0.5 rounded", 
-                  momentum === "Accelerating" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
-                  momentum === "Stalling" || momentum === "Stalled" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
-                  "bg-secondary text-muted-foreground"
-                )}>
+                <span className={cn("text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground")}>
                   {momentum}
                 </span>
               )}
@@ -334,7 +330,7 @@ export default function DealRoom() {
           {/* Win Strategy */}
           {lead.dealIntelligence?.winStrategy && (
             <div>
-              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">⚡ Win Strategy</h3>
+              <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Win Strategy</h3>
               <div className="space-y-2 text-xs text-muted-foreground">
                 <div>
                   <p className="font-medium text-foreground">#1 Closer</p>
