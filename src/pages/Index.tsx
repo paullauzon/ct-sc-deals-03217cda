@@ -77,12 +77,7 @@ function AppContent() {
 
 const Index = () => {
   return (
-    <LeadProvider>
-      <ProcessingProvider>
-        <AppContent />
-        <GlobalProcessingOverlay />
-      </ProcessingProvider>
-    </LeadProvider>
+    <AppContent />
   );
 };
 
