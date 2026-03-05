@@ -1,28 +1,25 @@
 
-# Implementation Complete
 
-## Architecture
+# Fix: Hidden `_overdue` Filter Bug
 
-### Individual Auto-Find
-- Client creates `processing_jobs` row → invokes `run-lead-job` edge function
-- Edge function runs server-side: fetches Fireflies, AI processing, writes results to DB
-- Client receives results via Supabase Realtime subscription
-- Survives tab close ✓
+## Root Cause
+The "Overdue Follow-ups" quick-filter preset uses a hacky `_overdue: true` flag injected into the filters object. This flag:
+- Persists in localStorage (so it survives page reloads)
+- Is NOT detected by `hasActiveFilters` (no "Clear all" button appears)
+- Is NOT used by `SummaryStats` (stats show all 171 deals, misleading)
+- IS checked in `Pipeline.tsx`'s `matchesSearchAndFilters` — filtering cards down to only overdue leads
 
-### Bulk Processing (NEW — backend-powered)
-- Client fetches all transcripts from both Fireflies accounts (via `fetch-fireflies` edge function)
-- Client matches transcripts to leads locally
-- For each matched lead: creates `processing_jobs` row (job_type: "bulk") and invokes `run-lead-job` with prefetched meetings
-- Each `run-lead-job` runs independently server-side — survives tab close ✓
-- On tab re-open: hydration finds queued/processing bulk jobs, re-invokes queued ones
-- Progress tracked via Realtime: completedJobs/totalJobs counter
+## Fix Plan
 
-### Unified Suggestion UX
-- All suggestions (individual + bulk) render inline inside lead detail panels
-- No popup dialogs for bulk review — removed `Dialog` modals from GlobalProcessingOverlay
-- GlobalProcessingOverlay shows only a floating progress bar (bottom-right)
+**File: `src/components/PipelineFilters.tsx`**
+1. Add a proper `overdue: boolean` field to the `PipelineFilters` interface (and `EMPTY_FILTERS`)
+2. Update `hasActiveFilters` to include `overdue`
+3. Update `matchesFilters` to handle overdue filtering (check `nextFollowUp < today`)
+4. Fix the "Overdue Follow-ups" preset button to use the proper field instead of the hack
+5. Update `SummaryStats` filtered count to include overdue filtering
 
-### `run-lead-job` Enhancement
-- Accepts optional `prefetchedMeetings` param
-- If provided, skips Fireflies fetch and uses pre-matched meetings directly
-- Used by bulk processing to avoid redundant per-lead Fireflies API calls
+**File: `src/components/Pipeline.tsx`**
+1. Remove the separate `_overdue` check from `matchesSearchAndFilters` — it's now handled by `matchesFilters`
+
+This makes the overdue filter a first-class citizen: visible, clearable, and consistent across stats and cards.
+
