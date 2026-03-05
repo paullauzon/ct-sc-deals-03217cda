@@ -281,11 +281,7 @@ export default function DealRoom() {
                   <div key={i} className="border border-border rounded-md p-2.5">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium">{s.name}</p>
-                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded",
-                        s.stance === "Champion" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
-                        s.stance === "Blocker" || s.stance === "Skeptic" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
-                        "bg-secondary text-muted-foreground"
-                      )}>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                         {s.stance}
                       </span>
                     </div>
