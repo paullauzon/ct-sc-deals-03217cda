@@ -162,6 +162,8 @@ export function Pipeline() {
         </div>
       </div>
 
+      <PipelineFilterBar leads={leads} onFiltersChange={handleFiltersChange} />
+
       <div className="flex gap-4 overflow-x-auto pb-4 scroll-smooth snap-x snap-mandatory">
         {ALL_STAGES.map((stage) => {
           const allStageLeads = getLeadsByStage(stage);
