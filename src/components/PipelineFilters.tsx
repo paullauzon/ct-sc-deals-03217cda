@@ -213,15 +213,6 @@ export function PipelineFilterBar({
       filters.dealValueRange.length > 0 || filters.overdue;
   }, [filters]);
 
-  const toggle = (key: keyof PipelineFilters, value: string) => {
-    setFilters(prev => {
-      const arr = prev[key] as string[];
-      const next = arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value];
-      return { ...prev, [key]: next };
-    });
-  };
-
-  const clearAll = () => setFilters({ ...EMPTY_FILTERS });
 
   const [activePreset, setActivePreset] = useState<string | null>(null);
 
