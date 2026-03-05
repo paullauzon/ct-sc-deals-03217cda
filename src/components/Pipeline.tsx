@@ -121,6 +121,10 @@ export function Pipeline() {
     setActiveFilters(filters);
   }, []);
 
+  const handleQuickNote = useCallback((id: string, notes: string) => {
+    updateLead(id, { notes });
+  }, [updateLead]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
