@@ -20,6 +20,7 @@ export interface PipelineFilters {
   daysInStage: string[];
   hasMeetings: string | null; // "yes" | "no" | null
   dealValueRange: string[];
+  overdue: boolean;
 }
 
 const EMPTY_FILTERS: PipelineFilters = {
@@ -33,6 +34,7 @@ const EMPTY_FILTERS: PipelineFilters = {
   daysInStage: [],
   hasMeetings: null,
   dealValueRange: [],
+  overdue: false,
 };
 
 const STORAGE_KEY = "pipeline-filters";
@@ -88,6 +90,9 @@ export function matchesFilters(lead: Lead, filters: PipelineFilters): boolean {
   if (filters.hasMeetings === "yes" && (!lead.meetings || lead.meetings.length === 0)) return false;
   if (filters.hasMeetings === "no" && lead.meetings && lead.meetings.length > 0) return false;
   if (filters.dealValueRange.length > 0 && !filters.dealValueRange.includes(getDealValueBucket(lead))) return false;
+  if (filters.overdue) {
+    if (!lead.nextFollowUp || new Date(lead.nextFollowUp) >= new Date()) return false;
+  }
   return true;
 }
 
@@ -205,7 +210,7 @@ export function PipelineFilterBar({
     return filters.owners.length > 0 || filters.priorities.length > 0 || filters.brands.length > 0 ||
       filters.serviceInterests.length > 0 || filters.icpFits.length > 0 || filters.forecastCategories.length > 0 ||
       filters.momentum.length > 0 || filters.daysInStage.length > 0 || filters.hasMeetings !== null ||
-      filters.dealValueRange.length > 0;
+      filters.dealValueRange.length > 0 || filters.overdue;
   }, [filters]);
 
   const toggle = (key: keyof PipelineFilters, value: string) => {
@@ -240,14 +245,7 @@ export function PipelineFilterBar({
           <DollarSign className="h-3 w-3" /> Big Deals
         </button>
         <button
-          onClick={() => {
-            // Overdue follow-ups — we use a special approach: set a "virtual" filter
-            // Actually we'll just filter by checking nextFollowUp in the past
-            // For simplicity, we clear filters and let the parent know to use overdue mode
-            setFilters({ ...EMPTY_FILTERS, hasMeetings: null });
-            // We'll handle overdue as a special flag
-            setFilters(prev => ({ ...prev, _overdue: true } as any));
-          }}
+          onClick={() => applyPreset({ overdue: true })}
           className="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
         >
           <CalendarClock className="h-3 w-3" /> Overdue Follow-ups
