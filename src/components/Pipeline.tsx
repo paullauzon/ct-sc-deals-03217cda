@@ -165,7 +165,7 @@ export function Pipeline() {
       <div className="flex gap-4 overflow-x-auto pb-4 scroll-smooth snap-x snap-mandatory">
         {ALL_STAGES.map((stage) => {
           const allStageLeads = getLeadsByStage(stage);
-          const stageLeads = allStageLeads.filter(matchesSearch);
+          const stageLeads = allStageLeads.filter(matchesSearchAndFilters);
           const totalValue = stageLeads.reduce((s, l) => s + l.dealValue, 0);
           const isOver = dragOverStage === stage;
           const closed = isClosed(stage);
