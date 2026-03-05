@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, DragEvent } from "react";
+import { useState, useEffect, useRef, useCallback, DragEvent } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
 import { LeadStage, Lead } from "@/types/lead";
 import { LeadDetail } from "@/components/LeadsTable";
 import { computeDaysInStage, getCompanyAssociates } from "@/lib/leadUtils";
+import { PipelineFilterBar, PipelineFilters, matchesFilters } from "@/components/PipelineFilters";
 
 import { Search, X, Sparkles, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -69,7 +70,12 @@ export function Pipeline() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilters, setActiveFilters] = useState<PipelineFilters | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const handleFiltersChange = useCallback((filters: PipelineFilters) => {
+    setActiveFilters(filters);
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -86,11 +92,23 @@ export function Pipeline() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const matchesSearch = (lead: Lead) => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return [lead.name, lead.company, lead.role, lead.email, lead.serviceInterest, lead.notes]
-      .some(f => f?.toLowerCase().includes(q));
+  const matchesSearchAndFilters = (lead: Lead) => {
+    // Search
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const searchMatch = [lead.name, lead.company, lead.role, lead.email, lead.serviceInterest, lead.notes]
+        .some(f => f?.toLowerCase().includes(q));
+      if (!searchMatch) return false;
+    }
+    // Filters
+    if (activeFilters) {
+      // Handle overdue preset
+      if ((activeFilters as any)._overdue) {
+        if (!lead.nextFollowUp || new Date(lead.nextFollowUp) >= new Date()) return false;
+      }
+      if (!matchesFilters(lead, activeFilters)) return false;
+    }
+    return true;
   };
 
   const handleDragStart = (e: DragEvent, leadId: string) => {
@@ -144,10 +162,12 @@ export function Pipeline() {
         </div>
       </div>
 
+      <PipelineFilterBar leads={leads} onFiltersChange={handleFiltersChange} />
+
       <div className="flex gap-4 overflow-x-auto pb-4 scroll-smooth snap-x snap-mandatory">
         {ALL_STAGES.map((stage) => {
           const allStageLeads = getLeadsByStage(stage);
-          const stageLeads = allStageLeads.filter(matchesSearch);
+          const stageLeads = allStageLeads.filter(matchesSearchAndFilters);
           const totalValue = stageLeads.reduce((s, l) => s + l.dealValue, 0);
           const isOver = dragOverStage === stage;
           const closed = isClosed(stage);
