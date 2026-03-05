@@ -411,6 +411,79 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* At Risk Revenue + Forecast Gap */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="border border-border border-l-4 border-l-red-500 dark:border-l-red-400 rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Revenue at Risk</p>
+          <p className="text-2xl font-bold tabular-nums mt-1 text-red-600 dark:text-red-400">${analytics.atRiskRevenue.toLocaleString()}</p>
+          <p className="text-xs text-muted-foreground mt-1">{analytics.atRiskLeads.length} deals stalling, dark, or high-risk</p>
+          {analytics.atRiskLeads.length > 0 && (
+            <div className="mt-2 space-y-1 max-h-[80px] overflow-y-auto">
+              {analytics.atRiskLeads.slice(0, 5).map(l => (
+                <p key={l.id} onClick={() => setSelectedLeadId(l.id)} className="text-xs text-muted-foreground cursor-pointer hover:text-foreground truncate">
+                  {l.name} · ${l.dealValue.toLocaleString()}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Forecast vs Target</p>
+            <input
+              type="number"
+              defaultValue={analytics.forecastTarget}
+              onBlur={(e) => localStorage.setItem("captarget_quarterly_target", e.target.value)}
+              className="w-24 text-xs text-right border border-border rounded px-2 py-1 bg-background tabular-nums"
+              title="Edit quarterly target"
+            />
+          </div>
+          <div className="mt-2 space-y-1">
+            <div className="flex justify-between text-xs">
+              <span>Commit</span><span className="tabular-nums font-medium">${analytics.commitValue.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Best Case</span><span className="tabular-nums">${analytics.bestCaseValue.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Pipeline</span><span className="tabular-nums">${analytics.pipelineValue.toLocaleString()}</span>
+            </div>
+            <div className="w-full h-3 bg-secondary/50 rounded overflow-hidden mt-1.5">
+              <div className="h-full bg-foreground/30 rounded transition-all" style={{ width: `${Math.min(100, (analytics.commitValue / analytics.forecastTarget) * 100)}%` }} />
+            </div>
+            <div className="flex justify-between text-xs mt-1">
+              <span className={analytics.forecastGap > 0 ? "text-red-600 dark:text-red-400 font-medium" : "text-emerald-600 dark:text-emerald-400 font-medium"}>
+                Gap: ${analytics.forecastGap.toLocaleString()}
+              </span>
+              <span className={`tabular-nums ${analytics.coverageRatio < 2 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                {analytics.coverageRatio.toFixed(1)}x coverage
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Stage Conversion Funnel</p>
+          <div className="mt-2 space-y-1">
+            {analytics.stageConversions.map(s => (
+              <div key={s.from} className="flex items-center gap-2 text-xs">
+                <span className="w-20 text-muted-foreground truncate text-right">{s.from.split(" ").map(w => w[0]).join("")}</span>
+                <span className="text-muted-foreground">→</span>
+                <div className="flex-1 h-2 bg-secondary/50 rounded overflow-hidden">
+                  <div
+                    className={`h-full rounded transition-all ${s === analytics.weakestLink ? "bg-red-400 dark:bg-red-500" : "bg-foreground/25"}`}
+                    style={{ width: `${s.rate}%` }}
+                  />
+                </div>
+                <span className={`w-10 text-right tabular-nums font-medium ${s === analytics.weakestLink ? "text-red-600 dark:text-red-400" : ""}`}>{s.rate}%</span>
+              </div>
+            ))}
+          </div>
+          {analytics.weakestLink && (
+            <p className="text-[10px] text-red-600 dark:text-red-400 mt-2">⚠ Weakest: {analytics.weakestLink.from} → {analytics.weakestLink.to} ({analytics.weakestLink.rate}%)</p>
+          )}
+        </div>
+      </div>
+
       {/* Advanced Metrics: Sales Velocity, Weighted Pipeline, Win/Loss, Rep Scorecard, Source ROI */}
       <DashboardAdvancedMetrics leads={leads} onSelectLead={setSelectedLeadId} />
 
