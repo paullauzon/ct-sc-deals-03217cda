@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dashboard } from "@/components/Dashboard";
-import { LeadsTable } from "@/components/LeadsTable";
+import { LeadsTable, LeadDetail } from "@/components/LeadsTable";
 import { Pipeline } from "@/components/Pipeline";
 import { ActionQueue } from "@/components/ActionQueue";
+import { CommandPalette } from "@/components/CommandPalette";
 import { LeadProvider, useLeads } from "@/contexts/LeadContext";
 import { ProcessingProvider } from "@/contexts/ProcessingContext";
 import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";
@@ -12,10 +13,19 @@ type View = "today" | "dashboard" | "leads" | "pipeline";
 function AppContent() {
   const [view, setView] = useState<View>("today");
   const { unseenCount, clearUnseen } = useLeads();
+  const [cmdLeadId, setCmdLeadId] = useState<string | null>(null);
 
   useEffect(() => {
     if (view === "leads") clearUnseen();
   }, [view, clearUnseen]);
+
+  const handleCmdNavigate = useCallback((v: string) => {
+    setView(v as View);
+  }, []);
+
+  const handleCmdSelectLead = useCallback((id: string) => {
+    setCmdLeadId(id);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -42,6 +52,15 @@ function AppContent() {
               </button>
             ))}
           </div>
+          <div className="ml-auto">
+            <button
+              onClick={() => setCmdLeadId(null)}
+              className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 border border-border rounded"
+              title="Cmd+K"
+            >
+              ⌘K Search
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -49,6 +68,9 @@ function AppContent() {
       {view === "dashboard" && <Dashboard />}
       {view === "leads" && <LeadsTable />}
       {view === "pipeline" && <Pipeline />}
+
+      <CommandPalette onNavigate={handleCmdNavigate} onSelectLead={handleCmdSelectLead} />
+      <LeadDetail leadId={cmdLeadId} open={!!cmdLeadId} onClose={() => setCmdLeadId(null)} />
     </div>
   );
 }
