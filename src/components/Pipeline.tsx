@@ -5,8 +5,10 @@ import { LeadStage, Lead } from "@/types/lead";
 import { LeadDetail } from "@/components/LeadsTable";
 import { computeDaysInStage, getCompanyAssociates } from "@/lib/leadUtils";
 import { PipelineFilterBar, PipelineFilters, matchesFilters } from "@/components/PipelineFilters";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 
-import { Search, X, Sparkles, Loader2 } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 const ALL_STAGES: LeadStage[] = [
