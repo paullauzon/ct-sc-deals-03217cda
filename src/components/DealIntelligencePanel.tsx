@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Users, AlertTriangle, Target, TrendingUp, Shield, Clock, Crosshair, Activity, RefreshCw, Brain, Flame, Eye, Zap, Swords, Crown, Heart, Lock } from "lucide-react";
+import { Users, AlertTriangle, Target, TrendingUp, Shield, Clock, Crosshair, Activity, RefreshCw, Brain, Flame, Eye, Zap, Swords, Crown, Heart, Lock, BarChart3, Handshake, Lightbulb, Star, Ban, Calendar, User, Trophy, Landmark } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const stanceColors: Record<string, string> = {
@@ -18,11 +18,11 @@ const stanceColors: Record<string, string> = {
   "Unknown": "bg-muted text-muted-foreground border-border",
 };
 
-const commStyleEmoji: Record<string, string> = {
-  "Analytical": "📊",
-  "Driver": "🎯",
-  "Amiable": "🤝",
-  "Expressive": "💡",
+const commStyleIcon: Record<string, React.ReactNode> = {
+  "Analytical": <BarChart3 className="h-2.5 w-2.5" />,
+  "Driver": <Target className="h-2.5 w-2.5" />,
+  "Amiable": <Handshake className="h-2.5 w-2.5" />,
+  "Expressive": <Lightbulb className="h-2.5 w-2.5" />,
 };
 
 const commStyleColors: Record<string, string> = {
@@ -60,12 +60,12 @@ const temperatureColors: Record<string, string> = {
   "Ice Cold": "bg-blue-800/15 text-blue-900 border-blue-800/30",
 };
 
-const temperatureEmoji: Record<string, string> = {
-  "On Fire": "🔥",
-  "Warm": "☀️",
-  "Lukewarm": "🌤",
-  "Cold": "❄️",
-  "Ice Cold": "🧊",
+const temperatureLabel: Record<string, string> = {
+  "On Fire": "●",
+  "Warm": "●",
+  "Lukewarm": "●",
+  "Cold": "●",
+  "Ice Cold": "●",
 };
 
 const severityColors: Record<string, string> = {
@@ -163,7 +163,7 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
             </div>
             {ws.dealTemperature && (
               <Badge className={`text-[10px] font-bold ${temperatureColors[ws.dealTemperature] || ""}`}>
-                {temperatureEmoji[ws.dealTemperature] || ""} {ws.dealTemperature}
+                {ws.dealTemperature}
               </Badge>
             )}
           </div>
@@ -172,22 +172,22 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
             <p className="text-sm font-semibold leading-snug">{ws.numberOneCloser}</p>
           </div>
           <div className="rounded bg-accent/50 p-2.5 border border-accent">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5">⚡ Power Move</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-0.5 flex items-center gap-1"><Zap className="h-2.5 w-2.5" /> Power Move</p>
             <p className="text-xs leading-snug">{ws.powerMove}</p>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="text-[10px] space-y-0.5">
-              <p className="font-semibold text-muted-foreground uppercase tracking-wider">🎯 Closing Window</p>
+              <p className="font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Target className="h-2.5 w-2.5" /> Closing Window</p>
               <p className="text-xs">{ws.closingWindow}</p>
             </div>
             <div className="text-[10px] space-y-0.5">
-              <p className="font-semibold text-muted-foreground uppercase tracking-wider">🤝 Negotiation</p>
+              <p className="font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Handshake className="h-2.5 w-2.5" /> Negotiation</p>
               <p className="text-xs">{ws.negotiationStyle}</p>
             </div>
           </div>
           {ws.landmines?.length > 0 && (
             <div className="rounded bg-destructive/5 border border-destructive/20 p-2">
-              <p className="text-[10px] uppercase tracking-wider text-destructive font-semibold mb-1">💣 Landmines — Do NOT</p>
+              <p className="text-[10px] uppercase tracking-wider text-destructive font-semibold mb-1 flex items-center gap-1"><Ban className="h-2.5 w-2.5" /> Landmines — Do NOT</p>
               {ws.landmines.map((l, i) => (
                 <p key={i} className="text-[11px] leading-snug text-destructive/80">• {l}</p>
               ))}
@@ -195,7 +195,7 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
           )}
           {ws.relationshipLeverage && (
             <div className="text-[10px] space-y-0.5">
-              <p className="font-semibold text-muted-foreground uppercase tracking-wider">👥 Relationship Leverage</p>
+              <p className="font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Users className="h-2.5 w-2.5" /> Relationship Leverage</p>
               <p className="text-xs leading-snug">{ws.relationshipLeverage}</p>
             </div>
           )}
@@ -229,9 +229,9 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
             <Users className="h-3 w-3" /> Buying Committee
           </div>
           <div className="space-y-0.5 text-[10px]">
-            {intel.buyingCommittee.decisionMaker && <p>🎯 <span className="font-medium">DM:</span> {intel.buyingCommittee.decisionMaker}</p>}
-            {intel.buyingCommittee.champion && <p>⭐ <span className="font-medium">Champion:</span> {intel.buyingCommittee.champion}</p>}
-            {intel.buyingCommittee.blockers?.length > 0 && <p>🚫 <span className="font-medium">Blockers:</span> {intel.buyingCommittee.blockers.join(", ")}</p>}
+            {intel.buyingCommittee.decisionMaker && <p className="flex items-center gap-1"><Target className="h-2.5 w-2.5 shrink-0" /> <span className="font-medium">DM:</span> {intel.buyingCommittee.decisionMaker}</p>}
+            {intel.buyingCommittee.champion && <p className="flex items-center gap-1"><Star className="h-2.5 w-2.5 shrink-0" /> <span className="font-medium">Champion:</span> {intel.buyingCommittee.champion}</p>}
+            {intel.buyingCommittee.blockers?.length > 0 && <p className="flex items-center gap-1"><Ban className="h-2.5 w-2.5 shrink-0" /> <span className="font-medium">Blockers:</span> {intel.buyingCommittee.blockers.join(", ")}</p>}
           </div>
         </div>
         )}
@@ -264,7 +264,7 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
 
       <Tabs defaultValue="psychology" className="w-full">
         <TabsList className="w-full justify-start flex-wrap h-auto gap-0.5 p-1">
-          <TabsTrigger value="psychology" className="text-xs h-7">🧠 Psychology</TabsTrigger>
+          <TabsTrigger value="psychology" className="text-xs h-7"><Brain className="h-3 w-3 mr-1 inline" />Psychology</TabsTrigger>
           <TabsTrigger value="stakeholders" className="text-xs h-7">Stakeholders</TabsTrigger>
           <TabsTrigger value="objections" className="text-xs h-7">Objections</TabsTrigger>
           <TabsTrigger value="actions" className="text-xs h-7">Actions</TabsTrigger>
@@ -320,7 +320,7 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
               {/* Emotional Triggers */}
               {psych.emotionalTriggers?.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">⚡ Emotional Triggers — Language That Resonated</p>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Zap className="h-2.5 w-2.5" /> Emotional Triggers — Language That Resonated</p>
                   <div className="flex flex-wrap gap-1">
                     {psych.emotionalTriggers.map((t, i) => (
                       <Badge key={i} variant="outline" className="text-[10px] bg-accent/50">{t}</Badge>
@@ -332,7 +332,7 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
               {/* Cognitive Biases */}
               {psych.cognitivebiases?.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">🧩 Cognitive Biases at Play</p>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Brain className="h-2.5 w-2.5" /> Cognitive Biases at Play</p>
                   {psych.cognitivebiases.map((b, i) => (
                     <p key={i} className="text-[11px] leading-snug text-muted-foreground">• {b}</p>
                   ))}
@@ -341,7 +341,7 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
 
               {/* Recommended Approach */}
               <div className="rounded-md border border-primary/20 bg-primary/5 p-2.5 space-y-1">
-                <p className="text-[10px] font-semibold text-primary uppercase tracking-wider">🎯 Recommended Psychological Approach</p>
+                <p className="text-[10px] font-semibold text-primary uppercase tracking-wider flex items-center gap-1"><Target className="h-2.5 w-2.5" /> Recommended Psychological Approach</p>
                 <p className="text-xs leading-snug">{psych.recommendedApproach}</p>
               </div>
 
@@ -358,19 +358,19 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
                     </div>
                     {pd.internalPolitics && (
                       <div className="text-[10px] space-y-0.5">
-                        <p className="font-semibold text-muted-foreground uppercase tracking-wider">🏛 Internal Politics</p>
+                        <p className="font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Landmark className="h-2.5 w-2.5" /> Internal Politics</p>
                         <p className="text-xs leading-snug">{pd.internalPolitics}</p>
                       </div>
                     )}
                     {pd.relationshipTensions && (
                       <div className="text-[10px] space-y-0.5">
-                        <p className="font-semibold text-muted-foreground uppercase tracking-wider">⚡ Relationship Tensions</p>
+                        <p className="font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Zap className="h-2.5 w-2.5" /> Relationship Tensions</p>
                         <p className="text-xs leading-snug">{pd.relationshipTensions}</p>
                       </div>
                     )}
                     {pd.winningOrder?.length > 0 && (
                       <div className="text-[10px] space-y-0.5">
-                        <p className="font-semibold text-muted-foreground uppercase tracking-wider">🏆 Win Order (who to convert first)</p>
+                        <p className="font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1"><Trophy className="h-2.5 w-2.5" /> Win Order (who to convert first)</p>
                         {pd.winningOrder.map((w, i) => (
                           <p key={i} className="text-xs leading-snug">{i + 1}. {w}</p>
                         ))}
@@ -399,7 +399,7 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
                 <div className="flex gap-1">
                   {s.communicationStyle && (
                     <Badge className={`text-[9px] h-4 ${commStyleColors[s.communicationStyle] || ""}`}>
-                      {commStyleEmoji[s.communicationStyle] || ""} {s.communicationStyle}
+                      {commStyleIcon[s.communicationStyle] || null} {s.communicationStyle}
                     </Badge>
                   )}
                   <Badge className={`text-[9px] h-4 ${stanceColors[s.stance] || ""}`}>{s.stance}</Badge>
@@ -407,16 +407,16 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
                 </div>
               </div>
               {s.personalWin && (
-                <p className="text-[10px] text-primary/80">🏆 <span className="font-medium">Personal Win:</span> {s.personalWin}</p>
+                <p className="text-[10px] text-primary/80 flex items-center gap-1"><Trophy className="h-2.5 w-2.5 shrink-0" /> <span className="font-medium">Personal Win:</span> {s.personalWin}</p>
               )}
               {s.hiddenConcern && (
-                <p className="text-[10px] text-amber-600">👁 <span className="font-medium">Hidden Concern:</span> {s.hiddenConcern}</p>
+                <p className="text-[10px] text-amber-600 flex items-center gap-1"><Eye className="h-2.5 w-2.5 shrink-0" /> <span className="font-medium">Hidden Concern:</span> {s.hiddenConcern}</p>
               )}
               {s.decisionTrigger && (
-                <p className="text-[10px] text-muted-foreground">⚡ <span className="font-medium">Decision Trigger:</span> {s.decisionTrigger}</p>
+                <p className="text-[10px] text-muted-foreground flex items-center gap-1"><Zap className="h-2.5 w-2.5 shrink-0" /> <span className="font-medium">Decision Trigger:</span> {s.decisionTrigger}</p>
               )}
               {s.careerRisk && (
-                <p className="text-[10px] text-destructive/70">⚠️ <span className="font-medium">Career Risk:</span> {s.careerRisk}</p>
+                <p className="text-[10px] text-destructive/70 flex items-center gap-1"><AlertTriangle className="h-2.5 w-2.5 shrink-0" /> <span className="font-medium">Career Risk:</span> {s.careerRisk}</p>
               )}
               {s.concerns?.length > 0 && (
                 <p className="text-[10px] text-muted-foreground">Concerns: {s.concerns.join("; ")}</p>
@@ -461,9 +461,9 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
                   <Badge className={`text-[9px] h-4 shrink-0 ${actionStatusColors[a.status] || ""}`}>{a.status}</Badge>
                 </div>
                 <div className="flex gap-3 text-[10px] text-muted-foreground">
-                  <span>👤 {a.owner}</span>
+                  <span className="flex items-center gap-0.5"><User className="h-2.5 w-2.5" /> {a.owner}</span>
                   <span>Created: {a.createdIn}</span>
-                  {a.deadline && <span>📅 {a.deadline}</span>}
+                  {a.deadline && <span className="flex items-center gap-0.5"><Calendar className="h-2.5 w-2.5" /> {a.deadline}</span>}
                   {a.resolvedIn && <span>✓ {a.resolvedIn}</span>}
                 </div>
               </div>
@@ -516,7 +516,7 @@ export function DealIntelligencePanel({ intel, lead }: { intel: DealIntelligence
               {intel.competitiveTimeline.map((c, i) => (
                 <div key={i} className="text-[10px] flex gap-2 py-0.5">
                   <span className="text-muted-foreground shrink-0">{c.date}</span>
-                  <span>⚔️ {c.event}</span>
+                  <span className="flex items-center gap-0.5"><Swords className="h-2.5 w-2.5" /> {c.event}</span>
                 </div>
               ))}
             </div>

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
 import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency, SuggestedUpdates, SuggestedFieldUpdate, Submission } from "@/types/lead";
@@ -199,14 +200,22 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             <SheetTitle className="text-lg font-semibold">{lead.name}</SheetTitle>
           </div>
           <p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>
-          {lead.submissions && lead.submissions.length > 1 && (
-            <div className="flex items-center gap-1.5 mt-1">
+          <div className="flex items-center gap-2 mt-1">
+            {lead.submissions && lead.submissions.length > 1 && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                🔄 {lead.submissions.length} submissions
+                <RefreshCw className="h-2.5 w-2.5 mr-1 inline" />
+                {lead.submissions.length} submissions
                 {new Set(lead.submissions.map(s => s.brand)).size > 1 ? " (CT + SC)" : ""}
               </Badge>
-            </div>
-          )}
+            )}
+            <Link
+              to={`/deal/${lead.id}`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors ml-auto"
+              onClick={onClose}
+            >
+              Open Deal Room <ChevronRight className="h-3 w-3" />
+            </Link>
+          </div>
         </SheetHeader>
 
         <div className="space-y-8 mt-4">
@@ -1159,10 +1168,10 @@ function CompanyActivitySection({ lead, allLeads, onSelectLead }: { lead: Lead; 
         <div className="mt-3 space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Shared Intelligence</p>
           {shared.objections.map((o, i) => (
-            <p key={`o-${i}`} className="text-xs text-muted-foreground">⚡ {trunc(o)}</p>
+            <p key={`o-${i}`} className="text-xs text-muted-foreground flex items-center gap-1"><Zap className="h-3 w-3 shrink-0" /> {trunc(o)}</p>
           ))}
           {shared.painPoints.map((p, i) => (
-            <p key={`p-${i}`} className="text-xs text-muted-foreground">🎯 {trunc(p)}</p>
+            <p key={`p-${i}`} className="text-xs text-muted-foreground flex items-center gap-1"><Target className="h-3 w-3 shrink-0" /> {trunc(p)}</p>
           ))}
         </div>
       )}

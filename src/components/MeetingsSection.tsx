@@ -13,7 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Mail, Copy, Check, CheckCircle, X, Loader2 } from "lucide-react";
+import { FileText, Mail, Copy, Check, CheckCircle, X, Loader2, User, Calendar } from "lucide-react";
 
 // ─── Suggested Lead Update Types ───
 
@@ -446,8 +446,8 @@ function IntelligenceDisplay({ intel }: { intel: MeetingIntelligence }) {
                   <div className="flex-1">
                     <span>{ns.action}</span>
                     <div className="flex gap-2 mt-0.5 text-muted-foreground">
-                      {ns.owner && <span>👤 {ns.owner}</span>}
-                      {ns.deadline && <span>📅 {ns.deadline}</span>}
+                      {ns.owner && <span className="flex items-center gap-0.5"><User className="h-2.5 w-2.5" /> {ns.owner}</span>}
+                      {ns.deadline && <span className="flex items-center gap-0.5"><Calendar className="h-2.5 w-2.5" /> {ns.deadline}</span>}
                     </div>
                   </div>
                 </div>
@@ -466,8 +466,8 @@ function IntelligenceDisplay({ intel }: { intel: MeetingIntelligence }) {
                   <div className="flex-1">
                     <span>{ai.item}</span>
                     <div className="flex gap-2 mt-0.5 text-muted-foreground">
-                      {ai.owner && <span>👤 {ai.owner}</span>}
-                      {ai.deadline && <span>📅 {ai.deadline}</span>}
+                      {ai.owner && <span className="flex items-center gap-0.5"><User className="h-2.5 w-2.5" /> {ai.owner}</span>}
+                      {ai.deadline && <span className="flex items-center gap-0.5"><Calendar className="h-2.5 w-2.5" /> {ai.deadline}</span>}
                       <Badge variant="outline" className="text-[9px] h-4">{ai.status}</Badge>
                     </div>
                   </div>
