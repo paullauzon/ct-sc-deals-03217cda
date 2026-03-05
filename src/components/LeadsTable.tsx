@@ -1164,3 +1164,50 @@ function CompanyActivitySection({ lead, allLeads, onSelectLead }: { lead: Lead; 
     </Section>
   );
 }
+
+const EVENT_ICONS: Record<string, React.ReactNode> = {
+  stage_change: <GitCommit className="h-3.5 w-3.5 text-primary" />,
+  field_update: <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />,
+  meeting_added: <Calendar className="h-3.5 w-3.5 text-primary" />,
+  note_added: <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />,
+  enrichment_run: <Sparkles className="h-3.5 w-3.5 text-primary" />,
+  bulk_update: <Users className="h-3.5 w-3.5 text-muted-foreground" />,
+};
+
+function ActivityTimeline({ leadId }: { leadId: string }) {
+  const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchActivityLog(leadId).then((data) => {
+      if (!cancelled) {
+        setEntries(data);
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [leadId]);
+
+  if (loading) return <p className="text-xs text-muted-foreground py-4 text-center">Loading activity…</p>;
+  if (entries.length === 0) return <p className="text-xs text-muted-foreground py-4 text-center">No activity recorded yet</p>;
+
+  return (
+    <div className="space-y-1 py-2">
+      {entries.map((entry) => (
+        <div key={entry.id} className="flex items-start gap-2.5 py-1.5 border-b border-border/50 last:border-0">
+          <div className="mt-0.5 shrink-0">
+            {EVENT_ICONS[entry.event_type] || <Clock className="h-3.5 w-3.5 text-muted-foreground" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs leading-relaxed">{entry.description}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {new Date(entry.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
