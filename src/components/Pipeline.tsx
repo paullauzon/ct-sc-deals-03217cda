@@ -218,6 +218,16 @@ export function Pipeline() {
           </div>
           <p className="text-sm text-muted-foreground mt-1">Drag deals between stages</p>
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={selectMode ? "default" : "outline"}
+            size="sm"
+            onClick={() => { setSelectMode(!selectMode); setSelectedIds(new Set()); }}
+            className="h-8 text-xs gap-1.5"
+          >
+            <CheckSquare className="h-3.5 w-3.5" />
+            {selectMode ? "Cancel" : "Select"}
+          </Button>
         <div className="relative w-full max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
