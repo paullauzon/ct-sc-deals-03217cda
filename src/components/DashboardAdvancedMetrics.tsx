@@ -188,7 +188,7 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
       <div className="grid grid-cols-2 gap-6">
         <div className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wider">Sales Velocity</p>
-          <p className="text-3xl font-bold tabular-nums mt-1">${data.salesVelocity.toLocaleString()}<span className="text-sm font-normal text-muted-foreground">/day</span></p>
+          <p className="text-2xl font-bold tabular-nums mt-1">${data.salesVelocity.toLocaleString()}<span className="text-sm font-normal text-muted-foreground">/day</span></p>
           <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
             <span>{data.activeDealsCount} active deals</span>
             <span>×</span>
@@ -201,7 +201,7 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
         </div>
         <div className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
           <p className="text-xs text-muted-foreground uppercase tracking-wider">Weighted Pipeline Forecast</p>
-          <p className="text-3xl font-bold tabular-nums mt-1">${data.weightedPipeline.toLocaleString()}</p>
+          <p className="text-2xl font-bold tabular-nums mt-1">${data.weightedPipeline.toLocaleString()}</p>
           <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
             <span>Raw: ${data.rawPipeline.toLocaleString()}</span>
             <span>·</span>
@@ -209,7 +209,7 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
           </div>
           <div className="flex gap-1 mt-2">
             {Object.entries(STAGE_WEIGHTS).map(([stage, weight]) => (
-              <span key={stage} className="text-[9px] text-muted-foreground/60 px-1 py-0.5 bg-secondary/50 rounded">
+              <span key={stage} className="text-[10px] text-muted-foreground/60 px-1 py-0.5 bg-secondary/50 rounded">
                 {stage.split(" ").map(w => w[0]).join("")}:{Math.round(weight * 100)}%
               </span>
             ))}
@@ -358,7 +358,7 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
       {/* Coaching Insights */}
       {data.repCoaching.some(r => r.meetingCount > 0) && (
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">🎯 Coaching Insights</h2>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Coaching Insights</h2>
           <div className="border border-border rounded-md overflow-hidden">
             <table className="w-full text-sm">
               <thead>
@@ -404,8 +404,8 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
       {/* Contract Renewals */}
       {(data.renewals30.length > 0 || data.renewals60.length > 0 || data.renewals90.length > 0) && (
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
-            📋 Contract Renewals
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+            Contract Renewals
           </h2>
           <div className="grid grid-cols-3 gap-3">
             {[
