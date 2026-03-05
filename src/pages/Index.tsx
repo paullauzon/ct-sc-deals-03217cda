@@ -4,8 +4,7 @@ import { LeadsTable, LeadDetail } from "@/components/LeadsTable";
 import { Pipeline } from "@/components/Pipeline";
 import { ActionQueue } from "@/components/ActionQueue";
 import { CommandPalette } from "@/components/CommandPalette";
-import { LeadProvider, useLeads } from "@/contexts/LeadContext";
-import { ProcessingProvider } from "@/contexts/ProcessingContext";
+import { useLeads } from "@/contexts/LeadContext";
 import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";
 
 type View = "today" | "dashboard" | "leads" | "pipeline";
