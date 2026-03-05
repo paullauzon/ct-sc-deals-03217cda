@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      lead_emails: {
+        Row: {
+          body_preview: string | null
+          created_at: string | null
+          direction: string
+          email_date: string
+          from_address: string
+          from_name: string | null
+          id: string
+          lead_id: string
+          message_id: string | null
+          raw_payload: Json | null
+          source: string | null
+          subject: string | null
+          thread_id: string | null
+          to_addresses: string[] | null
+        }
+        Insert: {
+          body_preview?: string | null
+          created_at?: string | null
+          direction?: string
+          email_date?: string
+          from_address: string
+          from_name?: string | null
+          id?: string
+          lead_id: string
+          message_id?: string | null
+          raw_payload?: Json | null
+          source?: string | null
+          subject?: string | null
+          thread_id?: string | null
+          to_addresses?: string[] | null
+        }
+        Update: {
+          body_preview?: string | null
+          created_at?: string | null
+          direction?: string
+          email_date?: string
+          from_address?: string
+          from_name?: string | null
+          id?: string
+          lead_id?: string
+          message_id?: string | null
+          raw_payload?: Json | null
+          source?: string | null
+          subject?: string | null
+          thread_id?: string | null
+          to_addresses?: string[] | null
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           acquisition_strategy: string
