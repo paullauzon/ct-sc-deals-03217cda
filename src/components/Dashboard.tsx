@@ -300,6 +300,8 @@ export function Dashboard() {
       totalMRR, totalContractValue, leadsWithMeetings, leadsWithIntel, leadsWithDealIntel,
       momentumDist, avgTalkRatio, questionQualityDist,
       criticalAlerts, warningAlerts, cleanDeals,
+      atRiskRevenue, atRiskLeads, stageConversions, weakestLink,
+      forecastTarget, commitValue, bestCaseValue, pipelineValue: pipelineValue, coverageRatio, forecastGap,
     };
   }, [leads, m]);
 
