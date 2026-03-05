@@ -683,6 +683,196 @@ export function Dashboard() {
           <span className="uppercase tracking-wider font-medium text-xs">More Analytics</span>
         </CollapsibleTrigger>
         <CollapsibleContent className="space-y-6 mt-4">
+          {/* Pipeline Funnel + Owner Workload */}
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Pipeline Funnel</h2>
+              <div className="space-y-2">
+                {analytics.stageFunnel.map((s, i) => {
+                  const prev = i > 0 ? analytics.stageFunnel[i - 1].count : null;
+                  const dropOff = prev && prev > 0 ? Math.round(((prev - s.count) / prev) * 100) : null;
+                  return (
+                    <div key={s.label} className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground w-28 shrink-0 text-right">{s.label}</span>
+                      <div className="flex-1 h-6 bg-secondary/50 rounded overflow-hidden">
+                        <div className="h-full bg-foreground/20 rounded transition-all" style={{ width: `${Math.max((s.count / analytics.maxStageCount) * 100, 2)}%` }} />
+                      </div>
+                      <span className="text-xs tabular-nums w-8 text-right font-medium">{s.count}</span>
+                      <span className="text-xs tabular-nums text-muted-foreground w-16 text-right">${s.value.toLocaleString()}</span>
+                      {dropOff !== null && dropOff > 0 && (
+                        <span className="text-xs text-muted-foreground w-12 text-right">-{dropOff}%</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Owner Workload</h2>
+              <div className="border border-border rounded-md overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-secondary/50">
+                      <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Owner</th>
+                      <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Active</th>
+                      <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Pipeline $</th>
+                      <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Won</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {analytics.ownerData.map((o) => (
+                      <tr key={o.owner}>
+                        <td className="px-4 py-2.5 font-medium flex items-center gap-2">
+                          {o.owner !== "Unassigned" ? (
+                            <span className="w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">{o.owner[0]}</span>
+                          ) : (
+                            <span className="w-6 h-6 rounded-full border border-dashed border-muted-foreground/40 flex items-center justify-center text-[10px] text-muted-foreground/50 shrink-0">?</span>
+                          )}
+                          {o.owner}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{o.count}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">${o.value.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{o.won}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Stale Leads + Forecast */}
+          <div className="grid grid-cols-2 gap-6">
+            {analytics.staleLeads.length > 0 ? (
+              <div>
+                <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+                  Stale Leads <span className="text-xs font-normal ml-1">({analytics.staleLeads.length} stuck &gt;14d)</span>
+                </h2>
+                <div className="border border-border rounded-md divide-y divide-border max-h-[280px] overflow-y-auto">
+                  {analytics.staleLeads.slice(0, 10).map((lead) => (
+                    <div
+                      key={lead.id}
+                      onClick={() => setSelectedLeadId(lead.id)}
+                      className="flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer hover:bg-secondary/30 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
+                        <span className="font-medium">{lead.name}</span>
+                        <span className="text-muted-foreground truncate text-xs">{lead.company}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-muted-foreground shrink-0">
+                        <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
+                        <span className="text-xs tabular-nums font-medium">{computeDaysInStage(lead.stageEnteredDate)}d</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Stale Leads</h2>
+                <div className="border border-border rounded-md px-4 py-8 text-center">
+                  <p className="text-sm text-muted-foreground">No stale leads — all deals are moving</p>
+                </div>
+              </div>
+            )}
+            <div>
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Forecast Summary</h2>
+              {analytics.forecastData.length > 0 ? (
+                <div className="border border-border rounded-md divide-y divide-border">
+                  {analytics.forecastData.map((f) => (
+                    <div key={f.category} className="flex items-center justify-between px-4 py-3 text-sm">
+                      <span className="font-medium">{f.category}</span>
+                      <div className="flex items-center gap-4">
+                        <span className="tabular-nums text-muted-foreground">{f.count} leads</span>
+                        <span className="tabular-nums font-semibold">${f.value.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between px-4 py-3 text-sm bg-secondary/30">
+                    <span className="font-medium">Total Forecasted</span>
+                    <span className="tabular-nums font-semibold">${analytics.forecastData.reduce((s, f) => s + f.value, 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="border border-border rounded-md px-4 py-8 text-center">
+                  <p className="text-sm text-muted-foreground">No forecast categories assigned yet</p>
+                  <p className="text-xs text-muted-foreground mt-1">Set forecast categories on individual leads</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Lead Volume */}
+          <div>
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Lead Volume (16 weeks)</h2>
+            <div className="border border-border rounded-lg p-4">
+              <ResponsiveContainer width="100%" height={240}>
+                <AreaChart data={analytics.weeklyData}>
+                  <defs>
+                    <linearGradient id="gradCT" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(0,0%,15%)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(0,0%,15%)" stopOpacity={0.05} />
+                    </linearGradient>
+                    <linearGradient id="gradSC" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(0,0%,55%)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(0,0%,55%)" stopOpacity={0.05} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                  <XAxis dataKey="week" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                  <YAxis yAxisId="left" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} stroke="hsl(0,0%,75%)" />
+                  <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", background: "hsl(0,0%,100%)", borderRadius: 6 }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Area yAxisId="left" type="monotone" dataKey="CT" stackId="1" stroke="hsl(0,0%,15%)" fill="url(#gradCT)" strokeWidth={2} name="Captarget" />
+                  <Area yAxisId="left" type="monotone" dataKey="SC" stackId="1" stroke="hsl(0,0%,55%)" fill="url(#gradSC)" strokeWidth={2} name="SourceCo" />
+                  <Line yAxisId="right" type="monotone" dataKey="cumulative" stroke="hsl(0,0%,40%)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} name="Cumulative" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Brand Comparison + Service by Brand */}
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Brand Comparison</h2>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { brand: "Captarget", data: analytics.ctLeads, abbr: "CT" },
+                  { brand: "SourceCo", data: analytics.scLeads, abbr: "SC" },
+                ].map(({ brand, data, abbr }) => (
+                  <div key={brand} className="border border-border rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs font-mono px-1.5 py-0.5 border border-border rounded">{abbr}</span>
+                      <span className="text-sm font-medium">{brand}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div><p className="text-xs text-muted-foreground">Total</p><p className="font-semibold tabular-nums">{data.length}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Pipeline</p><p className="font-semibold tabular-nums">${data.filter((l) => !["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)).reduce((s, l) => s + l.dealValue, 0).toLocaleString()}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Won</p><p className="font-semibold tabular-nums">{data.filter((l) => l.stage === "Closed Won").length}</p></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Service Interest by Brand</h2>
+              <div className="border border-border rounded-lg p-4">
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={analytics.serviceByBrand} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                    <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                    <YAxis dataKey="service" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={85} />
+                    <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
+                    <Bar dataKey="CT" fill="hsl(0,0%,20%)" radius={[0, 3, 3, 0]} name="Captarget" />
+                    <Bar dataKey="SC" fill="hsl(0,0%,65%)" radius={[0, 3, 3, 0]} name="SourceCo" />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
           {/* Stage Distribution by Brand */}
           <div>
             <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Stage Distribution by Brand</h2>

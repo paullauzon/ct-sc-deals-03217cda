@@ -223,39 +223,59 @@ export function PipelineFilterBar({
 
   const clearAll = () => setFilters({ ...EMPTY_FILTERS });
 
-  const applyPreset = (preset: Partial<PipelineFilters>) => {
-    setFilters({ ...EMPTY_FILTERS, ...preset });
+  const [activePreset, setActivePreset] = useState<string | null>(null);
+
+  const applyPreset = (name: string, preset: Partial<PipelineFilters>) => {
+    if (activePreset === name) {
+      // Toggle off
+      setFilters({ ...EMPTY_FILTERS });
+      setActivePreset(null);
+    } else {
+      setFilters({ ...EMPTY_FILTERS, ...preset });
+      setActivePreset(name);
+    }
   };
+
+  // Clear active preset when filters change manually
+  const toggle = (key: keyof PipelineFilters, value: string) => {
+    setActivePreset(null);
+    setFilters(prev => {
+      const arr = prev[key] as string[];
+      const next = arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value];
+      return { ...prev, [key]: next };
+    });
+  };
+
+  const clearAll = () => { setFilters({ ...EMPTY_FILTERS }); setActivePreset(null); };
+
+  const presets = [
+    { name: "attention", label: "Needs Attention", icon: <Flame className="h-3 w-3" />, preset: { priorities: ["High"], daysInStage: ["14-30d", "30d+"] } },
+    { name: "big", label: "Big Deals", icon: <DollarSign className="h-3 w-3" />, preset: { dealValueRange: ["$25-100K", "$100K+"] } },
+    { name: "overdue", label: "Overdue Follow-ups", icon: <CalendarClock className="h-3 w-3" />, preset: { overdue: true } },
+    { name: "hot", label: "Hot Momentum", icon: <Zap className="h-3 w-3" />, preset: { momentum: ["Accelerating"] } },
+  ];
 
   return (
     <div className="space-y-3">
       {/* Quick-filter presets */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mr-1">Quick:</span>
-        <button
-          onClick={() => applyPreset({ priorities: ["High"], daysInStage: ["14-30d", "30d+"] })}
-          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
-        >
-          <Flame className="h-3 w-3" /> Needs Attention
-        </button>
-        <button
-          onClick={() => applyPreset({ dealValueRange: ["$25-100K", "$100K+"] })}
-          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
-        >
-          <DollarSign className="h-3 w-3" /> Big Deals
-        </button>
-        <button
-          onClick={() => applyPreset({ overdue: true })}
-          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
-        >
-          <CalendarClock className="h-3 w-3" /> Overdue Follow-ups
-        </button>
-        <button
-          onClick={() => applyPreset({ momentum: ["Accelerating"] })}
-          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
-        >
-          <Zap className="h-3 w-3" /> Hot Momentum
-        </button>
+        {presets.map(p => (
+          <button
+            key={p.name}
+            onClick={() => applyPreset(p.name, p.preset as Partial<PipelineFilters>)}
+            className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border transition-colors ${
+              activePreset === p.name
+                ? "bg-foreground text-background border-foreground"
+                : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/20"
+            }`}
+          >
+            {p.icon} {p.label}
+          </button>
+        ))}
+        {hasActiveFilters && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 font-medium">Filtered</Badge>
+        )}
       </div>
 
       {/* Filter bar */}
