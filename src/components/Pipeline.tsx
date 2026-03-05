@@ -314,9 +314,9 @@ export function Pipeline() {
                         else { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }
                       }}
                       className={cn(
-                        "border rounded-md p-3 transition-colors space-y-1.5",
+                        "border-2 rounded-md p-3 transition-colors space-y-1.5",
                         selectMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
-                        selectedIds.has(lead.id) ? "border-primary bg-primary/5" : "border-border hover:bg-secondary/30"
+                        selectedIds.has(lead.id) ? "border-primary bg-primary/5" : getAgingClass(days) + " hover:bg-secondary/30"
                       )}
                     >
                       {/* Row 1: Checkbox (select mode) + Brand badge + Name + Owner initial */}
@@ -339,7 +339,7 @@ export function Pipeline() {
                           </p>
                           <p className="text-xs text-muted-foreground">{lead.company || "—"} · {lead.role}</p>
                         </div>
-                        <QuickNote lead={lead} onSave={handleQuickNote} />
+                        <QuickNote lead={lead} onSave={handleQuickNote} onFollowUp={handleFollowUp} />
                         <OwnerBadge owner={lead.assignedTo} />
                       </div>
                       {/* Row 2: Source */}
