@@ -122,6 +122,37 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
       };
     });
 
+    // ─── Coaching Insights (aggregated per rep) ───
+    const repCoaching = owners.filter(o => o !== "").map(owner => {
+      const ownerMeetings = leads
+        .filter(l => l.assignedTo === owner)
+        .flatMap(l => l.meetings || [])
+        .filter(m => m.intelligence?.talkRatio);
+      const avgTalk = ownerMeetings.length > 0
+        ? Math.round(ownerMeetings.reduce((s, m) => s + (m.intelligence?.talkRatio || 0), 0) / ownerMeetings.length)
+        : null;
+      const qDist = { Strong: 0, Adequate: 0, Weak: 0 };
+      const objDist = { Effective: 0, Partial: 0, Missed: 0 };
+      for (const m of ownerMeetings) {
+        const q = m.intelligence?.questionQuality;
+        if (q && q in qDist) qDist[q as keyof typeof qDist]++;
+        const o = m.intelligence?.objectionHandling;
+        if (o && o in objDist) objDist[o as keyof typeof objDist]++;
+      }
+      const totalQ = qDist.Strong + qDist.Adequate + qDist.Weak;
+      const weakPct = totalQ > 0 ? Math.round((qDist.Weak / totalQ) * 100) : 0;
+      const needsCoaching = (avgTalk !== null && avgTalk > 60) || weakPct > 50;
+      return {
+        owner: owner as string,
+        meetingCount: ownerMeetings.length,
+        avgTalkRatio: avgTalk,
+        questionQuality: qDist,
+        objectionHandling: objDist,
+        weakPct,
+        needsCoaching,
+      };
+    });
+
     // ─── Contract Renewals ───
     const now = new Date();
     const renewals30 = wonLeads.filter(l => {
@@ -146,7 +177,7 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
       rawPipeline, weightedPipeline: Math.round(weightedPipeline),
       closeReasonData, avgCycleWon, avgCycleLost, winRateBySource,
       wonCount: wonLeads.length, lostCount: lostLeads.length,
-      repScorecard, sourceROI,
+      repScorecard, sourceROI, repCoaching,
       renewals30, renewals60, renewals90,
     };
   }, [leads]);
