@@ -160,92 +160,104 @@ function extractAcquisitionYear(text: string): number | null {
   return years.length > 0 ? Math.max(...years) : null;
 }
 
-// ─── Firecrawl Web Search ───
+// ─── Serper.dev Web Search ───
 
 async function searchWeb(
   query: string,
   apiKey: string,
 ): Promise<string> {
   try {
-    const res = await fetch("https://api.firecrawl.dev/v1/search", {
+    const res = await fetch("https://google.serper.dev/search", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "X-API-KEY": apiKey,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ query, limit: 5, scrapeOptions: { formats: ["markdown"] } }),
+      body: JSON.stringify({ q: query, num: 5 }),
     });
     if (!res.ok) return "";
     const data = await res.json();
-    const results = data.data || [];
     let combined = "";
-    for (const r of results) {
-      const snippet = r.markdown || r.description || "";
-      if (snippet) combined += `${snippet}\n\n`;
+    // Organic results
+    for (const r of (data.organic || [])) {
+      if (r.snippet) combined += `${r.title || ""}: ${r.snippet}\n\n`;
+    }
+    // Knowledge graph
+    if (data.knowledgeGraph?.description) {
+      combined += `${data.knowledgeGraph.description}\n\n`;
     }
     if (combined.length > 5000) combined = combined.substring(0, 5000);
     return combined;
   } catch (e) {
-    console.error("Web search failed:", e);
+    console.error("Serper search failed:", e);
     return "";
   }
 }
 
-// ─── Apollo.io LinkedIn Lookup ───
+// ─── Serper.dev LinkedIn Lookup ───
 
-interface ApolloPersonResult {
+interface LinkedInResult {
   title: string | null;
   linkedinUrl: string | null;
   hasMaExperience: boolean;
 }
 
-async function apolloPersonLookup(
+async function serperLinkedInLookup(
   name: string,
   company: string | null,
-  domain: string,
   apiKey: string,
-): Promise<ApolloPersonResult> {
+): Promise<LinkedInResult> {
   try {
-    const res = await fetch("https://api.apollo.io/v1/people/match", {
+    const query = company
+      ? `site:linkedin.com/in/ "${name}" "${company}"`
+      : `site:linkedin.com/in/ "${name}"`;
+    const res = await fetch("https://google.serper.dev/search", {
       method: "POST",
       headers: {
+        "X-API-KEY": apiKey,
         "Content-Type": "application/json",
-        "Cache-Control": "no-cache",
-        "X-Api-Key": apiKey,
       },
-      body: JSON.stringify({
-        name,
-        organization_name: company || undefined,
-        domain,
-      }),
+      body: JSON.stringify({ q: query, num: 3 }),
     });
     if (!res.ok) return { title: null, linkedinUrl: null, hasMaExperience: false };
     const data = await res.json();
-    const person = data.person;
-    if (!person) return { title: null, linkedinUrl: null, hasMaExperience: false };
 
-    const title = person.title || null;
-    const linkedinUrl = person.linkedin_url || null;
+    const organic = data.organic || [];
+    if (organic.length === 0) return { title: null, linkedinUrl: null, hasMaExperience: false };
 
-    // Check for M&A experience in employment history
-    let hasMaExperience = false;
+    // Take the first LinkedIn result
+    const top = organic[0];
+    const linkedinUrl = top.link && top.link.includes("linkedin.com/in/")
+      ? top.link
+      : null;
+
+    // Extract title from snippet — LinkedIn snippets typically contain the person's headline
+    let title: string | null = null;
+    const snippet = (top.snippet || "") + " " + (top.title || "");
+
+    // LinkedIn titles often appear as "Name - Title at Company" or "Title at Company"
+    const titleMatch = snippet.match(/[-–—]\s*(.+?)(?:\s+at\s+|\s+[-–—]\s+|\s*$)/i);
+    if (titleMatch) {
+      title = titleMatch[1].trim().replace(/\s*[-–—]\s*LinkedIn.*$/i, "").trim();
+    }
+    // Fallback: check for common title patterns in snippet
+    if (!title) {
+      const titlePatterns = /\b(CEO|CFO|COO|CTO|President|Partner|Managing Director|Vice President|VP|Director|Principal|Founder|Co-Founder|Manager|Associate|Analyst)\b/i;
+      const match = snippet.match(titlePatterns);
+      if (match) title = match[0];
+    }
+
+    // Check for M&A experience in snippet text
     const maKeywords = [
       "investment bank", "private equity", "m&a", "corporate development",
       "mergers", "acquisitions", "corp dev", "advisory",
     ];
-    const history = person.employment_history || [];
-    for (const job of history) {
-      const jobTitle = (job.title || "").toLowerCase();
-      const jobCompany = (job.organization_name || "").toLowerCase();
-      if (maKeywords.some((kw) => jobTitle.includes(kw) || jobCompany.includes(kw))) {
-        hasMaExperience = true;
-        break;
-      }
-    }
+    const lowerSnippet = snippet.toLowerCase();
+    const hasMaExperience = maKeywords.some((kw) => lowerSnippet.includes(kw));
 
     return { title, linkedinUrl, hasMaExperience };
   } catch (e) {
-    console.error("Apollo person lookup failed:", e);
+    console.error("Serper LinkedIn lookup failed:", e);
     return { title: null, linkedinUrl: null, hasMaExperience: false };
   }
 }
@@ -366,14 +378,14 @@ Deno.serve(async (req) => {
       websitePeResult = detectPeSponsor(allWebsiteText);
     }
 
-    // Second pass: web search (CRITICAL — do not skip)
-    const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
+    // Second pass: web search via Serper (CRITICAL — do not skip)
+    const SERPER_API_KEY = Deno.env.get("SERPER_API_KEY");
     let searchPeResult = { sponsor: null as string | null, confirmed: false };
     let webSearchText = "";
 
     const companyName = company || "";
 
-    if (FIRECRAWL_API_KEY && companyName) {
+    if (SERPER_API_KEY && companyName) {
       const currentYear = new Date().getFullYear();
       const searches = [
         `"${companyName}" "private equity"`,
@@ -382,7 +394,7 @@ Deno.serve(async (req) => {
       ];
 
       const searchResults = await Promise.allSettled(
-        searches.map((q) => searchWeb(q, FIRECRAWL_API_KEY)),
+        searches.map((q) => searchWeb(q, SERPER_API_KEY)),
       );
 
       for (const result of searchResults) {
@@ -408,24 +420,22 @@ Deno.serve(async (req) => {
     const lastAcquisitionYear = extractAcquisitionYear(combinedText);
     const hasMaActivity = detectMaActivity(combinedText);
 
-    // ─── Step 6: LinkedIn Lookup ───
-    const APOLLO_API_KEY = Deno.env.get("APOLLO_API_KEY");
+    // ─── Step 6: LinkedIn Lookup via Serper ───
     let linkedinUrl: string | null = null;
     let linkedinTitle: string | null = null;
     let linkedinMaExperience = false;
     let linkedinScore = 0;
     let seniorityScoreValue = 0;
 
-    if (APOLLO_API_KEY && name) {
-      const apolloResult = await apolloPersonLookup(
+    if (SERPER_API_KEY && name) {
+      const linkedinResult = await serperLinkedInLookup(
         name,
         company,
-        emailDomain,
-        APOLLO_API_KEY,
+        SERPER_API_KEY,
       );
-      linkedinUrl = apolloResult.linkedinUrl;
-      linkedinTitle = apolloResult.title;
-      linkedinMaExperience = apolloResult.hasMaExperience;
+      linkedinUrl = linkedinResult.linkedinUrl;
+      linkedinTitle = linkedinResult.title;
+      linkedinMaExperience = linkedinResult.hasMaExperience;
     }
 
     // ─── Step 7: Calculate Stage 2 Scores ───
