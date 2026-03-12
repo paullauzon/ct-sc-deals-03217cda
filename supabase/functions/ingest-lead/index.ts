@@ -182,6 +182,10 @@ Deno.serve(async (req) => {
     const leadId = await generateLeadId(supabase, brand, source);
 
     // Extract company from URL or email domain
+    const titleCase = (s: string) =>
+      s.replace(/[-_]/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2")
+        .split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
     let company = body.company || "";
     if (!company && body.companyUrl) {
       try {
@@ -190,8 +194,7 @@ Deno.serve(async (req) => {
             ? body.companyUrl
             : `https://${body.companyUrl}`
         );
-        company = url.hostname.replace("www.", "").split(".")[0];
-        company = company.charAt(0).toUpperCase() + company.slice(1);
+        company = titleCase(url.hostname.replace("www.", "").split(".")[0]);
       } catch {
         // ignore
       }
@@ -199,7 +202,7 @@ Deno.serve(async (req) => {
     if (!company && email) {
       const domain = email.split("@")[1]?.split(".")[0];
       if (domain && !["gmail", "yahoo", "hotmail", "outlook", "proton", "icloud"].includes(domain)) {
-        company = domain.charAt(0).toUpperCase() + domain.slice(1);
+        company = titleCase(domain);
       }
     }
 
