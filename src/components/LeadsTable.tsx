@@ -22,6 +22,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight, Clock, GitCommit, MessageSquare, Calendar, Search as SearchIcon } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 const STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Closed Lost", "Went Dark"];
@@ -670,7 +671,13 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
           <Sparkles className="h-4 w-4" />
           {enriching ? "Researching..." : "Research & Recommend"}
         </Button>
-        <p className="text-xs text-muted-foreground">Scrapes company website, searches the web for prospect intelligence, and recommends CRM field updates.</p>
+        {enriching && (
+          <div className="space-y-1">
+            <Progress value={undefined} className="h-1.5 [&>div]:animate-pulse" />
+            <p className="text-[10px] text-muted-foreground">Scraping website, researching prospect, generating recommendations...</p>
+          </div>
+        )}
+        {!enriching && <p className="text-xs text-muted-foreground">Scrapes company website, searches the web for prospect intelligence, and recommends CRM field updates.</p>}
       </div>
     );
   }
@@ -704,6 +711,12 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
             {enriching ? "Researching..." : "Re-research"}
           </Button>
         </div>
+        {enriching && (
+          <div className="space-y-1 mt-1">
+            <Progress value={undefined} className="h-1.5 [&>div]:animate-pulse" />
+            <p className="text-[10px] text-muted-foreground">Re-researching prospect...</p>
+          </div>
+        )}
 
         <CollapsibleContent>
           <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-1 text-sm mt-2">
@@ -1053,6 +1066,15 @@ export function LeadsTable() {
           <Button size="sm" onClick={() => setShowNewLead(true)}>New Lead</Button>
         </div>
       </div>
+      {scoringAll && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Target className="h-3.5 w-3.5 animate-pulse text-primary" />
+            <span>Scoring leads in batches...</span>
+          </div>
+          <Progress value={undefined} className="h-1.5 [&>div]:animate-pulse" />
+        </div>
+      )}
 
       <div className="flex gap-3">
         <Input placeholder="Search leads..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
