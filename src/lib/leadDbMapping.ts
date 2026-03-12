@@ -134,6 +134,7 @@ export function leadUpdatesToRow(updates: Partial<Lead>): Record<string, any> {
     lastContactDate: "last_contact_date", nextFollowUp: "next_follow_up",
     priority: "priority", meetingOutcome: "meeting_outcome",
     forecastCategory: "forecast_category", icpFit: "icp_fit",
+    preScreenCompleted: "pre_screen_completed",
     wonReason: "won_reason", lostReason: "lost_reason",
     subscriptionValue: "subscription_value", billingFrequency: "billing_frequency",
     contractStart: "contract_start", contractEnd: "contract_end",

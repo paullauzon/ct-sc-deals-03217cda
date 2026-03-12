@@ -252,6 +252,7 @@ function createLead(r: { date: string; name: string; phone: string; email: strin
     firefliesTranscript: "",
     firefliesSummary: "",
     firefliesNextSteps: "",
+    preScreenCompleted: false,
   };
 }
 

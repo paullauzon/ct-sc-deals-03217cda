@@ -80,6 +80,7 @@ function makeSCLead(
     firefliesTranscript: "",
     firefliesSummary: "",
     firefliesNextSteps: "",
+    preScreenCompleted: false,
   };
 }
 
