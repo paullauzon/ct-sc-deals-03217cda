@@ -142,7 +142,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
-  // Realtime subscription for new leads
+  // Realtime subscription for new leads and score updates
   useEffect(() => {
     const channel = supabase
       .channel('leads-realtime')
@@ -161,6 +161,41 @@ export function LeadProvider({ children }: { children: ReactNode }) {
             description: `${newLead.company || "No company"} · ${brandLabel} · ${newLead.source}`,
             duration: 8000,
           });
+
+          // Auto-score the new lead
+          supabase.functions.invoke("score-lead", {
+            body: { record: { id: newLead.id, email: newLead.email, name: newLead.name, company: newLead.company, company_url: newLead.companyUrl, buyer_type: newLead.buyerType, source: newLead.source, message: newLead.message } },
+          }).catch(err => console.error("Auto-score failed:", err));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'leads' },
+        (payload) => {
+          const updatedRow = payload.new;
+          if (!updatedRow) return;
+          // Only apply scoring field updates from the DB to avoid overwriting local edits
+          setLeads(prev => prev.map(l => {
+            if (l.id !== updatedRow.id) return l;
+            const scoringUpdates: Partial<Lead> = {};
+            if (updatedRow.stage1_score != null && l.stage1Score !== Number(updatedRow.stage1_score)) {
+              scoringUpdates.stage1Score = Number(updatedRow.stage1_score);
+            }
+            if (updatedRow.stage2_score != null && l.stage2Score !== Number(updatedRow.stage2_score)) {
+              scoringUpdates.stage2Score = Number(updatedRow.stage2_score);
+            }
+            if (updatedRow.tier != null && l.tier !== Number(updatedRow.tier)) {
+              scoringUpdates.tier = Number(updatedRow.tier);
+            }
+            if (updatedRow.tier_override != null) {
+              scoringUpdates.tierOverride = updatedRow.tier_override;
+            }
+            if (updatedRow.enrichment_status && l.enrichmentStatus !== updatedRow.enrichment_status) {
+              scoringUpdates.enrichmentStatus = updatedRow.enrichment_status;
+            }
+            if (Object.keys(scoringUpdates).length === 0) return l;
+            return { ...l, ...scoringUpdates };
+          }));
         }
       )
       .subscribe();
@@ -207,8 +242,12 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         stageEnteredDate: today,
         hoursToMeetingSet: null,
       };
-      // Persist to DB
-      upsertLeadToDb(newLead);
+      // Persist to DB then auto-score
+      upsertLeadToDb(newLead).then(() => {
+        supabase.functions.invoke("score-lead", {
+          body: { record: { id: newLead.id, email: newLead.email, name: newLead.name, company: newLead.company, company_url: newLead.companyUrl, buyer_type: newLead.buyerType, source: newLead.source, message: newLead.message } },
+        }).catch(err => console.error("Auto-score failed:", err));
+      });
       return [newLead, ...prev];
     });
   }, []);
