@@ -13,20 +13,20 @@ const LEGITIMATE_BUYER_TYPES = new Set([
 
 // ─── Website Fetching Helpers ───
 
-async function tryFetchUrl(url: string): Promise<Response | null> {
+async function tryFetchUrl(url: string): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(url, {
+      method: "HEAD",
       signal: controller.signal,
       headers: { "User-Agent": "SourceCo Lead Enrichment Bot/1.0" },
       redirect: "follow",
     });
     clearTimeout(timeout);
-    if (res.ok) return res;
-    return null;
+    return res.ok;
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -34,24 +34,27 @@ async function resolveWebsiteUrl(
   websiteField: string | null,
   emailDomain: string,
 ): Promise<string | null> {
-  // 1. Use website field if populated
+  // Build candidate URLs in priority order
+  const candidates: string[] = [];
   if (websiteField && websiteField.trim()) {
     let url = websiteField.trim();
     if (!url.startsWith("http")) url = `https://${url}`;
-    const res = await tryFetchUrl(url);
-    if (res) return url;
+    candidates.push(url);
   }
+  candidates.push(`https://${emailDomain}`);
+  candidates.push(`https://www.${emailDomain}`);
 
-  // 2. Try constructing from email domain
-  const domainUrl = `https://${emailDomain}`;
-  let res = await tryFetchUrl(domainUrl);
-  if (res) return domainUrl;
+  // Try all candidates concurrently, return the first that works
+  const results = await Promise.allSettled(
+    candidates.map(async (url) => {
+      const ok = await tryFetchUrl(url);
+      return ok ? url : null;
+    }),
+  );
 
-  // 3. Try with www prefix
-  const wwwUrl = `https://www.${emailDomain}`;
-  res = await tryFetchUrl(wwwUrl);
-  if (res) return wwwUrl;
-
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value) return result.value;
+  }
   return null;
 }
 
@@ -98,8 +101,9 @@ async function fetchPage(baseUrl: string, path: string): Promise<string> {
 
 const PE_PHRASES = [
   "portfolio company of", "backed by", "owned by",
-  "a ", " company", "an investment of", "acquired by",
+  "an investment of", "acquired by",
   "private equity", "pe-backed", "pe backed",
+  "growth equity", "majority investment",
 ];
 
 const MA_KEYWORDS = [
@@ -142,9 +146,10 @@ function countPortfolioCompanies(text: string): number {
   // Check for portfolio-related page headings
   const hasPortfolioPage = /portfolio|our companies|investments|companies/i.test(lower);
   if (!hasPortfolioPage) return 0;
-  // Count list items or heading-like patterns (rough estimate)
-  const listItems = text.match(/<li[^>]*>|•|\n-\s|\d+\.\s/g);
-  return listItems ? Math.min(listItems.length, 100) : 0;
+  // Count sentence-separated items or bullet chars in stripped text
+  // (HTML tags are already stripped, so match plain-text patterns)
+  const items = text.match(/•|–|—|\d+\.\s+[A-Z]|\|\s+[A-Z]/g);
+  return items ? Math.min(items.length, 100) : 0;
 }
 
 function extractAcquisitionYear(text: string): number | null {
@@ -309,10 +314,10 @@ Deno.serve(async (req) => {
     const websiteField: string | null = body.website || null;
     const buyerType: string | null = body.buyerType || null;
     const emailDomain: string = body.emailDomain || email.toLowerCase().split("@")[1] || "";
-    const stage1Score: number = body.stage1Score || 0;
-    const currentTier: number = body.currentTier || 4;
-    let tierOverride: boolean = body.tierOverride || false;
-    let peBacked: boolean = body.peBacked || false;
+    const stage1Score: number = body.stage1Score ?? 0;
+    const currentTier: number = body.currentTier ?? 4;
+    let tierOverride: boolean = body.tierOverride ?? false;
+    let peBacked: boolean = body.peBacked ?? false;
     let peSponsorName: string | null = body.peSponsorName || null;
 
     if (!leadId) {
@@ -336,76 +341,89 @@ Deno.serve(async (req) => {
       .update({ enrichment_status: "running" })
       .eq("id", leadId);
 
-    // ─── Step 2: Resolve Website URL ───
-    const websiteUrl = await resolveWebsiteUrl(websiteField, emailDomain);
-    let enrichmentWebsiteFailed = false;
+    // ─── Steps 2-6: Run website scraping, PE search, and LinkedIn in parallel ───
+    const SERPER_API_KEY = Deno.env.get("SERPER_API_KEY");
+    const companyName = company || "";
+    const PORTFOLIO_PATHS = new Set(["/portfolio", "/companies", "/our-companies", "/investments"]);
 
-    if (!websiteUrl) {
-      enrichmentWebsiteFailed = true;
-      console.log(`Website resolution failed for lead ${leadId}, domain ${emailDomain}`);
-    }
+    // Task A: Resolve website URL and scrape pages
+    const websiteTask = (async () => {
+      const websiteUrl = await resolveWebsiteUrl(websiteField, emailDomain);
+      if (!websiteUrl) {
+        console.log(`Website resolution failed for lead ${leadId}, domain ${emailDomain}`);
+        return { websiteUrl: null as string | null, allWebsiteText: "", portfolioPageText: "" };
+      }
 
-    // ─── Step 3: Scrape Website Pages ───
-    let allWebsiteText = "";
-    let portfolioPageText = "";
-
-    if (websiteUrl && !enrichmentWebsiteFailed) {
       const paths = [
         "/", "/about", "/about-us", "/portfolio", "/companies",
         "/our-companies", "/investments", "/news", "/press",
         "/team", "/leadership",
       ];
-
       const pageResults = await Promise.allSettled(
         paths.map((path) => fetchPage(websiteUrl, path)),
       );
 
+      let allWebsiteText = "";
+      let portfolioPageText = "";
       for (let i = 0; i < pageResults.length; i++) {
         const result = pageResults[i];
         if (result.status === "fulfilled" && result.value) {
           allWebsiteText += `\n--- ${paths[i]} ---\n${result.value}\n`;
-          if (["/portfolio", "/companies", "/our-companies", "/investments"].includes(paths[i])) {
+          if (PORTFOLIO_PATHS.has(paths[i])) {
             portfolioPageText += result.value;
           }
         }
       }
-    }
+      return { websiteUrl, allWebsiteText, portfolioPageText };
+    })();
 
-    // ─── Step 4: PE Sponsor Detection ───
-    // First pass: website text
-    let websitePeResult = { sponsor: null as string | null, confirmed: false };
-    if (allWebsiteText) {
-      websitePeResult = detectPeSponsor(allWebsiteText);
-    }
+    // Task B: Serper PE web search (does not depend on website scraping)
+    const peSearchTask = (async () => {
+      if (!SERPER_API_KEY || !companyName) return { searchPeResult: { sponsor: null as string | null, confirmed: false }, webSearchText: "" };
 
-    // Second pass: web search via Serper (CRITICAL — do not skip)
-    const SERPER_API_KEY = Deno.env.get("SERPER_API_KEY");
-    let searchPeResult = { sponsor: null as string | null, confirmed: false };
-    let webSearchText = "";
-
-    const companyName = company || "";
-
-    if (SERPER_API_KEY && companyName) {
       const currentYear = new Date().getFullYear();
       const searches = [
         `"${companyName}" "private equity"`,
         `"${companyName}" "portfolio company"`,
         `"${companyName}" acquired ${currentYear - 1} OR ${currentYear - 2}`,
       ];
-
       const searchResults = await Promise.allSettled(
         searches.map((q) => searchWeb(q, SERPER_API_KEY)),
       );
 
+      let webSearchText = "";
       for (const result of searchResults) {
         if (result.status === "fulfilled" && result.value) {
           webSearchText += result.value + "\n";
         }
       }
+      const searchPeResult = webSearchText
+        ? detectPeSponsor(webSearchText)
+        : { sponsor: null as string | null, confirmed: false };
+      return { searchPeResult, webSearchText };
+    })();
 
-      if (webSearchText) {
-        searchPeResult = detectPeSponsor(webSearchText);
-      }
+    // Task C: LinkedIn lookup (does not depend on website or PE search)
+    const linkedinTask = (async () => {
+      if (!SERPER_API_KEY || !name) return { title: null, linkedinUrl: null, hasMaExperience: false } as LinkedInResult;
+      return serperLinkedInLookup(name, company, SERPER_API_KEY);
+    })();
+
+    // Await all three concurrently
+    const [websiteResult, peSearchResult, linkedinResult] = await Promise.all([
+      websiteTask, peSearchTask, linkedinTask,
+    ]);
+
+    const { websiteUrl, allWebsiteText, portfolioPageText } = websiteResult;
+    const { searchPeResult, webSearchText } = peSearchResult;
+    let linkedinUrl = linkedinResult.linkedinUrl;
+    let linkedinTitle = linkedinResult.title;
+    let linkedinMaExperience = linkedinResult.hasMaExperience;
+
+    // PE detection first pass: website text
+    let websitePeResult = { sponsor: null as string | null, confirmed: false };
+    if (allWebsiteText) {
+      websitePeResult = detectPeSponsor(allWebsiteText);
     }
 
     // Combine PE detection results
@@ -420,23 +438,8 @@ Deno.serve(async (req) => {
     const lastAcquisitionYear = extractAcquisitionYear(combinedText);
     const hasMaActivity = detectMaActivity(combinedText);
 
-    // ─── Step 6: LinkedIn Lookup via Serper ───
-    let linkedinUrl: string | null = null;
-    let linkedinTitle: string | null = null;
-    let linkedinMaExperience = false;
     let linkedinScore = 0;
     let seniorityScoreValue = 0;
-
-    if (SERPER_API_KEY && name) {
-      const linkedinResult = await serperLinkedInLookup(
-        name,
-        company,
-        SERPER_API_KEY,
-      );
-      linkedinUrl = linkedinResult.linkedinUrl;
-      linkedinTitle = linkedinResult.title;
-      linkedinMaExperience = linkedinResult.hasMaExperience;
-    }
 
     // ─── Step 7: Calculate Stage 2 Scores ───
 
@@ -447,8 +450,7 @@ Deno.serve(async (req) => {
     websiteIdentityAddon = Math.min(20, websiteIdentityAddon);
 
     // LinkedIn/seniority score (max 20)
-    const titleForScoring = linkedinTitle;
-    seniorityScoreValue = getSeniorityScore(titleForScoring);
+    seniorityScoreValue = getSeniorityScore(linkedinTitle);
     if (linkedinMaExperience) seniorityScoreValue += 2;
     seniorityScoreValue = Math.max(-2, Math.min(20, seniorityScoreValue));
     linkedinScore = seniorityScoreValue;
@@ -486,8 +488,7 @@ Deno.serve(async (req) => {
     } else if (stage2Score >= 30) {
       newTier = 3;
     } else {
-      const bt = (buyerType || "").toLowerCase().trim();
-      newTier = LEGITIMATE_BUYER_TYPES.has(bt) ? 4 : 4;
+      newTier = 4;
     }
 
     // Update pe fields

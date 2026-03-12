@@ -20,12 +20,15 @@ Deno.serve(async (req) => {
   const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
   try {
-    // Fetch all leads that have not been scored yet (no stage1_score)
+    // Fetch unscored leads in batches to avoid edge function timeout
+    // Re-invoke this function if more remain after this batch
+    const BATCH_SIZE = 100;
     const { data: leads, error } = await supabase
       .from("leads")
       .select("id, email, name, company, company_url, buyer_type, source, message")
       .is("stage1_score", null)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .limit(BATCH_SIZE);
 
     if (error) throw error;
 
@@ -68,13 +71,15 @@ Deno.serve(async (req) => {
       }
     }
 
+    const hasMore = leads.length === BATCH_SIZE;
     return new Response(
       JSON.stringify({
         success: true,
         total: leads.length,
         scored,
         failed,
-        message: `Backfill complete: ${scored} scored, ${failed} failed out of ${leads.length} leads`,
+        hasMore,
+        message: `Backfill batch: ${scored} scored, ${failed} failed out of ${leads.length} leads${hasMore ? " — invoke again for next batch" : " — all done"}`,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

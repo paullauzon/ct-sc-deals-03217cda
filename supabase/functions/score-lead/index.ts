@@ -99,15 +99,12 @@ const LEGITIMATE_BUYER_TYPES = new Set([
 function assignTier(
   score: number,
   tierOverride: boolean,
-  buyerType: string | null,
 ): number {
   if (tierOverride) return 1;
   if (score >= 70) return 1;
   if (score >= 50) return 2;
   if (score >= 30) return 3;
-  const bt = (buyerType || "").toLowerCase().trim();
-  if (LEGITIMATE_BUYER_TYPES.has(bt)) return 4;
-  return 4; // Default to 4 for non-Tier-5 leads
+  return 4;
 }
 
 Deno.serve(async (req) => {
@@ -256,7 +253,7 @@ Deno.serve(async (req) => {
     let totalScore = buyerTypeScore + identityScore + engagementScore + redFlagScore;
     totalScore = Math.max(0, Math.min(100, totalScore));
 
-    const tier = assignTier(totalScore, tierOverride, buyerType);
+    const tier = assignTier(totalScore, tierOverride);
 
     // ─── Step 5: Write Results ───
     await supabase
