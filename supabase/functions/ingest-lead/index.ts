@@ -34,7 +34,7 @@ function getIdPrefix(brand: string, source: string): string {
 }
 
 async function generateLeadId(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   brand: string,
   source: string
 ): Promise<string> {
