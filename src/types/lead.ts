@@ -402,6 +402,7 @@ export interface Lead {
   meetingOutcome: MeetingOutcome;
   forecastCategory: ForecastCategory;
   icpFit: IcpFit;
+  preScreenCompleted: boolean;
   wonReason: string;
   lostReason: string;
   // Revenue & Contract fields

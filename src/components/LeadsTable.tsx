@@ -1114,7 +1114,7 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
       stage: "New Lead" as LeadStage, serviceInterest: "TBD" as const, dealValue: 0, assignedTo: "",
       meetingDate: "", meetingSetDate: "", closeReason: "" as const, closedDate: "", notes: "",
       lastContactDate: "", nextFollowUp: "", priority: "Medium" as const,
-      meetingOutcome: "" as const, forecastCategory: "" as const, icpFit: "" as const,
+      meetingOutcome: "" as const, forecastCategory: "" as const, icpFit: "" as const, preScreenCompleted: false,
       wonReason: "", lostReason: "", targetCriteria: "", targetRevenue: "", geography: "", currentSourcing: "",
       isDuplicate: false, duplicateOf: "", hearAboutUs: "", acquisitionStrategy: "", buyerType: "",
       meetings: [],
