@@ -173,6 +173,11 @@ function parseTargetLeads(): Lead[] {
     firefliesTranscript: "",
     firefliesSummary: "",
     firefliesNextSteps: "",
+    stage1Score: null,
+    stage2Score: null,
+    tier: null,
+    tierOverride: false,
+    enrichmentStatus: "",
   }));
 }
 
@@ -251,6 +256,11 @@ function createLead(r: { date: string; name: string; phone: string; email: strin
     firefliesTranscript: "",
     firefliesSummary: "",
     firefliesNextSteps: "",
+    stage1Score: null,
+    stage2Score: null,
+    tier: null,
+    tierOverride: false,
+    enrichmentStatus: "",
   };
 }
 

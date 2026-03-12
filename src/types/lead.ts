@@ -428,6 +428,12 @@ export interface Lead {
   enrichment?: LeadEnrichment;
   // Accumulated Deal Intelligence
   dealIntelligence?: DealIntelligence;
+  // Lead Scoring
+  stage1Score: number | null;
+  stage2Score: number | null;
+  tier: number | null;
+  tierOverride: boolean;
+  enrichmentStatus: string;
   // Legacy fields (kept for migration)
   firefliesUrl: string;
   firefliesTranscript: string;

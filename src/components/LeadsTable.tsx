@@ -42,7 +42,7 @@ const SOURCE_LABELS: Record<LeadSource, string> = {
   "SC Free Targets Form": "SC Targets",
 };
 
-type SortKey = "name" | "company" | "stage" | "dealValue" | "days" | "priority" | "dateSubmitted" | "source" | "serviceInterest" | "role";
+type SortKey = "name" | "company" | "stage" | "dealValue" | "days" | "priority" | "dateSubmitted" | "source" | "serviceInterest" | "role" | "score" | "tier";
 type SortDir = "asc" | "desc";
 
 const PRIORITY_ORDER: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
@@ -948,18 +948,21 @@ export function LeadsTable() {
         case "dateSubmitted": return dir * a.dateSubmitted.localeCompare(b.dateSubmitted);
         case "source": return dir * a.source.localeCompare(b.source);
         case "serviceInterest": return dir * a.serviceInterest.localeCompare(b.serviceInterest);
+        case "score": return dir * ((a.stage2Score ?? a.stage1Score ?? -1) - (b.stage2Score ?? b.stage1Score ?? -1));
+        case "tier": return dir * ((a.tier ?? 99) - (b.tier ?? 99));
         default: return 0;
       }
     });
   }, [leads, search, stageFilter, brandFilter, sortKey, sortDir]);
 
   const exportCSV = () => {
-    const headers = ["Brand","Name","Email","Phone","Company","Role","Source","Date Submitted","Stage","Service Interest","Deal Value","Subscription Value","Billing Frequency","Contract Start","Contract End","Priority","Assigned To","Meeting Date","Meeting Outcome","Forecast Category","ICP Fit","Days In Stage","Hours To Meeting Set","Close Reason","Won Reason","Lost Reason","Closed Date","Last Contact","Next Follow-up","Duplicate","Meetings","Enriched","Momentum","Notes"];
+    const headers = ["Brand","Name","Email","Phone","Company","Role","Source","Date Submitted","Stage","Service Interest","Deal Value","Subscription Value","Billing Frequency","Contract Start","Contract End","Lead Score","Tier","Priority","Assigned To","Meeting Date","Meeting Outcome","Forecast Category","ICP Fit","Days In Stage","Hours To Meeting Set","Close Reason","Won Reason","Lost Reason","Closed Date","Last Contact","Next Follow-up","Duplicate","Meetings","Enriched","Momentum","Notes"];
     const rows = leads.map((l) => {
       const avgTalk = l.meetings?.length ? Math.round(l.meetings.filter(m => m.intelligence?.talkRatio).reduce((s, m) => s + (m.intelligence?.talkRatio || 0), 0) / l.meetings.filter(m => m.intelligence?.talkRatio).length) || "" : "";
       return [
         l.brand, l.name, l.email, l.phone, l.company, l.role, l.source, l.dateSubmitted, l.stage, l.serviceInterest,
         l.dealValue || "", l.subscriptionValue || "", l.billingFrequency || "", l.contractStart || "", l.contractEnd || "",
+        l.stage2Score ?? l.stage1Score ?? "", l.tier ?? "",
         l.priority, l.assignedTo, l.meetingDate, l.meetingOutcome, l.forecastCategory,
         l.icpFit, computeDaysInStage(l.stageEnteredDate), l.hoursToMeetingSet ?? "", l.closeReason, l.wonReason, l.lostReason,
         l.closedDate, l.lastContactDate, l.nextFollowUp, l.isDuplicate ? "Yes" : "",
@@ -984,6 +987,8 @@ export function LeadsTable() {
     { key: "serviceInterest", label: "Service" },
     { key: "dealValue", label: "Value" },
     { key: "days", label: "Days" },
+    { key: "score", label: "Score" },
+    { key: "tier", label: "Tier" },
     { key: "priority", label: "Priority" },
     { key: "dateSubmitted", label: "Date" },
     { key: "source", label: "Source" },
@@ -1067,6 +1072,19 @@ export function LeadsTable() {
                 <td className="px-4 py-3 text-xs text-muted-foreground">{lead.serviceInterest !== "TBD" ? lead.serviceInterest : "—"}</td>
                 <td className="px-4 py-3 tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</td>
                 <td className="px-4 py-3 tabular-nums text-muted-foreground">{computeDaysInStage(lead.stageEnteredDate)}d</td>
+                <td className="px-4 py-3 tabular-nums text-muted-foreground">{lead.stage2Score ?? lead.stage1Score ?? "—"}</td>
+                <td className="px-4 py-3">
+                  {lead.tier != null ? (
+                    <span className={cn(
+                      "text-xs font-medium px-1.5 py-0.5 rounded",
+                      lead.tier === 1 && "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+                      lead.tier === 2 && "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+                      lead.tier === 3 && "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+                      lead.tier === 4 && "bg-orange-500/15 text-orange-700 dark:text-orange-400",
+                      lead.tier === 5 && "bg-red-500/15 text-red-700 dark:text-red-400",
+                    )}>T{lead.tier}</span>
+                  ) : "—"}
+                </td>
                 <td className="px-4 py-3 text-xs">{lead.priority}</td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{lead.dateSubmitted}</td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{SOURCE_LABELS[lead.source] || lead.source}</td>
@@ -1105,6 +1123,7 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
       meetings: [],
       subscriptionValue: 0, billingFrequency: "" as const, contractStart: "", contractEnd: "",
       firefliesUrl: "", firefliesTranscript: "", firefliesSummary: "", firefliesNextSteps: "",
+      stage1Score: null, stage2Score: null, tier: null, tierOverride: false, enrichmentStatus: "",
     });
     setForm({ name: "", email: "", phone: "", company: "", companyUrl: "", role: "", message: "", dealsPlanned: "0-2" });
     onClose();

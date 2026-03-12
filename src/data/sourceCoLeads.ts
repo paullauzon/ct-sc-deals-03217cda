@@ -80,6 +80,11 @@ function makeSCLead(
     firefliesTranscript: "",
     firefliesSummary: "",
     firefliesNextSteps: "",
+    stage1Score: null,
+    stage2Score: null,
+    tier: null,
+    tierOverride: false,
+    enrichmentStatus: "",
   };
 }
 
