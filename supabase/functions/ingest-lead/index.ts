@@ -244,6 +244,7 @@ Deno.serve(async (req) => {
       target_revenue: body.targetRevenue || "",
       geography: body.geography || "",
       current_sourcing: body.currentSourcing || "",
+      pre_screen_completed: false,
       is_duplicate: false,
       duplicate_of: "",
       hear_about_us: body.hearAboutUs || "",
