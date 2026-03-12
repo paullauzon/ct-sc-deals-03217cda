@@ -351,6 +351,21 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
               <SelectField label="Priority" value={lead.priority} options={[...PRIORITIES]} onChange={(v) => save({ priority: v as "High" | "Medium" | "Low" })} />
               <ClearableSelectField label="Forecast" value={lead.forecastCategory} options={FORECAST_CATEGORIES} onChange={(v) => save({ forecastCategory: v as ForecastCategory })} />
               <ClearableSelectField label="ICP Fit" value={lead.icpFit} options={ICP_FITS} onChange={(v) => save({ icpFit: v as IcpFit })} />
+              <div className="flex flex-col justify-end">
+                <label className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Pre-Screen</label>
+                <button
+                  onClick={() => save({ preScreenCompleted: !lead.preScreenCompleted })}
+                  className={cn(
+                    "h-9 px-3 rounded border text-xs font-medium flex items-center gap-1.5 transition-colors",
+                    lead.preScreenCompleted
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background text-muted-foreground border-border hover:border-foreground/30"
+                  )}
+                >
+                  {lead.preScreenCompleted ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                  {lead.preScreenCompleted ? "Completed" : "Not Done"}
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-4 gap-3 mt-3">
               <SelectField label="Service" value={lead.serviceInterest} options={SERVICES} onChange={(v) => save({ serviceInterest: v as ServiceInterest })} />
