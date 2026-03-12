@@ -118,6 +118,7 @@ export type Database = {
           duplicate_of: string
           email: string
           enrichment: Json | null
+          enrichment_status: string | null
           fireflies_next_steps: string
           fireflies_summary: string
           fireflies_transcript: string
@@ -129,7 +130,14 @@ export type Database = {
           icp_fit: string
           id: string
           is_duplicate: boolean
+          known_firm_domain_type: string | null
+          known_firm_match: string | null
+          last_acquisition_year: number | null
           last_contact_date: string
+          linkedin_ma_experience: boolean | null
+          linkedin_score: number | null
+          linkedin_title: string | null
+          linkedin_url: string | null
           lost_reason: string
           meeting_date: string
           meeting_outcome: string
@@ -139,19 +147,30 @@ export type Database = {
           name: string
           next_follow_up: string
           notes: string
+          pe_backed: boolean | null
+          pe_backed_stage2: boolean | null
+          pe_sponsor_name: string | null
           phone: string
+          portfolio_count: number | null
           pre_screen_completed: boolean
           priority: string
           role: string
+          seniority_score: number | null
           service_interest: string
           source: string
           stage: string
           stage_entered_date: string
+          stage1_score: number | null
+          stage2_score: number | null
           submissions: Json
           subscription_value: number
           target_criteria: string
           target_revenue: string
+          tier: number | null
+          tier_override: boolean | null
           updated_at: string
+          website_score: number | null
+          website_url: string | null
           won_reason: string
         }
         Insert: {
@@ -176,6 +195,7 @@ export type Database = {
           duplicate_of?: string
           email?: string
           enrichment?: Json | null
+          enrichment_status?: string | null
           fireflies_next_steps?: string
           fireflies_summary?: string
           fireflies_transcript?: string
@@ -187,7 +207,14 @@ export type Database = {
           icp_fit?: string
           id: string
           is_duplicate?: boolean
+          known_firm_domain_type?: string | null
+          known_firm_match?: string | null
+          last_acquisition_year?: number | null
           last_contact_date?: string
+          linkedin_ma_experience?: boolean | null
+          linkedin_score?: number | null
+          linkedin_title?: string | null
+          linkedin_url?: string | null
           lost_reason?: string
           meeting_date?: string
           meeting_outcome?: string
@@ -197,19 +224,30 @@ export type Database = {
           name?: string
           next_follow_up?: string
           notes?: string
+          pe_backed?: boolean | null
+          pe_backed_stage2?: boolean | null
+          pe_sponsor_name?: string | null
           phone?: string
+          portfolio_count?: number | null
           pre_screen_completed?: boolean
           priority?: string
           role?: string
+          seniority_score?: number | null
           service_interest?: string
           source?: string
           stage?: string
           stage_entered_date?: string
+          stage1_score?: number | null
+          stage2_score?: number | null
           submissions?: Json
           subscription_value?: number
           target_criteria?: string
           target_revenue?: string
+          tier?: number | null
+          tier_override?: boolean | null
           updated_at?: string
+          website_score?: number | null
+          website_url?: string | null
           won_reason?: string
         }
         Update: {
@@ -234,6 +272,7 @@ export type Database = {
           duplicate_of?: string
           email?: string
           enrichment?: Json | null
+          enrichment_status?: string | null
           fireflies_next_steps?: string
           fireflies_summary?: string
           fireflies_transcript?: string
@@ -245,7 +284,14 @@ export type Database = {
           icp_fit?: string
           id?: string
           is_duplicate?: boolean
+          known_firm_domain_type?: string | null
+          known_firm_match?: string | null
+          last_acquisition_year?: number | null
           last_contact_date?: string
+          linkedin_ma_experience?: boolean | null
+          linkedin_score?: number | null
+          linkedin_title?: string | null
+          linkedin_url?: string | null
           lost_reason?: string
           meeting_date?: string
           meeting_outcome?: string
@@ -255,19 +301,30 @@ export type Database = {
           name?: string
           next_follow_up?: string
           notes?: string
+          pe_backed?: boolean | null
+          pe_backed_stage2?: boolean | null
+          pe_sponsor_name?: string | null
           phone?: string
+          portfolio_count?: number | null
           pre_screen_completed?: boolean
           priority?: string
           role?: string
+          seniority_score?: number | null
           service_interest?: string
           source?: string
           stage?: string
           stage_entered_date?: string
+          stage1_score?: number | null
+          stage2_score?: number | null
           submissions?: Json
           subscription_value?: number
           target_criteria?: string
           target_revenue?: string
+          tier?: number | null
+          tier_override?: boolean | null
           updated_at?: string
+          website_score?: number | null
+          website_url?: string | null
           won_reason?: string
         }
         Relationships: []
