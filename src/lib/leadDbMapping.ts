@@ -57,6 +57,11 @@ export function leadToRow(lead: Lead): Record<string, any> {
     submissions: lead.submissions || [],
     enrichment: lead.enrichment || null,
     deal_intelligence: lead.dealIntelligence || null,
+    stage1_score: lead.stage1Score,
+    stage2_score: lead.stage2Score,
+    tier: lead.tier,
+    tier_override: lead.tierOverride,
+    enrichment_status: lead.enrichmentStatus,
   };
 }
 
@@ -117,6 +122,11 @@ export function rowToLead(row: Record<string, any>): Lead {
     submissions: Array.isArray(row.submissions) ? row.submissions : [],
     enrichment: row.enrichment || undefined,
     dealIntelligence: row.deal_intelligence || undefined,
+    stage1Score: row.stage1_score != null ? Number(row.stage1_score) : null,
+    stage2Score: row.stage2_score != null ? Number(row.stage2_score) : null,
+    tier: row.tier != null ? Number(row.tier) : null,
+    tierOverride: row.tier_override || false,
+    enrichmentStatus: row.enrichment_status || "",
   };
 }
 
@@ -147,6 +157,8 @@ export function leadUpdatesToRow(updates: Partial<Lead>): Record<string, any> {
     firefliesNextSteps: "fireflies_next_steps",
     meetings: "meetings", submissions: "submissions",
     enrichment: "enrichment", dealIntelligence: "deal_intelligence",
+    stage1Score: "stage1_score", stage2Score: "stage2_score",
+    tier: "tier", tierOverride: "tier_override", enrichmentStatus: "enrichment_status",
   };
 
   const row: Record<string, any> = {};
