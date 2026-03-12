@@ -140,6 +140,7 @@ export type Database = {
           next_follow_up: string
           notes: string
           phone: string
+          pre_screen_completed: boolean
           priority: string
           role: string
           service_interest: string
@@ -197,6 +198,7 @@ export type Database = {
           next_follow_up?: string
           notes?: string
           phone?: string
+          pre_screen_completed?: boolean
           priority?: string
           role?: string
           service_interest?: string
@@ -254,6 +256,7 @@ export type Database = {
           next_follow_up?: string
           notes?: string
           phone?: string
+          pre_screen_completed?: boolean
           priority?: string
           role?: string
           service_interest?: string

@@ -1,0 +1,1 @@
+ALTER TABLE public.leads ADD COLUMN pre_screen_completed boolean NOT NULL DEFAULT false;
