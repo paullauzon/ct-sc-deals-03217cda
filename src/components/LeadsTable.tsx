@@ -711,6 +711,12 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
             {enriching ? "Researching..." : "Re-research"}
           </Button>
         </div>
+        {enriching && (
+          <div className="space-y-1 mt-1">
+            <Progress value={undefined} className="h-1.5 [&>div]:animate-pulse" />
+            <p className="text-[10px] text-muted-foreground">Re-researching prospect...</p>
+          </div>
+        )}
 
         <CollapsibleContent>
           <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-1 text-sm mt-2">
