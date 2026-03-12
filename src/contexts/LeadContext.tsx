@@ -1,3 +1,4 @@
+// Lead context provider - manages all lead data and operations
 import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo, ReactNode } from "react";
 import { Lead, Meeting, LeadStage, PipelineMetrics } from "@/types/lead";
 import { getInitialLeads } from "@/data/leadData";
