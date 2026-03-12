@@ -33,6 +33,7 @@ export function leadToRow(lead: Lead): Record<string, any> {
     meeting_outcome: lead.meetingOutcome,
     forecast_category: lead.forecastCategory,
     icp_fit: lead.icpFit,
+    pre_screen_completed: lead.preScreenCompleted ?? false,
     won_reason: lead.wonReason,
     lost_reason: lead.lostReason,
     subscription_value: lead.subscriptionValue,
