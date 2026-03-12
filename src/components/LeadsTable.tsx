@@ -930,6 +930,7 @@ export function LeadsTable() {
   const [showNewLead, setShowNewLead] = useState(false);
   const [showFireflies, setShowFireflies] = useState(false);
   const [showBulkProcess, setShowBulkProcess] = useState(false);
+  const [scoringAll, setScoringAll] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("dateSubmitted");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -994,6 +995,29 @@ export function LeadsTable() {
     URL.revokeObjectURL(url);
   };
 
+  const unscoredCount = useMemo(() => leads.filter(l => l.stage1Score == null).length, [leads]);
+
+  const handleScoreAll = async () => {
+    setScoringAll(true);
+    try {
+      let totalScored = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const { data, error } = await supabase.functions.invoke("backfill-lead-scores");
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+        totalScored += data?.scored || 0;
+        hasMore = data?.hasMore || false;
+      }
+      toast.success(`Scored ${totalScored} lead${totalScored !== 1 ? "s" : ""}`);
+    } catch (e: any) {
+      console.error("Score all failed:", e);
+      toast.error(e.message || "Failed to score leads");
+    } finally {
+      setScoringAll(false);
+    }
+  };
+
   const columns: { key: SortKey; label: string }[] = [
     { key: "name", label: "Name" },
     { key: "company", label: "Company" },
@@ -1018,6 +1042,12 @@ export function LeadsTable() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setShowBulkProcess(true)}><Zap className="w-4 h-4" /> Process All Leads</Button>
+          {unscoredCount > 0 && (
+            <Button variant="outline" size="sm" onClick={handleScoreAll} disabled={scoringAll}>
+              <Target className="w-4 h-4" />
+              {scoringAll ? "Scoring..." : `Score ${unscoredCount} Leads`}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => setShowFireflies(true)}><img src="/fireflies-icon.svg" alt="" className="w-4 h-4" /> Import Fireflies</Button>
           <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
           <Button size="sm" onClick={() => setShowNewLead(true)}>New Lead</Button>
