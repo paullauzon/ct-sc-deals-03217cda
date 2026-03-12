@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 
-import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3 } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3, Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -349,7 +349,14 @@ export function Pipeline() {
                       {/* Row 3: Value + Priority + Closing insight */}
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className="tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.priority === "High" ? "bg-foreground/10 font-medium" : ""}`}>{lead.priority}</span>
+                        <div className="flex items-center gap-1">
+                          {lead.preScreenCompleted && (
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-primary/10 text-primary flex items-center gap-0.5" title="Pre-screen completed">
+                              <Check className="h-2.5 w-2.5" /> PS
+                            </span>
+                          )}
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.priority === "High" ? "bg-foreground/10 font-medium" : ""}`}>{lead.priority}</span>
+                        </div>
                       </div>
                       {/* Row 4: Days in stage + meetings + insight inline */}
                       <div className="flex items-center justify-between text-xs text-muted-foreground">

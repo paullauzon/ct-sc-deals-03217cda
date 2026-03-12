@@ -244,6 +244,7 @@ Deno.serve(async (req) => {
       target_revenue: body.targetRevenue || "",
       geography: body.geography || "",
       current_sourcing: body.currentSourcing || "",
+      pre_screen_completed: false,
       is_duplicate: false,
       duplicate_of: "",
       hear_about_us: body.hearAboutUs || "",
@@ -291,7 +292,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("Ingest error:", err);
     return new Response(
-      JSON.stringify({ error: err.message || "Internal server error" }),
+      JSON.stringify({ error: (err as Error).message || "Internal server error" }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
