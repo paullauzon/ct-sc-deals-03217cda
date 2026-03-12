@@ -670,7 +670,13 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
           <Sparkles className="h-4 w-4" />
           {enriching ? "Researching..." : "Research & Recommend"}
         </Button>
-        <p className="text-xs text-muted-foreground">Scrapes company website, searches the web for prospect intelligence, and recommends CRM field updates.</p>
+        {enriching && (
+          <div className="space-y-1">
+            <Progress value={undefined} className="h-1.5 [&>div]:animate-pulse" />
+            <p className="text-[10px] text-muted-foreground">Scraping website, researching prospect, generating recommendations...</p>
+          </div>
+        )}
+        {!enriching && <p className="text-xs text-muted-foreground">Scrapes company website, searches the web for prospect intelligence, and recommends CRM field updates.</p>}
       </div>
     );
   }
