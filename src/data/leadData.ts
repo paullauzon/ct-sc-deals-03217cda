@@ -174,6 +174,11 @@ function parseTargetLeads(): Lead[] {
     firefliesSummary: "",
     firefliesNextSteps: "",
     preScreenCompleted: false,
+    stage1Score: null,
+    stage2Score: null,
+    tier: null,
+    tierOverride: false,
+    enrichmentStatus: "",
   }));
 }
 
