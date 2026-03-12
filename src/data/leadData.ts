@@ -173,6 +173,7 @@ function parseTargetLeads(): Lead[] {
     firefliesTranscript: "",
     firefliesSummary: "",
     firefliesNextSteps: "",
+    preScreenCompleted: false,
   }));
 }
 
