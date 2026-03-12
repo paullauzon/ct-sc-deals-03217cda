@@ -23,3 +23,12 @@ verify_jwt = false
 
 [functions.ingest-lead]
 verify_jwt = false
+
+[functions.score-lead]
+verify_jwt = false
+
+[functions.enrich-lead-scoring]
+verify_jwt = false
+
+[functions.backfill-lead-scores]
+verify_jwt = false

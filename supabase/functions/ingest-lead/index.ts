@@ -263,6 +263,20 @@ Deno.serve(async (req) => {
 
     if (insertError) throw insertError;
 
+    // Trigger lead scoring asynchronously (fire and forget)
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+    fetch(`${SUPABASE_URL}/functions/v1/score-lead`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ record: newLead }),
+    }).catch((err) => {
+      console.error("Failed to trigger score-lead:", err);
+    });
+
     return new Response(
       JSON.stringify({
         status: "created",
