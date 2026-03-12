@@ -6,17 +6,26 @@ function daysSince(dateStr: string): number {
   return Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+function titleCaseDomain(name: string): string {
+  return name
+    .replace(/[-_]/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(" ")
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 function extractCompany(urlOrEmail: string): string {
   if (!urlOrEmail) return "";
   try {
     if (urlOrEmail.includes("@")) {
       const domain = urlOrEmail.split("@")[1];
       if (["gmail.com", "hotmail.com", "icloud.com", "outlook.com", "yahoo.com", "proton.me", "mozmail.com", "cornell.edu", "umd.edu", "wharton.upenn.edu", "duke.edu"].includes(domain)) return "";
-      return domain.split(".")[0].charAt(0).toUpperCase() + domain.split(".")[0].slice(1);
+      return titleCaseDomain(domain.split(".")[0]);
     }
     const url = new URL(urlOrEmail.startsWith("http") ? urlOrEmail : `https://${urlOrEmail}`);
     const parts = url.hostname.replace("www.", "").split(".");
-    return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+    return titleCaseDomain(parts[0]);
   } catch {
     return "";
   }
