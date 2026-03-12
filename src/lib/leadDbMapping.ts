@@ -93,6 +93,7 @@ export function rowToLead(row: Record<string, any>): Lead {
     meetingOutcome: row.meeting_outcome || "",
     forecastCategory: row.forecast_category || "",
     icpFit: row.icp_fit || "",
+    preScreenCompleted: row.pre_screen_completed ?? false,
     wonReason: row.won_reason || "",
     lostReason: row.lost_reason || "",
     subscriptionValue: Number(row.subscription_value) || 0,
