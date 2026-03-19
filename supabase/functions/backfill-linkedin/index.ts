@@ -362,12 +362,10 @@ function getSeniorityScore(title: string | null): number {
 async function processLead(
   lead: any,
   firecrawlKey: string,
-  lovableKey: string,
+  openaiKey: string,
   supabase: any,
   model: string,
   maxTurns: number,
-  provider: ApiProvider = "lovable",
-  openaiKey: string | null = null,
 ): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
   const leadContext: LeadContext = {
     name: lead.name,
