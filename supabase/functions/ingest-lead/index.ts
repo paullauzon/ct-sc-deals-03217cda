@@ -6,6 +6,17 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Sanitize a string field: trim whitespace, normalize line breaks, limit length
+function sanitizeString(val: unknown, maxLen = 5000): string {
+  if (val === null || val === undefined) return "";
+  const s = String(val)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .trim();
+  return s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
 // Internal employee emails/domains to filter out
 const EXCLUDED_EMAILS = [
   "adam.haile@sourcecodeals.com",
