@@ -1,9 +1,10 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { Lead } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { LeadDetail } from "@/components/LeadsTable";
-import { Clock, CalendarDays, AlertTriangle, UserPlus, FileWarning, Filter } from "lucide-react";
+import { Filter } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 const OWNERS = ["All", "Malik", "Valeria", "Tomos", "Unassigned"] as const;
@@ -25,6 +26,15 @@ const TYPE_LABELS: Record<ActionItem["type"], string> = {
   stale: "Stale",
 };
 
+const TYPE_DESCRIPTIONS: Record<ActionItem["type"], string> = {
+  overdue: "Follow-up date has passed",
+  meeting: "Meeting scheduled within 7 days",
+  dark: "No contact in 21+ days (active deals)",
+  untouched: "New leads with no owner or contact",
+  renewal: "Contracts expiring within 30 days",
+  stale: "Stuck in same stage for 14+ days",
+};
+
 const TYPE_BORDER_COLORS: Record<ActionItem["type"], string> = {
   overdue: "border-l-red-500 dark:border-l-red-400",
   meeting: "border-l-blue-500 dark:border-l-blue-400",
@@ -42,6 +52,11 @@ const TYPE_TEXT_COLORS: Record<ActionItem["type"], string> = {
   renewal: "text-purple-600 dark:text-purple-400",
   stale: "text-muted-foreground",
 };
+
+/** Best available "last contact" date for a lead, with fallbacks */
+function getEffectiveContactDate(lead: Lead): string {
+  return lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate || lead.dateSubmitted || "";
+}
 
 export function ActionQueue() {
   const { leads } = useLeads();
@@ -100,10 +115,12 @@ export function ActionQueue() {
         }
       }
 
-      const daysSinceContact = lead.lastContactDate
-        ? Math.floor((now.getTime() - new Date(lead.lastContactDate).getTime()) / 86400000)
-        : 999;
-      if (daysSinceContact > 21 && !["New Lead"].includes(lead.stage)) {
+      // "Going Dark" — use effective contact date with fallbacks
+      const effectiveDate = getEffectiveContactDate(lead);
+      const daysSinceContact = effectiveDate
+        ? Math.floor((now.getTime() - new Date(effectiveDate).getTime()) / 86400000)
+        : null;
+      if (daysSinceContact !== null && daysSinceContact > 21 && !["New Lead"].includes(lead.stage)) {
         actions.push({
           lead, type: "dark",
           label: `No contact in ${daysSinceContact}d`,
@@ -148,90 +165,99 @@ export function ActionQueue() {
   const filteredItems = typeFilter ? items.filter(i => i.type === typeFilter) : items;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
-        <p className="text-xs text-muted-foreground mt-1">
-          {items.length} action items across your pipeline
-        </p>
-      </div>
-
-      {/* Summary chips + owner filter */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={() => setTypeFilter(null)}
-            className={`text-xs px-2.5 py-1.5 rounded-md border transition-colors ${!typeFilter ? "border-foreground bg-foreground text-background" : "border-border hover:bg-secondary"}`}
-          >
-            All ({items.length})
-          </button>
-          {(["overdue", "meeting", "dark", "untouched", "renewal", "stale"] as const).map(type => {
-            const count = typeCounts[type] || 0;
-            if (count === 0) return null;
-            return (
-              <button
-                key={type}
-                onClick={() => setTypeFilter(typeFilter === type ? null : type)}
-                className={`text-xs px-2.5 py-1.5 rounded-md border transition-colors ${typeFilter === type ? "border-foreground bg-foreground text-background" : "border-border hover:bg-secondary"}`}
-              >
-                {TYPE_LABELS[type]} ({count})
-              </button>
-            );
-          })}
+    <TooltipProvider delayDuration={300}>
+      <div className="p-6 max-w-5xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Action Queue</h1>
+          <p className="text-xs text-muted-foreground mt-1">
+            Leads that need your attention — overdue tasks, upcoming meetings, and pipeline risks
+            <span className="ml-1 tabular-nums">({items.length} items)</span>
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-          <select
-            value={ownerFilter}
-            onChange={e => setOwnerFilter(e.target.value)}
-            className="text-sm border border-border rounded-md px-2 py-1 bg-background"
-          >
-            {OWNERS.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
-        </div>
-      </div>
 
-      {/* Action Items List */}
-      <div className="border border-border rounded-md divide-y divide-border">
-        {filteredItems.length === 0 ? (
-          <div className="px-6 py-12 text-center">
-            <p className="text-sm text-muted-foreground">No action items — you're all caught up</p>
+        {/* Summary chips + owner filter */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setTypeFilter(null)}
+              className={`text-xs px-2.5 py-1.5 rounded-md border transition-colors ${!typeFilter ? "border-foreground bg-foreground text-background" : "border-border hover:bg-secondary"}`}
+            >
+              All ({items.length})
+            </button>
+            {(["overdue", "meeting", "dark", "untouched", "renewal", "stale"] as const).map(type => {
+              const count = typeCounts[type] || 0;
+              if (count === 0) return null;
+              return (
+                <Tooltip key={type}>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setTypeFilter(typeFilter === type ? null : type)}
+                      className={`text-xs px-2.5 py-1.5 rounded-md border transition-colors ${typeFilter === type ? "border-foreground bg-foreground text-background" : "border-border hover:bg-secondary"}`}
+                    >
+                      {TYPE_LABELS[type]} ({count})
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">{TYPE_DESCRIPTIONS[type]}</p>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
           </div>
-        ) : (
-          filteredItems.map((item, i) => {
-            const borderColor = TYPE_BORDER_COLORS[item.type];
-            const textColor = TYPE_TEXT_COLORS[item.type];
-            return (
-              <div
-                key={`${item.lead.id}-${item.type}-${i}`}
-                onClick={() => setSelectedLeadId(item.lead.id)}
-                className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-secondary/30 transition-colors border-l-[3px] ${borderColor}`}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded">
-                      {item.lead.brand === "Captarget" ? "CT" : "SC"}
-                    </span>
-                    <span className="text-sm font-medium">{item.lead.name}</span>
-                    {item.lead.assignedTo && (
-                      <span className="w-5 h-5 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">
-                        {item.lead.assignedTo[0]}
-                      </span>
-                    )}
-                    <span className={`text-xs font-medium ml-auto ${textColor}`}>
-                      {item.label}
-                      {item.lead.dealValue > 0 && <span className="text-muted-foreground font-normal ml-2 tabular-nums">${item.lead.dealValue.toLocaleString()}</span>}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{item.detail}</p>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+          <div className="flex items-center gap-2">
+            <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+            <select
+              value={ownerFilter}
+              onChange={e => setOwnerFilter(e.target.value)}
+              className="text-sm border border-border rounded-md px-2 py-1 bg-background"
+            >
+              {OWNERS.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+        </div>
 
-      <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
-    </div>
+        {/* Action Items List */}
+        <div className="border border-border rounded-md divide-y divide-border">
+          {filteredItems.length === 0 ? (
+            <div className="px-6 py-12 text-center">
+              <p className="text-sm text-muted-foreground">No action items — you're all caught up</p>
+            </div>
+          ) : (
+            filteredItems.map((item, i) => {
+              const borderColor = TYPE_BORDER_COLORS[item.type];
+              const textColor = TYPE_TEXT_COLORS[item.type];
+              return (
+                <div
+                  key={`${item.lead.id}-${item.type}-${i}`}
+                  onClick={() => setSelectedLeadId(item.lead.id)}
+                  className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-secondary/30 transition-colors border-l-[3px] ${borderColor}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded">
+                        {item.lead.brand === "Captarget" ? "CT" : "SC"}
+                      </span>
+                      <span className="text-sm font-medium">{item.lead.name}</span>
+                      {item.lead.assignedTo && (
+                        <span className="w-5 h-5 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">
+                          {item.lead.assignedTo[0]}
+                        </span>
+                      )}
+                      <span className={`text-xs font-medium ml-auto ${textColor}`}>
+                        {item.label}
+                        {item.lead.dealValue > 0 && <span className="text-muted-foreground font-normal ml-2 tabular-nums">${item.lead.dealValue.toLocaleString()}</span>}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{item.detail}</p>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
+      </div>
+    </TooltipProvider>
   );
 }
