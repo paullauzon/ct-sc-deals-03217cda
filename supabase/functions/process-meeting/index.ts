@@ -206,7 +206,7 @@ const INTELLIGENCE_TOOL = {
             },
             dealValue: {
               ...SUGGESTED_UPDATE_FIELD_NUMBER,
-              description: "Estimated deal value in dollars. Only suggest if pricing/budget was explicitly discussed.",
+              description: "The value of the Captarget/SourceCo service engagement (subscription/retainer revenue from this client). NOT the prospect's M&A target size, acquisition range, or EBITDA criteria. Typical values are $5K–$25K/month. Only suggest if actual service pricing or package cost was discussed.",
             },
             assignedTo: {
               ...SUGGESTED_UPDATE_FIELD,
@@ -332,7 +332,10 @@ You MUST also recommend CRM field updates based on transcript evidence. Follow t
 - Only suggest if they EXPLICITLY discussed which service(s) they want. Never guess.
 
 ### Deal Value
-- Only suggest if specific pricing, budget numbers, or deal size was discussed. Use the number mentioned.
+- Deal Value = the revenue Captarget/SourceCo earns from this client's subscription or retainer for origination services.
+- This is NOT the prospect's M&A target size, acquisition range, EBITDA criteria, or deal sizes they pursue. Those are prospect attributes, not our deal value.
+- Only suggest if actual Captarget/SourceCo service pricing, package cost, or retainer amount was explicitly discussed.
+- Typical values are monthly subscription amounts (e.g., $5,000–$25,000/month or $60K–$300K annualized). If the prospect mentions "$750K–$1M EBITDA targets", that is their acquisition criteria — NOT our deal value.
 
 ### Owner (assignedTo)
 - Only suggest if you can identify a specific team member (Malik, Valeria, or Tomos) who is clearly leading the conversation from our side.
