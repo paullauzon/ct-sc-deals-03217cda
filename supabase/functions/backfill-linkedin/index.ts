@@ -105,6 +105,45 @@ async function firecrawlScrape(
   }
 }
 
+// ─── AI Call Helpers ───
+
+type ApiProvider = "lovable" | "openai";
+
+async function callAI(
+  messages: Array<{ role: string; content: string }>,
+  provider: ApiProvider,
+  lovableKey: string,
+  openaiKey: string | null,
+  model: string,
+): Promise<string> {
+  if (provider === "openai" && openaiKey) {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model, messages }),
+    });
+    if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
+    const data = await res.json();
+    return (data.choices?.[0]?.message?.content || "").trim();
+  }
+
+  // Default: Lovable gateway
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${lovableKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ model, messages }),
+  });
+  if (!res.ok) throw new Error(`Lovable gateway HTTP ${res.status}`);
+  const data = await res.json();
+  return (data.choices?.[0]?.message?.content || "").trim();
+}
+
 // ─── AI Search Agent ───
 
 interface LeadContext {
@@ -185,6 +224,8 @@ async function aiSearchAgent(
   lovableKey: string,
   model: string = "google/gemini-2.5-flash",
   maxTurns: number = FLASH_MAX_TURNS,
+  provider: ApiProvider = "lovable",
+  openaiKey: string | null = null,
 ): Promise<AgentResult> {
   const contextParts: string[] = [];
   contextParts.push(`Name: ${lead.name}`);
@@ -211,22 +252,7 @@ async function aiSearchAgent(
 
   for (let turn = 0; turn < maxTurns; turn++) {
     try {
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${lovableKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ model, messages }),
-      });
-
-      if (!response.ok) {
-        console.error(`AI agent call failed: HTTP ${response.status}`);
-        return { url: null, profileContent: "", turnsUsed: turn + 1, gaveUpReason: "AI call failed" };
-      }
-
-      const data = await response.json();
-      const content = (data.choices?.[0]?.message?.content || "").trim();
+      const content = await callAI(messages, provider, lovableKey, openaiKey, model);
 
       let parsed: any;
       try {
@@ -361,6 +387,8 @@ async function processLead(
   supabase: any,
   model: string,
   maxTurns: number,
+  provider: ApiProvider = "lovable",
+  openaiKey: string | null = null,
 ): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
   const leadContext: LeadContext = {
     name: lead.name,
@@ -378,7 +406,7 @@ async function processLead(
     geography: lead.geography,
   };
 
-  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, lovableKey, model, maxTurns);
+  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, lovableKey, model, maxTurns, provider, openaiKey);
 
   if (!agentResult.url) {
     await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
@@ -429,6 +457,11 @@ Deno.serve(async (req) => {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
+  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  const pass2Provider: ApiProvider = OPENAI_API_KEY ? "openai" : "lovable";
+  const pass2Model = OPENAI_API_KEY ? "gpt-4o" : "google/gemini-2.5-pro";
+  console.log(`Pass 2 will use: ${pass2Provider} (${pass2Model})`);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -543,7 +576,7 @@ Deno.serve(async (req) => {
             proProcessed++;
             console.log(`\n[Pass2 ${proProcessed}/${retryValid.length}] ${lead.name} (${lead.company})`);
 
-            const result = await processLead(lead, FIRECRAWL_API_KEY, LOVABLE_API_KEY, supabase, "google/gemini-2.5-pro", PRO_MAX_TURNS);
+            const result = await processLead(lead, FIRECRAWL_API_KEY, LOVABLE_API_KEY, supabase, pass2Model, PRO_MAX_TURNS, pass2Provider, OPENAI_API_KEY || null);
             agentStats.totalTurns += result.turnsUsed;
 
             if (result.found) {
