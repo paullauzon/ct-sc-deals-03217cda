@@ -511,7 +511,7 @@ Deno.serve(async (req) => {
     // Task C: LinkedIn lookup (does not depend on website or PE search)
     const linkedinTask = (async () => {
       if (!SERPER_API_KEY || !name) return { title: null, linkedinUrl: null, hasMaExperience: false } as LinkedInResult;
-      return serperLinkedInLookup(name, company, SERPER_API_KEY);
+      return serperLinkedInLookup(name, company, email, websiteField, SERPER_API_KEY);
     })();
 
     // Await all three concurrently
