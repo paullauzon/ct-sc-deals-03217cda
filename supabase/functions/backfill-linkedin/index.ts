@@ -202,11 +202,9 @@ WHEN TO GIVE UP:
 async function aiSearchAgent(
   lead: LeadContext,
   firecrawlKey: string,
-  lovableKey: string,
-  model: string = "google/gemini-2.5-flash",
+  openaiKey: string,
+  model: string = "gpt-4o-mini",
   maxTurns: number = FLASH_MAX_TURNS,
-  provider: ApiProvider = "lovable",
-  openaiKey: string | null = null,
 ): Promise<AgentResult> {
   const contextParts: string[] = [];
   contextParts.push(`Name: ${lead.name}`);
