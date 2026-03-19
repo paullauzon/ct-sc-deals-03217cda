@@ -8,21 +8,6 @@ const corsHeaders = {
 const BATCH_SIZE = 3;
 const DELAY_MS = 2000;
 
-/** Check if a LinkedIn URL slug matches a person's name */
-function nameMatchesSlug(name: string, url: string): boolean {
-  const slugMatch = url.match(/linkedin\.com\/in\/([^/?#]+)/);
-  if (!slugMatch) return false;
-  const slug = slugMatch[1].toLowerCase().replace(/[-_]/g, " ");
-  
-  const nameParts = name.toLowerCase().split(/\s+/).filter((p) => p.length >= 2);
-  if (nameParts.length === 0) return false;
-  
-  // Check if first AND last name parts appear in slug
-  const first = nameParts[0];
-  const last = nameParts[nameParts.length - 1];
-  return slug.includes(first) && slug.includes(last);
-}
-
 function getSeniorityScore(title: string | null): number {
   if (!title) return -2;
   const lower = title.toLowerCase();
@@ -31,6 +16,111 @@ function getSeniorityScore(title: string | null): number {
   if (/\b(manager|associate|senior associate)\b/.test(lower)) return 10;
   if (/\b(analyst|junior|assistant)\b/.test(lower)) return 5;
   return 8;
+}
+
+function extractTitle(content: string): string | null {
+  const headlineMatch = content.match(/^#+\s*(.+)/m);
+  if (headlineMatch) {
+    const headline = headlineMatch[1].trim();
+    if (headline.length < 100 && !headline.toLowerCase().includes("linkedin")) return headline;
+  }
+  const match = content.match(
+    /\b(CEO|CFO|COO|CTO|President|Partner|Managing Director|Vice President|VP|Director|Principal|Founder|Co-Founder|Manager|Associate|Analyst)\b/i,
+  );
+  return match ? match[0] : null;
+}
+
+/** Use Firecrawl Map to discover all URLs on a website, then filter for LinkedIn profile URLs */
+async function mapWebsiteForLinkedIn(baseUrl: string, firecrawlKey: string): Promise<string[]> {
+  try {
+    let formattedUrl = baseUrl.trim();
+    if (!formattedUrl.startsWith("http")) formattedUrl = `https://${formattedUrl}`;
+
+    const response = await fetch("https://api.firecrawl.dev/v1/map", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${firecrawlKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url: formattedUrl,
+        search: "linkedin",
+        limit: 5000,
+        includeSubdomains: false,
+      }),
+    });
+
+    if (!response.ok) return [];
+    const data = await response.json();
+    const links: string[] = data.links || data.data?.links || [];
+    
+    // Filter for LinkedIn profile URLs
+    return links.filter((l: string) => l.includes("linkedin.com/in/"));
+  } catch {
+    return [];
+  }
+}
+
+/** AI verification: does this LinkedIn URL belong to this person? */
+async function aiVerifyLinkedIn(
+  lead: { name: string; company: string; email: string; role: string; message: string; company_url: string; website_url: string | null },
+  linkedinUrl: string,
+  lovableKey: string,
+): Promise<{ match: boolean; title: string | null; profileContent: string }> {
+  const contextParts: string[] = [];
+  if (lead.company) contextParts.push(`Company: ${lead.company}`);
+  if (lead.email) contextParts.push(`Email: ${lead.email}`);
+  if (lead.company_url) contextParts.push(`Company URL: ${lead.company_url}`);
+  if (lead.website_url) contextParts.push(`Website: ${lead.website_url}`);
+  if (lead.role) contextParts.push(`Role: ${lead.role}`);
+  if (lead.message) contextParts.push(`Submission: "${lead.message.substring(0, 500)}"`);
+
+  const prompt = `You are verifying whether a LinkedIn profile URL found on a company website belongs to a specific person.
+
+PERSON TO FIND:
+Name: ${lead.name}
+${contextParts.join("\n")}
+
+LINKEDIN URL FOUND ON THEIR COMPANY WEBSITE: ${linkedinUrl}
+
+Since this LinkedIn URL was found on the company's own website, the company match is already confirmed.
+Your job is to verify the NAME matches. The URL slug should contain at least the first name or a recognizable variant.
+
+For example, if finding "Michael Tindall" and the URL is linkedin.com/in/michael-t-661bmt/, that's a MATCH (contains "michael").
+If the URL contains a completely different name like "john-smith", that's NOT a match.
+
+Consider: the company likely only has a few people, so a first-name match on a company website is strong evidence.
+
+Respond with ONLY a JSON object: {"match": true/false, "reason": "brief explanation"}`;
+
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${lovableKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    if (!response.ok) return { match: false, title: null, profileContent: "" };
+
+    const data = await response.json();
+    const content = (data.choices?.[0]?.message?.content || "").trim();
+    const jsonStr = content.replace(/```json\s*/g, "").replace(/```/g, "").trim();
+    const parsed = JSON.parse(jsonStr);
+    
+    return {
+      match: parsed.match === true,
+      title: null,
+      profileContent: content,
+    };
+  } catch {
+    return { match: false, title: null, profileContent: "" };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -45,26 +135,33 @@ Deno.serve(async (req) => {
     });
   }
 
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) {
+    return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
   try {
-    // Get leads that still need LinkedIn AND have a company_url or website_url
-    // Include both NULL and empty string (empty = searched by Serper but not found)
+    // Get leads that need LinkedIn AND have a company website URL
     const { data: leads, error } = await supabase
       .from("leads")
-      .select("id, name, company, company_url, website_url, stage2_score, linkedin_score")
+      .select("id, name, company, email, company_url, website_url, role, message, stage2_score, linkedin_score")
       .or("linkedin_url.is.null,linkedin_url.eq.")
       .neq("name", "")
       .order("created_at", { ascending: false });
 
     if (error) throw error;
 
-    // Filter to leads with a usable URL
+    // Filter to leads with a usable website URL
     const leadsWithUrls = (leads || []).filter(
-      (l) => (l.company_url && l.company_url.trim()) || (l.website_url && l.website_url.trim()),
+      (l) => (l.company_url && l.company_url.trim() && !l.company_url.includes("linkedin.com")) 
+        || (l.website_url && l.website_url.trim()),
     );
 
     if (leadsWithUrls.length === 0) {
@@ -74,7 +171,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Website LinkedIn backfill: ${leadsWithUrls.length} leads with company URLs`);
+    console.log(`Website LinkedIn backfill (Map + AI): ${leadsWithUrls.length} leads`);
     let found = 0;
     let processed = 0;
 
@@ -84,68 +181,58 @@ Deno.serve(async (req) => {
       const results = await Promise.all(
         batch.map(async (lead) => {
           processed++;
-          const baseUrl = (lead.company_url || lead.website_url || "").trim();
-          if (!baseUrl) return { lead, linkedinUrl: null };
+          const baseUrl = (lead.website_url || lead.company_url || "").trim();
+          if (!baseUrl) return { lead, linkedinUrl: null, title: null };
 
-          let formattedUrl = baseUrl;
-          if (!formattedUrl.startsWith("http")) formattedUrl = `https://${formattedUrl}`;
-
-          // Try team/about pages to find LinkedIn links
-          const pagePaths = ["", "/about", "/about-us", "/team", "/our-team", "/leadership", "/people", "/staff"];
+          // Use Firecrawl Map to discover ALL URLs on the site
+          const linkedinUrls = await mapWebsiteForLinkedIn(baseUrl, FIRECRAWL_API_KEY);
           
-          for (const path of pagePaths) {
-            try {
-              const scrapeUrl = `${formattedUrl.replace(/\/$/, "")}${path}`;
-              const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${FIRECRAWL_API_KEY}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  url: scrapeUrl,
-                  formats: ["links"],
-                  waitFor: 3000,
-                }),
-              });
+          if (linkedinUrls.length === 0) {
+            console.log(`No LinkedIn URLs found on ${baseUrl} for ${lead.name}`);
+            return { lead, linkedinUrl: null, title: null };
+          }
 
-              if (!response.ok) continue;
-              const data = await response.json();
-              
-              // Extract LinkedIn profile URLs from links
-              const links: string[] = data.data?.links || data.links || [];
-              const linkedinLinks = links.filter((l: string) => l.includes("linkedin.com/in/"));
+          console.log(`Found ${linkedinUrls.length} LinkedIn URLs on ${baseUrl} for ${lead.name}`);
 
-              // Match by name
-              for (const liUrl of linkedinLinks) {
-                if (nameMatchesSlug(lead.name, liUrl)) {
-                  return { lead, linkedinUrl: liUrl };
-                }
-              }
-            } catch {
-              // Skip failed pages
+          // Quick first-name filter to reduce AI calls
+          const firstName = lead.name.split(/\s+/)[0].toLowerCase();
+          const filtered = linkedinUrls.filter(url => {
+            const slug = url.split("linkedin.com/in/")[1]?.toLowerCase() || "";
+            return slug.includes(firstName) || slug.includes(firstName.substring(0, 3));
+          });
+
+          // If no first-name matches but only 1-3 URLs total, try them all with AI
+          const toVerify = filtered.length > 0 ? filtered.slice(0, 5) : linkedinUrls.slice(0, 3);
+
+          for (const liUrl of toVerify) {
+            const verification = await aiVerifyLinkedIn(lead, liUrl, LOVABLE_API_KEY);
+            if (verification.match) {
+              return { lead, linkedinUrl: liUrl, title: verification.title };
             }
           }
 
-          return { lead, linkedinUrl: null };
+          return { lead, linkedinUrl: null, title: null };
         }),
       );
 
-      for (const { lead, linkedinUrl } of results) {
+      for (const { lead, linkedinUrl, title } of results) {
         if (!linkedinUrl) continue;
         found++;
 
-        const seniorityScoreValue = getSeniorityScore(null); // No title from URL alone
+        const seniorityScoreValue = getSeniorityScore(title);
         const oldLinkedinScore = lead.linkedin_score || 0;
         const oldStage2 = lead.stage2_score || 0;
         const newStage2 = Math.max(0, Math.min(100, oldStage2 - oldLinkedinScore + seniorityScoreValue));
 
         await supabase.from("leads").update({
           linkedin_url: linkedinUrl,
+          linkedin_title: title,
           linkedin_score: seniorityScoreValue,
           seniority_score: seniorityScoreValue,
           stage2_score: newStage2,
         }).eq("id", lead.id);
+
+        console.log(`MATCHED via website: ${lead.name} → ${linkedinUrl}`);
       }
 
       if (i + BATCH_SIZE < leadsWithUrls.length) {

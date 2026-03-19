@@ -8,6 +8,85 @@ const corsHeaders = {
 const BATCH_SIZE = 3;
 const DELAY_MS = 2000;
 
+// ─── Nickname Mapping ───
+const NICKNAMES: Record<string, string[]> = {
+  michael: ["mike", "mick"],
+  robert: ["rob", "bob", "bobby"],
+  william: ["will", "bill", "billy"],
+  james: ["jim", "jimmy"],
+  richard: ["rick", "rich", "dick"],
+  thomas: ["tom", "tommy"],
+  christopher: ["chris"],
+  joseph: ["joe", "joey"],
+  charles: ["charlie", "chuck"],
+  daniel: ["dan", "danny"],
+  matthew: ["matt"],
+  anthony: ["tony"],
+  edward: ["ed", "eddie", "ted"],
+  kenneth: ["ken", "kenny"],
+  nicholas: ["nick"],
+  stephen: ["steve"],
+  steven: ["steve"],
+  timothy: ["tim"],
+  benjamin: ["ben"],
+  jonathan: ["jon"],
+  lawrence: ["larry"],
+  patrick: ["pat"],
+  raymond: ["ray"],
+  samuel: ["sam"],
+  alexander: ["alex"],
+  katherine: ["kate", "kathy"],
+  elizabeth: ["liz", "beth"],
+  jennifer: ["jen", "jenny"],
+  margaret: ["maggie", "meg"],
+  patricia: ["pat", "patty"],
+  deborah: ["deb", "debbie"],
+  andrew: ["drew", "andy"],
+  gregory: ["greg"],
+  jeffrey: ["jeff"],
+  ronald: ["ron", "ronnie"],
+  donald: ["don", "donnie"],
+  gerald: ["gerry", "jerry"],
+  douglas: ["doug"],
+  phillip: ["phil"],
+  philip: ["phil"],
+};
+
+function getNameVariants(firstName: string): string[] {
+  const lower = firstName.toLowerCase();
+  const variants = [firstName];
+  // Add nicknames for this first name
+  if (NICKNAMES[lower]) {
+    for (const nick of NICKNAMES[lower]) {
+      variants.push(nick.charAt(0).toUpperCase() + nick.slice(1));
+    }
+  }
+  // Also check reverse: if "Mike" is given, add "Michael"
+  for (const [full, nicks] of Object.entries(NICKNAMES)) {
+    if (nicks.includes(lower)) {
+      variants.push(full.charAt(0).toUpperCase() + full.slice(1));
+    }
+  }
+  return [...new Set(variants)];
+}
+
+// ─── Email Domain to Company Name ───
+function emailDomainToCompanyName(email: string | null): string | null {
+  if (!email || !email.includes("@")) return null;
+  const domain = email.split("@")[1].split(".")[0].toLowerCase();
+  if (!domain || domain.length < 3) return null;
+  // Split camelCase and concatenated words
+  let expanded = domain.replace(/([a-z])([A-Z])/g, "$1 $2");
+  expanded = expanded.replace(/(capital|equity|partners|advisory|advisors|ventures|group|holdings|management|invest|financial|consulting|strategies|solutions|properties|services|industries|enterprises|technologies|global|international)/gi, " $1 ");
+  expanded = expanded.replace(/\s+/g, " ").trim();
+  if (expanded === domain) {
+    // Try inserting spaces at common word boundaries
+    expanded = domain.replace(/([a-z])([a-z]*)(oak|bay|rock|river|lake|peak|stone|bridge|wood|field|hill|vale|glen|port|land|fort|park|spring|star|sun|moon|fire|iron|gold|silver|blue|red|green|black|white|north|south|east|west)/gi, "$1$2 $3");
+    expanded = expanded.replace(/\s+/g, " ").trim();
+  }
+  return expanded.includes(" ") ? expanded : null;
+}
+
 // ─── Company Name Utilities ───
 
 function cleanCompanyName(company: string): string {
@@ -142,20 +221,37 @@ async function collectAllCandidates(
     }
   };
 
-  // Helper: filter search results by first name appearing in URL or content
-  const filterByFirstName = (results: SearchResult[], source: string): Candidate[] => {
+  // Helper: filter search results by name appearing in URL or content
+  const filterByName = (results: SearchResult[], nameToMatch: string, source: string): Candidate[] => {
     const candidates: Candidate[] = [];
-    const firstLower = firstName.toLowerCase();
+    const nameLower = nameToMatch.toLowerCase();
     for (const r of results) {
       if (!r.url?.includes("linkedin.com/in/")) continue;
       const urlSlug = r.url.split("linkedin.com/in/")[1]?.toLowerCase() || "";
       const content = (r.markdown || r.description || r.title || "").toLowerCase();
-      if (urlSlug.includes(firstLower) || content.includes(firstLower)) {
+      if (urlSlug.includes(nameLower) || content.includes(nameLower)) {
         candidates.push({
           url: r.url,
           profileContent: (r.markdown || r.description || r.title || "").substring(0, 3000),
           source,
         });
+      }
+    }
+    return candidates;
+  };
+
+  // Filter by first name AND all nickname variants
+  const filterByFirstNameAndVariants = (results: SearchResult[], source: string): Candidate[] => {
+    const allVariants = getNameVariants(firstName);
+    const candidates: Candidate[] = [];
+    const seen = new Set<string>();
+    for (const variant of allVariants) {
+      for (const c of filterByName(results, variant, source)) {
+        const norm = c.url.split("?")[0].replace(/\/$/, "");
+        if (!seen.has(norm)) {
+          seen.add(norm);
+          candidates.push(c);
+        }
       }
     }
     return candidates;
@@ -170,7 +266,7 @@ async function collectAllCandidates(
         const empResults = await firecrawlSearch(
           `"${clean}" site:linkedin.com/in`, apiKey, 10, true,
         );
-        addCandidates(filterByFirstName(empResults, "company-employees"));
+        addCandidates(filterByFirstNameAndVariants(empResults, "company-employees"));
 
         // Also try expanded company name
         const expanded = expandConcatenatedName(clean);
@@ -178,7 +274,7 @@ async function collectAllCandidates(
           const empResults2 = await firecrawlSearch(
             `"${expanded}" site:linkedin.com/in`, apiKey, 10, true,
           );
-          addCandidates(filterByFirstName(empResults2, "company-employees-expanded"));
+          addCandidates(filterByFirstNameAndVariants(empResults2, "company-employees-expanded"));
         }
       }
     }
@@ -216,6 +312,16 @@ async function collectAllCandidates(
           `site:linkedin.com/in "${firstName}" "${clean}"`, apiKey, 5, true,
         );
         addCandidates(extractLinkedInCandidates(results, "firstname-company"));
+
+        // Try nickname variants
+        const variants = getNameVariants(firstName);
+        for (const variant of variants) {
+          if (variant === firstName || allCandidates.length >= 8) continue;
+          const nickResults = await firecrawlSearch(
+            `site:linkedin.com/in "${variant}" "${clean}"`, apiKey, 5, true,
+          );
+          addCandidates(extractLinkedInCandidates(nickResults, `nickname-${variant}`));
+        }
       }
     }
 
@@ -233,6 +339,43 @@ async function collectAllCandidates(
         `site:linkedin.com/in "${name}"`, apiKey, 5, true,
       );
       addCandidates(extractLinkedInCandidates(results, "name-only"));
+    }
+
+    // Pass 6: Broad search WITHOUT site: restriction
+    if (allCandidates.length < 4 && company && company.trim()) {
+      const clean = cleanCompanyName(company);
+      if (clean) {
+        const results = await firecrawlSearch(
+          `"${name}" "${clean}" linkedin`, apiKey, 5, true,
+        );
+        addCandidates(extractLinkedInCandidates(results, "broad-search"));
+      }
+    }
+
+    // Pass 7: Email domain expanded as company name
+    if (allCandidates.length < 4 && email) {
+      const expandedCompany = emailDomainToCompanyName(email);
+      if (expandedCompany) {
+        const results = await firecrawlSearch(
+          `site:linkedin.com/in "${name}" "${expandedCompany}"`, apiKey, 5, true,
+        );
+        addCandidates(extractLinkedInCandidates(results, "email-domain-expanded"));
+      }
+    }
+
+    // Pass 8: Nickname variants in company-employees search (Pass 0 extension)
+    if (allCandidates.length < 4 && company && company.trim()) {
+      const clean = cleanCompanyName(company);
+      if (clean) {
+        const variants = getNameVariants(firstName);
+        for (const variant of variants) {
+          if (variant === firstName || allCandidates.length >= 6) continue;
+          const empResults = await firecrawlSearch(
+            `"${clean}" site:linkedin.com/in`, apiKey, 10, false,
+          );
+          addCandidates(filterByName(empResults, variant, `nickname-employees-${variant}`));
+        }
+      }
     }
   } catch (e) {
     console.error("Candidate collection failed:", e);
