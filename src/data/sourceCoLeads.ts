@@ -95,6 +95,8 @@ function makeSCLead(
     tier: null,
     tierOverride: false,
     enrichmentStatus: "",
+    linkedinUrl: "",
+    linkedinTitle: "",
   };
 }
 
