@@ -531,29 +531,4 @@ Deno.serve(async (req) => {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-    const totalProcessed = processed;
-    const avgTurns = totalProcessed > 0 ? (agentStats.totalTurns / totalProcessed).toFixed(1) : "0";
-    console.log(`\nBackfill complete: ${found} total matches (Pass1: ${found - proFound}, Pass2/Pro: ${proFound}) from ${totalProcessed} leads`);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        processed: totalProcessed,
-        found,
-        pass1Found: found - proFound,
-        pass2ProFound: proFound,
-        pass2ProProcessed: proProcessed,
-        total: validLeads.length,
-        avgTurnsPerLead: parseFloat(avgTurns),
-        gaveUp: agentStats.gaveUp - proFound,
-        gaveUpReasons: agentStats.gaveUpReasons.slice(0, 20),
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  } catch (err) {
-    console.error("backfill-linkedin error:", err);
-    return new Response(JSON.stringify({ error: (err as Error).message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
 });
