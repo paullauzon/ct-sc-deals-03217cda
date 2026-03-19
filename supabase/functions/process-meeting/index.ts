@@ -206,7 +206,7 @@ const INTELLIGENCE_TOOL = {
             },
             dealValue: {
               ...SUGGESTED_UPDATE_FIELD_NUMBER,
-              description: "Estimated deal value in dollars. Only suggest if pricing/budget was explicitly discussed.",
+              description: "The value of the Captarget/SourceCo service engagement (subscription/retainer revenue from this client). NOT the prospect's M&A target size, acquisition range, or EBITDA criteria. Typical values are $5K–$25K/month. Only suggest if actual service pricing or package cost was discussed.",
             },
             assignedTo: {
               ...SUGGESTED_UPDATE_FIELD,
