@@ -8,6 +8,85 @@ const corsHeaders = {
 const BATCH_SIZE = 3;
 const DELAY_MS = 2000;
 
+// ─── Nickname Mapping ───
+const NICKNAMES: Record<string, string[]> = {
+  michael: ["mike", "mick"],
+  robert: ["rob", "bob", "bobby"],
+  william: ["will", "bill", "billy"],
+  james: ["jim", "jimmy"],
+  richard: ["rick", "rich", "dick"],
+  thomas: ["tom", "tommy"],
+  christopher: ["chris"],
+  joseph: ["joe", "joey"],
+  charles: ["charlie", "chuck"],
+  daniel: ["dan", "danny"],
+  matthew: ["matt"],
+  anthony: ["tony"],
+  edward: ["ed", "eddie", "ted"],
+  kenneth: ["ken", "kenny"],
+  nicholas: ["nick"],
+  stephen: ["steve"],
+  steven: ["steve"],
+  timothy: ["tim"],
+  benjamin: ["ben"],
+  jonathan: ["jon"],
+  lawrence: ["larry"],
+  patrick: ["pat"],
+  raymond: ["ray"],
+  samuel: ["sam"],
+  alexander: ["alex"],
+  katherine: ["kate", "kathy"],
+  elizabeth: ["liz", "beth"],
+  jennifer: ["jen", "jenny"],
+  margaret: ["maggie", "meg"],
+  patricia: ["pat", "patty"],
+  deborah: ["deb", "debbie"],
+  andrew: ["drew", "andy"],
+  gregory: ["greg"],
+  jeffrey: ["jeff"],
+  ronald: ["ron", "ronnie"],
+  donald: ["don", "donnie"],
+  gerald: ["gerry", "jerry"],
+  douglas: ["doug"],
+  phillip: ["phil"],
+  philip: ["phil"],
+};
+
+function getNameVariants(firstName: string): string[] {
+  const lower = firstName.toLowerCase();
+  const variants = [firstName];
+  // Add nicknames for this first name
+  if (NICKNAMES[lower]) {
+    for (const nick of NICKNAMES[lower]) {
+      variants.push(nick.charAt(0).toUpperCase() + nick.slice(1));
+    }
+  }
+  // Also check reverse: if "Mike" is given, add "Michael"
+  for (const [full, nicks] of Object.entries(NICKNAMES)) {
+    if (nicks.includes(lower)) {
+      variants.push(full.charAt(0).toUpperCase() + full.slice(1));
+    }
+  }
+  return [...new Set(variants)];
+}
+
+// ─── Email Domain to Company Name ───
+function emailDomainToCompanyName(email: string | null): string | null {
+  if (!email || !email.includes("@")) return null;
+  const domain = email.split("@")[1].split(".")[0].toLowerCase();
+  if (!domain || domain.length < 3) return null;
+  // Split camelCase and concatenated words
+  let expanded = domain.replace(/([a-z])([A-Z])/g, "$1 $2");
+  expanded = expanded.replace(/(capital|equity|partners|advisory|advisors|ventures|group|holdings|management|invest|financial|consulting|strategies|solutions|properties|services|industries|enterprises|technologies|global|international)/gi, " $1 ");
+  expanded = expanded.replace(/\s+/g, " ").trim();
+  if (expanded === domain) {
+    // Try inserting spaces at common word boundaries
+    expanded = domain.replace(/([a-z])([a-z]*)(oak|bay|rock|river|lake|peak|stone|bridge|wood|field|hill|vale|glen|port|land|fort|park|spring|star|sun|moon|fire|iron|gold|silver|blue|red|green|black|white|north|south|east|west)/gi, "$1$2 $3");
+    expanded = expanded.replace(/\s+/g, " ").trim();
+  }
+  return expanded.includes(" ") ? expanded : null;
+}
+
 // ─── Company Name Utilities ───
 
 function cleanCompanyName(company: string): string {
