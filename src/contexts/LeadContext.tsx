@@ -211,10 +211,15 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         detectFieldChanges(id, l, updates);
         const updated = { ...l, ...updates };
         if (updates.stage && updates.stage !== l.stage) {
-          updated.stageEnteredDate = new Date().toISOString().split("T")[0];
+          const today = new Date().toISOString().split("T")[0];
+          updated.stageEnteredDate = today;
           updated.daysInCurrentStage = 0;
+          // Auto-set last_contact_date on stage advancement beyond New Lead
+          if (updates.stage !== "New Lead" && !updated.lastContactDate) {
+            updated.lastContactDate = today;
+          }
           if (["Closed Won", "Closed Lost", "Went Dark"].includes(updates.stage)) {
-            updated.closedDate = new Date().toISOString().split("T")[0];
+            updated.closedDate = today;
           } else {
             updated.closedDate = "";
           }
