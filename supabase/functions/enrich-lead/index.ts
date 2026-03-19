@@ -6,25 +6,36 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 async function scrapeWebsite(companyUrl: string, apiKey: string): Promise<string> {
   let formattedUrl = companyUrl.trim();
   if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
     formattedUrl = `https://${formattedUrl}`;
   }
   console.log("Scraping website:", formattedUrl);
-  const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ url: formattedUrl, formats: ["markdown"], onlyMainContent: true }),
-  });
-  if (!res.ok) {
-    console.error("Firecrawl scrape error:", res.status);
+  try {
+    const res = await fetchWithTimeout("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ url: formattedUrl, formats: ["markdown"], onlyMainContent: true }),
+    }, 10000);
+    if (!res.ok) {
+      console.error("Firecrawl scrape error:", res.status);
+      return "";
+    }
+    const data = await res.json();
+    let content = data.data?.markdown || data.markdown || "";
+    if (content.length > 5000) content = content.substring(0, 5000) + "\n[...truncated]";
+    return content;
+  } catch (e) {
+    console.warn("Scrape timed out or failed:", e instanceof Error ? e.message : e);
     return "";
   }
-  const data = await res.json();
-  let content = data.data?.markdown || data.markdown || "";
-  if (content.length > 5000) content = content.substring(0, 5000) + "\n[...truncated]";
-  return content;
 }
 
 async function searchWeb(query: string, apiKey: string): Promise<{ content: string; urls: string[] }> {
