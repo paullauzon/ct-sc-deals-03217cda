@@ -435,7 +435,7 @@ Deno.serve(async (req) => {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-  console.log(`Pass 1: gpt-4o-mini (${FLASH_MAX_TURNS} turns), Pass 2: gpt-4o (${PRO_MAX_TURNS} turns)`);
+  console.log(`Single pass: gpt-4o-mini (${FLASH_MAX_TURNS} turns), max ${MAX_LEADS_PER_RUN} leads per run`);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -463,7 +463,8 @@ Deno.serve(async (req) => {
       .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience")
       .is("linkedin_url", null)
       .neq("name", "")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(MAX_LEADS_PER_RUN);
 
     if (error) throw error;
 
@@ -476,101 +477,60 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ─── Pass 1: Flash model (fast, cheap) ───
-    console.log(`\n=== PASS 1: Flash model (${validLeads.length} leads) ===`);
+    console.log(`\n=== Processing ${validLeads.length} leads with gpt-4o-mini ===`);
     let found = 0;
     let processed = 0;
-    const failedLeadIds: string[] = [];
     const agentStats = { totalTurns: 0, gaveUp: 0, gaveUpReasons: [] as string[] };
 
-    for (let i = 0; i < validLeads.length; i += BATCH_SIZE) {
-      const batch = validLeads.slice(i, i + BATCH_SIZE);
+    for (const lead of validLeads) {
+      processed++;
+      console.log(`\n[${processed}/${validLeads.length}] ${lead.name} (${lead.company})`);
 
-      for (const lead of batch) {
-        processed++;
-        console.log(`\n[Pass1 ${processed}/${validLeads.length}] ${lead.name} (${lead.company})`);
+      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS);
+      agentStats.totalTurns += result.turnsUsed;
 
-        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS);
-        agentStats.totalTurns += result.turnsUsed;
-
-        if (result.found) {
-          found++;
-          console.log(`  MATCHED (${result.turnsUsed} turns)`);
-        } else {
-          failedLeadIds.push(lead.id);
-          agentStats.gaveUp++;
-          if (result.gaveUpReason) {
-            agentStats.gaveUpReasons.push(`${lead.name}: ${result.gaveUpReason}`);
-          }
-          console.log(`  NO MATCH (${result.turnsUsed} turns): ${result.gaveUpReason}`);
+      if (result.found) {
+        found++;
+        console.log(`  MATCHED (${result.turnsUsed} turns)`);
+      } else {
+        agentStats.gaveUp++;
+        if (result.gaveUpReason) {
+          agentStats.gaveUpReasons.push(`${lead.name}: ${result.gaveUpReason}`);
         }
-
-        await new Promise((r) => setTimeout(r, 800));
+        console.log(`  NO MATCH (${result.turnsUsed} turns): ${result.gaveUpReason}`);
       }
 
-      if (i + BATCH_SIZE < validLeads.length) {
-        await new Promise((r) => setTimeout(r, DELAY_MS));
-      }
+      await new Promise((r) => setTimeout(r, 500));
     }
 
-    // ─── Pass 2: Pro model for failed leads (stronger reasoning, more turns) ───
-    let proFound = 0;
-    let proProcessed = 0;
+    // Check how many remain
+    const { count: remaining } = await supabase
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .is("linkedin_url", null)
+      .neq("name", "");
 
-    if (failedLeadIds.length > 0) {
-      // Reset failed leads to NULL so we can retry
-      for (const id of failedLeadIds) {
-        await supabase.from("leads").update({ linkedin_url: null }).eq("id", id);
-      }
+    const avgTurns = processed > 0 ? (agentStats.totalTurns / processed).toFixed(1) : "0";
+    console.log(`\nRun complete: ${found}/${processed} matched, ${remaining || 0} leads remaining`);
 
-      // Re-fetch the failed leads
-      const { data: retryLeads } = await supabase
-        .from("leads")
-        .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience")
-        .in("id", failedLeadIds)
-        .neq("name", "");
-
-      const retryValid = (retryLeads || []).filter(l => {
-        // Skip obvious junk for the expensive pass
-        const name = l.name.trim();
-        if (name.split(/\s+/).length < 2) return false;
-        if (/^[a-z]{1,3}\s[a-z]{1,3}$/i.test(name)) return false; // "a a", "ab cd"
-        const email = (l.email || "").toLowerCase();
-        if (email.includes("mozmail.com") || email.includes("guerrillamail")) return false;
-        return true;
-      });
-
-      if (retryValid.length > 0) {
-        console.log(`\n=== PASS 2: Pro model (${retryValid.length} leads, ${PRO_MAX_TURNS} turns) ===`);
-
-        for (let i = 0; i < retryValid.length; i += BATCH_SIZE) {
-          const batch = retryValid.slice(i, i + BATCH_SIZE);
-
-          for (const lead of batch) {
-            proProcessed++;
-            console.log(`\n[Pass2 ${proProcessed}/${retryValid.length}] ${lead.name} (${lead.company})`);
-
-            const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o", PRO_MAX_TURNS);
-            agentStats.totalTurns += result.turnsUsed;
-
-            if (result.found) {
-              proFound++;
-              found++;
-              console.log(`  PRO MATCHED (${result.turnsUsed} turns)`);
-            } else {
-              console.log(`  PRO NO MATCH (${result.turnsUsed} turns): ${result.gaveUpReason}`);
-            }
-
-            await new Promise((r) => setTimeout(r, 1200));
-          }
-
-          if (i + BATCH_SIZE < retryValid.length) {
-            await new Promise((r) => setTimeout(r, DELAY_MS));
-          }
-        }
-      }
-    }
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        processed,
+        found,
+        remaining: remaining || 0,
+        avgTurnsPerLead: parseFloat(avgTurns),
+        gaveUp: agentStats.gaveUp,
+        gaveUpReasons: agentStats.gaveUpReasons,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (err) {
+    console.error("backfill-linkedin error:", err);
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
     const totalProcessed = processed;
     const avgTurns = totalProcessed > 0 ? (agentStats.totalTurns / totalProcessed).toFixed(1) : "0";
     console.log(`\nBackfill complete: ${found} total matches (Pass1: ${found - proFound}, Pass2/Pro: ${proFound}) from ${totalProcessed} leads`);
