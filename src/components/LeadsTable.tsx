@@ -705,8 +705,32 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
   const hasSuggestions = enrichment.suggestedUpdates && Object.keys(enrichment.suggestedUpdates).length > 0;
   const [researchOpen, setResearchOpen] = useState(false);
 
+  // Detect stale enrichment: meetings added after last research run
+  const enrichedAt = enrichment.enrichedAt ? new Date(enrichment.enrichedAt).getTime() : 0;
+  const meetingsAfterEnrichment = (lead.meetings || []).filter(m => {
+    const addedAt = m.addedAt ? new Date(m.addedAt).getTime() : 0;
+    return addedAt > enrichedAt;
+  });
+  const hadNoMeetings = enrichment.dataSources && !enrichment.dataSources.toLowerCase().includes("meeting");
+  const nowHasMeetings = (lead.meetings || []).length > 0 && lead.meetings.some(m => m.intelligence);
+  const isStale = meetingsAfterEnrichment.length > 0 || (hadNoMeetings && nowHasMeetings);
+  const staleMeetingCount = meetingsAfterEnrichment.length || (lead.meetings || []).length;
+
   return (
     <div className="space-y-3">
+      {/* Stale enrichment warning */}
+      {isStale && !enriching && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+          <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+          <p className="text-xs text-amber-200 flex-1">
+            Research ran before {staleMeetingCount} meeting(s) were added. Re-research to include meeting intelligence.
+          </p>
+          <Button onClick={(e) => { e.stopPropagation(); onEnrich(); }} variant="outline" size="sm" className="h-6 text-[10px] shrink-0 border-amber-500/40 text-amber-400 hover:bg-amber-500/20">
+            Re-research
+          </Button>
+        </div>
+      )}
+
       {/* AI Suggested Updates - always visible at top */}
       {hasSuggestions && (
         <AISuggestionsPanel
