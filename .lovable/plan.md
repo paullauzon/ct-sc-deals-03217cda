@@ -1,37 +1,36 @@
 
 
-# Automate LinkedIn Profile Finding for All Leads
+# Add LinkedIn Indicators Across the App
 
-## Current State
-The LinkedIn lookup code **already exists** in `enrich-lead-scoring` — it uses Serper.dev to search `site:linkedin.com/in/ "Name" "Company"` and extracts the profile URL + title. However, **0 out of 191 leads** have LinkedIn URLs because the `SERPER_API_KEY` secret was never added. The function silently skips LinkedIn lookup when the key is missing.
+## Problem
+LinkedIn URLs exist in the DB (`linkedin_url`) but the Lead type and UI have no awareness of them. Need to surface LinkedIn profiles everywhere relevant.
 
-## Recommended Approach: Serper.dev (already integrated)
+## Where to Add LinkedIn
 
-| Option | Accuracy | Cost | Integration Work |
-|---|---|---|---|
-| **Serper.dev** ✅ | Good (Google search) | ~$50/mo for 2,500 searches | **Already built** — just add API key |
-| HeyReach | High | $79+/mo | Full new integration needed; designed for outreach, not lookup |
-| Proxycurl | Very high | $0.01/lookup (~$2 for 191 leads) | New edge function + integration |
-| Apollo.io | High | Free tier: 50/mo | New edge function + integration |
+1. **Lead type + mapping** — Add `linkedinUrl` and `linkedinTitle` to the Lead interface and DB mapping
+2. **Leads table** — LinkedIn icon next to the lead name (clickable link), similar to how DUP/NEW badges sit there
+3. **Lead detail panel** — In the Contact section, add a LinkedIn field with clickable icon+link
+4. **Pipeline cards** — LinkedIn icon next to the Fireflies icon in Row 4 (same pattern)
+5. **Command palette search results** — Not adding here, would clutter; the other 4 locations cover all workflows
 
-**Serper is the clear winner** — the code is already written and tested, it just needs the API key. HeyReach is designed for LinkedIn outreach campaigns, not profile enrichment.
+## Files Changed
 
-## Plan
+### `src/types/lead.ts`
+- Add `linkedinUrl: string;` and `linkedinTitle: string;` to the Lead interface
 
-### Step 1: Add SERPER_API_KEY secret
-Request you to add your Serper.dev API key (get one at serper.dev — free tier gives 2,500 searches).
+### `src/lib/leadDbMapping.ts`
+- Add `linkedin_url` ↔ `linkedinUrl` and `linkedin_title` ↔ `linkedinTitle` to all 3 mapping functions
 
-### Step 2: Backfill existing 191 leads
-Create a `backfill-linkedin` edge function that:
-- Queries all leads where `linkedin_url IS NULL`
-- Calls the existing Serper LinkedIn lookup logic for each
-- Updates `linkedin_url`, `linkedin_title`, `linkedin_ma_experience`, and recalculates scores
-- Processes in batches of 5 with rate limiting to stay within Serper limits
+### `src/components/LeadsTable.tsx`
+- **Leads table rows** (~line 1167): Add a LinkedIn icon (Lucide `Linkedin`) next to the lead name, linked to `lead.linkedinUrl`, only shown when URL exists. Muted when missing.
+- **Lead detail Contact section** (~line 331): Add a LinkedIn field row showing the URL as a clickable link with icon
+- Import `Linkedin` from lucide-react
 
-### Step 3: Automatic for new leads
-Already handled — every new lead goes through `score-lead` → `enrich-lead-scoring` → Serper LinkedIn lookup. Once the API key exists, this runs automatically.
+### `src/components/Pipeline.tsx`
+- **Pipeline cards Row 4** (~line 373): Add LinkedIn icon next to the Fireflies meetings icon, shown when `lead.linkedinUrl` exists. Simple linked icon, no count.
+- Import `Linkedin` from lucide-react
 
-### Files Changed
-- `supabase/functions/backfill-linkedin/index.ts` — New function to backfill all existing leads
-- `supabase/config.toml` — Register the new function
+### `src/contexts/LeadContext.tsx`
+- Update realtime UPDATE handler to pick up `linkedin_url` and `linkedin_title` changes from DB
+- Update `NewLeadDialog` defaults to include the new fields
 
