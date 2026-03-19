@@ -5,8 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const BATCH_SIZE = 5;
-const DELAY_MS = 1200;
+const BATCH_SIZE = 3;
+const DELAY_MS = 2000;
 
 // ─── Company Name Utilities ───
 
@@ -40,93 +40,86 @@ function extractDomainRoot(input: string | null): string | null {
   }
 }
 
-function tokenize(input: string): string[] {
-  const words = input
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[-_.]+/g, " ")
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length >= 3);
-  return [...new Set(words)];
+// ─── Firecrawl Search ───
+
+interface SearchResult {
+  url: string;
+  title?: string;
+  description?: string;
+  markdown?: string;
 }
 
-// ─── LinkedIn Search Helpers ───
+async function firecrawlSearch(
+  query: string,
+  apiKey: string,
+  limit = 5,
+  scrape = true,
+): Promise<SearchResult[]> {
+  try {
+    const body: Record<string, unknown> = { query, limit };
+    if (scrape) {
+      body.scrapeOptions = { formats: ["markdown"] };
+    }
+
+    const res = await fetch("https://api.firecrawl.dev/v1/search", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`Firecrawl search error ${res.status}: ${errText}`);
+      return [];
+    }
+
+    const data = await res.json();
+    const results = data.data || data.results || [];
+    return results.map((r: any) => ({
+      url: r.url || "",
+      title: r.title || "",
+      description: r.description || "",
+      markdown: r.markdown || "",
+    }));
+  } catch (e) {
+    console.error("Firecrawl search failed:", e);
+    return [];
+  }
+}
+
+// ─── Candidate Collection ───
 
 interface Candidate {
   url: string;
-  snippet: string;
-  source: string; // which pass found it
+  profileContent: string; // rich markdown or snippet
+  source: string;
 }
 
-function extractLinkedInFromResults(
-  organic: Array<{ link?: string; snippet?: string; title?: string }>,
-  source: string,
-): Candidate[] {
+function extractLinkedInCandidates(results: SearchResult[], source: string): Candidate[] {
   const candidates: Candidate[] = [];
-  for (const result of organic) {
-    if (result.link?.includes("linkedin.com/in/")) {
-      const snip = (result.snippet || "") + " " + (result.title || "");
-      candidates.push({ url: result.link, snippet: snip, source });
+  for (const r of results) {
+    if (r.url?.includes("linkedin.com/in/")) {
+      const content = r.markdown || r.description || r.title || "";
+      candidates.push({ url: r.url, profileContent: content.substring(0, 3000), source });
     }
   }
   return candidates;
-}
-
-async function serperSearch(
-  query: string,
-  apiKey: string,
-  num = 10,
-): Promise<Array<{ link?: string; snippet?: string; title?: string }>> {
-  const res = await fetch("https://google.serper.dev/search", {
-    method: "POST",
-    headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ q: query, num }),
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.organic || [];
-}
-
-function extractTitle(snippet: string): string | null {
-  let title: string | null = null;
-  const titleMatch = snippet.match(/[-–—]\s*(.+?)(?:\s+at\s+|\s+[-–—]\s+|\s*$)/i);
-  if (titleMatch) title = titleMatch[1].trim().replace(/\s*[-–—]\s*LinkedIn.*$/i, "").trim();
-  if (!title) {
-    const match = snippet.match(
-      /\b(CEO|CFO|COO|CTO|President|Partner|Managing Director|Vice President|VP|Director|Principal|Founder|Co-Founder|Manager|Associate|Analyst)\b/i,
-    );
-    if (match) title = match[0];
-  }
-  return title;
-}
-
-function detectMaExperience(snippet: string): boolean {
-  const maKeywords = [
-    "investment bank", "private equity", "m&a", "corporate development",
-    "mergers", "acquisitions", "corp dev", "advisory",
-  ];
-  const lower = snippet.toLowerCase();
-  return maKeywords.some((kw) => lower.includes(kw));
 }
 
 function buildCompanyQueries(name: string, company: string | null): string[] {
   const queries: string[] = [];
   if (!company || !company.trim()) return queries;
   const clean = cleanCompanyName(company);
-  if (clean) queries.push(`site:linkedin.com/in/ "${name}" "${clean}"`);
+  if (clean) queries.push(`site:linkedin.com/in "${name}" "${clean}"`);
   const expanded = expandConcatenatedName(clean || company);
   if (expanded !== clean && expanded.includes(" ")) {
-    queries.push(`site:linkedin.com/in/ "${name}" "${expanded}"`);
-  }
-  const words = tokenize(expanded || clean || company);
-  const significantWord = words.find(w => w.length >= 4 && !["the", "and", "for"].includes(w));
-  if (significantWord && significantWord !== clean?.toLowerCase()) {
-    queries.push(`site:linkedin.com/in/ "${name}" "${significantWord}"`);
+    queries.push(`site:linkedin.com/in "${name}" "${expanded}"`);
   }
   return queries;
 }
-
-// ─── Collect ALL candidates from ALL passes ───
 
 async function collectAllCandidates(
   name: string,
@@ -140,48 +133,46 @@ async function collectAllCandidates(
 
   const addCandidates = (candidates: Candidate[]) => {
     for (const c of candidates) {
-      if (!seenUrls.has(c.url)) {
-        seenUrls.add(c.url);
+      const normalizedUrl = c.url.split("?")[0].replace(/\/$/, "");
+      if (!seenUrls.has(normalizedUrl)) {
+        seenUrls.add(normalizedUrl);
         allCandidates.push(c);
       }
     }
   };
 
   try {
-    // Pass 1: Name + Company variants
+    // Pass 1: Name + Company variants (with scraping for rich content)
     const companyQueries = buildCompanyQueries(name, company);
     for (const query of companyQueries) {
-      const results = await serperSearch(query, apiKey);
-      addCandidates(extractLinkedInFromResults(results, "company"));
-      if (allCandidates.length >= 8) break; // enough candidates
+      const results = await firecrawlSearch(query, apiKey, 5, true);
+      addCandidates(extractLinkedInCandidates(results, "company"));
+      if (allCandidates.length >= 6) break;
     }
 
     // Pass 2: Name + Email domain
     const emailRoot = extractDomainRoot(email);
     if (emailRoot && emailRoot.length >= 3) {
-      const results = await serperSearch(`site:linkedin.com/in/ "${name}" "${emailRoot}"`, apiKey);
-      addCandidates(extractLinkedInFromResults(results, "email"));
+      const results = await firecrawlSearch(
+        `site:linkedin.com/in "${name}" "${emailRoot}"`, apiKey, 5, true,
+      );
+      addCandidates(extractLinkedInCandidates(results, "email"));
 
       const expandedDomain = expandConcatenatedName(emailRoot);
       if (expandedDomain !== emailRoot && expandedDomain.includes(" ")) {
-        const results2 = await serperSearch(`site:linkedin.com/in/ "${name}" "${expandedDomain}"`, apiKey);
-        addCandidates(extractLinkedInFromResults(results2, "email-expanded"));
+        const results2 = await firecrawlSearch(
+          `site:linkedin.com/in "${name}" "${expandedDomain}"`, apiKey, 5, true,
+        );
+        addCandidates(extractLinkedInCandidates(results2, "email-expanded"));
       }
     }
 
-    // Pass 3: Name only (broader search)
-    if (allCandidates.length < 5) {
-      const results = await serperSearch(`site:linkedin.com/in/ "${name}"`, apiKey, 10);
-      addCandidates(extractLinkedInFromResults(results, "name-only"));
-    }
-
-    // Pass 3b: Name without quotes
-    if (allCandidates.length < 3) {
-      const nameParts = name.split(/\s+/).filter(p => p.length >= 2);
-      if (nameParts.length >= 2) {
-        const results = await serperSearch(`site:linkedin.com/in/ ${name}`, apiKey, 10);
-        addCandidates(extractLinkedInFromResults(results, "name-unquoted"));
-      }
+    // Pass 3: Name only (broader)
+    if (allCandidates.length < 4) {
+      const results = await firecrawlSearch(
+        `site:linkedin.com/in "${name}"`, apiKey, 5, true,
+      );
+      addCandidates(extractLinkedInCandidates(results, "name-only"));
     }
   } catch (e) {
     console.error("Candidate collection failed:", e);
@@ -190,7 +181,7 @@ async function collectAllCandidates(
   return allCandidates;
 }
 
-// ─── AI Verification — pick the best candidate using full lead context ───
+// ─── AI Verification — pick the best candidate using full lead context + rich profile ───
 
 interface LeadContext {
   name: string;
@@ -211,11 +202,10 @@ async function aiPickBestCandidate(
   lead: LeadContext,
   candidates: Candidate[],
   apiKey: string,
-): Promise<{ url: string | null; snippet: string }> {
-  if (!candidates.length) return { url: null, snippet: "" };
+): Promise<{ url: string | null; profileContent: string }> {
+  if (!candidates.length) return { url: null, profileContent: "" };
 
-  // Deduplicate and limit to top 8
-  const top = candidates.slice(0, 8);
+  const top = candidates.slice(0, 6);
 
   const contextParts: string[] = [];
   if (lead.company) contextParts.push(`Company: ${lead.company}`);
@@ -228,28 +218,31 @@ async function aiPickBestCandidate(
   if (lead.targetCriteria) contextParts.push(`Target Criteria: ${lead.targetCriteria}`);
   if (lead.targetRevenue) contextParts.push(`Target Revenue: ${lead.targetRevenue}`);
   if (lead.geography) contextParts.push(`Geography: ${lead.geography}`);
-  if (lead.message) contextParts.push(`Submission Message: "${lead.message.substring(0, 500)}"`);
+  if (lead.message) contextParts.push(`Submission Message: "${lead.message.substring(0, 800)}"`);
 
   const candidateList = top
-    .map((c, i) => `${i + 1}. URL: ${c.url}\n   Info: ${c.snippet.substring(0, 300)}\n   Found via: ${c.source}`)
-    .join("\n");
+    .map((c, i) => {
+      const contentPreview = c.profileContent.substring(0, 1500);
+      return `--- CANDIDATE ${i + 1} ---\nURL: ${c.url}\nFound via: ${c.source}\nProfile Content:\n${contentPreview}`;
+    })
+    .join("\n\n");
 
-  const prompt = `You are finding the correct LinkedIn profile for a specific person. Be STRICT — only pick a match if you are confident.
+  const prompt = `You are matching a person to their correct LinkedIn profile. You have RICH profile data from each candidate.
 
-PERSON:
+PERSON TO FIND:
 Name: ${lead.name}
 ${contextParts.join("\n")}
 
-LINKEDIN CANDIDATES:
+LINKEDIN CANDIDATES (with full profile content):
 ${candidateList}
 
-RULES:
-- The profile MUST belong to someone at the SAME company or a clearly related entity.
-- Check the URL slug — if it contains a completely different name (e.g., looking for "Gabriel Fogel" but URL has "brandon-camelione"), it's WRONG.
-- Email domain should match the company in the LinkedIn profile.
-- The person's submission message gives context about their industry/business — use it.
-- If the person says they do "M&A in home services" but the LinkedIn shows "software engineer", that's wrong.
-- If NO candidate is a confident match, say "none".
+MATCHING RULES:
+1. The name on the LinkedIn profile must match "${lead.name}" (allow minor variations like nicknames).
+2. The company in their CURRENT experience must match or be clearly related to "${lead.company || "unknown"}".
+3. If the email domain is "${extractDomainRoot(lead.email)}", the LinkedIn profile's company should align with that domain.
+4. The URL slug should contain parts of the person's name — if it contains a completely different name, REJECT it.
+5. Their industry/role should be consistent with their submission message context.
+6. If NO candidate is a confident match, say "none".
 
 Respond with ONLY the number (1, 2, etc.) of the correct match, or "none". Nothing else.`;
 
@@ -266,26 +259,60 @@ Respond with ONLY the number (1, 2, etc.) of the correct match, or "none". Nothi
       }),
     });
 
-    if (!response.ok) return { url: null, snippet: "" };
+    if (!response.ok) return { url: null, profileContent: "" };
 
     const data = await response.json();
     const answer = (data.choices?.[0]?.message?.content || "").trim().toLowerCase();
 
-    if (answer === "none" || answer === "0") return { url: null, snippet: "" };
+    if (answer === "none" || answer === "0") return { url: null, profileContent: "" };
 
     const num = parseInt(answer);
     if (num >= 1 && num <= top.length) {
-      return { url: top[num - 1].url, snippet: top[num - 1].snippet };
+      return { url: top[num - 1].url, profileContent: top[num - 1].profileContent };
     }
 
-    return { url: null, snippet: "" };
+    return { url: null, profileContent: "" };
   } catch (e) {
     console.error("AI pick failed:", e);
-    return { url: null, snippet: "" };
+    return { url: null, profileContent: "" };
   }
 }
 
-// ─── Seniority Scoring ───
+// ─── Extract title & M&A from rich profile content ───
+
+function extractTitle(content: string): string | null {
+  // Try headline pattern (common in LinkedIn markdown)
+  const headlineMatch = content.match(/^#+\s*(.+)/m);
+  if (headlineMatch) {
+    const headline = headlineMatch[1].trim();
+    if (headline.length < 100 && !headline.toLowerCase().includes("linkedin")) {
+      return headline;
+    }
+  }
+
+  // Try "title at company" pattern
+  const titleMatch = content.match(/[-–—]\s*(.+?)(?:\s+at\s+|\s+[-–—]\s+|\s*$)/i);
+  if (titleMatch) {
+    const title = titleMatch[1].trim().replace(/\s*[-–—]\s*LinkedIn.*$/i, "").trim();
+    if (title.length > 2) return title;
+  }
+
+  // Try known title keywords
+  const match = content.match(
+    /\b(CEO|CFO|COO|CTO|President|Partner|Managing Director|Vice President|VP|Director|Principal|Founder|Co-Founder|Manager|Associate|Analyst)\b/i,
+  );
+  return match ? match[0] : null;
+}
+
+function detectMaExperience(content: string): boolean {
+  const maKeywords = [
+    "investment bank", "private equity", "m&a", "corporate development",
+    "mergers", "acquisitions", "corp dev", "advisory", "buy-side",
+    "sell-side", "due diligence", "portfolio company",
+  ];
+  const lower = content.toLowerCase();
+  return maKeywords.some((kw) => lower.includes(kw));
+}
 
 function getSeniorityScore(title: string | null): number {
   if (!title) return -2;
@@ -304,16 +331,16 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const SERPER_API_KEY = Deno.env.get("SERPER_API_KEY");
-  if (!SERPER_API_KEY) {
-    return new Response(JSON.stringify({ error: "SERPER_API_KEY not configured" }), {
+  const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
+  if (!FIRECRAWL_API_KEY) {
+    return new Response(JSON.stringify({ error: "FIRECRAWL_API_KEY not configured" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
-    return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured — needed for AI verification" }), {
+    return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -357,26 +384,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Backfilling LinkedIn (with AI verification) for ${validLeads.length} leads`);
+    console.log(`Backfilling LinkedIn (Firecrawl + AI) for ${validLeads.length} leads`);
     let found = 0;
     let processed = 0;
 
     for (let i = 0; i < validLeads.length; i += BATCH_SIZE) {
       const batch = validLeads.slice(i, i + BATCH_SIZE);
 
-      // Collect candidates for all leads in batch in parallel
-      const candidateResults = await Promise.all(
-        batch.map(async (lead) => {
-          const candidates = await collectAllCandidates(
-            lead.name, lead.company, lead.email, lead.company_url, SERPER_API_KEY,
-          );
-          return { lead, candidates };
-        }),
-      );
-
-      // AI verify each lead's candidates
-      for (const { lead, candidates } of candidateResults) {
+      for (const lead of batch) {
         processed++;
+
+        const candidates = await collectAllCandidates(
+          lead.name, lead.company, lead.email, lead.company_url, FIRECRAWL_API_KEY,
+        );
 
         if (candidates.length === 0) {
           await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
@@ -408,8 +428,8 @@ Deno.serve(async (req) => {
         }
 
         found++;
-        const finalTitle = extractTitle(aiResult.snippet);
-        const finalMa = detectMaExperience(aiResult.snippet);
+        const finalTitle = extractTitle(aiResult.profileContent);
+        const finalMa = detectMaExperience(aiResult.profileContent);
 
         let seniorityScoreValue = getSeniorityScore(finalTitle);
         if (finalMa) seniorityScoreValue += 2;
@@ -429,6 +449,9 @@ Deno.serve(async (req) => {
         }).eq("id", lead.id);
 
         console.log(`MATCHED: ${lead.name} (${lead.company}) → ${aiResult.url}`);
+
+        // Rate limit between individual leads
+        await new Promise((r) => setTimeout(r, 800));
       }
 
       if (i + BATCH_SIZE < validLeads.length) {
