@@ -224,6 +224,8 @@ async function aiSearchAgent(
   lovableKey: string,
   model: string = "google/gemini-2.5-flash",
   maxTurns: number = FLASH_MAX_TURNS,
+  provider: ApiProvider = "lovable",
+  openaiKey: string | null = null,
 ): Promise<AgentResult> {
   const contextParts: string[] = [];
   contextParts.push(`Name: ${lead.name}`);
@@ -250,22 +252,7 @@ async function aiSearchAgent(
 
   for (let turn = 0; turn < maxTurns; turn++) {
     try {
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${lovableKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ model, messages }),
-      });
-
-      if (!response.ok) {
-        console.error(`AI agent call failed: HTTP ${response.status}`);
-        return { url: null, profileContent: "", turnsUsed: turn + 1, gaveUpReason: "AI call failed" };
-      }
-
-      const data = await response.json();
-      const content = (data.choices?.[0]?.message?.content || "").trim();
+      const content = await callAI(messages, provider, lovableKey, openaiKey, model);
 
       let parsed: any;
       try {
