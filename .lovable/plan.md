@@ -1,36 +1,55 @@
 
 
-# LinkedIn Icon Styling + Improve Match Rate
+# Fix LinkedIn Profile Accuracy — Company Validation
 
-## Part 1: Make LinkedIn Icons Blue
+## Problem
+The current LinkedIn lookup finds the **first** profile matching the person's name, but doesn't verify it belongs to someone at the right company. Result: ~50% of matches are wrong people (e.g., "Adam Berman" at Savade Holdings matched to someone at Hendrick Automotive Group).
 
-The LinkedIn brand color is `#0A66C2`. Currently all LinkedIn icons use `text-muted-foreground`. Change to LinkedIn blue in all 4 locations:
+The root cause is **Pass 2** (name-only fallback) — when the company+name search fails, it searches just the name and picks the first LinkedIn profile it finds, which is often the wrong person.
 
-### `src/components/LeadsTable.tsx`
-- **Line 221** (lead detail header): Add a blue LinkedIn icon next to the name in `SheetTitle` row
-- **Line 336** (Contact section): Make the icon blue `text-[#0A66C2]`
-- **Line 1176** (leads table name column): Make the icon blue `text-[#0A66C2]`
+## Solution: Add Company Validation
 
-### `src/components/Pipeline.tsx`
-- **Line 375** (pipeline card): Make the icon blue `text-[#0A66C2]`
+After finding a LinkedIn result, validate the snippet/title against known company signals before accepting the match. We have three signals: company name, email domain, and company URL domain.
 
-## Part 2: Improve LinkedIn Match Rate (86/191 → ~150+)
+### Validation Logic (both edge functions)
+```
+function isCompanyMatch(snippet, company, email, companyUrl):
+  - Extract email domain (e.g., "savadeholdings.com" → "savade")
+  - Extract company URL domain (e.g., "https://savadeholdings.com" → "savade") 
+  - Clean company name (strip LLC/Inc/etc)
+  - Check if snippet contains ANY of: company name, email domain root, URL domain root
+  - For Pass 1 (searched with company): accept match (already filtered by Google)
+  - For Pass 2 (name-only fallback): REQUIRE company validation to pass
+  - If validation fails on Pass 2: reject the match (return null)
+```
 
-The current search queries `site:linkedin.com/in/ "Name" "Company"` but many companies have abbreviated/unusual names (e.g., "TVDCP", "Queenscourtcap", "DB", "Srs") that don't match LinkedIn profiles. Fix:
+### Changes to Search Strategy
+1. **Pass 1** (name + company): Keep as-is, trust Google's filtering
+2. **Pass 2** (name only): Add company validation — check snippet contains company/domain reference. If not, **reject** the match rather than accepting the wrong person
+3. **Pass 3** (new): Try with email domain as company hint: `site:linkedin.com/in/ "Name" "emaildomain"` — many company websites match email domains
 
-### `supabase/functions/backfill-linkedin/index.ts` + `supabase/functions/enrich-lead-scoring/index.ts`
-Improve the `serperLinkedInLookup` function in both files:
-
-1. **Two-pass search**: First try with company name. If no LinkedIn result found, retry **without** company (just `site:linkedin.com/in/ "Name"`)
-2. **Check all 3 results** not just the first — find the first result whose link contains `linkedin.com/in/`
-3. **Clean company names**: Strip common suffixes like "LLC", "Inc", "Corp" and expand obvious abbreviations before searching
-
-### Re-run backfill
-After deploying the improved functions, re-run `backfill-linkedin` to process the remaining 105 leads with the improved matching logic.
+### Backfill: Clear Bad Data + Re-run
+1. Reset all `linkedin_url`, `linkedin_title`, `linkedin_ma_experience` to NULL for all leads
+2. Re-run backfill with improved validation
+3. This will reduce total matches somewhat (maybe 120-140 instead of 161) but accuracy will be dramatically higher
 
 ## Files Changed
-- `src/components/LeadsTable.tsx` — Blue icons + icon next to name in detail header
-- `src/components/Pipeline.tsx` — Blue icon
-- `supabase/functions/backfill-linkedin/index.ts` — Improved matching
-- `supabase/functions/enrich-lead-scoring/index.ts` — Improved matching (same logic)
+
+### `supabase/functions/backfill-linkedin/index.ts`
+- Update `serperLinkedInLookup` signature to accept `email` and `companyUrl` params
+- Add `isCompanyMatch()` validation function
+- Add Pass 3 (email domain search)
+- Validate Pass 2 & 3 results against company signals
+- Update the main loop to pass `email` and `companyUrl` to the lookup function
+- Select `email` and `company_url` from the leads query
+
+### `supabase/functions/enrich-lead-scoring/index.ts`
+- Same validation logic changes to `serperLinkedInLookup`
+- Add `isCompanyMatch()` function
+- Add Pass 3 (email domain search)
+- Pass email/companyUrl through from the lead data
+
+### After deployment
+- Clear all existing LinkedIn data (since ~50% is wrong)
+- Re-run backfill with the validated logic
 
