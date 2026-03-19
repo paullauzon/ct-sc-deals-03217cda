@@ -295,6 +295,16 @@ async function collectAllCandidates(
           `site:linkedin.com/in "${firstName}" "${clean}"`, apiKey, 5, true,
         );
         addCandidates(extractLinkedInCandidates(results, "firstname-company"));
+
+        // Try nickname variants
+        const variants = getNameVariants(firstName);
+        for (const variant of variants) {
+          if (variant === firstName || allCandidates.length >= 8) continue;
+          const nickResults = await firecrawlSearch(
+            `site:linkedin.com/in "${variant}" "${clean}"`, apiKey, 5, true,
+          );
+          addCandidates(extractLinkedInCandidates(nickResults, `nickname-${variant}`));
+        }
       }
     }
 
@@ -312,6 +322,46 @@ async function collectAllCandidates(
         `site:linkedin.com/in "${name}"`, apiKey, 5, true,
       );
       addCandidates(extractLinkedInCandidates(results, "name-only"));
+    }
+
+    // Pass 6: Broad search WITHOUT site: restriction
+    if (allCandidates.length < 4 && company && company.trim()) {
+      const clean = cleanCompanyName(company);
+      if (clean) {
+        const results = await firecrawlSearch(
+          `"${name}" "${clean}" linkedin`, apiKey, 5, true,
+        );
+        addCandidates(extractLinkedInCandidates(results, "broad-search"));
+      }
+    }
+
+    // Pass 7: Email domain expanded as company name
+    if (allCandidates.length < 4 && email) {
+      const expandedCompany = emailDomainToCompanyName(email);
+      if (expandedCompany) {
+        const results = await firecrawlSearch(
+          `site:linkedin.com/in "${name}" "${expandedCompany}"`, apiKey, 5, true,
+        );
+        addCandidates(extractLinkedInCandidates(results, "email-domain-expanded"));
+      }
+    }
+
+    // Pass 8: Nickname variants in company-employees search (Pass 0 extension)
+    if (allCandidates.length < 4 && company && company.trim()) {
+      const clean = cleanCompanyName(company);
+      if (clean) {
+        const variants = getNameVariants(firstName);
+        for (const variant of variants) {
+          if (variant === firstName || allCandidates.length >= 6) continue;
+          const empResults = await firecrawlSearch(
+            `"${clean}" site:linkedin.com/in`, apiKey, 10, false,
+          );
+          addCandidates(filterByFirstName(
+            empResults.map(r => ({ ...r, _nickFilter: variant })) as any,
+            `nickname-employees-${variant}`,
+          ));
+        }
+      }
     }
   } catch (e) {
     console.error("Candidate collection failed:", e);
