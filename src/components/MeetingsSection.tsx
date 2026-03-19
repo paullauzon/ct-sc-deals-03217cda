@@ -117,6 +117,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
   const [followUpEmail, setFollowUpEmail] = useState("");
   const [followUpMeetingId, setFollowUpMeetingId] = useState<string | null>(null);
   const [generatingFollowUp, setGeneratingFollowUp] = useState(false);
+  const [reprocessingMeetingId, setReprocessingMeetingId] = useState<string | null>(null);
 
   const searching = leadJobs[lead.id]?.searching ?? false;
 
@@ -210,6 +211,44 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
     }
   };
 
+  const handleReprocess = async (meeting: Meeting) => {
+    setReprocessingMeetingId(meeting.id);
+    try {
+      toast.info(`Re-processing "${meeting.title}" with AI...`);
+      const { data, error } = await supabase.functions.invoke("process-meeting", {
+        body: {
+          transcript: meeting.transcript,
+          priorMeetings: meetings.filter(m => m.id !== meeting.id),
+        },
+      });
+      if (error) throw error;
+
+      const updatedMeeting: Meeting = {
+        ...meeting,
+        summary: data.summary || meeting.summary,
+        nextSteps: data.nextSteps || meeting.nextSteps,
+        intelligence: data.intelligence || undefined,
+      };
+      const updatedMeetings = meetings.map(m => m.id === meeting.id ? updatedMeeting : m);
+      updateLead(lead.id, { meetings: updatedMeetings });
+
+      if (data.intelligence) {
+        toast.success("AI analysis complete!");
+        const meetingsWithIntel = updatedMeetings.filter(m => m.intelligence);
+        if (meetingsWithIntel.length > 0) {
+          await synthesizeDealIntelligence(updatedMeetings, lead);
+        }
+      } else {
+        toast.warning("AI completed but no structured intelligence was extracted");
+      }
+    } catch (e: any) {
+      console.error("Reprocess error:", e);
+      toast.error(e.message || "Failed to re-process meeting");
+    } finally {
+      setReprocessingMeetingId(null);
+    }
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between border-b border-border pb-1">
@@ -266,6 +305,8 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
                 }}
                 onDraftFollowUp={() => handleDraftFollowUp(meeting)}
                 generatingFollowUp={generatingFollowUp && followUpMeetingId === meeting.id}
+                onReprocess={() => handleReprocess(meeting)}
+                reprocessing={reprocessingMeetingId === meeting.id}
               />
             ))}
         </div>
@@ -668,7 +709,7 @@ function TagList({ label, items, emoji, variant }: { label: string; items?: stri
 
 // ─── Meeting Card ───
 
-function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp }: { meeting: Meeting; onRemove: () => void; onDraftFollowUp: () => void; generatingFollowUp: boolean }) {
+function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, onReprocess, reprocessing }: { meeting: Meeting; onRemove: () => void; onDraftFollowUp: () => void; generatingFollowUp: boolean; onReprocess?: () => void; reprocessing?: boolean }) {
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const intel = meeting.intelligence;
@@ -736,6 +777,17 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp }:
               <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={onDraftFollowUp} disabled={generatingFollowUp}>
                 <Mail className="h-3 w-3" />
                 {generatingFollowUp ? "Drafting..." : "Draft Follow-Up"}
+              </Button>
+            </div>
+          )}
+
+          {/* Re-process button for meetings with transcript but no intelligence */}
+          {!intel && meeting.transcript && meeting.transcript.length > 20 && onReprocess && (
+            <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+              <span className="text-xs text-yellow-700">⚠️ AI analysis missing for this meeting.</span>
+              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 ml-auto" onClick={onReprocess} disabled={reprocessing}>
+                <Loader2 className={`h-3 w-3 ${reprocessing ? "animate-spin" : "hidden"}`} />
+                {reprocessing ? "Re-processing..." : "Re-process with AI"}
               </Button>
             </div>
           )}

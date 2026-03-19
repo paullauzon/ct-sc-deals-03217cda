@@ -205,7 +205,7 @@ serve(async (req) => {
 
           // Per-meeting timeout: skip if AI takes >25s rather than killing the whole job
           const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 25000);
+          const timeout = setTimeout(() => controller.abort(), 50000);
 
           const aiRes = await fetch(`${funcUrl}/process-meeting`, {
             method: "POST",
@@ -228,7 +228,7 @@ serve(async (req) => {
           }
         } catch (e: any) {
           if (e.name === "AbortError") {
-            console.warn(`Meeting ${i} ("${m.title}") AI call timed out after 25s, skipping`);
+            console.warn(`Meeting ${i} ("${m.title}") AI call timed out after 50s, skipping`);
           } else {
             console.error(`AI processing error for meeting ${i}:`, e);
           }
