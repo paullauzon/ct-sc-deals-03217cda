@@ -139,6 +139,8 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
 
   const handleEnrich = async () => {
     setEnriching(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 55000);
     try {
       const meetingIntel = aggregateMeetingIntelligence();
       const { data, error } = await supabase.functions.invoke("enrich-lead", {
@@ -149,7 +151,6 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           leadMessage: lead.message,
           leadRole: lead.role,
           leadCompany: lead.company,
-          // Full lead context
           leadStage: lead.stage,
           leadPriority: lead.priority,
           leadDealValue: lead.dealValue,
@@ -170,9 +171,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           leadBuyerType: lead.buyerType,
           leadDaysInStage: days,
           leadStageEnteredDate: lead.stageEnteredDate,
-          // Aggregated meeting intelligence
           meetingIntelligence: meetingIntel,
-          // Accumulated deal intelligence
           dealIntelligence: lead.dealIntelligence || null,
         },
       });
@@ -186,8 +185,13 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
       }
     } catch (e: any) {
       console.error("Enrichment failed:", e);
-      toast.error(e.message || "Failed to enrich lead");
+      if (e.name === "AbortError" || e.message?.includes("aborted")) {
+        toast.error("Research timed out — the AI took too long. Try again or check network.");
+      } else {
+        toast.error(e.message || "Failed to enrich lead");
+      }
     } finally {
+      clearTimeout(timeout);
       setEnriching(false);
     }
   };

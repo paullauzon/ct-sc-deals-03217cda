@@ -68,11 +68,15 @@ async function upsertLeadToDb(lead: Lead) {
   if (error) console.error("Upsert error:", error);
 }
 
-async function updateLeadInDb(id: string, updates: Partial<Lead>) {
+async function updateLeadInDb(id: string, updates: Partial<Lead>): Promise<boolean> {
   const dbUpdates = leadUpdatesToRow(updates);
   dbUpdates.updated_at = new Date().toISOString();
   const { error } = await supabase.from("leads").update(dbUpdates).eq("id", id);
-  if (error) console.error("Update error:", error);
+  if (error) {
+    console.error("Update error:", error);
+    return false;
+  }
+  return true;
 }
 
 export function LeadProvider({ children }: { children: ReactNode }) {
