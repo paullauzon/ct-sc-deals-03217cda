@@ -91,10 +91,34 @@ Deno.serve(async (req) => {
       });
     }
 
-    const body = await req.json();
+    // Parse body with resilient error handling
+    let body: Record<string, unknown>;
+    let rawText = "";
+    try {
+      rawText = await req.text();
+      body = JSON.parse(rawText);
+    } catch (parseErr) {
+      console.error("JSON parse error. Raw body (first 500 chars):", rawText.slice(0, 500));
+      return new Response(
+        JSON.stringify({
+          error: "Invalid JSON in request body",
+          detail: (parseErr as Error).message,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     // Required fields
-    const { brand, source, name, email } = body;
+    const brand = sanitizeString(body.brand, 100);
+    const source = sanitizeString(body.source, 200);
+    const name = sanitizeString(body.name, 200);
+    const email = sanitizeString(body.email, 255).toLowerCase();
+
+    console.log(`[ingest-lead] Processing: ${email} | ${name} | ${source}`);
+
     if (!brand || !source || !name || !email) {
       return new Response(
         JSON.stringify({
