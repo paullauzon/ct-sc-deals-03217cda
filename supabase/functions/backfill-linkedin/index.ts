@@ -435,14 +435,73 @@ Deno.serve(async (req) => {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-  console.log(`Single pass: gpt-4o-mini (${FLASH_MAX_TURNS} turns), max ${MAX_LEADS_PER_RUN} leads per run`);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  // Check for single-lead mode (triggered by ingest-lead)
+  let singleLeadId: string | null = null;
   try {
+    const body = await req.json();
+    singleLeadId = body?.leadId || null;
+  } catch {
+    // No body or invalid JSON — proceed with batch mode
+  }
+
+  try {
+    // ─── Single-lead mode ───
+    if (singleLeadId) {
+      console.log(`[single-lead] Processing lead ${singleLeadId}`);
+      const { data: leadRows } = await supabase
+        .from("leads")
+        .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience")
+        .eq("id", singleLeadId)
+        .limit(1);
+
+      const lead = leadRows?.[0];
+      if (!lead) {
+        return new Response(JSON.stringify({ error: "Lead not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Skip if already has LinkedIn URL
+      if (lead.linkedin_url) {
+        return new Response(JSON.stringify({ success: true, skipped: true, message: "Already has LinkedIn URL" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Check if company_url is already a LinkedIn URL
+      if (lead.company_url && lead.company_url.includes("linkedin.com/in/")) {
+        await supabase.from("leads").update({ linkedin_url: lead.company_url }).eq("id", lead.id);
+        return new Response(JSON.stringify({ success: true, found: true, url: lead.company_url }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Validate name has at least 2 parts
+      const nameParts = lead.name.split(/\s+/).filter((p: string) => p.length >= 2);
+      if (nameParts.length < 2) {
+        await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
+        return new Response(JSON.stringify({ success: true, found: false, reason: "Insufficient name" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS);
+      console.log(`[single-lead] ${lead.name}: ${result.found ? "FOUND" : "NOT FOUND"} (${result.turnsUsed} turns)`);
+
+      return new Response(JSON.stringify({ success: true, found: result.found, turnsUsed: result.turnsUsed }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── Batch mode (existing behavior) ───
+    console.log(`Single pass: gpt-4o-mini (${FLASH_MAX_TURNS} turns), max ${MAX_LEADS_PER_RUN} leads per run`);
+
     // Step 0: Extract LinkedIn URLs already stored in company_url
     const { data: linkedinInCompanyUrl } = await supabase
       .from("leads")
