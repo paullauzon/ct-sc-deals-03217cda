@@ -53,6 +53,8 @@ export function leadToRow(lead: Lead): Record<string, any> {
     fireflies_transcript: lead.firefliesTranscript,
     fireflies_summary: lead.firefliesSummary,
     fireflies_next_steps: lead.firefliesNextSteps,
+    linkedin_url: lead.linkedinUrl,
+    linkedin_title: lead.linkedinTitle,
     meetings: lead.meetings || [],
     submissions: lead.submissions || [],
     enrichment: lead.enrichment || null,
