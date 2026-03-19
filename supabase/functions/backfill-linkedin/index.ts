@@ -231,7 +231,7 @@ async function aiSearchAgent(
 
   for (let turn = 0; turn < maxTurns; turn++) {
     try {
-      const content = await callAI(messages, provider, lovableKey, openaiKey, model);
+      const content = await callAI(messages, openaiKey, model);
 
       let parsed: any;
       try {
