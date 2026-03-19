@@ -68,11 +68,15 @@ async function upsertLeadToDb(lead: Lead) {
   if (error) console.error("Upsert error:", error);
 }
 
-async function updateLeadInDb(id: string, updates: Partial<Lead>) {
+async function updateLeadInDb(id: string, updates: Partial<Lead>): Promise<boolean> {
   const dbUpdates = leadUpdatesToRow(updates);
   dbUpdates.updated_at = new Date().toISOString();
   const { error } = await supabase.from("leads").update(dbUpdates).eq("id", id);
-  if (error) console.error("Update error:", error);
+  if (error) {
+    console.error("Update error:", error);
+    return false;
+  }
+  return true;
 }
 
 export function LeadProvider({ children }: { children: ReactNode }) {
@@ -210,27 +214,36 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         // Log field changes before applying
         detectFieldChanges(id, l, updates);
         const updated = { ...l, ...updates };
+        const dbPayload: Partial<Lead> = { ...updates };
         if (updates.stage && updates.stage !== l.stage) {
           const today = new Date().toISOString().split("T")[0];
           updated.stageEnteredDate = today;
           updated.daysInCurrentStage = 0;
+          dbPayload.stageEnteredDate = today;
+          dbPayload.daysInCurrentStage = 0;
           // Auto-set last_contact_date on stage advancement beyond New Lead
           if (updates.stage !== "New Lead" && !updated.lastContactDate) {
             updated.lastContactDate = today;
+            dbPayload.lastContactDate = today;
           }
           if (["Closed Won", "Closed Lost", "Went Dark"].includes(updates.stage)) {
             updated.closedDate = today;
+            dbPayload.closedDate = today;
           } else {
             updated.closedDate = "";
+            dbPayload.closedDate = "";
           }
         }
         if (updates.meetingSetDate && !l.meetingSetDate) {
           const submitted = new Date(l.dateSubmitted).getTime();
           const set = new Date(updates.meetingSetDate).getTime();
           updated.hoursToMeetingSet = Math.round((set - submitted) / (1000 * 60 * 60));
+          dbPayload.hoursToMeetingSet = updated.hoursToMeetingSet;
         }
-        // Persist to DB (fire and forget)
-        updateLeadInDb(id, updated);
+        // Persist only changed fields to DB with error surfacing
+        updateLeadInDb(id, dbPayload).then(ok => {
+          if (!ok) toast.error("Failed to save changes — please retry");
+        });
         return updated;
       });
       return next;
