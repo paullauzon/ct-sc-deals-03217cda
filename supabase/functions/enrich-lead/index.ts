@@ -297,7 +297,7 @@ CRITICAL RULES:
         tool_choice: { type: "function", function: { name: "research_and_recommend" } },
         stream: false,
       }),
-    });
+    }, 30000);
 
     if (!response.ok) {
       if (response.status === 429) {
