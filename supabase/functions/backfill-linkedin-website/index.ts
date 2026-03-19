@@ -144,14 +144,14 @@ Consider: the company likely only has a few people, so a first-name match on a c
 Respond with ONLY a JSON object: {"match": true/false, "reason": "brief explanation"}`;
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${lovableKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
       }),
     });
