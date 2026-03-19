@@ -1245,6 +1245,7 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
       subscriptionValue: 0, billingFrequency: "" as const, contractStart: "", contractEnd: "",
       firefliesUrl: "", firefliesTranscript: "", firefliesSummary: "", firefliesNextSteps: "",
       stage1Score: null, stage2Score: null, tier: null, tierOverride: false, enrichmentStatus: "",
+      linkedinUrl: "", linkedinTitle: "",
     });
     setForm({ name: "", email: "", phone: "", company: "", companyUrl: "", role: "", message: "", dealsPlanned: "0-2" });
     onClose();
