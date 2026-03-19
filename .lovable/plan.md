@@ -1,63 +1,70 @@
 
 
-# LinkedIn Backfill Status Report
+# Fix LinkedIn Match Accuracy — AI Verification on Every Match
 
-## Current State
-- **79/191 matched** (41%) — 112 still missing
-- The backfill ran but likely timed out before processing all leads (150s edge function limit)
-- The **website scraper** (`backfill-linkedin-website`) was **never triggered**
+## Problem
 
-## Breakdown of 112 Missing Leads
+The current system has a fundamental flaw: **Pass 1 and Pass 2 blindly accept the first Google result** without any validation. Only Pass 3 (name-only) validates against company. This means:
 
-| Category | Count | Notes |
-|----------|-------|-------|
-| **Searchable** (business email + company) | 87 | Best candidates — should be re-run |
-| **Personal email** (gmail/hotmail/etc) | 19 | Harder but some have company names |
-| **Single name** (Jakub, Jama, PAWEL, Sahra) | 4 | Unfindable |
-| **No company info** | 1 | Waranun Wachakorn — cornell.edu email only |
-| **Spam** (a a / q.com) | 1 | Junk |
+- "Michael Tindall" at "Modern Distribution" → Google returns a Michael Tindall at Commio (wrong person)
+- "Ben Griffith" at "GMAX Industries" → matched to someone at ANTIMATTER INDUSTRIES
+- "Gabriel Fogel" at "Brickell Bay Holdings" → matched to "Brandon Camelione" (completely different person!)
+- "Cinzel Washington" at "Cinzel" → matched to a Brazilian "Washington Silva"
+- "David Dawson" at "Bloodhoundsmedia" → matched to someone at Hamtramck High School
 
-## What Still Needs to Happen
+At least ~20-30 of the 99 current matches are likely wrong.
 
-### 1. Re-run `backfill-linkedin` (multiple times)
-The function processes in batches of 5 with delays, and times out at 150s. With 87 searchable leads, each needing up to 4-5 Serper queries, you need ~3-4 runs to finish.
+## Root Cause
 
-**Serper cost estimate**: ~87 leads x 4 queries avg = **~350 credits** (you have 646 — enough)
+Pass 1 searches `"Michael Tindall" "Modern Distribution"` on LinkedIn, gets 0 results, falls through to searching `"Michael Tindall" "modern"` — and the first LinkedIn result happens to be some other Michael Tindall whose snippet contains the word "modern" somewhere. Same pattern for Pass 2 with email domains.
 
-### 2. Run `backfill-linkedin-website` 
-71 of the missing leads have `company_url` values. This uses Firecrawl (free credits via connector), not Serper. Should run after the main backfill to catch stragglers.
+## Solution: Two-Phase Approach
 
-### 3. Personal email leads (19) — partial coverage
-Of the 19, about 8 have company names (Saffory, Oiioholding, Realtakai, etc.). The backfill already tries these with company+name search. The other 11 have no company — AI arbitration is their only hope.
+### Phase 1: AI Verification of All 99 Existing Matches (no Serper credits needed)
 
-## Truly Unfindable (~25-30 leads)
+Create a new edge function `verify-linkedin-matches` that:
+1. Fetches all 99 leads with existing `linkedin_url`
+2. For each, sends to AI (Gemini 2.5 Flash) with **ALL available context**:
+   - Name, company, email, company_url, role, message (their submission text describing their business)
+   - The linkedin_url and linkedin_title (snippet from search)
+3. AI returns: `"correct"`, `"wrong"`, or `"uncertain"`
+4. Wrong matches get cleared (`linkedin_url = NULL`) so they can be re-searched
+5. Uncertain matches get flagged for manual review
 
-These will never match regardless of strategy:
+**Key insight**: The `message` field contains rich context like "I run corp dev for a home services business" or "Robotics & industrial automation field services" — this is extremely valuable for verification that we're currently ignoring entirely.
 
-1. **Single-name leads** (4): Jakub, Jama, PAWEL, Sahra
-2. **Spam/junk** (1): "a a" with email a@q.com  
-3. **No company + personal email** (~6): David Mathewd (mozmail), Edvin Bailey (gmail), Lisa Tuttle (gmail), Thomas Campbell (gmail), Tyler Sun (gmail), Tyler Tan (outlook)
-4. **Non-English/very niche** (~5-10): Brijendra Singh at FinceptPro, Charles ALLAND (French company), some Middle Eastern names at tiny firms
-5. **People who genuinely don't have LinkedIn** (~5-10): Small business owners, non-US professionals
+### Phase 2: Rewrite Backfill to Always Verify
 
-## Realistic Final Estimate
-- Current: **79 matched**
-- After re-running backfill (3-4 times): **+20-30** → ~100-110
-- After website scraping: **+5-10** → ~105-120  
-- **Maximum achievable: ~120-130 / 191** (63-68%)
-- **Genuinely unfindable: ~60-70** leads
+Update `backfill-linkedin/index.ts`:
+1. **Remove blind trust from Pass 1 and Pass 2** — collect ALL candidates from all passes into one list
+2. **Send top 3-5 candidates to AI** with full lead context (name, company, email, role, message, company_url)
+3. AI picks the best match or says "none"
+4. Only accept AI-confirmed matches
 
-## Plan: Execute in Order
+This costs 0 extra Serper credits (we still do the same searches), just adds 1 AI call per lead.
 
-### Step 1: Run `backfill-linkedin` 3-4 more times
-Just invoke the function repeatedly. Each run picks up where it left off (queries leads with NULL linkedin_url). ~350 Serper credits needed.
+### Phase 3: Re-run for Cleared + Remaining
 
-### Step 2: Run `backfill-linkedin-website` once
-Scrapes company websites for team page LinkedIn links. Uses Firecrawl, not Serper.
+After verification clears bad matches, re-run the improved backfill to:
+- Re-search the ~20-30 cleared bad matches with the new always-verify logic
+- Process any remaining unmatched leads
 
-### Step 3: Final status check
-Query the DB for remaining unmatched, categorize into "worth retrying" vs "truly unfindable."
+## Files Changed
 
-### Files Changed
-No code changes needed — just triggering existing deployed functions.
+- **`supabase/functions/verify-linkedin-matches/index.ts`** — New function: AI-verify all 99 existing matches
+- **`supabase/functions/backfill-linkedin/index.ts`** — Rewrite to collect all candidates then AI-verify before accepting
+- **`supabase/functions/enrich-lead-scoring/index.ts`** — Mirror the same always-verify approach
+- **`supabase/config.toml`** — Register new function
+
+## Cost Estimate
+
+- Phase 1: ~99 AI calls (Lovable AI gateway, free) — no Serper credits
+- Phase 2+3: ~87 unmatched × 3-4 Serper queries + ~30 re-searches × 3-4 queries = ~470 Serper credits (you have 646)
+- Plus ~120 AI verification calls (free)
+
+## Expected Outcome
+
+- Remove ~20-30 incorrect matches
+- Re-find ~10-15 of those with correct profiles using AI verification
+- Net result: fewer total matches but **much higher accuracy** (estimated 80-90 correct vs current ~70 correct out of 99)
 
