@@ -105,6 +105,45 @@ async function firecrawlScrape(
   }
 }
 
+// ─── AI Call Helpers ───
+
+type ApiProvider = "lovable" | "openai";
+
+async function callAI(
+  messages: Array<{ role: string; content: string }>,
+  provider: ApiProvider,
+  lovableKey: string,
+  openaiKey: string | null,
+  model: string,
+): Promise<string> {
+  if (provider === "openai" && openaiKey) {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model, messages }),
+    });
+    if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
+    const data = await res.json();
+    return (data.choices?.[0]?.message?.content || "").trim();
+  }
+
+  // Default: Lovable gateway
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${lovableKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ model, messages }),
+  });
+  if (!res.ok) throw new Error(`Lovable gateway HTTP ${res.status}`);
+  const data = await res.json();
+  return (data.choices?.[0]?.message?.content || "").trim();
+}
+
 // ─── AI Search Agent ───
 
 interface LeadContext {
