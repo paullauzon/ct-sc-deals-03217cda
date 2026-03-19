@@ -40,11 +40,11 @@ async function scrapeWebsite(companyUrl: string, apiKey: string): Promise<string
 
 async function searchWeb(query: string, apiKey: string): Promise<{ content: string; urls: string[] }> {
   try {
-    const res = await fetch("https://api.firecrawl.dev/v1/search", {
+    const res = await fetchWithTimeout("https://api.firecrawl.dev/v1/search", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ query, limit: 5, scrapeOptions: { formats: ["markdown"] } }),
-    });
+      body: JSON.stringify({ query, limit: 5 }),
+    }, 8000);
     if (!res.ok) return { content: "", urls: [] };
     const data = await res.json();
     const results = data.data || [];
@@ -58,7 +58,7 @@ async function searchWeb(query: string, apiKey: string): Promise<{ content: stri
     if (combined.length > 5000) combined = combined.substring(0, 5000) + "\n[...truncated]";
     return { content: combined, urls };
   } catch (e) {
-    console.error("Web search failed:", e);
+    console.warn("Web search timed out or failed:", e instanceof Error ? e.message : e);
     return { content: "", urls: [] };
   }
 }
