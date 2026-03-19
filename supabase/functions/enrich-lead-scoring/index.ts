@@ -214,6 +214,15 @@ function cleanCompanyName(company: string): string {
     .trim();
 }
 
+function expandConcatenatedName(name: string): string {
+  let expanded = name.replace(/([a-z])([A-Z])/g, "$1 $2");
+  if (!expanded.includes(" ") && expanded.length > 6) {
+    expanded = expanded.replace(/(capital|equity|partners|advisory|advisors|ventures|group|holdings|management|invest|financial|consulting|strategies|solutions)/gi, " $1");
+    expanded = expanded.trim();
+  }
+  return expanded;
+}
+
 function extractLinkedInFromResults(organic: Array<{ link?: string; snippet?: string; title?: string }>): { linkedinUrl: string | null; snippet: string; allResults: Array<{ url: string; snippet: string }> } {
   const allResults: Array<{ url: string; snippet: string }> = [];
   let firstUrl: string | null = null;
