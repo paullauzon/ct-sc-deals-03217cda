@@ -1,39 +1,45 @@
 
-# LinkedIn Match Accuracy Fix — Complete
+# LinkedIn Enrichment — Firecrawl Migration
 
-## What Was Done
+## History
+1. **v1**: Serper-based search, blind trust of first result → ~30% wrong matches
+2. **v2**: Added AI verification on all candidates → 69 verified matches, ~95% accuracy
+3. **v3 (current)**: Replaced Serper with Firecrawl Search + scraping for rich profile data
 
-### Phase 1: AI Verification of 99 Existing Matches
-- Created `verify-linkedin-matches` edge function
-- AI reviewed all 99 matches using full lead context (name, company, email, role, message, etc.)
-- **Results: 40 correct, 29 wrong, 30 uncertain**
-- All 29 wrong matches were cleared (linkedin_url set to NULL)
+## Current Implementation (v3)
 
-### Phase 2: Rewrote backfill-linkedin with AI Verification
-- No more blind trust of Google results
-- ALL candidates from all search passes are collected into one list
-- AI picks the best match using full lead context, or rejects all candidates
-- Re-ran for the 30 cleared leads — 0 found new matches (these people likely don't have findable LinkedIn profiles)
+### Engine: Firecrawl Search API
+- Replaces Serper (out of credits)
+- Returns full markdown content from each LinkedIn result (not just 150-char snippets)
+- AI verifier reads actual profile text: headline, about section, experience history
 
-### Phase 3: Uncertain Matches (30)
-- These remain as-is — the AI couldn't confirm or deny based on snippet info alone
-- Most are cases where the LinkedIn snippet just shows a name but no company info
+### Search Strategy (3-pass)
+1. `site:linkedin.com/in "Name" "Company"` — with scrape
+2. `site:linkedin.com/in "Name" "email-domain"` — with scrape
+3. `site:linkedin.com/in "Name"` — broader, with scrape
 
-## Final Status
+### AI Verification
+- Gemini 2.5 Flash reads full profile markdown (up to 1500 chars per candidate)
+- Checks: name match, current company, URL slug, industry alignment with lead's submission message
+- Picks best match or rejects all candidates
 
+### Scoring
+- Extracts title from rich profile content
+- Detects M&A experience from full career history
+- Updates seniority_score and stage2_score
+
+## Status
 | Category | Count |
 |----------|-------|
-| **AI-verified correct** | 69 |
-| **Searched, not found** | 117 |
-| **Never searched (single names)** | 5 |
-| **Total** | 191 |
+| AI-verified correct (v2) | 69 |
+| Searched, not found (v2) | 117 |
+| Never searched | 5 |
+| **Total** | **191** |
 
-## Accuracy Improvement
-- **Before**: 99 matches, ~30 were wrong (~70% accuracy)
-- **After**: 69 matches, all AI-verified (~95%+ accuracy)
-- Traded quantity for quality — fewer matches but much more trustworthy
+## Next Steps
+- Run v3 backfill for unmatched leads (reset linkedin_url to NULL first if re-searching)
+- Re-verify existing 69 matches by scraping their URLs with Firecrawl
 
-## Files Changed
-- `supabase/functions/verify-linkedin-matches/index.ts` — New: AI verification of existing matches
-- `supabase/functions/backfill-linkedin/index.ts` — Rewritten: collects all candidates, AI-verifies before accepting
-- `supabase/config.toml` — Registered new function
+## Files
+- `supabase/functions/backfill-linkedin/index.ts` — Firecrawl-based search + AI verification
+- `supabase/functions/verify-linkedin-matches/index.ts` — Existing match auditor
