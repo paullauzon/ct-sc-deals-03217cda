@@ -1,27 +1,37 @@
 
 
-# Backfill All Missing LinkedIn Profiles + Verify Auto-Enrichment
+# Verify All LinkedIn Matches & Fix Issues
 
-## Current State
-- **133** leads have LinkedIn URLs (found)
-- **42** leads have `NULL` (never searched)
-- **16** leads have empty string (previously failed, worth retrying)
-- **Total to process: 58 leads**
+## Problem
+The `verify-linkedin-matches` function uses the Lovable AI gateway (`ai.gateway.lovable.dev`), which is returning **HTTP 402 (credits exhausted)** for every request. All 137 leads came back as "uncertain" — none were actually verified.
 
-## Auto-enrichment for new leads: Already implemented ✓
-`ingest-lead/index.ts` already fires a request to `backfill-linkedin` with the new `leadId` immediately after lead creation (lines 319-329). The `backfill-linkedin` function's single-lead mode (lines 454-499) handles this correctly. No code changes needed here.
+## Root Cause
+The `backfill-linkedin` function was already switched to use **OpenAI directly** (`api.openai.com` with `OPENAI_API_KEY`), but `verify-linkedin-matches` was never updated — it still uses the Lovable gateway.
 
-## Plan
+## Fix
 
-### Step 1: Reset 16 failed leads
-Run `UPDATE leads SET linkedin_url = NULL WHERE linkedin_url = '';` so all 58 leads are eligible for processing.
+### Step 1: Update `verify-linkedin-matches` to use OpenAI directly
+- Switch from `ai.gateway.lovable.dev` → `api.openai.com/v1/chat/completions`
+- Use `OPENAI_API_KEY` instead of `LOVABLE_API_KEY`
+- Use `gpt-4o-mini` (fast, cheap, sufficient for verification)
+- Reduce `BATCH_SIZE` from 5 to 3 to avoid rate limits
 
-### Step 2: Run backfill-linkedin repeatedly until done
-The function processes 5 leads per run. With 58 leads, that's ~12 invocations. I'll invoke the function in a loop, checking remaining count after each run, and stop when remaining = 0.
+### Step 2: Run verification in dry-run mode
+- Deploy the updated function
+- Invoke with `{"dry_run": true}` to see which matches are wrong without clearing them
 
-### Step 3: Report final results
-Show breakdown of matched vs genuinely not found.
+### Step 3: Run for real to clear bad matches
+- Invoke without dry_run to clear wrong matches (sets linkedin_url to NULL)
 
-### No code changes required
-Both `backfill-linkedin` (batch + single-lead modes) and `ingest-lead` (auto-trigger) are already correctly implemented. This is purely an execution task.
+### Step 4: Re-run backfill for cleared leads
+- Invoke `backfill-linkedin` to re-search for the leads whose bad matches were cleared
+
+### Step 5: Also update `backfill-linkedin-website` (same issue)
+- This function also uses the Lovable gateway for AI verification — switch to OpenAI too
+
+### Changes Summary
+| File | Change |
+|------|--------|
+| `supabase/functions/verify-linkedin-matches/index.ts` | Switch AI calls from Lovable gateway to OpenAI API directly |
+| `supabase/functions/backfill-linkedin-website/index.ts` | Switch AI calls from Lovable gateway to OpenAI API directly |
 
