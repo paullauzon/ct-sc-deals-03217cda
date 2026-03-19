@@ -338,7 +338,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
               <Field label="Website" value={lead.companyUrl ? <a href={lead.companyUrl} target="_blank" rel="noreferrer" className="underline">{lead.companyUrl}</a> : "—"} />
               <Field label="LinkedIn" value={lead.linkedinUrl ? (
                 <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 underline" onClick={e => e.stopPropagation()}>
-                  <Linkedin className="h-3.5 w-3.5" />{lead.linkedinTitle || "Profile"}
+                  <Linkedin className="h-3.5 w-3.5 text-[#0A66C2]" />{lead.linkedinTitle || "Profile"}
                 </a>
               ) : <span className="text-muted-foreground">—</span>} />
               <Field label="Source" value={SOURCE_LABELS[lead.source] || lead.source} />
