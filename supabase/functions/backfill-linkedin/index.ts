@@ -458,7 +458,11 @@ Deno.serve(async (req) => {
     });
   }
 
-  const supabase = createClient(
+  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  const pass2Provider: ApiProvider = OPENAI_API_KEY ? "openai" : "lovable";
+  const pass2Model = OPENAI_API_KEY ? "gpt-4o" : "google/gemini-2.5-pro";
+  console.log(`Pass 2 will use: ${pass2Provider} (${pass2Model})`);
+
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
