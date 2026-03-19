@@ -1,36 +1,36 @@
 
 
-# Add LinkedIn Indicators Across the App
+# LinkedIn Icon Styling + Improve Match Rate
 
-## Problem
-LinkedIn URLs exist in the DB (`linkedin_url`) but the Lead type and UI have no awareness of them. Need to surface LinkedIn profiles everywhere relevant.
+## Part 1: Make LinkedIn Icons Blue
 
-## Where to Add LinkedIn
-
-1. **Lead type + mapping** — Add `linkedinUrl` and `linkedinTitle` to the Lead interface and DB mapping
-2. **Leads table** — LinkedIn icon next to the lead name (clickable link), similar to how DUP/NEW badges sit there
-3. **Lead detail panel** — In the Contact section, add a LinkedIn field with clickable icon+link
-4. **Pipeline cards** — LinkedIn icon next to the Fireflies icon in Row 4 (same pattern)
-5. **Command palette search results** — Not adding here, would clutter; the other 4 locations cover all workflows
-
-## Files Changed
-
-### `src/types/lead.ts`
-- Add `linkedinUrl: string;` and `linkedinTitle: string;` to the Lead interface
-
-### `src/lib/leadDbMapping.ts`
-- Add `linkedin_url` ↔ `linkedinUrl` and `linkedin_title` ↔ `linkedinTitle` to all 3 mapping functions
+The LinkedIn brand color is `#0A66C2`. Currently all LinkedIn icons use `text-muted-foreground`. Change to LinkedIn blue in all 4 locations:
 
 ### `src/components/LeadsTable.tsx`
-- **Leads table rows** (~line 1167): Add a LinkedIn icon (Lucide `Linkedin`) next to the lead name, linked to `lead.linkedinUrl`, only shown when URL exists. Muted when missing.
-- **Lead detail Contact section** (~line 331): Add a LinkedIn field row showing the URL as a clickable link with icon
-- Import `Linkedin` from lucide-react
+- **Line 221** (lead detail header): Add a blue LinkedIn icon next to the name in `SheetTitle` row
+- **Line 336** (Contact section): Make the icon blue `text-[#0A66C2]`
+- **Line 1176** (leads table name column): Make the icon blue `text-[#0A66C2]`
 
 ### `src/components/Pipeline.tsx`
-- **Pipeline cards Row 4** (~line 373): Add LinkedIn icon next to the Fireflies meetings icon, shown when `lead.linkedinUrl` exists. Simple linked icon, no count.
-- Import `Linkedin` from lucide-react
+- **Line 375** (pipeline card): Make the icon blue `text-[#0A66C2]`
 
-### `src/contexts/LeadContext.tsx`
-- Update realtime UPDATE handler to pick up `linkedin_url` and `linkedin_title` changes from DB
-- Update `NewLeadDialog` defaults to include the new fields
+## Part 2: Improve LinkedIn Match Rate (86/191 → ~150+)
+
+The current search queries `site:linkedin.com/in/ "Name" "Company"` but many companies have abbreviated/unusual names (e.g., "TVDCP", "Queenscourtcap", "DB", "Srs") that don't match LinkedIn profiles. Fix:
+
+### `supabase/functions/backfill-linkedin/index.ts` + `supabase/functions/enrich-lead-scoring/index.ts`
+Improve the `serperLinkedInLookup` function in both files:
+
+1. **Two-pass search**: First try with company name. If no LinkedIn result found, retry **without** company (just `site:linkedin.com/in/ "Name"`)
+2. **Check all 3 results** not just the first — find the first result whose link contains `linkedin.com/in/`
+3. **Clean company names**: Strip common suffixes like "LLC", "Inc", "Corp" and expand obvious abbreviations before searching
+
+### Re-run backfill
+After deploying the improved functions, re-run `backfill-linkedin` to process the remaining 105 leads with the improved matching logic.
+
+## Files Changed
+- `src/components/LeadsTable.tsx` — Blue icons + icon next to name in detail header
+- `src/components/Pipeline.tsx` — Blue icon
+- `supabase/functions/backfill-linkedin/index.ts` — Improved matching
+- `supabase/functions/enrich-lead-scoring/index.ts` — Improved matching (same logic)
 
