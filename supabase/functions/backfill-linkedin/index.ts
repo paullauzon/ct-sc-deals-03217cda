@@ -489,7 +489,7 @@ Deno.serve(async (req) => {
         processed++;
         console.log(`\n[Pass1 ${processed}/${validLeads.length}] ${lead.name} (${lead.company})`);
 
-        const result = await processLead(lead, FIRECRAWL_API_KEY, LOVABLE_API_KEY, supabase, "google/gemini-2.5-flash", FLASH_MAX_TURNS);
+        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS);
         agentStats.totalTurns += result.turnsUsed;
 
         if (result.found) {
