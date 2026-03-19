@@ -1,36 +1,31 @@
 
 
-# Fix Remaining Research & Recommend Issues
+# Fix: Auto-Find Meetings Not Getting AI Intelligence
 
-## Issues Found
+## Root Cause
 
-### 1. AbortController is broken (CRITICAL)
-The `handleEnrich` in `LeadsTable.tsx` creates an `AbortController` with a 55s timeout, but **never passes it to the fetch call**. `supabase.functions.invoke()` does not accept an `AbortSignal` parameter. The timeout fires `controller.abort()` into the void — the request continues indefinitely. Must switch to raw `fetch()` with the signal attached.
+When Auto-find ran for Michael Tindall (Modern Distribution), the `run-lead-job` edge function found the meeting and saved it, but the `process-meeting` AI call **timed out** at 25 seconds. This is because:
 
-### 2. No enrichment status tracking
-When enrichment starts, there's no `enrichmentStatus` update to "running". When it succeeds, no update to "complete". When it fails, no update to "failed". This means:
-- No way to show a persistent loading state if the user closes/reopens the lead sheet
-- No way to prevent double-clicking (starting two enrichments simultaneously)
-- No audit trail of enrichment attempts
+1. The transcript is 44K characters (truncated to 25K by `process-meeting`)
+2. `run-lead-job` enforces a **25-second timeout per meeting** (line 208) — too short for large transcripts with OpenAI tool calling
+3. When `process-meeting` times out, the meeting is still added but with `intelligence: null`
+4. Since no meeting has intelligence, `synthesize-deal-intelligence` is skipped entirely
+5. Result: meeting shows up but with no Deal Intelligence panel, no structured insights, no CRM suggestions
 
-### 3. Edge function JSON.parse can throw unhandled
-Line 326: `JSON.parse(toolCall.function.arguments)` — if OpenAI returns malformed JSON in the tool call arguments (happens occasionally with large outputs), this throws an unhandled error that returns a generic 500. Should be wrapped in try/catch with a specific error message.
+The second issue: **there is no way to retry AI processing** for a meeting that was saved without intelligence. The user is stuck.
 
 ## Fix Plan
 
-### 1. Replace `supabase.functions.invoke` with raw `fetch` + AbortSignal
-In `handleEnrich`, use `fetch` directly to call the edge function URL, passing the `AbortController.signal`. This makes the 55s timeout actually work.
+### 1. Increase per-meeting timeout in `run-lead-job`
+Change the `process-meeting` call timeout from **25s → 50s** in `supabase/functions/run-lead-job/index.ts` (line 208). Large transcripts with structured tool output regularly need 30-40s.
 
-### 2. Add enrichment status lifecycle
-- Set `enrichmentStatus: "running"` before the call
-- Set `enrichmentStatus: "complete"` on success
-- Set `enrichmentStatus: "failed"` on failure
-- Disable the enrich button when status is "running"
+### 2. Add a "Re-process" button for meetings without intelligence
+In `src/components/MeetingsSection.tsx`, add a button on meetings that have a transcript but no `intelligence`. This calls `process-meeting` directly (like the existing Add Meeting flow) and updates the lead with the result. If all meetings now have intelligence, auto-trigger `synthesize-deal-intelligence`.
 
-### 3. Add JSON.parse safety in edge function
-Wrap `JSON.parse(toolCall.function.arguments)` in try/catch, return a clear error if parsing fails.
+### 3. Fix the current broken lead (data repair)
+Re-process Michael Tindall's meeting to generate the missing intelligence and Deal Intelligence synthesis. This can be triggered by clicking the new "Re-process" button, or we can run a one-time backfill.
 
 ### Files Changed
-- `src/components/LeadsTable.tsx` — raw fetch with AbortSignal, enrichment status updates
-- `supabase/functions/enrich-lead/index.ts` — safe JSON.parse on tool call response
+- `supabase/functions/run-lead-job/index.ts` — increase timeout from 25s to 50s
+- `src/components/MeetingsSection.tsx` — add "Re-process" button for meetings missing intelligence
 
