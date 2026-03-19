@@ -138,13 +138,24 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
   };
 
   const handleEnrich = async () => {
+    if (lead.enrichmentStatus === "running") return; // prevent double-click
     setEnriching(true);
+    save({ enrichmentStatus: "running" as any });
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 55000);
     try {
       const meetingIntel = aggregateMeetingIntelligence();
-      const { data, error } = await supabase.functions.invoke("enrich-lead", {
-        body: {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const response = await fetch(`${supabaseUrl}/functions/v1/enrich-lead`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": supabaseKey,
+          "Authorization": `Bearer ${supabaseKey}`,
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
           companyUrl: lead.companyUrl,
           meetings: lead.meetings || [],
           leadName: lead.name,
@@ -173,19 +184,24 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           leadStageEnteredDate: lead.stageEnteredDate,
           meetingIntelligence: meetingIntel,
           dealIntelligence: lead.dealIntelligence || null,
-        },
+        }),
       });
-      if (error) throw error;
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Server error ${response.status}`);
+      }
+      const data = await response.json();
       if (data?.error) throw new Error(data.error);
       if (data?.enrichment) {
-        save({ enrichment: data.enrichment });
+        save({ enrichment: data.enrichment, enrichmentStatus: "complete" as any });
         const suggestions = data.enrichment.suggestedUpdates;
         const hasSuggestions = suggestions && Object.keys(suggestions).length > 0;
         toast.success(hasSuggestions ? "Lead enriched — review AI suggested updates" : "Lead enriched with AI intelligence");
       }
     } catch (e: any) {
       console.error("Enrichment failed:", e);
-      if (e.name === "AbortError" || e.message?.includes("aborted")) {
+      save({ enrichmentStatus: "failed" as any });
+      if (e.name === "AbortError") {
         toast.error("Research timed out — the AI took too long. Try again or check network.");
       } else {
         toast.error(e.message || "Failed to enrich lead");

@@ -323,7 +323,14 @@ CRITICAL RULES:
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const enrichment = JSON.parse(toolCall.function.arguments);
+    let enrichment;
+    try {
+      enrichment = JSON.parse(toolCall.function.arguments);
+    } catch (parseErr) {
+      console.error("Failed to parse AI tool call arguments:", toolCall.function.arguments?.substring(0, 500));
+      return new Response(JSON.stringify({ error: "AI returned malformed data — please retry" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     enrichment.enrichedAt = new Date().toISOString();
 
     console.log("Research & Recommend complete for:", leadName);
