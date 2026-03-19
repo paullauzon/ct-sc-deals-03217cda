@@ -289,9 +289,8 @@ serve(async (req) => {
     }
 
     const priorContext = buildPriorContext(priorMeetings);
-    const truncated = transcript.length > 25000
-      ? transcript.substring(0, 25000) + "\n\n[Transcript truncated...]"
-      : transcript;
+    // Send full transcript — GPT-4o supports 128K tokens (~400K chars)
+    const truncated = transcript;
 
     const hasPrior = priorMeetings?.length > 0;
 

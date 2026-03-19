@@ -71,8 +71,8 @@ serve(async (req) => {
         if (m.nextSteps) detail += `Next Steps: ${m.nextSteps}\n`;
       }
       if (m.transcript) {
-        // Include first 3000 chars of transcript for psychological analysis
-        detail += `\nTRANSCRIPT EXCERPT:\n${m.transcript.substring(0, 3000)}\n`;
+        // Include full transcript for comprehensive psychological analysis
+        detail += `\nFULL TRANSCRIPT:\n${m.transcript}\n`;
       }
       meetingDetails.push(detail);
     }

@@ -70,10 +70,10 @@ serve(async (req) => {
     let newMeetings: any[];
 
     if (prefetchedMeetings && prefetchedMeetings.length > 0) {
-      // Use prefetched meetings — defensively truncate transcripts
+      // Use prefetched meetings — send full transcripts
       newMeetings = prefetchedMeetings.map((m: any) => ({
         ...m,
-        transcript: (m.transcript || "").substring(0, 15000),
+        transcript: m.transcript || "",
       }));
     } else {
       // Build search params and fetch from Fireflies
@@ -306,7 +306,7 @@ serve(async (req) => {
           body: JSON.stringify({
             meetings: allMeetings.map((m: any) => ({
               ...m,
-              transcript: (m.transcript || "").substring(0, 3000),
+              transcript: m.transcript || "",
             })),
             leadFields: {
               name: lead.name,

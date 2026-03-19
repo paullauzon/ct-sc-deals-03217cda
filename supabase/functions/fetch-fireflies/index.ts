@@ -520,10 +520,8 @@ serve(async (req) => {
 
       if (summarize && fullTranscript.length > 50) {
         try {
-          const truncated = fullTranscript.length > 15000
-            ? fullTranscript.substring(0, 15000) + "\n\n[Transcript truncated...]"
-            : fullTranscript;
-          const aiResult = await summarizeTranscript(truncated, OPENAI_API_KEY);
+          // Send full transcript for comprehensive summarization
+          const aiResult = await summarizeTranscript(fullTranscript, OPENAI_API_KEY);
           if (aiResult.summary) summary = aiResult.summary;
           if (aiResult.nextSteps) nextSteps = aiResult.nextSteps;
         } catch (e) {

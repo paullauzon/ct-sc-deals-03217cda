@@ -232,10 +232,10 @@ export async function synthesizeDealIntelligence(
   lead: Pick<Lead, "name" | "company" | "role" | "stage" | "priority" | "dealValue" | "serviceInterest">
 ) {
   const sorted = [...meetings].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  // Strip transcripts to first 3000 chars to avoid payload size issues
+  // Send full transcripts for comprehensive intelligence synthesis
   const trimmedMeetings = sorted.map(m => ({
     ...m,
-    transcript: m.transcript ? m.transcript.substring(0, 3000) : "",
+    transcript: m.transcript || "",
   }));
 
   // Retry once on transient 500 errors
