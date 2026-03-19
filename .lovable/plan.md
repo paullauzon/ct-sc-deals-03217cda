@@ -1,25 +1,27 @@
 
 
-# Complete LinkedIn Backfill + Auto-Enrich New Leads
+# Backfill All Missing LinkedIn Profiles + Verify Auto-Enrichment
 
-## Step 1: Reset failed leads and run backfill to completion
+## Current State
+- **133** leads have LinkedIn URLs (found)
+- **42** leads have `NULL` (never searched)
+- **16** leads have empty string (previously failed, worth retrying)
+- **Total to process: 58 leads**
 
-- Reset the 7 leads with `linkedin_url = ''` back to `NULL`
-- Invoke `backfill-linkedin` repeatedly (5 leads per run, ~12 runs needed for 58 leads) until 0 remain
-- Report final stats: matched vs genuinely not found
+## Auto-enrichment for new leads: Already implemented ✓
+`ingest-lead/index.ts` already fires a request to `backfill-linkedin` with the new `leadId` immediately after lead creation (lines 319-329). The `backfill-linkedin` function's single-lead mode (lines 454-499) handles this correctly. No code changes needed here.
 
-## Step 2: Add single-lead support to `backfill-linkedin`
+## Plan
 
-Modify the edge function to accept an optional `leadId` parameter in the request body. When provided, it processes only that one lead instead of querying for all NULL leads. This makes it usable as a real-time enrichment trigger.
+### Step 1: Reset 16 failed leads
+Run `UPDATE leads SET linkedin_url = NULL WHERE linkedin_url = '';` so all 58 leads are eligible for processing.
 
-## Step 3: Auto-trigger LinkedIn enrichment on new lead ingestion
+### Step 2: Run backfill-linkedin repeatedly until done
+The function processes 5 leads per run. With 58 leads, that's ~12 invocations. I'll invoke the function in a loop, checking remaining count after each run, and stop when remaining = 0.
 
-In `supabase/functions/ingest-lead/index.ts`, add a fire-and-forget call to `backfill-linkedin` (same pattern as the existing `score-lead` trigger), passing the new lead's ID. This way, the moment a lead is created, its LinkedIn profile is found automatically.
+### Step 3: Report final results
+Show breakdown of matched vs genuinely not found.
 
-### Changes summary
-| File | Change |
-|------|--------|
-| `supabase/functions/backfill-linkedin/index.ts` | Accept optional `{ leadId }` body param; when set, process only that lead |
-| `supabase/functions/ingest-lead/index.ts` | Add fire-and-forget call to `backfill-linkedin` with new lead ID after creation |
-| Database | `UPDATE leads SET linkedin_url = NULL WHERE linkedin_url = '';` to reset failed leads |
+### No code changes required
+Both `backfill-linkedin` (batch + single-lead modes) and `ingest-lead` (auto-trigger) are already correctly implemented. This is purely an execution task.
 
