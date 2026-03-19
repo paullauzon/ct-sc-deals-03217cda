@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.backfill-linkedin-website]
 verify_jwt = false
+
+[functions.verify-linkedin-matches]
+verify_jwt = false
