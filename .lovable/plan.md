@@ -1,37 +1,23 @@
 
 
-# Verify All LinkedIn Matches & Fix Issues
+# Continue LinkedIn Backfill for 32 Remaining Leads
 
-## Problem
-The `verify-linkedin-matches` function uses the Lovable AI gateway (`ai.gateway.lovable.dev`), which is returning **HTTP 402 (credits exhausted)** for every request. All 137 leads came back as "uncertain" — none were actually verified.
+## Current State
+- **114** leads have LinkedIn URLs (matched)
+- **45** leads marked as empty string (previously searched, not found)
+- **32** leads with NULL (never searched or reset — these need processing)
 
-## Root Cause
-The `backfill-linkedin` function was already switched to use **OpenAI directly** (`api.openai.com` with `OPENAI_API_KEY`), but `verify-linkedin-matches` was never updated — it still uses the Lovable gateway.
+## Execution Plan
 
-## Fix
+### Step 1: Reset the 45 empty-string leads back to NULL
+Many of these were cleared by the verification pass and deserve a fresh search attempt with the improved agent.
 
-### Step 1: Update `verify-linkedin-matches` to use OpenAI directly
-- Switch from `ai.gateway.lovable.dev` → `api.openai.com/v1/chat/completions`
-- Use `OPENAI_API_KEY` instead of `LOVABLE_API_KEY`
-- Use `gpt-4o-mini` (fast, cheap, sufficient for verification)
-- Reduce `BATCH_SIZE` from 5 to 3 to avoid rate limits
+### Step 2: Run `backfill-linkedin` repeatedly
+- 5 leads per run, ~15 runs needed for 77 leads (32 NULL + 45 reset)
+- Invoke sequentially until remaining = 0
+- Each run takes ~30-60 seconds
 
-### Step 2: Run verification in dry-run mode
-- Deploy the updated function
-- Invoke with `{"dry_run": true}` to see which matches are wrong without clearing them
-
-### Step 3: Run for real to clear bad matches
-- Invoke without dry_run to clear wrong matches (sets linkedin_url to NULL)
-
-### Step 4: Re-run backfill for cleared leads
-- Invoke `backfill-linkedin` to re-search for the leads whose bad matches were cleared
-
-### Step 5: Also update `backfill-linkedin-website` (same issue)
-- This function also uses the Lovable gateway for AI verification — switch to OpenAI too
-
-### Changes Summary
-| File | Change |
-|------|--------|
-| `supabase/functions/verify-linkedin-matches/index.ts` | Switch AI calls from Lovable gateway to OpenAI API directly |
-| `supabase/functions/backfill-linkedin-website/index.ts` | Switch AI calls from Lovable gateway to OpenAI API directly |
+### Step 3: Report final stats
+- Total matched vs genuinely not found
+- No code changes needed — just execution
 
