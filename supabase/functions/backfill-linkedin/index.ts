@@ -8,28 +8,62 @@ const corsHeaders = {
 const BATCH_SIZE = 5;
 const DELAY_MS = 1000; // 1s between batches to respect rate limits
 
+function cleanCompanyName(company: string): string {
+  return company
+    .replace(/\b(LLC|Inc\.?|Corp\.?|Corporation|Ltd\.?|LP|LLP|Group|Holdings|Co\.?|Company|Partners|Capital|Management|Advisors|Advisory)\b/gi, "")
+    .replace(/[.,]+$/, "")
+    .trim();
+}
+
+function extractLinkedInFromResults(organic: Array<{ link?: string; snippet?: string; title?: string }>): { linkedinUrl: string | null; snippet: string } {
+  for (const result of organic) {
+    if (result.link?.includes("linkedin.com/in/")) {
+      const snippet = (result.snippet || "") + " " + (result.title || "");
+      return { linkedinUrl: result.link, snippet };
+    }
+  }
+  return { linkedinUrl: null, snippet: "" };
+}
+
+async function serperSearch(query: string, apiKey: string): Promise<Array<{ link?: string; snippet?: string; title?: string }>> {
+  const res = await fetch("https://google.serper.dev/search", {
+    method: "POST",
+    headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ q: query, num: 5 }),
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.organic || [];
+}
+
 async function serperLinkedInLookup(
   name: string,
   company: string | null,
   apiKey: string,
 ): Promise<{ title: string | null; linkedinUrl: string | null; hasMaExperience: boolean }> {
   try {
-    const query = company
-      ? `site:linkedin.com/in/ "${name}" "${company}"`
-      : `site:linkedin.com/in/ "${name}"`;
-    const res = await fetch("https://google.serper.dev/search", {
-      method: "POST",
-      headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ q: query, num: 3 }),
-    });
-    if (!res.ok) return { title: null, linkedinUrl: null, hasMaExperience: false };
-    const data = await res.json();
-    const organic = data.organic || [];
-    if (organic.length === 0) return { title: null, linkedinUrl: null, hasMaExperience: false };
+    let linkedinUrl: string | null = null;
+    let snippet = "";
 
-    const top = organic[0];
-    const linkedinUrl = top.link?.includes("linkedin.com/in/") ? top.link : null;
-    const snippet = (top.snippet || "") + " " + (top.title || "");
+    // Pass 1: Search with company name
+    if (company && company.trim()) {
+      const cleanCo = cleanCompanyName(company);
+      const query = cleanCo ? `site:linkedin.com/in/ "${name}" "${cleanCo}"` : `site:linkedin.com/in/ "${name}"`;
+      const results = await serperSearch(query, apiKey);
+      const extracted = extractLinkedInFromResults(results);
+      linkedinUrl = extracted.linkedinUrl;
+      snippet = extracted.snippet;
+    }
+
+    // Pass 2: Fallback — search without company
+    if (!linkedinUrl) {
+      const results = await serperSearch(`site:linkedin.com/in/ "${name}"`, apiKey);
+      const extracted = extractLinkedInFromResults(results);
+      linkedinUrl = extracted.linkedinUrl;
+      snippet = extracted.snippet;
+    }
+
+    if (!linkedinUrl) return { title: null, linkedinUrl: null, hasMaExperience: false };
 
     let title: string | null = null;
     const titleMatch = snippet.match(/[-–—]\s*(.+?)(?:\s+at\s+|\s+[-–—]\s+|\s*$)/i);

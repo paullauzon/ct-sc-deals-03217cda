@@ -219,6 +219,11 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono px-1.5 py-0.5 border border-border rounded">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
             <SheetTitle className="text-lg font-semibold">{lead.name}</SheetTitle>
+            {lead.linkedinUrl && (
+              <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn Profile"}>
+                <Linkedin className="h-4 w-4 text-[#0A66C2] hover:opacity-70 transition-opacity" />
+              </a>
+            )}
           </div>
           <p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>
           <div className="flex items-center gap-2 mt-1">
@@ -333,7 +338,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
               <Field label="Website" value={lead.companyUrl ? <a href={lead.companyUrl} target="_blank" rel="noreferrer" className="underline">{lead.companyUrl}</a> : "—"} />
               <Field label="LinkedIn" value={lead.linkedinUrl ? (
                 <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 underline" onClick={e => e.stopPropagation()}>
-                  <Linkedin className="h-3.5 w-3.5" />{lead.linkedinTitle || "Profile"}
+                  <Linkedin className="h-3.5 w-3.5 text-[#0A66C2]" />{lead.linkedinTitle || "Profile"}
                 </a>
               ) : <span className="text-muted-foreground">—</span>} />
               <Field label="Source" value={SOURCE_LABELS[lead.source] || lead.source} />
@@ -1173,7 +1178,7 @@ export function LeadsTable() {
                         {lead.name}
                         {lead.linkedinUrl && (
                           <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn Profile"}>
-                            <Linkedin className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+                            <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] hover:opacity-70 transition-opacity" />
                           </a>
                         )}
                         {isLeadNew(lead.id) && (
