@@ -274,28 +274,39 @@ function isCompanyMatch(
   if (company && company.trim()) {
     const clean = cleanCompanyName(company).toLowerCase();
     if (clean && clean.length >= 3 && lower.includes(clean)) return true;
+    const expanded = expandConcatenatedName(clean).toLowerCase();
+    if (expanded !== clean && expanded.length >= 3 && lower.includes(expanded)) return true;
     const companyWords = tokenize(clean);
     if (companyWords.length >= 2) {
       const matches = companyWords.filter((w) => lower.includes(w));
-      if (matches.length >= Math.ceil(companyWords.length * 0.6)) return true;
+      if (matches.length >= Math.ceil(companyWords.length * 0.5)) return true;
+    }
+    const expandedWords = tokenize(expanded);
+    if (expandedWords.length >= 2) {
+      const matches = expandedWords.filter((w) => lower.includes(w));
+      if (matches.length >= Math.ceil(expandedWords.length * 0.5)) return true;
     }
   }
   const emailRoot = extractDomainRoot(email);
   if (emailRoot) {
     if (lower.includes(emailRoot)) return true;
+    const expanded = expandConcatenatedName(emailRoot).toLowerCase();
+    if (expanded !== emailRoot && lower.includes(expanded)) return true;
     const emailTokens = tokenize(emailRoot);
     if (emailTokens.length >= 2) {
       const matches = emailTokens.filter((w) => lower.includes(w));
-      if (matches.length >= Math.ceil(emailTokens.length * 0.6)) return true;
+      if (matches.length >= Math.ceil(emailTokens.length * 0.5)) return true;
     }
   }
   const urlRoot = extractDomainRoot(companyUrl);
   if (urlRoot && urlRoot !== emailRoot) {
     if (lower.includes(urlRoot)) return true;
+    const expanded = expandConcatenatedName(urlRoot).toLowerCase();
+    if (expanded !== urlRoot && lower.includes(expanded)) return true;
     const urlTokens = tokenize(urlRoot);
     if (urlTokens.length >= 2) {
       const matches = urlTokens.filter((w) => lower.includes(w));
-      if (matches.length >= Math.ceil(urlTokens.length * 0.6)) return true;
+      if (matches.length >= Math.ceil(urlTokens.length * 0.5)) return true;
     }
   }
   return false;
