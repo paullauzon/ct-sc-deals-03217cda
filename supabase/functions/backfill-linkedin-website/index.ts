@@ -261,7 +261,7 @@ Deno.serve(async (req) => {
           const toVerify = filtered.length > 0 ? filtered.slice(0, 5) : linkedinUrls.slice(0, 3);
 
           for (const liUrl of toVerify) {
-            const verification = await aiVerifyLinkedIn(lead, liUrl, LOVABLE_API_KEY);
+            const verification = await aiVerifyLinkedIn(lead, liUrl, OPENAI_API_KEY);
             if (verification.match) {
               return { lead, linkedinUrl: liUrl, title: verification.title, method };
             }

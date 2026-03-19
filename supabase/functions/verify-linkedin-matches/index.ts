@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
       const batch = leads.slice(i, i + BATCH_SIZE);
       const verifications = await Promise.all(
         batch.map(async (lead) => {
-          const result = await verifyMatch(lead as LeadForVerification, LOVABLE_API_KEY);
+          const result = await verifyMatch(lead as LeadForVerification, OPENAI_API_KEY);
           return { lead, result };
         }),
       );
