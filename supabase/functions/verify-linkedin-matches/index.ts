@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 3;
 const DELAY_MS = 500;
 
 interface LeadForVerification {
