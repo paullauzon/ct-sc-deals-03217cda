@@ -54,11 +54,61 @@ async function mapWebsiteForLinkedIn(baseUrl: string, firecrawlKey: string): Pro
     const data = await response.json();
     const links: string[] = data.links || data.data?.links || [];
     
-    // Filter for LinkedIn profile URLs
     return links.filter((l: string) => l.includes("linkedin.com/in/"));
   } catch {
     return [];
   }
+}
+
+/** Scrape team/about pages to find LinkedIn links embedded in page content */
+async function scrapeTeamPagesForLinkedIn(baseUrl: string, firecrawlKey: string): Promise<string[]> {
+  let formattedUrl = baseUrl.trim();
+  if (!formattedUrl.startsWith("http")) formattedUrl = `https://${formattedUrl}`;
+  // Remove trailing slash
+  formattedUrl = formattedUrl.replace(/\/+$/, "");
+
+  const teamPaths = ["/about", "/team", "/our-team", "/about-us", "/leadership", "/people", "/about/team"];
+  const foundLinkedIns: string[] = [];
+
+  for (const path of teamPaths) {
+    try {
+      const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${firecrawlKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: `${formattedUrl}${path}`,
+          formats: ["markdown", "links"],
+          onlyMainContent: false,
+          waitFor: 3000,
+        }),
+      });
+
+      if (!res.ok) continue;
+      const data = await res.json();
+      
+      // Extract LinkedIn URLs from the links array
+      const links: string[] = data.data?.links || data.links || [];
+      const liLinks = links.filter((l: string) => l.includes("linkedin.com/in/"));
+      
+      // Also extract LinkedIn URLs from markdown content (catches JS-rendered links)
+      const markdown: string = data.data?.markdown || data.markdown || "";
+      const mdMatches = markdown.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/g) || [];
+      
+      const allLinks = [...new Set([...liLinks, ...mdMatches])];
+      if (allLinks.length > 0) {
+        console.log(`  Found ${allLinks.length} LinkedIn URLs on ${formattedUrl}${path}`);
+        foundLinkedIns.push(...allLinks);
+        break; // Found links, no need to check more pages
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return [...new Set(foundLinkedIns)];
 }
 
 /** AI verification: does this LinkedIn URL belong to this person? */
@@ -148,7 +198,6 @@ Deno.serve(async (req) => {
   );
 
   try {
-    // Get leads that need LinkedIn AND have a company website URL
     const { data: leads, error } = await supabase
       .from("leads")
       .select("id, name, company, email, company_url, website_url, role, message, stage2_score, linkedin_score")
@@ -158,7 +207,6 @@ Deno.serve(async (req) => {
 
     if (error) throw error;
 
-    // Filter to leads with a usable website URL
     const leadsWithUrls = (leads || []).filter(
       (l) => (l.company_url && l.company_url.trim() && !l.company_url.includes("linkedin.com")) 
         || (l.website_url && l.website_url.trim()),
@@ -171,9 +219,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Website LinkedIn backfill (Map + AI): ${leadsWithUrls.length} leads`);
+    console.log(`Website LinkedIn backfill (Map + Scrape + AI): ${leadsWithUrls.length} leads`);
     let found = 0;
     let processed = 0;
+    let foundViaScrape = 0;
 
     for (let i = 0; i < leadsWithUrls.length; i += BATCH_SIZE) {
       const batch = leadsWithUrls.slice(i, i + BATCH_SIZE);
@@ -182,42 +231,50 @@ Deno.serve(async (req) => {
         batch.map(async (lead) => {
           processed++;
           const baseUrl = (lead.website_url || lead.company_url || "").trim();
-          if (!baseUrl) return { lead, linkedinUrl: null, title: null };
+          if (!baseUrl) return { lead, linkedinUrl: null, title: null, method: "none" };
 
-          // Use Firecrawl Map to discover ALL URLs on the site
-          const linkedinUrls = await mapWebsiteForLinkedIn(baseUrl, FIRECRAWL_API_KEY);
+          // Step 1: Use Firecrawl Map to discover LinkedIn URLs
+          let linkedinUrls = await mapWebsiteForLinkedIn(baseUrl, FIRECRAWL_API_KEY);
+          let method = "map";
+          
+          // Step 2: If Map found nothing, scrape team/about pages directly
+          if (linkedinUrls.length === 0) {
+            console.log(`  Map found nothing for ${lead.name}, scraping team pages...`);
+            linkedinUrls = await scrapeTeamPagesForLinkedIn(baseUrl, FIRECRAWL_API_KEY);
+            method = "scrape";
+          }
           
           if (linkedinUrls.length === 0) {
-            console.log(`No LinkedIn URLs found on ${baseUrl} for ${lead.name}`);
-            return { lead, linkedinUrl: null, title: null };
+            console.log(`  No LinkedIn URLs found on ${baseUrl} for ${lead.name}`);
+            return { lead, linkedinUrl: null, title: null, method: "none" };
           }
 
-          console.log(`Found ${linkedinUrls.length} LinkedIn URLs on ${baseUrl} for ${lead.name}`);
+          console.log(`  Found ${linkedinUrls.length} LinkedIn URLs via ${method} on ${baseUrl} for ${lead.name}`);
 
-          // Quick first-name filter to reduce AI calls
+          // Quick first-name filter
           const firstName = lead.name.split(/\s+/)[0].toLowerCase();
           const filtered = linkedinUrls.filter(url => {
             const slug = url.split("linkedin.com/in/")[1]?.toLowerCase() || "";
             return slug.includes(firstName) || slug.includes(firstName.substring(0, 3));
           });
 
-          // If no first-name matches but only 1-3 URLs total, try them all with AI
           const toVerify = filtered.length > 0 ? filtered.slice(0, 5) : linkedinUrls.slice(0, 3);
 
           for (const liUrl of toVerify) {
             const verification = await aiVerifyLinkedIn(lead, liUrl, LOVABLE_API_KEY);
             if (verification.match) {
-              return { lead, linkedinUrl: liUrl, title: verification.title };
+              return { lead, linkedinUrl: liUrl, title: verification.title, method };
             }
           }
 
-          return { lead, linkedinUrl: null, title: null };
+          return { lead, linkedinUrl: null, title: null, method: "none" };
         }),
       );
 
-      for (const { lead, linkedinUrl, title } of results) {
+      for (const { lead, linkedinUrl, title, method } of results) {
         if (!linkedinUrl) continue;
         found++;
+        if (method === "scrape") foundViaScrape++;
 
         const seniorityScoreValue = getSeniorityScore(title);
         const oldLinkedinScore = lead.linkedin_score || 0;
@@ -232,7 +289,7 @@ Deno.serve(async (req) => {
           stage2_score: newStage2,
         }).eq("id", lead.id);
 
-        console.log(`MATCHED via website: ${lead.name} → ${linkedinUrl}`);
+        console.log(`MATCHED via website ${method}: ${lead.name} → ${linkedinUrl}`);
       }
 
       if (i + BATCH_SIZE < leadsWithUrls.length) {
@@ -240,9 +297,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`Website backfill complete: ${found} LinkedIn profiles found from ${processed} leads`);
+    console.log(`Website backfill complete: ${found} found (${foundViaScrape} via team page scrape) from ${processed} leads`);
     return new Response(
-      JSON.stringify({ success: true, processed, found }),
+      JSON.stringify({ success: true, processed, found, foundViaScrape }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
