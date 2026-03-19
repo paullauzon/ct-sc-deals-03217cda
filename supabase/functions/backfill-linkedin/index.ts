@@ -428,17 +428,13 @@ Deno.serve(async (req) => {
     });
   }
 
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) {
-    return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured" }), {
+  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  if (!OPENAI_API_KEY) {
+    return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-
-  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-  const pass2Provider: ApiProvider = OPENAI_API_KEY ? "openai" : "lovable";
-  const pass2Model = OPENAI_API_KEY ? "gpt-4o" : "google/gemini-2.5-pro";
-  console.log(`Pass 2 will use: ${pass2Provider} (${pass2Model})`);
+  console.log(`Pass 1: gpt-4o-mini (${FLASH_MAX_TURNS} turns), Pass 2: gpt-4o (${PRO_MAX_TURNS} turns)`);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
