@@ -668,7 +668,7 @@ function TagList({ label, items, emoji, variant }: { label: string; items?: stri
 
 // ─── Meeting Card ───
 
-function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp }: { meeting: Meeting; onRemove: () => void; onDraftFollowUp: () => void; generatingFollowUp: boolean }) {
+function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, onReprocess, reprocessing }: { meeting: Meeting; onRemove: () => void; onDraftFollowUp: () => void; generatingFollowUp: boolean; onReprocess?: () => void; reprocessing?: boolean }) {
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const intel = meeting.intelligence;
