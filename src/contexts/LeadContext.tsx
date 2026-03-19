@@ -197,6 +197,12 @@ export function LeadProvider({ children }: { children: ReactNode }) {
             if (updatedRow.enrichment_status && l.enrichmentStatus !== updatedRow.enrichment_status) {
               scoringUpdates.enrichmentStatus = updatedRow.enrichment_status;
             }
+            if (updatedRow.linkedin_url != null && l.linkedinUrl !== (updatedRow.linkedin_url || "")) {
+              scoringUpdates.linkedinUrl = updatedRow.linkedin_url || "";
+            }
+            if (updatedRow.linkedin_title != null && l.linkedinTitle !== (updatedRow.linkedin_title || "")) {
+              scoringUpdates.linkedinTitle = updatedRow.linkedin_title || "";
+            }
             if (Object.keys(scoringUpdates).length === 0) return l;
             return { ...l, ...scoringUpdates };
           }));

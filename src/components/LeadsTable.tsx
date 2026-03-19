@@ -19,7 +19,7 @@ import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight, Clock, GitCommit, MessageSquare, Calendar, Search as SearchIcon } from "lucide-react";
+import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight, Clock, GitCommit, MessageSquare, Calendar, Search as SearchIcon, Linkedin } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -331,6 +331,11 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
               <Field label="Email" value={lead.email} />
               <Field label="Phone" value={lead.phone || "—"} />
               <Field label="Website" value={lead.companyUrl ? <a href={lead.companyUrl} target="_blank" rel="noreferrer" className="underline">{lead.companyUrl}</a> : "—"} />
+              <Field label="LinkedIn" value={lead.linkedinUrl ? (
+                <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 underline" onClick={e => e.stopPropagation()}>
+                  <Linkedin className="h-3.5 w-3.5" />{lead.linkedinTitle || "Profile"}
+                </a>
+              ) : <span className="text-muted-foreground">—</span>} />
               <Field label="Source" value={SOURCE_LABELS[lead.source] || lead.source} />
               <Field label="Brand" value={lead.brand} />
               <Field label="Submitted" value={lead.dateSubmitted} />
@@ -1166,6 +1171,11 @@ export function LeadsTable() {
                     <div>
                       <div className="font-medium flex items-center gap-1.5">
                         {lead.name}
+                        {lead.linkedinUrl && (
+                          <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn Profile"}>
+                            <Linkedin className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+                          </a>
+                        )}
                         {isLeadNew(lead.id) && (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse">NEW</span>
                         )}
@@ -1235,6 +1245,7 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
       subscriptionValue: 0, billingFrequency: "" as const, contractStart: "", contractEnd: "",
       firefliesUrl: "", firefliesTranscript: "", firefliesSummary: "", firefliesNextSteps: "",
       stage1Score: null, stage2Score: null, tier: null, tierOverride: false, enrichmentStatus: "",
+      linkedinUrl: "", linkedinTitle: "",
     });
     setForm({ name: "", email: "", phone: "", company: "", companyUrl: "", role: "", message: "", dealsPlanned: "0-2" });
     onClose();

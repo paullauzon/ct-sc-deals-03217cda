@@ -179,6 +179,8 @@ function parseTargetLeads(): Lead[] {
     tier: null,
     tierOverride: false,
     enrichmentStatus: "",
+    linkedinUrl: "",
+    linkedinTitle: "",
   }));
 }
 
@@ -273,6 +275,8 @@ function createLead(r: { date: string; name: string; phone: string; email: strin
     tier: null,
     tierOverride: false,
     enrichmentStatus: "",
+    linkedinUrl: "",
+    linkedinTitle: "",
   };
 }
 
