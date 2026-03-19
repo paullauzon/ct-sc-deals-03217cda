@@ -316,6 +316,18 @@ Deno.serve(async (req) => {
       console.error("Failed to trigger score-lead:", err);
     });
 
+    // Trigger LinkedIn enrichment asynchronously (fire and forget)
+    fetch(`${SUPABASE_URL}/functions/v1/backfill-linkedin`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ leadId }),
+    }).catch((err) => {
+      console.error("Failed to trigger backfill-linkedin:", err);
+    });
+
     return new Response(
       JSON.stringify({
         status: "created",
