@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.backfill-lead-scores]
 verify_jwt = false
+
+[functions.backfill-linkedin]
+verify_jwt = false
