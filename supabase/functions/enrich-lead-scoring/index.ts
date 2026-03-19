@@ -306,52 +306,70 @@ async function serperSearchResults(query: string, apiKey: string): Promise<Array
 async function serperLinkedInLookup(
   name: string,
   company: string | null,
+  email: string | null,
+  companyUrl: string | null,
   apiKey: string,
 ): Promise<LinkedInResult> {
   try {
-    let linkedinUrl: string | null = null;
-    let snippet = "";
-
-    // Pass 1: Search with company name
+    // Pass 1: Name + Company (trust Google's filtering)
     if (company && company.trim()) {
       const cleanCo = cleanCompanyName(company);
-      const query = cleanCo ? `site:linkedin.com/in/ "${name}" "${cleanCo}"` : `site:linkedin.com/in/ "${name}"`;
+      const query = cleanCo
+        ? `site:linkedin.com/in/ "${name}" "${cleanCo}"`
+        : `site:linkedin.com/in/ "${name}"`;
       const results = await serperSearchResults(query, apiKey);
       const extracted = extractLinkedInFromResults(results);
-      linkedinUrl = extracted.linkedinUrl;
-      snippet = extracted.snippet;
+      if (extracted.linkedinUrl) {
+        const title = extractTitleFromSnippet(extracted.snippet);
+        return { title, linkedinUrl: extracted.linkedinUrl, hasMaExperience: detectMaInSnippet(extracted.snippet) };
+      }
     }
 
-    // Pass 2: Fallback — search without company
-    if (!linkedinUrl) {
+    // Pass 2: Name + Email domain hint
+    const emailRoot = extractDomainRoot(email);
+    if (emailRoot && emailRoot.length >= 3) {
+      const results = await serperSearchResults(`site:linkedin.com/in/ "${name}" "${emailRoot}"`, apiKey);
+      const extracted = extractLinkedInFromResults(results);
+      if (extracted.linkedinUrl) {
+        const title = extractTitleFromSnippet(extracted.snippet);
+        return { title, linkedinUrl: extracted.linkedinUrl, hasMaExperience: detectMaInSnippet(extracted.snippet) };
+      }
+    }
+
+    // Pass 3: Name only — REQUIRE company validation
+    {
       const results = await serperSearchResults(`site:linkedin.com/in/ "${name}"`, apiKey);
       const extracted = extractLinkedInFromResults(results);
-      linkedinUrl = extracted.linkedinUrl;
-      snippet = extracted.snippet;
+      for (const candidate of extracted.allResults) {
+        if (isCompanyMatch(candidate.snippet, company, email, companyUrl)) {
+          const title = extractTitleFromSnippet(candidate.snippet);
+          return { title, linkedinUrl: candidate.url, hasMaExperience: detectMaInSnippet(candidate.snippet) };
+        }
+      }
     }
 
-    if (!linkedinUrl) return { title: null, linkedinUrl: null, hasMaExperience: false };
-
-    let title: string | null = null;
-    const titleMatch = snippet.match(/[-–—]\s*(.+?)(?:\s+at\s+|\s+[-–—]\s+|\s*$)/i);
-    if (titleMatch) title = titleMatch[1].trim().replace(/\s*[-–—]\s*LinkedIn.*$/i, "").trim();
-    if (!title) {
-      const match = snippet.match(/\b(CEO|CFO|COO|CTO|President|Partner|Managing Director|Vice President|VP|Director|Principal|Founder|Co-Founder|Manager|Associate|Analyst)\b/i);
-      if (match) title = match[0];
-    }
-
-    const maKeywords = [
-      "investment bank", "private equity", "m&a", "corporate development",
-      "mergers", "acquisitions", "corp dev", "advisory",
-    ];
-    const lowerSnippet = snippet.toLowerCase();
-    const hasMaExperience = maKeywords.some((kw) => lowerSnippet.includes(kw));
-
-    return { title, linkedinUrl, hasMaExperience };
+    return { title: null, linkedinUrl: null, hasMaExperience: false };
   } catch (e) {
     console.error("Serper LinkedIn lookup failed:", e);
     return { title: null, linkedinUrl: null, hasMaExperience: false };
   }
+}
+
+function extractTitleFromSnippet(snippet: string): string | null {
+  let title: string | null = null;
+  const titleMatch = snippet.match(/[-–—]\s*(.+?)(?:\s+at\s+|\s+[-–—]\s+|\s*$)/i);
+  if (titleMatch) title = titleMatch[1].trim().replace(/\s*[-–—]\s*LinkedIn.*$/i, "").trim();
+  if (!title) {
+    const match = snippet.match(/\b(CEO|CFO|COO|CTO|President|Partner|Managing Director|Vice President|VP|Director|Principal|Founder|Co-Founder|Manager|Associate|Analyst)\b/i);
+    if (match) title = match[0];
+  }
+  return title;
+}
+
+function detectMaInSnippet(snippet: string): boolean {
+  const maKeywords = ["investment bank", "private equity", "m&a", "corporate development", "mergers", "acquisitions", "corp dev", "advisory"];
+  const lower = snippet.toLowerCase();
+  return maKeywords.some((kw) => lower.includes(kw));
 }
 
 // ─── Seniority Scoring ───
