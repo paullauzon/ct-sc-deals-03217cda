@@ -306,7 +306,7 @@ serve(async (req) => {
           body: JSON.stringify({
             meetings: allMeetings.map((m: any) => ({
               ...m,
-              transcript: (m.transcript || "").substring(0, 3000),
+              transcript: m.transcript || "",
             })),
             leadFields: {
               name: lead.name,

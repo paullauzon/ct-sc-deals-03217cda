@@ -522,7 +522,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         const existingMeetingIds = (lead.meetings || []).map(m => m.firefliesId).filter(Boolean);
         const existingMeetings = (lead.meetings || []).map(m => ({
           ...m,
-          transcript: (m.transcript || "").substring(0, 3000),
+          transcript: m.transcript || "",
         }));
 
         const leadPayload = {
