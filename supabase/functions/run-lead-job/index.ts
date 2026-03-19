@@ -228,7 +228,7 @@ serve(async (req) => {
           }
         } catch (e: any) {
           if (e.name === "AbortError") {
-            console.warn(`Meeting ${i} ("${m.title}") AI call timed out after 25s, skipping`);
+            console.warn(`Meeting ${i} ("${m.title}") AI call timed out after 50s, skipping`);
           } else {
             console.error(`AI processing error for meeting ${i}:`, e);
           }

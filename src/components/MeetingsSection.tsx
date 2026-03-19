@@ -740,6 +740,17 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
             </div>
           )}
 
+          {/* Re-process button for meetings with transcript but no intelligence */}
+          {!intel && meeting.transcript && meeting.transcript.length > 20 && onReprocess && (
+            <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+              <span className="text-xs text-yellow-700">⚠️ AI analysis missing for this meeting.</span>
+              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 ml-auto" onClick={onReprocess} disabled={reprocessing}>
+                <Loader2 className={`h-3 w-3 ${reprocessing ? "animate-spin" : "hidden"}`} />
+                {reprocessing ? "Re-processing..." : "Re-process with AI"}
+              </Button>
+            </div>
+          )}
+
           {intel ? (
             <IntelligenceDisplay intel={intel} />
           ) : (
