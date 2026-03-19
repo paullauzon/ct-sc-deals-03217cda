@@ -575,7 +575,7 @@ Deno.serve(async (req) => {
             proProcessed++;
             console.log(`\n[Pass2 ${proProcessed}/${retryValid.length}] ${lead.name} (${lead.company})`);
 
-            const result = await processLead(lead, FIRECRAWL_API_KEY, LOVABLE_API_KEY, supabase, "google/gemini-2.5-pro", PRO_MAX_TURNS);
+            const result = await processLead(lead, FIRECRAWL_API_KEY, LOVABLE_API_KEY, supabase, pass2Model, PRO_MAX_TURNS, pass2Provider, OPENAI_API_KEY || null);
             agentStats.totalTurns += result.turnsUsed;
 
             if (result.found) {
