@@ -1,23 +1,16 @@
 
 
-# Continue LinkedIn Backfill for 32 Remaining Leads
+# Run Backfill for Remaining 12 Leads
 
 ## Current State
-- **114** leads have LinkedIn URLs (matched)
-- **45** leads marked as empty string (previously searched, not found)
-- **32** leads with NULL (never searched or reset — these need processing)
+- 12 leads with `linkedin_url IS NULL` still need processing
+- `backfill-linkedin` processes 5 per run → 3 invocations needed
 
 ## Execution Plan
 
-### Step 1: Reset the 45 empty-string leads back to NULL
-Many of these were cleared by the verification pass and deserve a fresh search attempt with the improved agent.
+1. **Invoke `backfill-linkedin` 3 times** sequentially (5 leads per run), waiting for each to complete
+2. **Query database** to confirm 0 remaining
+3. **Report final stats** — total matched vs not found across all 192 leads
 
-### Step 2: Run `backfill-linkedin` repeatedly
-- 5 leads per run, ~15 runs needed for 77 leads (32 NULL + 45 reset)
-- Invoke sequentially until remaining = 0
-- Each run takes ~30-60 seconds
-
-### Step 3: Report final stats
-- Total matched vs genuinely not found
-- No code changes needed — just execution
+No code changes required — purely an execution task.
 
