@@ -274,7 +274,7 @@ async function collectAllCandidates(
           const empResults2 = await firecrawlSearch(
             `"${expanded}" site:linkedin.com/in`, apiKey, 10, true,
           );
-          addCandidates(filterByFirstName(empResults2, "company-employees-expanded"));
+          addCandidates(filterByFirstNameAndVariants(empResults2, "company-employees-expanded"));
         }
       }
     }
