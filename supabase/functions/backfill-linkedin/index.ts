@@ -487,7 +487,11 @@ Deno.serve(async (req) => {
           }
         }
 
-        if (!finalUrl && !finalTitle) continue;
+        if (!finalUrl && !finalTitle) {
+          // Mark as searched so we don't retry — use empty string vs NULL
+          await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
+          continue;
+        }
         found++;
 
         let seniorityScoreValue = getSeniorityScore(finalTitle);

@@ -52,10 +52,11 @@ Deno.serve(async (req) => {
 
   try {
     // Get leads that still need LinkedIn AND have a company_url or website_url
+    // Include both NULL and empty string (empty = searched by Serper but not found)
     const { data: leads, error } = await supabase
       .from("leads")
       .select("id, name, company, company_url, website_url, stage2_score, linkedin_score")
-      .is("linkedin_url", null)
+      .or("linkedin_url.is.null,linkedin_url.eq.")
       .neq("name", "")
       .order("created_at", { ascending: false });
 
