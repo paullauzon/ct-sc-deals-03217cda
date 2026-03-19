@@ -373,10 +373,7 @@ async function collectAllCandidates(
           const empResults = await firecrawlSearch(
             `"${clean}" site:linkedin.com/in`, apiKey, 10, false,
           );
-          addCandidates(filterByFirstName(
-            empResults.map(r => ({ ...r, _nickFilter: variant })) as any,
-            `nickname-employees-${variant}`,
-          ));
+          addCandidates(filterByName(empResults, variant, `nickname-employees-${variant}`));
         }
       }
     }
