@@ -117,6 +117,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
   const [followUpEmail, setFollowUpEmail] = useState("");
   const [followUpMeetingId, setFollowUpMeetingId] = useState<string | null>(null);
   const [generatingFollowUp, setGeneratingFollowUp] = useState(false);
+  const [reprocessingMeetingId, setReprocessingMeetingId] = useState<string | null>(null);
 
   const searching = leadJobs[lead.id]?.searching ?? false;
 
