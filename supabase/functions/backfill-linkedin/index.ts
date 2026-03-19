@@ -387,6 +387,8 @@ async function processLead(
   supabase: any,
   model: string,
   maxTurns: number,
+  provider: ApiProvider = "lovable",
+  openaiKey: string | null = null,
 ): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
   const leadContext: LeadContext = {
     name: lead.name,
