@@ -266,7 +266,7 @@ async function collectAllCandidates(
         const empResults = await firecrawlSearch(
           `"${clean}" site:linkedin.com/in`, apiKey, 10, true,
         );
-        addCandidates(filterByFirstName(empResults, "company-employees"));
+        addCandidates(filterByFirstNameAndVariants(empResults, "company-employees"));
 
         // Also try expanded company name
         const expanded = expandConcatenatedName(clean);
