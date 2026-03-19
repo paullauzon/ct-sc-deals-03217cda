@@ -1178,7 +1178,7 @@ export function LeadsTable() {
                         {lead.name}
                         {lead.linkedinUrl && (
                           <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn Profile"}>
-                            <Linkedin className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+                            <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] hover:opacity-70 transition-opacity" />
                           </a>
                         )}
                         {isLeadNew(lead.id) && (

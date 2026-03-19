@@ -207,52 +207,71 @@ interface LinkedInResult {
   hasMaExperience: boolean;
 }
 
+function cleanCompanyName(company: string): string {
+  return company
+    .replace(/\b(LLC|Inc\.?|Corp\.?|Corporation|Ltd\.?|LP|LLP|Group|Holdings|Co\.?|Company|Partners|Capital|Management|Advisors|Advisory)\b/gi, "")
+    .replace(/[.,]+$/, "")
+    .trim();
+}
+
+function extractLinkedInFromResults(organic: Array<{ link?: string; snippet?: string; title?: string }>): { linkedinUrl: string | null; snippet: string } {
+  for (const result of organic) {
+    if (result.link?.includes("linkedin.com/in/")) {
+      const snippet = (result.snippet || "") + " " + (result.title || "");
+      return { linkedinUrl: result.link, snippet };
+    }
+  }
+  return { linkedinUrl: null, snippet: "" };
+}
+
+async function serperSearchResults(query: string, apiKey: string): Promise<Array<{ link?: string; snippet?: string; title?: string }>> {
+  const res = await fetch("https://google.serper.dev/search", {
+    method: "POST",
+    headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ q: query, num: 5 }),
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.organic || [];
+}
+
 async function serperLinkedInLookup(
   name: string,
   company: string | null,
   apiKey: string,
 ): Promise<LinkedInResult> {
   try {
-    const query = company
-      ? `site:linkedin.com/in/ "${name}" "${company}"`
-      : `site:linkedin.com/in/ "${name}"`;
-    const res = await fetch("https://google.serper.dev/search", {
-      method: "POST",
-      headers: {
-        "X-API-KEY": apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ q: query, num: 3 }),
-    });
-    if (!res.ok) return { title: null, linkedinUrl: null, hasMaExperience: false };
-    const data = await res.json();
+    let linkedinUrl: string | null = null;
+    let snippet = "";
 
-    const organic = data.organic || [];
-    if (organic.length === 0) return { title: null, linkedinUrl: null, hasMaExperience: false };
-
-    // Take the first LinkedIn result
-    const top = organic[0];
-    const linkedinUrl = top.link && top.link.includes("linkedin.com/in/")
-      ? top.link
-      : null;
-
-    // Extract title from snippet — LinkedIn snippets typically contain the person's headline
-    let title: string | null = null;
-    const snippet = (top.snippet || "") + " " + (top.title || "");
-
-    // LinkedIn titles often appear as "Name - Title at Company" or "Title at Company"
-    const titleMatch = snippet.match(/[-–—]\s*(.+?)(?:\s+at\s+|\s+[-–—]\s+|\s*$)/i);
-    if (titleMatch) {
-      title = titleMatch[1].trim().replace(/\s*[-–—]\s*LinkedIn.*$/i, "").trim();
+    // Pass 1: Search with company name
+    if (company && company.trim()) {
+      const cleanCo = cleanCompanyName(company);
+      const query = cleanCo ? `site:linkedin.com/in/ "${name}" "${cleanCo}"` : `site:linkedin.com/in/ "${name}"`;
+      const results = await serperSearchResults(query, apiKey);
+      const extracted = extractLinkedInFromResults(results);
+      linkedinUrl = extracted.linkedinUrl;
+      snippet = extracted.snippet;
     }
-    // Fallback: check for common title patterns in snippet
+
+    // Pass 2: Fallback — search without company
+    if (!linkedinUrl) {
+      const results = await serperSearchResults(`site:linkedin.com/in/ "${name}"`, apiKey);
+      const extracted = extractLinkedInFromResults(results);
+      linkedinUrl = extracted.linkedinUrl;
+      snippet = extracted.snippet;
+    }
+
+    if (!linkedinUrl) return { title: null, linkedinUrl: null, hasMaExperience: false };
+
+    let title: string | null = null;
+    const titleMatch = snippet.match(/[-–—]\s*(.+?)(?:\s+at\s+|\s+[-–—]\s+|\s*$)/i);
+    if (titleMatch) title = titleMatch[1].trim().replace(/\s*[-–—]\s*LinkedIn.*$/i, "").trim();
     if (!title) {
-      const titlePatterns = /\b(CEO|CFO|COO|CTO|President|Partner|Managing Director|Vice President|VP|Director|Principal|Founder|Co-Founder|Manager|Associate|Analyst)\b/i;
-      const match = snippet.match(titlePatterns);
+      const match = snippet.match(/\b(CEO|CFO|COO|CTO|President|Partner|Managing Director|Vice President|VP|Director|Principal|Founder|Co-Founder|Manager|Associate|Analyst)\b/i);
       if (match) title = match[0];
     }
 
-    // Check for M&A experience in snippet text
     const maKeywords = [
       "investment bank", "private equity", "m&a", "corporate development",
       "mergers", "acquisitions", "corp dev", "advisory",
