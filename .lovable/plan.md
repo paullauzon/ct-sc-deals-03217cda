@@ -1,19 +1,25 @@
 
 
-# Backfill All Missing LinkedIn Profiles
+# Complete LinkedIn Backfill + Auto-Enrich New Leads
 
-## Current State
-- **133** leads have LinkedIn URLs
-- **50** leads have `NULL` (never searched)
-- **8** leads have empty string (previously failed)
-- **Total to process: 58 leads**
+## Step 1: Reset failed leads and run backfill to completion
 
-## Steps
+- Reset the 7 leads with `linkedin_url = ''` back to `NULL`
+- Invoke `backfill-linkedin` repeatedly (5 leads per run, ~12 runs needed for 58 leads) until 0 remain
+- Report final stats: matched vs genuinely not found
 
-1. **Reset failed leads**: Update the 8 leads with `linkedin_url = ''` back to `NULL` so they're eligible for reprocessing
-2. **Run `backfill-linkedin` multiple times**: The edge function has a ~3 minute timeout and processes ~8 leads per run. We'll need ~7 sequential invocations to cover all 58 leads.
-3. **Report results** after each run showing progress
+## Step 2: Add single-lead support to `backfill-linkedin`
 
-### Note on execution
-Each invocation picks up all leads where `linkedin_url IS NULL`, processes them in batches until timeout. We'll keep invoking until no leads remain with NULL URLs.
+Modify the edge function to accept an optional `leadId` parameter in the request body. When provided, it processes only that one lead instead of querying for all NULL leads. This makes it usable as a real-time enrichment trigger.
+
+## Step 3: Auto-trigger LinkedIn enrichment on new lead ingestion
+
+In `supabase/functions/ingest-lead/index.ts`, add a fire-and-forget call to `backfill-linkedin` (same pattern as the existing `score-lead` trigger), passing the new lead's ID. This way, the moment a lead is created, its LinkedIn profile is found automatically.
+
+### Changes summary
+| File | Change |
+|------|--------|
+| `supabase/functions/backfill-linkedin/index.ts` | Accept optional `{ leadId }` body param; when set, process only that lead |
+| `supabase/functions/ingest-lead/index.ts` | Add fire-and-forget call to `backfill-linkedin` with new lead ID after creation |
+| Database | `UPDATE leads SET linkedin_url = NULL WHERE linkedin_url = '';` to reset failed leads |
 
