@@ -406,7 +406,7 @@ async function processLead(
     geography: lead.geography,
   };
 
-  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, lovableKey, model, maxTurns);
+  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, lovableKey, model, maxTurns, provider, openaiKey);
 
   if (!agentResult.url) {
     await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
