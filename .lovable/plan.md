@@ -1,14 +1,19 @@
 
 
-# Reprocess Failed LinkedIn Leads
+# Backfill All Missing LinkedIn Profiles
 
-## What needs to happen
-
-Reset all failed leads (where `linkedin_url = ''`) back to `NULL`, then run the backfill-linkedin function which will process them through the new two-pass approach (Gemini Flash → GPT-4o retry).
+## Current State
+- **133** leads have LinkedIn URLs
+- **50** leads have `NULL` (never searched)
+- **8** leads have empty string (previously failed)
+- **Total to process: 58 leads**
 
 ## Steps
 
-1. **Reset failed leads**: Run `UPDATE leads SET linkedin_url = NULL WHERE linkedin_url = '';` to mark them for reprocessing
-2. **Run backfill-linkedin**: Invoke the edge function, which will pick up all leads with `linkedin_url IS NULL` and run them through Pass 1 (Flash, 5 turns) then Pass 2 (GPT-4o, 8 turns) for failures
-3. **Report results**: Check the response for match counts across both passes
+1. **Reset failed leads**: Update the 8 leads with `linkedin_url = ''` back to `NULL` so they're eligible for reprocessing
+2. **Run `backfill-linkedin` multiple times**: The edge function has a ~3 minute timeout and processes ~8 leads per run. We'll need ~7 sequential invocations to cover all 58 leads.
+3. **Report results** after each run showing progress
+
+### Note on execution
+Each invocation picks up all leads where `linkedin_url IS NULL`, processes them in batches until timeout. We'll keep invoking until no leads remain with NULL URLs.
 
