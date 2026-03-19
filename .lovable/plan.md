@@ -1,45 +1,38 @@
 
-# LinkedIn Enrichment — Firecrawl Migration
 
-## History
-1. **v1**: Serper-based search, blind trust of first result → ~30% wrong matches
-2. **v2**: Added AI verification on all candidates → 69 verified matches, ~95% accuracy
-3. **v3 (current)**: Replaced Serper with Firecrawl Search + scraping for rich profile data
+# Run Full LinkedIn Backfill
 
-## Current Implementation (v3)
+## Current State
+- **69 matched** (have linkedin_url with actual URL)
+- **117 searched-not-found** (linkedin_url = '' empty string)  
+- **5 never searched** (linkedin_url IS NULL)
 
-### Engine: Firecrawl Search API
-- Replaces Serper (out of credits)
-- Returns full markdown content from each LinkedIn result (not just 150-char snippets)
-- AI verifier reads actual profile text: headline, about section, experience history
+## Problem
+The backfill function only processes leads where `linkedin_url IS NULL`. The 117 previously-failed leads have `linkedin_url = ''`, so they'll be skipped. We need to reset them first.
 
-### Search Strategy (3-pass)
-1. `site:linkedin.com/in "Name" "Company"` — with scrape
-2. `site:linkedin.com/in "Name" "email-domain"` — with scrape
-3. `site:linkedin.com/in "Name"` — broader, with scrape
+## Execution Steps
 
-### AI Verification
-- Gemini 2.5 Flash reads full profile markdown (up to 1500 chars per candidate)
-- Checks: name match, current company, URL slug, industry alignment with lead's submission message
-- Picks best match or rejects all candidates
+### Step 1: Reset 117 failed leads to NULL
+Run a database migration to set `linkedin_url = NULL` where it's currently an empty string. This makes them eligible for the new Firecrawl-powered search.
 
-### Scoring
-- Extracts title from rich profile content
-- Detects M&A experience from full career history
-- Updates seniority_score and stage2_score
+```sql
+UPDATE leads SET linkedin_url = NULL WHERE linkedin_url = '';
+```
 
-## Status
-| Category | Count |
-|----------|-------|
-| AI-verified correct (v2) | 69 |
-| Searched, not found (v2) | 117 |
-| Never searched | 5 |
-| **Total** | **191** |
+### Step 2: Run backfill-linkedin repeatedly
+The function has a 150s timeout and processes 3 leads per batch with delays. With ~122 leads to process, we'll need **4-6 invocations**. Each run picks up remaining NULL leads.
 
-## Next Steps
-- Run v3 backfill for unmatched leads (reset linkedin_url to NULL first if re-searching)
-- Re-verify existing 69 matches by scraping their URLs with Firecrawl
+### Step 3: Run backfill-linkedin-website
+For any still-unmatched leads that have `company_url`, try scraping company websites for team page LinkedIn links.
 
-## Files
-- `supabase/functions/backfill-linkedin/index.ts` — Firecrawl-based search + AI verification
-- `supabase/functions/verify-linkedin-matches/index.ts` — Existing match auditor
+### Step 4: Final status check
+Query the database to report final match rate and list truly unfindable leads.
+
+## Cost
+- Firecrawl credits (not Serper) for search + scrape
+- Free AI calls via Lovable gateway for verification
+- No Serper credits needed
+
+## Files Changed
+None — just executing existing deployed functions and one data reset.
+
