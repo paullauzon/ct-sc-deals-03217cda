@@ -1,57 +1,65 @@
 
 
-# Smarter LinkedIn Discovery — Company-First Search Strategy
+# Deeper LinkedIn Discovery — New Techniques for the Remaining 75
 
-## The Insight
+## First: Save Michael Tindall's LinkedIn
+Directly update `Michael Tindall` with the URL you provided: `https://www.linkedin.com/in/michael-t-661bmt/`
 
-Your manual process works: **search company → find company LinkedIn page → browse employees → match person**. The current code only does `"Person Name" "Company" site:linkedin.com/in` which fails when:
-- The company is small and employees don't appear in Google results for that query
-- The person uses a nickname or shortened name on LinkedIn (e.g. "Michael T." slug `michael-t-661bmt`)
-- The company name on LinkedIn differs from what's in our data
+## Analysis of Why Current Approach Fails
 
-## New Search Strategy (4 passes instead of 3)
+Looking at the 75 unmatched leads, the current 6-pass search strategy fails because:
 
-### Pass 0 (NEW): Company-First Employee Discovery
-1. Search `"Company Name" site:linkedin.com/company` → find company LinkedIn page
-2. Use Firecrawl to scrape the company page — LinkedIn company pages often list key employees in the page content/metadata
-3. Also search `"Company Name" site:linkedin.com/in` (without the person's name) → returns all employees of that company on LinkedIn
-4. Filter results by **first name** match (relaxed — just first name, not full name) to find candidates
+1. **Company names are concatenated junk** — "Treatyoakequity", "Smartassistanthub", "Oiioholding" — these don't match how companies appear on LinkedIn
+2. **Slugs don't contain full names** — Michael Tindall's slug is `michael-t-661bmt`, no "tindall" at all
+3. **`site:linkedin.com/in` is too restrictive** — Firecrawl search with site: filters sometimes returns zero results for small companies
+4. **Company website scraper only checks slug match** — `nameMatchesSlug()` requires both first AND last name in the URL slug, missing cases like `michael-t-661bmt`
 
-This is exactly your workflow automated. For Michael Tindall at Modern Distribution: searching `"Modern Distribution" site:linkedin.com/in` would surface employees, and filtering for "Michael" finds him.
+## New Techniques to Add
 
-### Pass 1: Name + Company (existing, kept)
-`"Michael Tindall" "Modern Distribution" site:linkedin.com/in`
+### Technique 1: Firecrawl Map on Company Websites
+Use the `/v1/map` endpoint instead of scraping individual pages. Map discovers ALL URLs on a site (up to 5000) in one fast call, including LinkedIn links in footers, team pages, about pages. Much more thorough than the current approach of trying 8 specific paths.
 
-### Pass 2: Name + Email domain (existing, kept)
-`"Michael Tindall" "moderndistributionnc" site:linkedin.com/in`
+~50 of the 75 leads have a real `website_url` — this alone could find 10-20 more.
 
-### Pass 3: First name only + Company (NEW relaxed variant)
-`"Michael" "Modern Distribution" site:linkedin.com/in` — catches nickname/shortened name profiles
+### Technique 2: Search Without `site:` Restriction
+Add a pass: `"Person Name" "Company Name" linkedin` (no `site:linkedin.com`). This catches:
+- Blog posts mentioning the person with a LinkedIn link
+- Press releases, conference speaker pages
+- Company websites linking to the person's LinkedIn
+- Third-party directories
 
-### Pass 4: Name only (existing fallback)
-`"Michael Tindall" site:linkedin.com/in`
+### Technique 3: Email Domain as Company Name
+Many company names in our data are garbage (concatenated URLs). But the **email domain** is often cleaner. For `williams@treatyoakequity.com`, search `"Ben Williams" "treaty oak equity" linkedin` by expanding the domain into words.
 
-All candidates from all passes go to AI verification as before.
+### Technique 4: Relax the Website Scraper's Name Matching
+Current `backfill-linkedin-website` requires both first AND last name in the LinkedIn URL slug. Change it to use AI verification (same as the main backfill) — send any LinkedIn URL found on the company website to AI for matching against lead context.
 
-## Additional Improvements
-
-**Company website scraping (enhanced)**: For the 65 leads with `website_url`, scrape team/about/leadership pages with Firecrawl to find LinkedIn links. The existing `backfill-linkedin-website` function already does this but could run more aggressively (more page paths, follow links deeper).
-
-**Email address direct search**: Try `"michael@moderndistributionnc.com" site:linkedin.com` — sometimes email addresses are indexed on LinkedIn profiles.
+### Technique 5: Common Nickname Mapping
+Add a nickname dictionary (Michael→Mike, Robert→Bob, William→Bill, etc.) and try alternate first names in searches.
 
 ## Implementation
 
 ### File: `supabase/functions/backfill-linkedin/index.ts`
-- Add new `Pass 0: Company-first employee discovery` in `collectAllCandidates()`
-- Add new `Pass 3: First name + Company` relaxed search
-- Add email address direct search as an additional pass
-- Keep all existing passes intact, just add new ones before the AI verification step
+- Add **Pass 6**: Broad search without `site:` restriction — `"Name" "Company" linkedin`
+- Add **Pass 7**: Email domain expanded as company name — `"Name" "treaty oak equity" site:linkedin.com/in`
+- Add **nickname map** and try alternate first names in Pass 0 and Pass 3
+- Add **Firecrawl Map pass**: For leads with `website_url`, call `/v1/map` to discover LinkedIn URLs, then AI-verify
 
-### Cost Estimate
-- ~83 unmatched leads × ~5 searches each = ~415 Firecrawl search calls
-- Some with scrape enabled (Pass 0 company pages) = moderate credit usage
-- ~83 AI verification calls (free via Lovable gateway)
+### File: `supabase/functions/backfill-linkedin-website/index.ts`
+- Replace `nameMatchesSlug()` with AI-powered verification (call Lovable AI gateway like the main backfill does)
+- Use Firecrawl Map instead of scraping 8 individual page paths
+- This catches profiles like `michael-t-661bmt` that don't contain the full name
 
-### Expected Outcome
-With 5 search strategies instead of 3, and the company-first approach matching your manual workflow, we should find LinkedIn profiles for **30-50 more leads** out of the 83 currently unmatched.
+### Database: Direct update for Michael Tindall
+```sql
+UPDATE leads SET linkedin_url = 'https://www.linkedin.com/in/michael-t-661bmt/' WHERE name = 'Michael Tindall';
+```
+
+## Expected Impact
+- Firecrawl Map on ~50 websites: **5-15 new matches**
+- Broad non-site-restricted search: **5-10 new matches**
+- Email domain expansion: **3-8 new matches**
+- Nickname mapping: **2-5 new matches**
+- Relaxed website scraper: **3-8 new matches**
+- Combined (with overlap): **15-30 more matches**, bringing total from 111 to ~130-140 out of 191
 
