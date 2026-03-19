@@ -1,28 +1,23 @@
 
 
-# Stale Enrichment Detection for Research & Recommend
+# Fix: Deal Value CRM Suggestion Pulling Wrong Number
 
-## Current Behavior
-
-Research & Recommend **does** use meeting data when available:
-- It receives meeting **summaries** (not full transcripts — by design, since Deal Intelligence handles deep transcript analysis)
-- It receives aggregated **meeting intelligence** (objections, pain points, competitors, champions)
-- It receives the synthesized **deal intelligence**
-
-However, if enrichment ran *before* meetings were added, none of that meeting context was available. The enrichment result is stale but there's no indication of this.
+## Problem
+The AI is suggesting `dealValue = 1,000,000` based on the prospect's **acquisition target range** (750K–1M EBITDA targets), when `dealValue` should represent the value of the **Captarget/SourceCo service engagement** (i.e., subscription pricing for origination services). These are completely different numbers.
 
 ## Fix
 
-### 1. Add a "stale enrichment" banner in the EnrichmentSection UI
-Compare `enrichment.enrichedAt` against the dates of meetings on the lead. If any meeting was added **after** the enrichment timestamp, show an amber warning banner:
+### `supabase/functions/process-meeting/index.ts`
+Update two places:
 
-> "⚠ Research ran before [N] meeting(s) were added. Re-research to include meeting intelligence."
+1. **Tool schema description** (line 209): Change from the vague "Estimated deal value in dollars" to explicitly state this is the Captarget/SourceCo engagement value — NOT the prospect's acquisition target size.
 
-With a one-click "Re-research now" button inline.
-
-### 2. Also detect: enrichment exists but had no meetings, now meetings exist
-If the enrichment's source inventory (stored in `dataSources`) shows no meetings were used, but the lead now has meetings with intelligence — show the same banner.
+2. **System prompt section** (lines 334-335): Replace the "Deal Value" guidance with explicit instructions:
+   - Deal Value = the revenue Captarget/SourceCo earns from this client's subscription/retainer
+   - NOT the prospect's M&A target size, acquisition range, or EBITDA criteria
+   - Only suggest if actual service pricing or package cost was discussed
+   - Typical values are service subscription amounts (e.g., $5K–$25K/month), not millions
 
 ### Files Changed
-- `src/components/LeadsTable.tsx` — Add staleness check logic and amber banner in `EnrichmentSection`
+- `supabase/functions/process-meeting/index.ts` — Fix dealValue description in tool schema + system prompt
 
