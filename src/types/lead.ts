@@ -435,6 +435,9 @@ export interface Lead {
   tier: number | null;
   tierOverride: boolean;
   enrichmentStatus: string;
+  // LinkedIn
+  linkedinUrl: string;
+  linkedinTitle: string;
   // Legacy fields (kept for migration)
   firefliesUrl: string;
   firefliesTranscript: string;
