@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 3;
 const DELAY_MS = 500;
 
 interface LeadForVerification {
@@ -64,14 +64,14 @@ RULES:
 Respond with ONLY a JSON object: {"verdict": "correct"|"wrong"|"uncertain", "reason": "brief explanation"}`;
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
       }),
     });
@@ -102,9 +102,9 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) {
-    return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured" }), {
+  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  if (!OPENAI_API_KEY) {
+    return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
       const batch = leads.slice(i, i + BATCH_SIZE);
       const verifications = await Promise.all(
         batch.map(async (lead) => {
-          const result = await verifyMatch(lead as LeadForVerification, LOVABLE_API_KEY);
+          const result = await verifyMatch(lead as LeadForVerification, OPENAI_API_KEY);
           return { lead, result };
         }),
       );

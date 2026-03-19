@@ -144,14 +144,14 @@ Consider: the company likely only has a few people, so a first-name match on a c
 Respond with ONLY a JSON object: {"match": true/false, "reason": "brief explanation"}`;
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${lovableKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
       }),
     });
@@ -185,9 +185,9 @@ Deno.serve(async (req) => {
     });
   }
 
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) {
-    return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured" }), {
+  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  if (!OPENAI_API_KEY) {
+    return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -261,7 +261,7 @@ Deno.serve(async (req) => {
           const toVerify = filtered.length > 0 ? filtered.slice(0, 5) : linkedinUrls.slice(0, 3);
 
           for (const liUrl of toVerify) {
-            const verification = await aiVerifyLinkedIn(lead, liUrl, LOVABLE_API_KEY);
+            const verification = await aiVerifyLinkedIn(lead, liUrl, OPENAI_API_KEY);
             if (verification.match) {
               return { lead, linkedinUrl: liUrl, title: verification.title, method };
             }
