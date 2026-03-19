@@ -179,6 +179,8 @@ function parseTargetLeads(): Lead[] {
     tier: null,
     tierOverride: false,
     enrichmentStatus: "",
+    linkedinUrl: "",
+    linkedinTitle: "",
   }));
 }
 
