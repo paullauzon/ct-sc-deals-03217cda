@@ -1,38 +1,57 @@
 
 
-# Run Full LinkedIn Backfill
+# Smarter LinkedIn Discovery — Company-First Search Strategy
 
-## Current State
-- **69 matched** (have linkedin_url with actual URL)
-- **117 searched-not-found** (linkedin_url = '' empty string)  
-- **5 never searched** (linkedin_url IS NULL)
+## The Insight
 
-## Problem
-The backfill function only processes leads where `linkedin_url IS NULL`. The 117 previously-failed leads have `linkedin_url = ''`, so they'll be skipped. We need to reset them first.
+Your manual process works: **search company → find company LinkedIn page → browse employees → match person**. The current code only does `"Person Name" "Company" site:linkedin.com/in` which fails when:
+- The company is small and employees don't appear in Google results for that query
+- The person uses a nickname or shortened name on LinkedIn (e.g. "Michael T." slug `michael-t-661bmt`)
+- The company name on LinkedIn differs from what's in our data
 
-## Execution Steps
+## New Search Strategy (4 passes instead of 3)
 
-### Step 1: Reset 117 failed leads to NULL
-Run a database migration to set `linkedin_url = NULL` where it's currently an empty string. This makes them eligible for the new Firecrawl-powered search.
+### Pass 0 (NEW): Company-First Employee Discovery
+1. Search `"Company Name" site:linkedin.com/company` → find company LinkedIn page
+2. Use Firecrawl to scrape the company page — LinkedIn company pages often list key employees in the page content/metadata
+3. Also search `"Company Name" site:linkedin.com/in` (without the person's name) → returns all employees of that company on LinkedIn
+4. Filter results by **first name** match (relaxed — just first name, not full name) to find candidates
 
-```sql
-UPDATE leads SET linkedin_url = NULL WHERE linkedin_url = '';
-```
+This is exactly your workflow automated. For Michael Tindall at Modern Distribution: searching `"Modern Distribution" site:linkedin.com/in` would surface employees, and filtering for "Michael" finds him.
 
-### Step 2: Run backfill-linkedin repeatedly
-The function has a 150s timeout and processes 3 leads per batch with delays. With ~122 leads to process, we'll need **4-6 invocations**. Each run picks up remaining NULL leads.
+### Pass 1: Name + Company (existing, kept)
+`"Michael Tindall" "Modern Distribution" site:linkedin.com/in`
 
-### Step 3: Run backfill-linkedin-website
-For any still-unmatched leads that have `company_url`, try scraping company websites for team page LinkedIn links.
+### Pass 2: Name + Email domain (existing, kept)
+`"Michael Tindall" "moderndistributionnc" site:linkedin.com/in`
 
-### Step 4: Final status check
-Query the database to report final match rate and list truly unfindable leads.
+### Pass 3: First name only + Company (NEW relaxed variant)
+`"Michael" "Modern Distribution" site:linkedin.com/in` — catches nickname/shortened name profiles
 
-## Cost
-- Firecrawl credits (not Serper) for search + scrape
-- Free AI calls via Lovable gateway for verification
-- No Serper credits needed
+### Pass 4: Name only (existing fallback)
+`"Michael Tindall" site:linkedin.com/in`
 
-## Files Changed
-None — just executing existing deployed functions and one data reset.
+All candidates from all passes go to AI verification as before.
+
+## Additional Improvements
+
+**Company website scraping (enhanced)**: For the 65 leads with `website_url`, scrape team/about/leadership pages with Firecrawl to find LinkedIn links. The existing `backfill-linkedin-website` function already does this but could run more aggressively (more page paths, follow links deeper).
+
+**Email address direct search**: Try `"michael@moderndistributionnc.com" site:linkedin.com` — sometimes email addresses are indexed on LinkedIn profiles.
+
+## Implementation
+
+### File: `supabase/functions/backfill-linkedin/index.ts`
+- Add new `Pass 0: Company-first employee discovery` in `collectAllCandidates()`
+- Add new `Pass 3: First name + Company` relaxed search
+- Add email address direct search as an additional pass
+- Keep all existing passes intact, just add new ones before the AI verification step
+
+### Cost Estimate
+- ~83 unmatched leads × ~5 searches each = ~415 Firecrawl search calls
+- Some with scrape enabled (Pass 0 company pages) = moderate credit usage
+- ~83 AI verification calls (free via Lovable gateway)
+
+### Expected Outcome
+With 5 search strategies instead of 3, and the company-first approach matching your manual workflow, we should find LinkedIn profiles for **30-50 more leads** out of the 83 currently unmatched.
 
