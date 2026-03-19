@@ -1,55 +1,66 @@
 
 
-# Fix LinkedIn Profile Accuracy — Company Validation
+# Get Maximum LinkedIn Coverage (91 → ~145+)
 
-## Problem
-The current LinkedIn lookup finds the **first** profile matching the person's name, but doesn't verify it belongs to someone at the right company. Result: ~50% of matches are wrong people (e.g., "Adam Berman" at Savade Holdings matched to someone at Hendrick Automotive Group).
+## Strategy Overview
 
-The root cause is **Pass 2** (name-only fallback) — when the company+name search fails, it searches just the name and picks the first LinkedIn profile it finds, which is often the wrong person.
+Three complementary approaches, executed in order of impact:
 
-## Solution: Add Company Validation
+### Phase 1: Fix & Re-deploy the Backfill (quick win, +10-20 matches)
 
-After finding a LinkedIn result, validate the snippet/title against known company signals before accepting the match. We have three signals: company name, email domain, and company URL domain.
+The codebase still has the OLD backfill logic (Pass 2 without company validation). The validation code from the approved plan needs to be properly written into the file with all 3 passes:
+- Pass 1: Name + Company (trust Google)
+- Pass 2: Name + Email domain hint (new)  
+- Pass 3: Name only WITH company validation (reject if no match)
 
-### Validation Logic (both edge functions)
-```
-function isCompanyMatch(snippet, company, email, companyUrl):
-  - Extract email domain (e.g., "savadeholdings.com" → "savade")
-  - Extract company URL domain (e.g., "https://savadeholdings.com" → "savade") 
-  - Clean company name (strip LLC/Inc/etc)
-  - Check if snippet contains ANY of: company name, email domain root, URL domain root
-  - For Pass 1 (searched with company): accept match (already filtered by Google)
-  - For Pass 2 (name-only fallback): REQUIRE company validation to pass
-  - If validation fails on Pass 2: reject the match (return null)
-```
+Also loosen the validation: currently checking exact substring. Add fuzzy matching — e.g. "Imperialcap" should match "Imperial Capital", "treatyoakequity" should match "Treaty Oak Equity".
 
-### Changes to Search Strategy
-1. **Pass 1** (name + company): Keep as-is, trust Google's filtering
-2. **Pass 2** (name only): Add company validation — check snippet contains company/domain reference. If not, **reject** the match rather than accepting the wrong person
-3. **Pass 3** (new): Try with email domain as company hint: `site:linkedin.com/in/ "Name" "emaildomain"` — many company websites match email domains
+**Files**: `supabase/functions/backfill-linkedin/index.ts`, `supabase/functions/enrich-lead-scoring/index.ts`
 
-### Backfill: Clear Bad Data + Re-run
-1. Reset all `linkedin_url`, `linkedin_title`, `linkedin_ma_experience` to NULL for all leads
-2. Re-run backfill with improved validation
-3. This will reduce total matches somewhat (maybe 120-140 instead of 161) but accuracy will be dramatically higher
+### Phase 2: Scrape Company Websites for LinkedIn Links (+15-25 matches)
+
+37 leads have `company_url`. Many company websites have /about or /team pages with direct LinkedIn profile links. Use the existing Firecrawl connector to:
+1. Crawl `company_url` + common team page paths (`/about`, `/team`, `/about-us`, `/our-team`, `/leadership`)
+2. Extract all `linkedin.com/in/` URLs from the page
+3. Match by name (first name + last name appearing in nearby text or the LinkedIn URL slug)
+4. Write matches to the DB
+
+**Files**: New edge function `supabase/functions/backfill-linkedin-website/index.ts`
+
+### Phase 3: AI-Powered Fuzzy Lookup (+5-10 matches)
+
+For remaining unmatched leads with business emails, use Lovable AI gateway to:
+1. Take the Serper search results (even ones that failed validation)
+2. Ask AI: "Given person X at company Y with email Z, which of these LinkedIn profiles is most likely correct?"
+3. AI can handle abbreviations, name variations, and company name mismatches
+
+This is added as a final pass in the main backfill function, not a separate function.
+
+**Files**: `supabase/functions/backfill-linkedin/index.ts` (add Pass 4: AI arbitration)
+
+### What Won't Match (~45-50 leads)
+
+- ~10 spam/fake leads (mozmail, creteanu.com emails, gibberish names)
+- ~10 people with no LinkedIn presence (small business owners, non-US)
+- ~7 leads with no company AND personal email (nothing to validate against)
+- Remainder: genuinely unfindable via public search
+
+## Execution Order
+
+1. Deploy Phase 1 (fixed backfill with fuzzy validation) → re-run
+2. Deploy Phase 2 (website scraping) → run for leads still missing
+3. Deploy Phase 3 (AI arbitration) → run for remaining stubborn cases
 
 ## Files Changed
+- `supabase/functions/backfill-linkedin/index.ts` — Rewrite with proper 3-pass + fuzzy validation + AI pass
+- `supabase/functions/enrich-lead-scoring/index.ts` — Mirror the improved lookup logic
+- `supabase/functions/backfill-linkedin-website/index.ts` — New function: scrape company websites via Firecrawl
 
-### `supabase/functions/backfill-linkedin/index.ts`
-- Update `serperLinkedInLookup` signature to accept `email` and `companyUrl` params
-- Add `isCompanyMatch()` validation function
-- Add Pass 3 (email domain search)
-- Validate Pass 2 & 3 results against company signals
-- Update the main loop to pass `email` and `companyUrl` to the lookup function
-- Select `email` and `company_url` from the leads query
+## Technical Details
 
-### `supabase/functions/enrich-lead-scoring/index.ts`
-- Same validation logic changes to `serperLinkedInLookup`
-- Add `isCompanyMatch()` function
-- Add Pass 3 (email domain search)
-- Pass email/companyUrl through from the lead data
+**Fuzzy company matching**: Split company name into words, check if 2+ words appear in snippet. Also normalize by removing spaces/hyphens ("treatyoakequity" → ["treaty", "oak", "equity"]).
 
-### After deployment
-- Clear all existing LinkedIn data (since ~50% is wrong)
-- Re-run backfill with the validated logic
+**Firecrawl website scraping**: Use existing `FIRECRAWL_API_KEY` connector. Scrape with `formats: ['links']` to get all URLs, then filter for `linkedin.com/in/`. Match against lead name by checking if the URL slug contains parts of the name (e.g., `/in/abigail-gupta` matches "Abigail Gupta").
+
+**AI arbitration**: Call Lovable AI gateway with a structured prompt: "Person: {name}, Company: {company}, Email: {email}. LinkedIn candidates: [urls + snippets]. Which profile belongs to this person? Return the URL or null." Use `google/gemini-2.5-flash` for speed.
 
