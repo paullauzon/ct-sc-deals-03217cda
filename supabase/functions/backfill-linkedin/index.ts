@@ -130,6 +130,7 @@ async function collectAllCandidates(
 ): Promise<Candidate[]> {
   const allCandidates: Candidate[] = [];
   const seenUrls = new Set<string>();
+  const firstName = name.split(/\s+/)[0];
 
   const addCandidates = (candidates: Candidate[]) => {
     for (const c of candidates) {
@@ -141,16 +142,56 @@ async function collectAllCandidates(
     }
   };
 
+  // Helper: filter search results by first name appearing in URL or content
+  const filterByFirstName = (results: SearchResult[], source: string): Candidate[] => {
+    const candidates: Candidate[] = [];
+    const firstLower = firstName.toLowerCase();
+    for (const r of results) {
+      if (!r.url?.includes("linkedin.com/in/")) continue;
+      const urlSlug = r.url.split("linkedin.com/in/")[1]?.toLowerCase() || "";
+      const content = (r.markdown || r.description || r.title || "").toLowerCase();
+      if (urlSlug.includes(firstLower) || content.includes(firstLower)) {
+        candidates.push({
+          url: r.url,
+          profileContent: (r.markdown || r.description || r.title || "").substring(0, 3000),
+          source,
+        });
+      }
+    }
+    return candidates;
+  };
+
   try {
-    // Pass 1: Name + Company variants (with scraping for rich content)
+    // Pass 0: Company-first employee discovery
+    if (company && company.trim()) {
+      const clean = cleanCompanyName(company);
+      if (clean) {
+        // Search for company employees on LinkedIn (without person name)
+        const empResults = await firecrawlSearch(
+          `"${clean}" site:linkedin.com/in`, apiKey, 10, true,
+        );
+        addCandidates(filterByFirstName(empResults, "company-employees"));
+
+        // Also try expanded company name
+        const expanded = expandConcatenatedName(clean);
+        if (expanded !== clean && expanded.includes(" ")) {
+          const empResults2 = await firecrawlSearch(
+            `"${expanded}" site:linkedin.com/in`, apiKey, 10, true,
+          );
+          addCandidates(filterByFirstName(empResults2, "company-employees-expanded"));
+        }
+      }
+    }
+
+    // Pass 1: Name + Company variants (existing)
     const companyQueries = buildCompanyQueries(name, company);
     for (const query of companyQueries) {
       const results = await firecrawlSearch(query, apiKey, 5, true);
       addCandidates(extractLinkedInCandidates(results, "company"));
-      if (allCandidates.length >= 6) break;
+      if (allCandidates.length >= 8) break;
     }
 
-    // Pass 2: Name + Email domain
+    // Pass 2: Name + Email domain (existing)
     const emailRoot = extractDomainRoot(email);
     if (emailRoot && emailRoot.length >= 3) {
       const results = await firecrawlSearch(
@@ -167,7 +208,26 @@ async function collectAllCandidates(
       }
     }
 
-    // Pass 3: Name only (broader)
+    // Pass 3: First name + Company (relaxed — catches nicknames/shortened names)
+    if (company && company.trim() && allCandidates.length < 6) {
+      const clean = cleanCompanyName(company);
+      if (clean && firstName.length >= 3) {
+        const results = await firecrawlSearch(
+          `site:linkedin.com/in "${firstName}" "${clean}"`, apiKey, 5, true,
+        );
+        addCandidates(extractLinkedInCandidates(results, "firstname-company"));
+      }
+    }
+
+    // Pass 4: Email address direct search
+    if (email && email.includes("@") && allCandidates.length < 6) {
+      const results = await firecrawlSearch(
+        `"${email}" site:linkedin.com`, apiKey, 3, true,
+      );
+      addCandidates(extractLinkedInCandidates(results, "email-direct"));
+    }
+
+    // Pass 5: Name only (broader fallback)
     if (allCandidates.length < 4) {
       const results = await firecrawlSearch(
         `site:linkedin.com/in "${name}"`, apiKey, 5, true,
