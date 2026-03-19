@@ -6,6 +6,17 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Sanitize a string field: trim whitespace, normalize line breaks, limit length
+function sanitizeString(val: unknown, maxLen = 5000): string {
+  if (val === null || val === undefined) return "";
+  const s = String(val)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .trim();
+  return s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
 // Internal employee emails/domains to filter out
 const EXCLUDED_EMAILS = [
   "adam.haile@sourcecodeals.com",
@@ -80,10 +91,34 @@ Deno.serve(async (req) => {
       });
     }
 
-    const body = await req.json();
+    // Parse body with resilient error handling
+    let body: Record<string, unknown>;
+    let rawText = "";
+    try {
+      rawText = await req.text();
+      body = JSON.parse(rawText);
+    } catch (parseErr) {
+      console.error("JSON parse error. Raw body (first 500 chars):", rawText.slice(0, 500));
+      return new Response(
+        JSON.stringify({
+          error: "Invalid JSON in request body",
+          detail: (parseErr as Error).message,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     // Required fields
-    const { brand, source, name, email } = body;
+    const brand = sanitizeString(body.brand, 100);
+    const source = sanitizeString(body.source, 200);
+    const name = sanitizeString(body.name, 200);
+    const email = sanitizeString(body.email, 255).toLowerCase();
+
+    console.log(`[ingest-lead] Processing: ${email} | ${name} | ${source}`);
+
     if (!brand || !source || !name || !email) {
       return new Response(
         JSON.stringify({
@@ -117,23 +152,23 @@ Deno.serve(async (req) => {
 
     const now = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
 
-    // Build submission record
+    // Build submission record (sanitize all free-text fields)
     const submission = {
       brand,
       source,
-      dateSubmitted: body.dateSubmitted || now,
-      message: body.message || "",
-      dealsPlanned: body.dealsPlanned || "",
-      targetCriteria: body.targetCriteria || "",
-      targetRevenue: body.targetRevenue || "",
-      geography: body.geography || "",
-      currentSourcing: body.currentSourcing || "",
-      hearAboutUs: body.hearAboutUs || "",
-      acquisitionStrategy: body.acquisitionStrategy || "",
-      buyerType: body.buyerType || "",
-      role: body.role || "",
-      phone: body.phone || "",
-      companyUrl: body.companyUrl || "",
+      dateSubmitted: sanitizeString(body.dateSubmitted, 20) || now,
+      message: sanitizeString(body.message, 5000),
+      dealsPlanned: sanitizeString(body.dealsPlanned, 100),
+      targetCriteria: sanitizeString(body.targetCriteria, 5000),
+      targetRevenue: sanitizeString(body.targetRevenue, 200),
+      geography: sanitizeString(body.geography, 500),
+      currentSourcing: sanitizeString(body.currentSourcing, 1000),
+      hearAboutUs: sanitizeString(body.hearAboutUs, 500),
+      acquisitionStrategy: sanitizeString(body.acquisitionStrategy, 1000),
+      buyerType: sanitizeString(body.buyerType, 200),
+      role: sanitizeString(body.role, 200),
+      phone: sanitizeString(body.phone, 50),
+      companyUrl: sanitizeString(body.companyUrl, 500),
     };
 
     // Check for existing lead by email
