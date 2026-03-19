@@ -221,20 +221,37 @@ async function collectAllCandidates(
     }
   };
 
-  // Helper: filter search results by first name appearing in URL or content
-  const filterByFirstName = (results: SearchResult[], source: string): Candidate[] => {
+  // Helper: filter search results by name appearing in URL or content
+  const filterByName = (results: SearchResult[], nameToMatch: string, source: string): Candidate[] => {
     const candidates: Candidate[] = [];
-    const firstLower = firstName.toLowerCase();
+    const nameLower = nameToMatch.toLowerCase();
     for (const r of results) {
       if (!r.url?.includes("linkedin.com/in/")) continue;
       const urlSlug = r.url.split("linkedin.com/in/")[1]?.toLowerCase() || "";
       const content = (r.markdown || r.description || r.title || "").toLowerCase();
-      if (urlSlug.includes(firstLower) || content.includes(firstLower)) {
+      if (urlSlug.includes(nameLower) || content.includes(nameLower)) {
         candidates.push({
           url: r.url,
           profileContent: (r.markdown || r.description || r.title || "").substring(0, 3000),
           source,
         });
+      }
+    }
+    return candidates;
+  };
+
+  // Filter by first name AND all nickname variants
+  const filterByFirstNameAndVariants = (results: SearchResult[], source: string): Candidate[] => {
+    const allVariants = getNameVariants(firstName);
+    const candidates: Candidate[] = [];
+    const seen = new Set<string>();
+    for (const variant of allVariants) {
+      for (const c of filterByName(results, variant, source)) {
+        const norm = c.url.split("?")[0].replace(/\/$/, "");
+        if (!seen.has(norm)) {
+          seen.add(norm);
+          candidates.push(c);
+        }
       }
     }
     return candidates;
