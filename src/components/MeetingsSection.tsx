@@ -305,6 +305,8 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
                 }}
                 onDraftFollowUp={() => handleDraftFollowUp(meeting)}
                 generatingFollowUp={generatingFollowUp && followUpMeetingId === meeting.id}
+                onReprocess={() => handleReprocess(meeting)}
+                reprocessing={reprocessingMeetingId === meeting.id}
               />
             ))}
         </div>
