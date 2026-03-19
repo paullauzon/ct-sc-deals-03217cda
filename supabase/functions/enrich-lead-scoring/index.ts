@@ -214,6 +214,15 @@ function cleanCompanyName(company: string): string {
     .trim();
 }
 
+function expandConcatenatedName(name: string): string {
+  let expanded = name.replace(/([a-z])([A-Z])/g, "$1 $2");
+  if (!expanded.includes(" ") && expanded.length > 6) {
+    expanded = expanded.replace(/(capital|equity|partners|advisory|advisors|ventures|group|holdings|management|invest|financial|consulting|strategies|solutions)/gi, " $1");
+    expanded = expanded.trim();
+  }
+  return expanded;
+}
+
 function extractLinkedInFromResults(organic: Array<{ link?: string; snippet?: string; title?: string }>): { linkedinUrl: string | null; snippet: string; allResults: Array<{ url: string; snippet: string }> } {
   const allResults: Array<{ url: string; snippet: string }> = [];
   let firstUrl: string | null = null;
@@ -265,42 +274,70 @@ function isCompanyMatch(
   if (company && company.trim()) {
     const clean = cleanCompanyName(company).toLowerCase();
     if (clean && clean.length >= 3 && lower.includes(clean)) return true;
+    const expanded = expandConcatenatedName(clean).toLowerCase();
+    if (expanded !== clean && expanded.length >= 3 && lower.includes(expanded)) return true;
     const companyWords = tokenize(clean);
     if (companyWords.length >= 2) {
       const matches = companyWords.filter((w) => lower.includes(w));
-      if (matches.length >= Math.ceil(companyWords.length * 0.6)) return true;
+      if (matches.length >= Math.ceil(companyWords.length * 0.5)) return true;
+    }
+    const expandedWords = tokenize(expanded);
+    if (expandedWords.length >= 2) {
+      const matches = expandedWords.filter((w) => lower.includes(w));
+      if (matches.length >= Math.ceil(expandedWords.length * 0.5)) return true;
     }
   }
   const emailRoot = extractDomainRoot(email);
   if (emailRoot) {
     if (lower.includes(emailRoot)) return true;
+    const expanded = expandConcatenatedName(emailRoot).toLowerCase();
+    if (expanded !== emailRoot && lower.includes(expanded)) return true;
     const emailTokens = tokenize(emailRoot);
     if (emailTokens.length >= 2) {
       const matches = emailTokens.filter((w) => lower.includes(w));
-      if (matches.length >= Math.ceil(emailTokens.length * 0.6)) return true;
+      if (matches.length >= Math.ceil(emailTokens.length * 0.5)) return true;
     }
   }
   const urlRoot = extractDomainRoot(companyUrl);
   if (urlRoot && urlRoot !== emailRoot) {
     if (lower.includes(urlRoot)) return true;
+    const expanded = expandConcatenatedName(urlRoot).toLowerCase();
+    if (expanded !== urlRoot && lower.includes(expanded)) return true;
     const urlTokens = tokenize(urlRoot);
     if (urlTokens.length >= 2) {
       const matches = urlTokens.filter((w) => lower.includes(w));
-      if (matches.length >= Math.ceil(urlTokens.length * 0.6)) return true;
+      if (matches.length >= Math.ceil(urlTokens.length * 0.5)) return true;
     }
   }
   return false;
 }
 
-async function serperSearchResults(query: string, apiKey: string): Promise<Array<{ link?: string; snippet?: string; title?: string }>> {
+async function serperSearchResults(query: string, apiKey: string, num = 10): Promise<Array<{ link?: string; snippet?: string; title?: string }>> {
   const res = await fetch("https://google.serper.dev/search", {
     method: "POST",
     headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ q: query, num: 5 }),
+    body: JSON.stringify({ q: query, num }),
   });
   if (!res.ok) return [];
   const data = await res.json();
   return data.organic || [];
+}
+
+function buildCompanyQueries(name: string, company: string | null): string[] {
+  const queries: string[] = [];
+  if (!company || !company.trim()) return queries;
+  const clean = cleanCompanyName(company);
+  if (clean) queries.push(`site:linkedin.com/in/ "${name}" "${clean}"`);
+  const expanded = expandConcatenatedName(clean || company);
+  if (expanded !== clean && expanded.includes(" ")) {
+    queries.push(`site:linkedin.com/in/ "${name}" "${expanded}"`);
+  }
+  const words = tokenize(expanded || clean || company);
+  const significantWord = words.find(w => w.length >= 4 && !["the", "and", "for"].includes(w));
+  if (significantWord && significantWord !== clean?.toLowerCase()) {
+    queries.push(`site:linkedin.com/in/ "${name}" "${significantWord}"`);
+  }
+  return queries;
 }
 
 async function serperLinkedInLookup(
@@ -311,12 +348,9 @@ async function serperLinkedInLookup(
   apiKey: string,
 ): Promise<LinkedInResult> {
   try {
-    // Pass 1: Name + Company (trust Google's filtering)
-    if (company && company.trim()) {
-      const cleanCo = cleanCompanyName(company);
-      const query = cleanCo
-        ? `site:linkedin.com/in/ "${name}" "${cleanCo}"`
-        : `site:linkedin.com/in/ "${name}"`;
+    // Pass 1: Name + Company variants
+    const companyQueries = buildCompanyQueries(name, company);
+    for (const query of companyQueries) {
       const results = await serperSearchResults(query, apiKey);
       const extracted = extractLinkedInFromResults(results);
       if (extracted.linkedinUrl) {
@@ -334,11 +368,33 @@ async function serperLinkedInLookup(
         const title = extractTitleFromSnippet(extracted.snippet);
         return { title, linkedinUrl: extracted.linkedinUrl, hasMaExperience: detectMaInSnippet(extracted.snippet) };
       }
+      const expandedDomain = expandConcatenatedName(emailRoot);
+      if (expandedDomain !== emailRoot && expandedDomain.includes(" ")) {
+        const results2 = await serperSearchResults(`site:linkedin.com/in/ "${name}" "${expandedDomain}"`, apiKey);
+        const extracted2 = extractLinkedInFromResults(results2);
+        if (extracted2.linkedinUrl) {
+          const title = extractTitleFromSnippet(extracted2.snippet);
+          return { title, linkedinUrl: extracted2.linkedinUrl, hasMaExperience: detectMaInSnippet(extracted2.snippet) };
+        }
+      }
     }
 
-    // Pass 3: Name only — REQUIRE company validation
+    // Pass 3: Name only — REQUIRE company validation (10 results)
     {
-      const results = await serperSearchResults(`site:linkedin.com/in/ "${name}"`, apiKey);
+      const results = await serperSearchResults(`site:linkedin.com/in/ "${name}"`, apiKey, 10);
+      const extracted = extractLinkedInFromResults(results);
+      for (const candidate of extracted.allResults) {
+        if (isCompanyMatch(candidate.snippet, company, email, companyUrl)) {
+          const title = extractTitleFromSnippet(candidate.snippet);
+          return { title, linkedinUrl: candidate.url, hasMaExperience: detectMaInSnippet(candidate.snippet) };
+        }
+      }
+    }
+
+    // Pass 3b: Name without quotes
+    const nameParts = name.split(/\s+/).filter((p: string) => p.length >= 2);
+    if (nameParts.length >= 2) {
+      const results = await serperSearchResults(`site:linkedin.com/in/ ${name}`, apiKey, 10);
       const extracted = extractLinkedInFromResults(results);
       for (const candidate of extracted.allResults) {
         if (isCompanyMatch(candidate.snippet, company, email, companyUrl)) {
