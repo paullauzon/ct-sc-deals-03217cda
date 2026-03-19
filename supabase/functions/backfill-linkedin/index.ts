@@ -7,7 +7,8 @@ const corsHeaders = {
 
 const BATCH_SIZE = 3;
 const DELAY_MS = 2000;
-const MAX_AGENT_TURNS = 5;
+const FLASH_MAX_TURNS = 5;
+const PRO_MAX_TURNS = 8;
 
 // ─── Firecrawl Search ───
 
@@ -59,6 +60,51 @@ async function firecrawlSearch(
   }
 }
 
+// ─── Firecrawl Scrape (single URL) ───
+
+async function firecrawlScrape(
+  url: string,
+  apiKey: string,
+): Promise<string> {
+  try {
+    let formattedUrl = url.trim();
+    if (!formattedUrl.startsWith("http")) formattedUrl = `https://${formattedUrl}`;
+
+    const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url: formattedUrl,
+        formats: ["markdown", "links"],
+        onlyMainContent: false,
+        waitFor: 3000,
+      }),
+    });
+
+    if (!res.ok) {
+      console.error(`Firecrawl scrape error ${res.status}`);
+      return "";
+    }
+
+    const data = await res.json();
+    const markdown = data.data?.markdown || data.markdown || "";
+    const links = data.data?.links || data.links || [];
+    
+    // Append any LinkedIn links found
+    const linkedinLinks = links.filter((l: string) => l.includes("linkedin.com/in/"));
+    if (linkedinLinks.length > 0) {
+      return markdown + "\n\nLinkedIn profile links found on page:\n" + linkedinLinks.join("\n");
+    }
+    return markdown;
+  } catch (e) {
+    console.error("Firecrawl scrape failed:", e);
+    return "";
+  }
+}
+
 // ─── AI Search Agent ───
 
 interface LeadContext {
@@ -84,15 +130,28 @@ interface AgentResult {
   gaveUpReason: string | null;
 }
 
-const AGENT_SYSTEM_PROMPT = `You are a LinkedIn research assistant. Your job is to find a specific person's LinkedIn profile URL.
+function buildSystemPrompt(maxTurns: number): string {
+  return `You are a LinkedIn research assistant. Your job is to find a specific person's LinkedIn profile URL.
 
-You have access to a web search tool. Each turn, you decide what to search for, then I'll give you the results. You get up to ${MAX_AGENT_TURNS} search turns.
+You have access to these tools. Each turn, you choose ONE action, then I'll give you the results. You get up to ${maxTurns} turns.
 
-RESPONSE FORMAT — respond with ONLY a JSON object, no markdown, no explanation:
+TOOLS AVAILABLE:
+1. **search** — Web search via Firecrawl. Good for broad queries.
+   Response format: {"action": "search", "query": "your search query here"}
 
-To search: {"action": "search", "query": "your search query here"}
-When found: {"action": "found", "url": "https://linkedin.com/in/...", "confidence": "high"}
-To give up: {"action": "give_up", "reason": "brief explanation"}
+2. **scrape** — Scrape a specific URL to read its full content. Use this to:
+   - Read a company's LinkedIn page (linkedin.com/company/...) to find employees
+   - Read a company's /about or /team page to find LinkedIn links
+   - Verify a LinkedIn profile by reading its content
+   Response format: {"action": "scrape", "url": "https://example.com/team"}
+
+3. **found** — You've found the LinkedIn profile URL.
+   Response format: {"action": "found", "url": "https://linkedin.com/in/...", "confidence": "high"}
+
+4. **give_up** — You can't find the profile.
+   Response format: {"action": "give_up", "reason": "brief explanation"}
+
+RESPONSE FORMAT — respond with ONLY a JSON object, no markdown, no explanation.
 
 SEARCH STRATEGIES (use your judgment on which to try):
 1. Direct search: "FirstName LastName" "Company" site:linkedin.com/in
@@ -101,13 +160,16 @@ SEARCH STRATEGIES (use your judgment on which to try):
 4. Search WITHOUT site: restriction: "Name" "Company" linkedin — catches third-party mentions
 5. Search for the company on LinkedIn first, then look for the person among results
 6. Try common nicknames (Michael→Mike, Robert→Bob, William→Bill, etc.)
-7. If they have a company_url, search that domain + "linkedin" to find team pages
-8. If all else fails, try just the person's name with their city/geography
+7. If they have a company_url, SCRAPE that URL's /about or /team page to find LinkedIn links directly
+8. Scrape the company's LinkedIn page (linkedin.com/company/...) and look for employee mentions
+9. If the email domain is a company, scrape it to find team/about pages
+10. If all else fails, try just the person's name with their city/geography
 
 VERIFICATION RULES (before saying "found"):
 - The LinkedIn URL slug should contain at least part of the person's name (first name is sufficient)
 - The profile's company/role context must align with the lead's data
 - If the email domain is "xyz.com" and the LinkedIn shows a completely different company, that's wrong
+- When in doubt, SCRAPE the LinkedIn profile to verify the person's details
 - When in doubt, try another search rather than guessing
 
 WHEN TO GIVE UP:
@@ -115,13 +177,15 @@ WHEN TO GIVE UP:
 - No real company information available
 - After trying multiple strategies with no relevant results
 - The person is clearly too obscure to have a findable LinkedIn profile`;
+}
 
 async function aiSearchAgent(
   lead: LeadContext,
   firecrawlKey: string,
   lovableKey: string,
+  model: string = "google/gemini-2.5-flash",
+  maxTurns: number = FLASH_MAX_TURNS,
 ): Promise<AgentResult> {
-  // Build lead context for the AI
   const contextParts: string[] = [];
   contextParts.push(`Name: ${lead.name}`);
   if (lead.company) contextParts.push(`Company: ${lead.company}`);
@@ -138,14 +202,14 @@ async function aiSearchAgent(
   if (lead.message) contextParts.push(`Submission Message: "${lead.message.substring(0, 600)}"`);
 
   const messages: Array<{ role: string; content: string }> = [
-    { role: "system", content: AGENT_SYSTEM_PROMPT },
+    { role: "system", content: buildSystemPrompt(maxTurns) },
     {
       role: "user",
-      content: `Find the LinkedIn profile for this person:\n\n${contextParts.join("\n")}\n\nWhat would you like to search first?`,
+      content: `Find the LinkedIn profile for this person:\n\n${contextParts.join("\n")}\n\nWhat would you like to do first?`,
     },
   ];
 
-  for (let turn = 0; turn < MAX_AGENT_TURNS; turn++) {
+  for (let turn = 0; turn < maxTurns; turn++) {
     try {
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -153,10 +217,7 @@ async function aiSearchAgent(
           Authorization: `Bearer ${lovableKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages,
-        }),
+        body: JSON.stringify({ model, messages }),
       });
 
       if (!response.ok) {
@@ -167,14 +228,11 @@ async function aiSearchAgent(
       const data = await response.json();
       const content = (data.choices?.[0]?.message?.content || "").trim();
 
-      // Parse the AI's JSON response
       let parsed: any;
       try {
         const jsonStr = content.replace(/```json\s*/g, "").replace(/```/g, "").trim();
         parsed = JSON.parse(jsonStr);
       } catch {
-        console.error(`AI agent returned unparseable response for ${lead.name}: ${content.substring(0, 200)}`);
-        // Try to extract JSON from the response
         const jsonMatch = content.match(/\{[^}]+\}/);
         if (jsonMatch) {
           try { parsed = JSON.parse(jsonMatch[0]); } catch { /* ignore */ }
@@ -184,11 +242,10 @@ async function aiSearchAgent(
         }
       }
 
-      // Add AI's response to conversation history
       messages.push({ role: "assistant", content });
 
       if (parsed.action === "found" && parsed.url) {
-        const url = parsed.url.split("?")[0]; // Clean tracking params
+        const url = parsed.url.split("?")[0];
         console.log(`  Turn ${turn + 1}: FOUND ${url} (confidence: ${parsed.confidence || "unknown"})`);
         return { url, profileContent: "", turnsUsed: turn + 1, gaveUpReason: null };
       }
@@ -198,13 +255,22 @@ async function aiSearchAgent(
         return { url: null, profileContent: "", turnsUsed: turn + 1, gaveUpReason: parsed.reason };
       }
 
+      if (parsed.action === "scrape" && parsed.url) {
+        console.log(`  Turn ${turn + 1}: Scraping "${parsed.url}"`);
+        const scraped = await firecrawlScrape(parsed.url, firecrawlKey);
+        
+        const preview = scraped.length > 2000 ? scraped.substring(0, 2000) + "\n...(truncated)" : scraped;
+        messages.push({
+          role: "user",
+          content: `Scraped content from "${parsed.url}":\n\n${preview || "(empty page)"}\n\nYou have ${maxTurns - turn - 1} turns remaining. What next?`,
+        });
+        continue;
+      }
+
       if (parsed.action === "search" && parsed.query) {
         console.log(`  Turn ${turn + 1}: Searching "${parsed.query}"`);
-
-        // Execute the search
         const results = await firecrawlSearch(parsed.query, firecrawlKey, 5, true);
 
-        // Format results for the AI
         let resultsSummary: string;
         if (results.length === 0) {
           resultsSummary = "No results found for this search.";
@@ -222,26 +288,23 @@ async function aiSearchAgent(
 
         messages.push({
           role: "user",
-          content: `Search results for "${parsed.query}":\n\n${resultsSummary}\n\nYou have ${MAX_AGENT_TURNS - turn - 1} search turns remaining. What next?`,
+          content: `Search results for "${parsed.query}":\n\n${resultsSummary}\n\nYou have ${maxTurns - turn - 1} turns remaining. What next?`,
         });
-
         continue;
       }
 
-      // Unknown action
       console.error(`AI agent returned unknown action for ${lead.name}: ${parsed.action}`);
       return { url: null, profileContent: "", turnsUsed: turn + 1, gaveUpReason: "Unknown action from AI" };
-
     } catch (e) {
       console.error(`AI agent error on turn ${turn + 1} for ${lead.name}:`, e);
       return { url: null, profileContent: "", turnsUsed: turn + 1, gaveUpReason: `Error: ${(e as Error).message}` };
     }
   }
 
-  return { url: null, profileContent: "", turnsUsed: MAX_AGENT_TURNS, gaveUpReason: "Max turns reached" };
+  return { url: null, profileContent: "", turnsUsed: maxTurns, gaveUpReason: "Max turns reached" };
 }
 
-// ─── Post-match enrichment: scrape the found profile for title/M&A ───
+// ─── Post-match enrichment ───
 
 async function scrapeLinkedInProfile(url: string, firecrawlKey: string): Promise<string> {
   try {
@@ -251,8 +314,6 @@ async function scrapeLinkedInProfile(url: string, firecrawlKey: string): Promise
     return "";
   }
 }
-
-// ─── Extract title & M&A from rich profile content ───
 
 function extractTitle(content: string): string | null {
   const headlineMatch = content.match(/^#+\s*(.+)/m);
@@ -289,6 +350,63 @@ function getSeniorityScore(title: string | null): number {
   if (/\b(manager|associate|senior associate)\b/.test(lower)) return 10;
   if (/\b(analyst|junior|assistant)\b/.test(lower)) return 5;
   return 8;
+}
+
+// ─── Process a single lead (used in both passes) ───
+
+async function processLead(
+  lead: any,
+  firecrawlKey: string,
+  lovableKey: string,
+  supabase: any,
+  model: string,
+  maxTurns: number,
+): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
+  const leadContext: LeadContext = {
+    name: lead.name,
+    company: lead.company,
+    email: lead.email,
+    companyUrl: lead.company_url,
+    websiteUrl: lead.website_url,
+    role: lead.role,
+    message: lead.message,
+    buyerType: lead.buyer_type,
+    serviceInterest: lead.service_interest,
+    dealsPlanned: lead.deals_planned,
+    targetCriteria: lead.target_criteria,
+    targetRevenue: lead.target_revenue,
+    geography: lead.geography,
+  };
+
+  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, lovableKey, model, maxTurns);
+
+  if (!agentResult.url) {
+    await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
+    return { found: false, turnsUsed: agentResult.turnsUsed, gaveUpReason: agentResult.gaveUpReason };
+  }
+
+  const profileContent = await scrapeLinkedInProfile(agentResult.url, firecrawlKey);
+  const finalTitle = extractTitle(profileContent);
+  const finalMa = detectMaExperience(profileContent);
+
+  let seniorityScoreValue = getSeniorityScore(finalTitle);
+  if (finalMa) seniorityScoreValue += 2;
+  seniorityScoreValue = Math.max(-2, Math.min(20, seniorityScoreValue));
+
+  const oldLinkedinScore = lead.linkedin_score || 0;
+  const oldStage2 = lead.stage2_score || 0;
+  const newStage2 = Math.max(0, Math.min(100, oldStage2 - oldLinkedinScore + seniorityScoreValue));
+
+  await supabase.from("leads").update({
+    linkedin_url: agentResult.url,
+    linkedin_title: finalTitle,
+    linkedin_ma_experience: finalMa,
+    linkedin_score: seniorityScoreValue,
+    seniority_score: seniorityScoreValue,
+    stage2_score: newStage2,
+  }).eq("id", lead.id);
+
+  return { found: true, turnsUsed: agentResult.turnsUsed, gaveUpReason: null };
 }
 
 // ─── Main Handler ───
@@ -351,9 +469,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`AI Agent LinkedIn backfill for ${validLeads.length} leads`);
+    // ─── Pass 1: Flash model (fast, cheap) ───
+    console.log(`\n=== PASS 1: Flash model (${validLeads.length} leads) ===`);
     let found = 0;
     let processed = 0;
+    const failedLeadIds: string[] = [];
     const agentStats = { totalTurns: 0, gaveUp: 0, gaveUpReasons: [] as string[] };
 
     for (let i = 0; i < validLeads.length; i += BATCH_SIZE) {
@@ -361,64 +481,23 @@ Deno.serve(async (req) => {
 
       for (const lead of batch) {
         processed++;
-        console.log(`\n[${processed}/${validLeads.length}] ${lead.name} (${lead.company})`);
+        console.log(`\n[Pass1 ${processed}/${validLeads.length}] ${lead.name} (${lead.company})`);
 
-        const leadContext: LeadContext = {
-          name: lead.name,
-          company: lead.company,
-          email: lead.email,
-          companyUrl: lead.company_url,
-          websiteUrl: lead.website_url,
-          role: lead.role,
-          message: lead.message,
-          buyerType: lead.buyer_type,
-          serviceInterest: lead.service_interest,
-          dealsPlanned: lead.deals_planned,
-          targetCriteria: lead.target_criteria,
-          targetRevenue: lead.target_revenue,
-          geography: lead.geography,
-        };
+        const result = await processLead(lead, FIRECRAWL_API_KEY, LOVABLE_API_KEY, supabase, "google/gemini-2.5-flash", FLASH_MAX_TURNS);
+        agentStats.totalTurns += result.turnsUsed;
 
-        const agentResult = await aiSearchAgent(leadContext, FIRECRAWL_API_KEY, LOVABLE_API_KEY);
-        agentStats.totalTurns += agentResult.turnsUsed;
-
-        if (!agentResult.url) {
-          await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
+        if (result.found) {
+          found++;
+          console.log(`  MATCHED (${result.turnsUsed} turns)`);
+        } else {
+          failedLeadIds.push(lead.id);
           agentStats.gaveUp++;
-          if (agentResult.gaveUpReason) {
-            agentStats.gaveUpReasons.push(`${lead.name}: ${agentResult.gaveUpReason}`);
+          if (result.gaveUpReason) {
+            agentStats.gaveUpReasons.push(`${lead.name}: ${result.gaveUpReason}`);
           }
-          console.log(`  NO MATCH (${agentResult.turnsUsed} turns): ${lead.name} — ${agentResult.gaveUpReason}`);
-          continue;
+          console.log(`  NO MATCH (${result.turnsUsed} turns): ${result.gaveUpReason}`);
         }
 
-        found++;
-
-        // Try to get profile content for title/M&A extraction
-        const profileContent = await scrapeLinkedInProfile(agentResult.url, FIRECRAWL_API_KEY);
-        const finalTitle = extractTitle(profileContent);
-        const finalMa = detectMaExperience(profileContent);
-
-        let seniorityScoreValue = getSeniorityScore(finalTitle);
-        if (finalMa) seniorityScoreValue += 2;
-        seniorityScoreValue = Math.max(-2, Math.min(20, seniorityScoreValue));
-
-        const oldLinkedinScore = lead.linkedin_score || 0;
-        const oldStage2 = lead.stage2_score || 0;
-        const newStage2 = Math.max(0, Math.min(100, oldStage2 - oldLinkedinScore + seniorityScoreValue));
-
-        await supabase.from("leads").update({
-          linkedin_url: agentResult.url,
-          linkedin_title: finalTitle,
-          linkedin_ma_experience: finalMa,
-          linkedin_score: seniorityScoreValue,
-          seniority_score: seniorityScoreValue,
-          stage2_score: newStage2,
-        }).eq("id", lead.id);
-
-        console.log(`  MATCHED (${agentResult.turnsUsed} turns): ${lead.name} → ${agentResult.url}`);
-
-        // Rate limit between individual leads
         await new Promise((r) => setTimeout(r, 800));
       }
 
@@ -427,17 +506,79 @@ Deno.serve(async (req) => {
       }
     }
 
-    const avgTurns = processed > 0 ? (agentStats.totalTurns / processed).toFixed(1) : "0";
-    console.log(`\nBackfill complete: ${found} matches from ${processed} leads (avg ${avgTurns} turns/lead, ${agentStats.gaveUp} gave up)`);
+    // ─── Pass 2: Pro model for failed leads (stronger reasoning, more turns) ───
+    let proFound = 0;
+    let proProcessed = 0;
+
+    if (failedLeadIds.length > 0) {
+      // Reset failed leads to NULL so we can retry
+      for (const id of failedLeadIds) {
+        await supabase.from("leads").update({ linkedin_url: null }).eq("id", id);
+      }
+
+      // Re-fetch the failed leads
+      const { data: retryLeads } = await supabase
+        .from("leads")
+        .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience")
+        .in("id", failedLeadIds)
+        .neq("name", "");
+
+      const retryValid = (retryLeads || []).filter(l => {
+        // Skip obvious junk for the expensive pass
+        const name = l.name.trim();
+        if (name.split(/\s+/).length < 2) return false;
+        if (/^[a-z]{1,3}\s[a-z]{1,3}$/i.test(name)) return false; // "a a", "ab cd"
+        const email = (l.email || "").toLowerCase();
+        if (email.includes("mozmail.com") || email.includes("guerrillamail")) return false;
+        return true;
+      });
+
+      if (retryValid.length > 0) {
+        console.log(`\n=== PASS 2: Pro model (${retryValid.length} leads, ${PRO_MAX_TURNS} turns) ===`);
+
+        for (let i = 0; i < retryValid.length; i += BATCH_SIZE) {
+          const batch = retryValid.slice(i, i + BATCH_SIZE);
+
+          for (const lead of batch) {
+            proProcessed++;
+            console.log(`\n[Pass2 ${proProcessed}/${retryValid.length}] ${lead.name} (${lead.company})`);
+
+            const result = await processLead(lead, FIRECRAWL_API_KEY, LOVABLE_API_KEY, supabase, "google/gemini-2.5-pro", PRO_MAX_TURNS);
+            agentStats.totalTurns += result.turnsUsed;
+
+            if (result.found) {
+              proFound++;
+              found++;
+              console.log(`  PRO MATCHED (${result.turnsUsed} turns)`);
+            } else {
+              console.log(`  PRO NO MATCH (${result.turnsUsed} turns): ${result.gaveUpReason}`);
+            }
+
+            await new Promise((r) => setTimeout(r, 1200));
+          }
+
+          if (i + BATCH_SIZE < retryValid.length) {
+            await new Promise((r) => setTimeout(r, DELAY_MS));
+          }
+        }
+      }
+    }
+
+    const totalProcessed = processed;
+    const avgTurns = totalProcessed > 0 ? (agentStats.totalTurns / totalProcessed).toFixed(1) : "0";
+    console.log(`\nBackfill complete: ${found} total matches (Pass1: ${found - proFound}, Pass2/Pro: ${proFound}) from ${totalProcessed} leads`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        processed,
+        processed: totalProcessed,
         found,
+        pass1Found: found - proFound,
+        pass2ProFound: proFound,
+        pass2ProProcessed: proProcessed,
         total: validLeads.length,
         avgTurnsPerLead: parseFloat(avgTurns),
-        gaveUp: agentStats.gaveUp,
+        gaveUp: agentStats.gaveUp - proFound,
         gaveUpReasons: agentStats.gaveUpReasons.slice(0, 20),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
