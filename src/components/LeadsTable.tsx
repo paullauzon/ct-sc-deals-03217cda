@@ -219,6 +219,11 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono px-1.5 py-0.5 border border-border rounded">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
             <SheetTitle className="text-lg font-semibold">{lead.name}</SheetTitle>
+            {lead.linkedinUrl && (
+              <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn Profile"}>
+                <Linkedin className="h-4 w-4 text-[#0A66C2] hover:opacity-70 transition-opacity" />
+              </a>
+            )}
           </div>
           <p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>
           <div className="flex items-center gap-2 mt-1">
