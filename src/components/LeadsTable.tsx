@@ -1171,6 +1171,11 @@ export function LeadsTable() {
                     <div>
                       <div className="font-medium flex items-center gap-1.5">
                         {lead.name}
+                        {lead.linkedinUrl && (
+                          <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn Profile"}>
+                            <Linkedin className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+                          </a>
+                        )}
                         {isLeadNew(lead.id) && (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 animate-pulse">NEW</span>
                         )}

@@ -370,6 +370,11 @@ export function Pipeline() {
                               </span>
                             ) : null;
                           })()}
+                          {lead.linkedinUrl && (
+                            <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn"}>
+                              <Linkedin className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+                            </a>
+                          )}
                           {lead.meetings?.length > 0 && (
                             <div className="flex items-center gap-0.5">
                               <img src="/fireflies-icon.svg" alt="Meetings" className="w-3.5 h-3.5" />
