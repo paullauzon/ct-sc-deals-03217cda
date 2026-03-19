@@ -214,14 +214,82 @@ function cleanCompanyName(company: string): string {
     .trim();
 }
 
-function extractLinkedInFromResults(organic: Array<{ link?: string; snippet?: string; title?: string }>): { linkedinUrl: string | null; snippet: string } {
+function extractLinkedInFromResults(organic: Array<{ link?: string; snippet?: string; title?: string }>): { linkedinUrl: string | null; snippet: string; allResults: Array<{ url: string; snippet: string }> } {
+  const allResults: Array<{ url: string; snippet: string }> = [];
+  let firstUrl: string | null = null;
+  let firstSnippet = "";
   for (const result of organic) {
     if (result.link?.includes("linkedin.com/in/")) {
-      const snippet = (result.snippet || "") + " " + (result.title || "");
-      return { linkedinUrl: result.link, snippet };
+      const snip = (result.snippet || "") + " " + (result.title || "");
+      allResults.push({ url: result.link, snippet: snip });
+      if (!firstUrl) {
+        firstUrl = result.link;
+        firstSnippet = snip;
+      }
     }
   }
-  return { linkedinUrl: null, snippet: "" };
+  return { linkedinUrl: firstUrl, snippet: firstSnippet, allResults };
+}
+
+function extractDomainRoot(input: string | null): string | null {
+  if (!input || !input.trim()) return null;
+  try {
+    let domain = input.trim().toLowerCase();
+    if (domain.includes("@")) domain = domain.split("@")[1];
+    else if (domain.includes("//")) domain = new URL(domain).hostname;
+    domain = domain.replace(/^www\./, "");
+    const root = domain.split(".")[0];
+    return root && root.length > 2 ? root : null;
+  } catch {
+    return null;
+  }
+}
+
+function tokenize(input: string): string[] {
+  const words = input
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[-_.]+/g, " ")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length >= 3);
+  return [...new Set(words)];
+}
+
+function isCompanyMatch(
+  snippet: string,
+  company: string | null,
+  email: string | null,
+  companyUrl: string | null,
+): boolean {
+  const lower = snippet.toLowerCase();
+  if (company && company.trim()) {
+    const clean = cleanCompanyName(company).toLowerCase();
+    if (clean && clean.length >= 3 && lower.includes(clean)) return true;
+    const companyWords = tokenize(clean);
+    if (companyWords.length >= 2) {
+      const matches = companyWords.filter((w) => lower.includes(w));
+      if (matches.length >= Math.ceil(companyWords.length * 0.6)) return true;
+    }
+  }
+  const emailRoot = extractDomainRoot(email);
+  if (emailRoot) {
+    if (lower.includes(emailRoot)) return true;
+    const emailTokens = tokenize(emailRoot);
+    if (emailTokens.length >= 2) {
+      const matches = emailTokens.filter((w) => lower.includes(w));
+      if (matches.length >= Math.ceil(emailTokens.length * 0.6)) return true;
+    }
+  }
+  const urlRoot = extractDomainRoot(companyUrl);
+  if (urlRoot && urlRoot !== emailRoot) {
+    if (lower.includes(urlRoot)) return true;
+    const urlTokens = tokenize(urlRoot);
+    if (urlTokens.length >= 2) {
+      const matches = urlTokens.filter((w) => lower.includes(w));
+      if (matches.length >= Math.ceil(urlTokens.length * 0.6)) return true;
+    }
+  }
+  return false;
 }
 
 async function serperSearchResults(query: string, apiKey: string): Promise<Array<{ link?: string; snippet?: string; title?: string }>> {
@@ -238,52 +306,70 @@ async function serperSearchResults(query: string, apiKey: string): Promise<Array
 async function serperLinkedInLookup(
   name: string,
   company: string | null,
+  email: string | null,
+  companyUrl: string | null,
   apiKey: string,
 ): Promise<LinkedInResult> {
   try {
-    let linkedinUrl: string | null = null;
-    let snippet = "";
-
-    // Pass 1: Search with company name
+    // Pass 1: Name + Company (trust Google's filtering)
     if (company && company.trim()) {
       const cleanCo = cleanCompanyName(company);
-      const query = cleanCo ? `site:linkedin.com/in/ "${name}" "${cleanCo}"` : `site:linkedin.com/in/ "${name}"`;
+      const query = cleanCo
+        ? `site:linkedin.com/in/ "${name}" "${cleanCo}"`
+        : `site:linkedin.com/in/ "${name}"`;
       const results = await serperSearchResults(query, apiKey);
       const extracted = extractLinkedInFromResults(results);
-      linkedinUrl = extracted.linkedinUrl;
-      snippet = extracted.snippet;
+      if (extracted.linkedinUrl) {
+        const title = extractTitleFromSnippet(extracted.snippet);
+        return { title, linkedinUrl: extracted.linkedinUrl, hasMaExperience: detectMaInSnippet(extracted.snippet) };
+      }
     }
 
-    // Pass 2: Fallback — search without company
-    if (!linkedinUrl) {
+    // Pass 2: Name + Email domain hint
+    const emailRoot = extractDomainRoot(email);
+    if (emailRoot && emailRoot.length >= 3) {
+      const results = await serperSearchResults(`site:linkedin.com/in/ "${name}" "${emailRoot}"`, apiKey);
+      const extracted = extractLinkedInFromResults(results);
+      if (extracted.linkedinUrl) {
+        const title = extractTitleFromSnippet(extracted.snippet);
+        return { title, linkedinUrl: extracted.linkedinUrl, hasMaExperience: detectMaInSnippet(extracted.snippet) };
+      }
+    }
+
+    // Pass 3: Name only — REQUIRE company validation
+    {
       const results = await serperSearchResults(`site:linkedin.com/in/ "${name}"`, apiKey);
       const extracted = extractLinkedInFromResults(results);
-      linkedinUrl = extracted.linkedinUrl;
-      snippet = extracted.snippet;
+      for (const candidate of extracted.allResults) {
+        if (isCompanyMatch(candidate.snippet, company, email, companyUrl)) {
+          const title = extractTitleFromSnippet(candidate.snippet);
+          return { title, linkedinUrl: candidate.url, hasMaExperience: detectMaInSnippet(candidate.snippet) };
+        }
+      }
     }
 
-    if (!linkedinUrl) return { title: null, linkedinUrl: null, hasMaExperience: false };
-
-    let title: string | null = null;
-    const titleMatch = snippet.match(/[-–—]\s*(.+?)(?:\s+at\s+|\s+[-–—]\s+|\s*$)/i);
-    if (titleMatch) title = titleMatch[1].trim().replace(/\s*[-–—]\s*LinkedIn.*$/i, "").trim();
-    if (!title) {
-      const match = snippet.match(/\b(CEO|CFO|COO|CTO|President|Partner|Managing Director|Vice President|VP|Director|Principal|Founder|Co-Founder|Manager|Associate|Analyst)\b/i);
-      if (match) title = match[0];
-    }
-
-    const maKeywords = [
-      "investment bank", "private equity", "m&a", "corporate development",
-      "mergers", "acquisitions", "corp dev", "advisory",
-    ];
-    const lowerSnippet = snippet.toLowerCase();
-    const hasMaExperience = maKeywords.some((kw) => lowerSnippet.includes(kw));
-
-    return { title, linkedinUrl, hasMaExperience };
+    return { title: null, linkedinUrl: null, hasMaExperience: false };
   } catch (e) {
     console.error("Serper LinkedIn lookup failed:", e);
     return { title: null, linkedinUrl: null, hasMaExperience: false };
   }
+}
+
+function extractTitleFromSnippet(snippet: string): string | null {
+  let title: string | null = null;
+  const titleMatch = snippet.match(/[-–—]\s*(.+?)(?:\s+at\s+|\s+[-–—]\s+|\s*$)/i);
+  if (titleMatch) title = titleMatch[1].trim().replace(/\s*[-–—]\s*LinkedIn.*$/i, "").trim();
+  if (!title) {
+    const match = snippet.match(/\b(CEO|CFO|COO|CTO|President|Partner|Managing Director|Vice President|VP|Director|Principal|Founder|Co-Founder|Manager|Associate|Analyst)\b/i);
+    if (match) title = match[0];
+  }
+  return title;
+}
+
+function detectMaInSnippet(snippet: string): boolean {
+  const maKeywords = ["investment bank", "private equity", "m&a", "corporate development", "mergers", "acquisitions", "corp dev", "advisory"];
+  const lower = snippet.toLowerCase();
+  return maKeywords.some((kw) => lower.includes(kw));
 }
 
 // ─── Seniority Scoring ───
@@ -425,7 +511,7 @@ Deno.serve(async (req) => {
     // Task C: LinkedIn lookup (does not depend on website or PE search)
     const linkedinTask = (async () => {
       if (!SERPER_API_KEY || !name) return { title: null, linkedinUrl: null, hasMaExperience: false } as LinkedInResult;
-      return serperLinkedInLookup(name, company, SERPER_API_KEY);
+      return serperLinkedInLookup(name, company, email, websiteField, SERPER_API_KEY);
     })();
 
     // Await all three concurrently

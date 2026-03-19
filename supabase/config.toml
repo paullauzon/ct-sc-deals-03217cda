@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.backfill-linkedin]
 verify_jwt = false
+
+[functions.backfill-linkedin-website]
+verify_jwt = false
