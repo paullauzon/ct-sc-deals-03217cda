@@ -211,6 +211,44 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
     }
   };
 
+  const handleReprocess = async (meeting: Meeting) => {
+    setReprocessingMeetingId(meeting.id);
+    try {
+      toast.info(`Re-processing "${meeting.title}" with AI...`);
+      const { data, error } = await supabase.functions.invoke("process-meeting", {
+        body: {
+          transcript: meeting.transcript,
+          priorMeetings: meetings.filter(m => m.id !== meeting.id),
+        },
+      });
+      if (error) throw error;
+
+      const updatedMeeting: Meeting = {
+        ...meeting,
+        summary: data.summary || meeting.summary,
+        nextSteps: data.nextSteps || meeting.nextSteps,
+        intelligence: data.intelligence || undefined,
+      };
+      const updatedMeetings = meetings.map(m => m.id === meeting.id ? updatedMeeting : m);
+      updateLead(lead.id, { meetings: updatedMeetings });
+
+      if (data.intelligence) {
+        toast.success("AI analysis complete!");
+        const meetingsWithIntel = updatedMeetings.filter(m => m.intelligence);
+        if (meetingsWithIntel.length > 0) {
+          await synthesizeDealIntelligence(updatedMeetings, lead);
+        }
+      } else {
+        toast.warning("AI completed but no structured intelligence was extracted");
+      }
+    } catch (e: any) {
+      console.error("Reprocess error:", e);
+      toast.error(e.message || "Failed to re-process meeting");
+    } finally {
+      setReprocessingMeetingId(null);
+    }
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between border-b border-border pb-1">
