@@ -332,20 +332,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
     (async () => {
 
-      if (total === 0) {
-        toast.info("All leads have already been processed.");
-        setBulkJob(INITIAL_BULK);
-        return;
-      }
-
-      setBulkJob(prev => ({
-        ...prev,
-        totalJobs: total,
-        currentLeadName: leadsToProcess[0]?.name || "",
-        progressMessage: `[1/${total}] Starting...`,
-      }));
-
-      toast.info(`Starting sequential processing of ${total} leads (${completedLeadIds.size} already done)...`);
+      toast.info(`Starting sequential processing of ${total} leads without meetings...`);
       let completedCount = 0;
       let failedCount = 0;
       let foundMeetingsTotal = 0;
