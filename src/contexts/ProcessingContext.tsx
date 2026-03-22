@@ -301,37 +301,36 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
   // ─── Bulk Processing: Strictly Sequential, One at a Time ───
 
-  const startBulkProcessing = useCallback(() => {
+  const startBulkProcessing = useCallback((limit?: number) => {
     if (bulkJobRef.current.phase !== "idle" && bulkJobRef.current.phase !== "done") return;
     cancelledRef.current = false;
     pausedRef.current = false;
 
     const currentLeads = leadsRef.current;
 
-    if (currentLeads.length === 0) {
-      toast.info("No leads to process.");
+    // Filter to only leads with no meetings (empty array or missing)
+    let leadsToProcess = currentLeads.filter(l => !l.meetings || l.meetings.length === 0);
+
+    // Apply limit if provided
+    if (limit && limit > 0) {
+      leadsToProcess = leadsToProcess.slice(0, limit);
+    }
+
+    const total = leadsToProcess.length;
+
+    if (total === 0) {
+      toast.info("No unprocessed leads found (all leads already have meetings).");
       return;
     }
 
-    // Show a loading state while we check for already-processed leads
     setBulkJob({
-      phase: "running", totalJobs: 0, completedJobs: 0, failedJobs: 0, foundMeetings: 0, noMeetings: 0,
-      currentLeadIndex: 0, currentLeadName: "",
-      progressMessage: "Checking for already-processed leads...", bulkJobIds: [], cancelled: false,
+      phase: "running", totalJobs: total, completedJobs: 0, failedJobs: 0, foundMeetings: 0, noMeetings: 0,
+      currentLeadIndex: 0, currentLeadName: leadsToProcess[0]?.name || "",
+      progressMessage: `[1/${total}] Starting...`, bulkJobIds: [], cancelled: false,
       paused: false, failedLeads: [], processedLeads: [],
     });
 
     (async () => {
-      // Filter out leads that already have a completed bulk job
-      const { data: completedJobs } = await (supabase
-        .from("processing_jobs") as any)
-        .select("lead_id")
-        .eq("status", "completed")
-        .eq("job_type", "bulk");
-
-      const completedLeadIds = new Set((completedJobs || []).map((j: any) => j.lead_id));
-      const leadsToProcess = currentLeads.filter(l => !completedLeadIds.has(l.id));
-      const total = leadsToProcess.length;
 
       if (total === 0) {
         toast.info("All leads have already been processed.");
