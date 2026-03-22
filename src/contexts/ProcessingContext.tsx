@@ -239,6 +239,12 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
     // Hydrate unacknowledged jobs on mount
     (async () => {
+      // First, clean up zombie jobs: processing + acknowledged (from cancelled bulk runs)
+      await (supabase.from("processing_jobs") as any)
+        .update({ status: "failed", error: "Zombie job — cleaned up on mount" })
+        .eq("status", "processing")
+        .eq("acknowledged", true);
+
       const { data: activeJobs } = await (supabase
         .from("processing_jobs") as any)
         .select("*")
@@ -268,8 +274,26 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
       }
     })();
 
+    // Periodic stale job cleanup every 2 minutes
+    const staleInterval = setInterval(async () => {
+      const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const { data: staleJobs } = await (supabase.from("processing_jobs") as any)
+        .select("id, lead_name")
+        .eq("acknowledged", false)
+        .in("status", ["queued", "processing"])
+        .lt("updated_at", tenMinAgo);
+
+      if (staleJobs && staleJobs.length > 0) {
+        for (const job of staleJobs) {
+          markJobAsTimedOut(job.id);
+          console.warn(`Periodic cleanup: marked stale job for ${job.lead_name} as timed out`);
+        }
+      }
+    }, 2 * 60 * 1000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(staleInterval);
     };
   }, [applyCompletedJob]);
 
