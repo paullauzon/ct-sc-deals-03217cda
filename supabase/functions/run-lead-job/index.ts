@@ -191,6 +191,16 @@ serve(async (req) => {
     const existingMeetings = lead.existingMeetings || [];
 
     for (let i = 0; i < newMeetings.length; i++) {
+      // Check elapsed time before processing next meeting
+      if (isApproachingTimeout()) {
+        console.warn(`Approaching timeout after ${i} meetings processed, saving partial results`);
+        await supabase.from("processing_jobs").update({
+          progress_message: `Timeout approaching — saving ${processedMeetings.length} of ${newMeetings.length} meetings`,
+          updated_at: new Date().toISOString(),
+        }).eq("id", jobId);
+        break;
+      }
+
       const m = newMeetings[i];
       const transcript = m.transcript || "";
       const priorMeetings = [...existingMeetings, ...processedMeetings];
@@ -206,7 +216,7 @@ serve(async (req) => {
             updated_at: new Date().toISOString(),
           }).eq("id", jobId);
 
-          // Per-meeting timeout: skip if AI takes >25s rather than killing the whole job
+          // Per-meeting timeout: skip if AI takes >50s
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 50000);
 
