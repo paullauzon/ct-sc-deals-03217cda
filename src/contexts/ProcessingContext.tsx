@@ -99,7 +99,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
   // ─── Apply completed job results to lead ───
 
-  const applyCompletedJob = useCallback((job: any) => {
+  const applyCompletedJob = useCallback(async (job: any) => {
     if (appliedJobsRef.current.has(job.id)) return;
     appliedJobsRef.current.add(job.id);
 
@@ -110,6 +110,8 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     const appliedUpdates: Record<string, any> = job.applied_updates || {};
     const pendingSuggestions: Array<{ field: string; label: string; value: string | number; evidence: string }> = job.pending_suggestions || [];
     const dealIntelligence = job.deal_intelligence;
+
+    let dbWriteOk = true;
 
     if (newMeetings.length > 0) {
       const updatedMeetings = [...(currentLead.meetings || []), ...newMeetings];
@@ -135,7 +137,15 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         updates.dealIntelligence = dealIntelligence;
       }
 
-      updateLeadRef.current(job.lead_id, updates);
+      try {
+        await updateLeadRef.current(job.lead_id, updates);
+      } catch (e) {
+        console.error(`Failed to persist lead updates for ${job.lead_name}:`, e);
+        dbWriteOk = false;
+        // Remove from applied set so it can be retried
+        appliedJobsRef.current.delete(job.id);
+        return; // Don't acknowledge — will retry on next hydration
+      }
 
       if (Object.keys(appliedUpdates).length > 0) {
         const appliedFields: string[] = job.applied_fields || [];
@@ -167,8 +177,10 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    // Mark as acknowledged
-    (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
+    // Only acknowledge if DB write succeeded
+    if (dbWriteOk) {
+      (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
+    }
   }, []);
 
   // ─── Realtime subscription + hydration ───
