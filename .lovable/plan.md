@@ -1,30 +1,44 @@
 
 
-# Assessment: Keep or Revert the Fireflies Changes
+# Process Only Leads Without Meetings
 
-## Situation
-The trigger case was misidentified (Viktoria Izdebska, not Margarita Tarasova), but Viktoria's transcript **should actually match** via the existing metadata title-matching — her full name "Viktoria Izdebska" appears in the Fireflies title "Viktoria-Izdebska-and-Malik-Hayes-sa". The hyphens act as word boundaries, so `wordBoundaryMatch` should find it.
+## Problem
+The current "Process All" button processes every lead (skipping only those with a prior `completed` bulk job in `processing_jobs`). This is fragile — it relies on job history rather than actual lead state. Leads that already have Fireflies meetings attached should be left untouched.
 
-This means the real issue is likely that **Viktoria's lead was never processed** (she has 0 meetings in the DB), not that the matching logic is broken.
+## Design
 
-## Recommendation: Keep the changes, they're good improvements
+### Filter: leads with 0 meetings
+The safest, most direct filter is checking the lead's `meetings` JSONB array. A lead needs processing if `meetings` is empty (`[]`). This is ground truth — no dependency on job history.
 
-The two changes we made are independently valuable:
-1. **Speaker-name fallback** — catches leads whose names only appear in transcript speaker data, not titles. This is a real gap.
-2. **Lowered company word minimum (4→2)** — allows short company names like "DB" to match. Also a real improvement.
+### Configurable count
+Instead of processing all unprocessed leads at once, the dialog lets the user specify how many to process (with a sensible default showing total available). This gives control over time/cost.
 
-Neither change introduces risk or breaks anything — the fallback only triggers when metadata finds 0 matches.
+## Changes
 
-## What actually needs to happen
+### 1. Update `BulkProcessingDialog` 
+- Query leads where `meetings = '[]'` (empty array) to get the count of unprocessed leads
+- Add a number input field: "How many leads to process?" defaulting to the total unprocessed count
+- Pass the count to `startBulkProcessing(count)`
+- Update copy to explain it only processes leads without meetings
 
-### Step 1: Run Viktoria's lead through the pipeline
-She simply needs to be processed — invoke `run-lead-job` for lead CT-180 (Viktoria Izdebska, Techbold, viktoria@izdebska.com). The existing matching logic should find the transcript by her name in the title.
+### 2. Update `startBulkProcessing` in `ProcessingContext.tsx`
+- Accept an optional `limit?: number` parameter
+- Replace the current filter logic (checking `processing_jobs` for completed bulk jobs) with a simpler, safer filter: `leads.filter(l => !l.meetings || l.meetings.length === 0)`
+- If `limit` is provided, slice the filtered list to that count
+- Keep everything else the same (sequential processing, pause/cancel, etc.)
 
-### Step 2: Verify the match
-Confirm her meeting "Viktoria-Izdebska-and-Malik-Hayes-sa" gets linked with transcript, summary, and AI analysis.
+### 3. Remove the old `processing_jobs`-based skip logic
+The old approach checked for completed bulk jobs in the DB. The new approach checks actual lead state (meetings array), which is more reliable and doesn't require a DB query.
 
-| Action | Detail |
-|--------|--------|
-| Code changes | None — keep existing improvements |
-| Execution | Run lead job for CT-180 |
+## Safety Considerations
+- **No re-processing risk**: Leads with any meetings (even 1) are excluded entirely
+- **Cancellable**: Existing pause/cancel mechanism still works
+- **Progress saved**: Each lead's results are applied as soon as its job completes
+- **Rate limiting**: Existing 1.5s delays between jobs preserved
+
+## Files Changed
+| File | Change |
+|------|--------|
+| `src/contexts/ProcessingContext.tsx` | `startBulkProcessing(limit?)` — filter by empty meetings array, apply limit |
+| `src/components/BulkProcessingDialog.tsx` | Add count input, show unprocessed count, pass limit |
 
