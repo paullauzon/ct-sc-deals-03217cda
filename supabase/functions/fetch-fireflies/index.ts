@@ -318,7 +318,7 @@ function buildSearchFilter(
   const companyWords: string[] = [];
   for (const company of searchCompanies) {
     const words = company.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(
-      (w) => w.length >= 4 && !GENERIC_COMPANY_WORDS.has(w)
+      (w) => w.length >= 2 && !GENERIC_COMPANY_WORDS.has(w)
     );
     companyWords.push(...words);
   }
