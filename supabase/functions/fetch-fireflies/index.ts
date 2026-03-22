@@ -485,15 +485,80 @@ serve(async (req) => {
       const metadataMatches = await fetchMetadataPaginated(FIREFLIES_API_KEY, filterFn, limit, since || undefined);
       console.log(`Metadata scan found ${metadataMatches.length} matches. Fetching full transcripts...`);
 
-      if (metadataMatches.length === 0) {
+      if (metadataMatches.length === 0 && searchNames.length > 0) {
+        // ── Speaker-name fallback: metadata missed, try matching on speaker names in full transcripts ──
+        console.log(`Metadata found 0 matches but have searchNames — falling back to speaker-name scan...`);
+        
+        // Fetch ALL transcript IDs (metadata only, no filter)
+        const allMetadata = await fetchMetadataPaginated(FIREFLIES_API_KEY, null, 500, since || undefined);
+        console.log(`Fetched ${allMetadata.length} total transcripts for speaker-name scanning`);
+        
+        if (allMetadata.length > 0) {
+          // Build name matcher for speaker names
+          const lowerFullNames = searchNames.map((n) => n.toLowerCase().trim());
+          
+          const speakerNameMatches = (sentences: any[]): boolean => {
+            if (!sentences || sentences.length === 0) return false;
+            const speakerNames = new Set(
+              sentences.map((s: any) => (s.speaker_name || "").toLowerCase()).filter(Boolean)
+            );
+            for (const fullName of lowerFullNames) {
+              const nameParts = fullName.split(/\s+/).filter((p) => p.length >= 2);
+              if (nameParts.length === 0) continue;
+              const firstName = nameParts[0];
+              const firstNameVariants = getNameVariants(firstName);
+              const restParts = nameParts.slice(1);
+              
+              for (const speaker of speakerNames) {
+                const hasFirst = firstNameVariants.some((v) => wordBoundaryMatch(speaker, v));
+                if (!hasFirst) continue;
+                const hasRest = restParts.every((part) => wordBoundaryMatch(speaker, part));
+                if (hasRest) return true;
+              }
+            }
+            return false;
+          };
+          
+          // Fetch full transcripts in batches of 2 and check speaker names
+          const speakerMatched: any[] = [];
+          const allIds = allMetadata.map((t: any) => t.id);
+          
+          for (let i = 0; i < allIds.length; i += 2) {
+            const batch = allIds.slice(i, i + 2);
+            const promises = batch.map((id: string) =>
+              firefliesRequest(FIREFLIES_API_KEY, FULL_TRANSCRIPT_QUERY, { id })
+                .then((data) => data?.transcript)
+                .catch((e) => {
+                  console.error(`Failed to fetch transcript ${id}:`, e);
+                  return null;
+                })
+            );
+            const batchResults = await Promise.all(promises);
+            
+            for (const t of batchResults) {
+              if (t && speakerNameMatches(t.sentences)) {
+                console.log(`Speaker-name match found: "${t.title}" (${t.id})`);
+                speakerMatched.push(t);
+              }
+            }
+            
+            if (speakerMatched.length >= limit) break;
+          }
+          
+          console.log(`Speaker-name fallback found ${speakerMatched.length} matches`);
+          fullTranscripts = speakerMatched;
+        } else {
+          fullTranscripts = [];
+        }
+      } else if (metadataMatches.length === 0) {
         return new Response(
           JSON.stringify({ meetings: [], count: 0 }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
+      } else {
+        const matchedIds = metadataMatches.map((t: any) => t.id);
+        fullTranscripts = await fetchFullTranscripts(FIREFLIES_API_KEY, matchedIds);
       }
-
-      const matchedIds = metadataMatches.map((t: any) => t.id);
-      fullTranscripts = await fetchFullTranscripts(FIREFLIES_API_KEY, matchedIds);
     } else {
       // ── No search criteria: just fetch recent transcripts with full data ──
       const metadataMatches = await fetchMetadataPaginated(FIREFLIES_API_KEY, null, limit, since || undefined);
