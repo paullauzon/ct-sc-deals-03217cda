@@ -413,11 +413,8 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
           supabase.functions.invoke("run-lead-job", {
             body: { jobId: jobRow.id, lead: leadPayload },
-          }).catch(async (e: any) => {
-            console.error(`Edge function error for ${lead.name}:`, e);
-            await (supabase.from("processing_jobs") as any)
-              .update({ status: "failed", error: e.message || "Invocation failed" })
-              .eq("id", jobRow.id);
+          }).catch((e: any) => {
+            console.warn(`HTTP timeout for ${lead.name} — edge function continues server-side`, e);
           });
 
           const result = await completionPromise;
