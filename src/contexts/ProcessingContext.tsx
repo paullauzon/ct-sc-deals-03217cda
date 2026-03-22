@@ -282,11 +282,27 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         )
         .subscribe();
 
-      // Safety timeout: 5 minutes
-      setTimeout(() => {
+      // Safety timeout: 10 minutes
+      setTimeout(async () => {
         supabase.removeChannel(channel);
-        resolve({ status: "failed", newMeetingsCount: 0, error: "Timed out after 5 minutes" });
-      }, 5 * 60 * 1000);
+        // Check actual DB status before declaring failure
+        try {
+          const { data: job } = await (supabase.from("processing_jobs") as any)
+            .select("status, new_meetings, error")
+            .eq("id", jobId)
+            .single();
+          if (job?.status === "completed") {
+            const meetingsCount = (job.new_meetings || []).length;
+            resolve({ status: "completed", newMeetingsCount: meetingsCount });
+            return;
+          }
+          if (job?.status === "failed") {
+            resolve({ status: "failed", newMeetingsCount: 0, error: job.error || "Failed" });
+            return;
+          }
+        } catch {}
+        resolve({ status: "failed", newMeetingsCount: 0, error: "Timed out after 10 minutes" });
+      }, 10 * 60 * 1000);
     });
   }, []);
 
@@ -397,11 +413,8 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
           supabase.functions.invoke("run-lead-job", {
             body: { jobId: jobRow.id, lead: leadPayload },
-          }).catch(async (e: any) => {
-            console.error(`Edge function error for ${lead.name}:`, e);
-            await (supabase.from("processing_jobs") as any)
-              .update({ status: "failed", error: e.message || "Invocation failed" })
-              .eq("id", jobRow.id);
+          }).catch((e: any) => {
+            console.warn(`HTTP timeout for ${lead.name} — edge function continues server-side`, e);
           });
 
           const result = await completionPromise;
@@ -534,7 +547,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         supabase.functions.invoke("run-lead-job", {
           body: { jobId: jobRow.id, lead: leadPayload },
         }).catch((e) => {
-          console.error("Edge function invocation error:", e);
+          console.warn(`HTTP timeout for ${lead.name} — edge function continues server-side`, e);
         });
       } catch (e: any) {
         console.error("Auto-find setup error:", e);
