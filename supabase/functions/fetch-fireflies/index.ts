@@ -140,6 +140,25 @@ const METADATA_QUERY = `
   }
 `;
 
+/** Bulk query with speaker names only (no text — for speaker-name fallback) */
+const SPEAKER_SCAN_QUERY = `
+  query Transcripts($limit: Int, $skip: Int) {
+    transcripts(limit: $limit, skip: $skip) {
+      id
+      title
+      date
+      duration
+      organizer_email
+      fireflies_users
+      participants
+      transcript_url
+      sentences {
+        speaker_name
+      }
+    }
+  }
+`;
+
 /** Full transcript query for a single meeting */
 const FULL_TRANSCRIPT_QUERY = `
   query Transcript($id: String!) {
@@ -318,7 +337,7 @@ function buildSearchFilter(
   const companyWords: string[] = [];
   for (const company of searchCompanies) {
     const words = company.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(
-      (w) => w.length >= 4 && !GENERIC_COMPANY_WORDS.has(w)
+      (w) => w.length >= 2 && !GENERIC_COMPANY_WORDS.has(w)
     );
     companyWords.push(...words);
   }
@@ -485,15 +504,81 @@ serve(async (req) => {
       const metadataMatches = await fetchMetadataPaginated(FIREFLIES_API_KEY, filterFn, limit, since || undefined);
       console.log(`Metadata scan found ${metadataMatches.length} matches. Fetching full transcripts...`);
 
-      if (metadataMatches.length === 0) {
+      if (metadataMatches.length === 0 && searchNames.length > 0) {
+        // ── Speaker-name fallback: use bulk query with speaker_name field ──
+        console.log(`Metadata found 0 matches but have searchNames — falling back to speaker-name scan...`);
+        
+        const lowerFullNames = searchNames.map((n) => n.toLowerCase().trim());
+        
+        const speakerNameMatches = (sentences: any[]): boolean => {
+          if (!sentences || sentences.length === 0) return false;
+          const speakerNames = new Set(
+            sentences.map((s: any) => (s.speaker_name || "").toLowerCase()).filter(Boolean)
+          );
+          for (const fullName of lowerFullNames) {
+            const nameParts = fullName.split(/\s+/).filter((p) => p.length >= 2);
+            if (nameParts.length === 0) continue;
+            const firstName = nameParts[0];
+            const firstNameVariants = getNameVariants(firstName);
+            const restParts = nameParts.slice(1);
+            
+            for (const speaker of speakerNames) {
+              const hasFirst = firstNameVariants.some((v) => wordBoundaryMatch(speaker, v));
+              if (!hasFirst) continue;
+              const hasRest = restParts.every((part) => wordBoundaryMatch(speaker, part));
+              if (hasRest) return true;
+            }
+          }
+          return false;
+        };
+        
+        // Paginate through ALL transcripts using bulk speaker-scan query
+        const speakerMatchedIds: string[] = [];
+        let skip = 0;
+        const SCAN_BATCH = 50;
+        const MAX_SCAN_BATCHES = 20;
+        
+        for (let batch = 0; batch < MAX_SCAN_BATCHES; batch++) {
+          console.log(`Speaker-scan batch ${batch + 1} (skip=${skip})`);
+          try {
+            const data = await firefliesRequest(FIREFLIES_API_KEY, SPEAKER_SCAN_QUERY, { limit: SCAN_BATCH, skip });
+            const transcripts = data?.transcripts || [];
+            
+            if (transcripts.length === 0) break;
+            
+            for (const t of transcripts) {
+              if (speakerNameMatches(t.sentences)) {
+                console.log(`Speaker-name match found: "${t.title}" (${t.id})`);
+                speakerMatchedIds.push(t.id);
+              }
+            }
+            
+            if (speakerMatchedIds.length >= limit) break;
+            if (transcripts.length < SCAN_BATCH) break;
+            skip += SCAN_BATCH;
+          } catch (e) {
+            console.error(`Speaker-scan batch ${batch + 1} failed:`, e);
+            break;
+          }
+        }
+        
+        console.log(`Speaker-name fallback found ${speakerMatchedIds.length} matches`);
+        
+        if (speakerMatchedIds.length > 0) {
+          // Now fetch full transcripts for matches only
+          fullTranscripts = await fetchFullTranscripts(FIREFLIES_API_KEY, speakerMatchedIds);
+        } else {
+          fullTranscripts = [];
+        }
+      } else if (metadataMatches.length === 0) {
         return new Response(
           JSON.stringify({ meetings: [], count: 0 }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
+      } else {
+        const matchedIds = metadataMatches.map((t: any) => t.id);
+        fullTranscripts = await fetchFullTranscripts(FIREFLIES_API_KEY, matchedIds);
       }
-
-      const matchedIds = metadataMatches.map((t: any) => t.id);
-      fullTranscripts = await fetchFullTranscripts(FIREFLIES_API_KEY, matchedIds);
     } else {
       // ── No search criteria: just fetch recent transcripts with full data ──
       const metadataMatches = await fetchMetadataPaginated(FIREFLIES_API_KEY, null, limit, since || undefined);
