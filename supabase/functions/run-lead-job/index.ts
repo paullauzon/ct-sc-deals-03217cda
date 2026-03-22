@@ -31,6 +31,9 @@ function generateMeetingId(): string {
 }
 
 serve(async (req) => {
+  const JOB_START = Date.now();
+  const MAX_ELAPSED_MS = 300_000; // 300s — leave ~100s buffer before Supabase kills us at ~400s
+  const isApproachingTimeout = () => (Date.now() - JOB_START) > MAX_ELAPSED_MS;
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
