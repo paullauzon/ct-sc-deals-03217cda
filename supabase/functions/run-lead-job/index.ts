@@ -301,17 +301,20 @@ serve(async (req) => {
       return true;
     });
 
-    // Synthesize deal intelligence
+    // Synthesize deal intelligence (skip if approaching timeout)
     let dealIntelligence: any = null;
     const allMeetings = [...existingMeetings, ...processedMeetings];
     const meetingsWithIntel = allMeetings.filter((m: any) => m.intelligence);
 
-    if (meetingsWithIntel.length > 0) {
+    if (meetingsWithIntel.length > 0 && !isApproachingTimeout()) {
       try {
         await supabase.from("processing_jobs").update({
           progress_message: "Synthesizing deal intelligence...",
           updated_at: new Date().toISOString(),
         }).eq("id", jobId);
+
+        const synthController = new AbortController();
+        const synthTimeout = setTimeout(() => synthController.abort(), 45000); // 45s cap
 
         const synthRes = await fetch(`${funcUrl}/synthesize-deal-intelligence`, {
           method: "POST",
@@ -331,7 +334,9 @@ serve(async (req) => {
               serviceInterest: lead.serviceInterest,
             },
           }),
+          signal: synthController.signal,
         });
+        clearTimeout(synthTimeout);
 
         if (synthRes.ok) {
           const synthData = await synthRes.json();
@@ -339,9 +344,15 @@ serve(async (req) => {
         } else {
           console.error("synthesize-deal-intelligence failed:", synthRes.status);
         }
-      } catch (e) {
-        console.error("Deal intelligence synthesis error:", e);
+      } catch (e: any) {
+        if (e.name === "AbortError") {
+          console.warn("Deal intelligence synthesis timed out after 45s, skipping");
+        } else {
+          console.error("Deal intelligence synthesis error:", e);
+        }
       }
+    } else if (isApproachingTimeout()) {
+      console.warn("Skipping deal intelligence synthesis — approaching timeout");
     }
 
     // Write results to DB
