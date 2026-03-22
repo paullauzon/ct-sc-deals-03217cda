@@ -31,6 +31,9 @@ function generateMeetingId(): string {
 }
 
 serve(async (req) => {
+  const JOB_START = Date.now();
+  const MAX_ELAPSED_MS = 300_000; // 300s — leave ~100s buffer before Supabase kills us at ~400s
+  const isApproachingTimeout = () => (Date.now() - JOB_START) > MAX_ELAPSED_MS;
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -188,6 +191,16 @@ serve(async (req) => {
     const existingMeetings = lead.existingMeetings || [];
 
     for (let i = 0; i < newMeetings.length; i++) {
+      // Check elapsed time before processing next meeting
+      if (isApproachingTimeout()) {
+        console.warn(`Approaching timeout after ${i} meetings processed, saving partial results`);
+        await supabase.from("processing_jobs").update({
+          progress_message: `Timeout approaching — saving ${processedMeetings.length} of ${newMeetings.length} meetings`,
+          updated_at: new Date().toISOString(),
+        }).eq("id", jobId);
+        break;
+      }
+
       const m = newMeetings[i];
       const transcript = m.transcript || "";
       const priorMeetings = [...existingMeetings, ...processedMeetings];
@@ -203,7 +216,7 @@ serve(async (req) => {
             updated_at: new Date().toISOString(),
           }).eq("id", jobId);
 
-          // Per-meeting timeout: skip if AI takes >25s rather than killing the whole job
+          // Per-meeting timeout: skip if AI takes >50s
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 50000);
 
@@ -288,17 +301,20 @@ serve(async (req) => {
       return true;
     });
 
-    // Synthesize deal intelligence
+    // Synthesize deal intelligence (skip if approaching timeout)
     let dealIntelligence: any = null;
     const allMeetings = [...existingMeetings, ...processedMeetings];
     const meetingsWithIntel = allMeetings.filter((m: any) => m.intelligence);
 
-    if (meetingsWithIntel.length > 0) {
+    if (meetingsWithIntel.length > 0 && !isApproachingTimeout()) {
       try {
         await supabase.from("processing_jobs").update({
           progress_message: "Synthesizing deal intelligence...",
           updated_at: new Date().toISOString(),
         }).eq("id", jobId);
+
+        const synthController = new AbortController();
+        const synthTimeout = setTimeout(() => synthController.abort(), 45000); // 45s cap
 
         const synthRes = await fetch(`${funcUrl}/synthesize-deal-intelligence`, {
           method: "POST",
@@ -318,7 +334,9 @@ serve(async (req) => {
               serviceInterest: lead.serviceInterest,
             },
           }),
+          signal: synthController.signal,
         });
+        clearTimeout(synthTimeout);
 
         if (synthRes.ok) {
           const synthData = await synthRes.json();
@@ -326,9 +344,15 @@ serve(async (req) => {
         } else {
           console.error("synthesize-deal-intelligence failed:", synthRes.status);
         }
-      } catch (e) {
-        console.error("Deal intelligence synthesis error:", e);
+      } catch (e: any) {
+        if (e.name === "AbortError") {
+          console.warn("Deal intelligence synthesis timed out after 45s, skipping");
+        } else {
+          console.error("Deal intelligence synthesis error:", e);
+        }
       }
+    } else if (isApproachingTimeout()) {
+      console.warn("Skipping deal intelligence synthesis — approaching timeout");
     }
 
     // Write results to DB

@@ -536,7 +536,7 @@ serve(async (req) => {
         const speakerMatchedIds: string[] = [];
         let skip = 0;
         const SCAN_BATCH = 50;
-        const MAX_SCAN_BATCHES = 20;
+        const MAX_SCAN_BATCHES = 5; // Reduced from 20 to prevent edge function timeouts (250 transcripts is sufficient)
         
         for (let batch = 0; batch < MAX_SCAN_BATCHES; batch++) {
           console.log(`Speaker-scan batch ${batch + 1} (skip=${skip})`);
