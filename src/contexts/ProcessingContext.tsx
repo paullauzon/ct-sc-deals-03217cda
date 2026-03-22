@@ -547,7 +547,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         supabase.functions.invoke("run-lead-job", {
           body: { jobId: jobRow.id, lead: leadPayload },
         }).catch((e) => {
-          console.error("Edge function invocation error:", e);
+          console.warn(`HTTP timeout for ${lead.name} — edge function continues server-side`, e);
         });
       } catch (e: any) {
         console.error("Auto-find setup error:", e);
