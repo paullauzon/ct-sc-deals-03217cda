@@ -140,6 +140,25 @@ const METADATA_QUERY = `
   }
 `;
 
+/** Bulk query with speaker names only (no text — for speaker-name fallback) */
+const SPEAKER_SCAN_QUERY = `
+  query Transcripts($limit: Int, $skip: Int) {
+    transcripts(limit: $limit, skip: $skip) {
+      id
+      title
+      date
+      duration
+      organizer_email
+      fireflies_users
+      participants
+      transcript_url
+      sentences {
+        speaker_name
+      }
+    }
+  }
+`;
+
 /** Full transcript query for a single meeting */
 const FULL_TRANSCRIPT_QUERY = `
   query Transcript($id: String!) {
