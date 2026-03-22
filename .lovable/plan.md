@@ -1,52 +1,56 @@
 
 
-# Fix: Bulk Processing Timeouts
+# Fix: End-to-End Bulk Processing Reliability
 
-## Root Cause
+## Problems Found
 
-Two issues causing Brady Blackett (and others) to fail:
+### 1. Edge functions dying mid-execution (server-side timeout)
+The `run-lead-job` edge function exceeds Supabase's ~400s wall-clock limit. Root cause: the **speaker-name fallback** in `fetch-fireflies` scans 1000 transcripts per brand (20 batches x 50), taking ~70s each. With two brands + AI processing + deal intelligence synthesis, total time easily exceeds 400s. When the edge function is killed, the DB is left with `status: "processing"` forever.
 
-1. **Client-side catch kills running jobs**: When `supabase.functions.invoke()` returns "Failed to fetch" (browser HTTP timeout ~2 min), the `.catch()` handler marks the job as `"failed"` in the DB — even though the edge function is still running server-side. This races with the edge function's own completion update.
+Evidence: Brady's job shows `progress_message: "Synthesizing deal intelligence..."` but `new_meetings: []` — it was killed before writing results. Blake Jackman's job stuck at "AI analyzing meeting 3/4".
 
-2. **5-minute client timeout is too short**: `waitForJobCompletion` resolves as "failed" after 5 minutes. But `run-lead-job` calls `fetch-fireflies` twice (Captarget + SourceCo with 3s delay), then does AI processing per meeting + deal intelligence synthesis. For leads with multiple meetings, this can exceed 5 minutes.
+### 2. Meetings not persisting to DB despite successful jobs
+Brady had a **completed** job on March 4 with 2 meetings found, and it was acknowledged. But the lead still shows 0 meetings in the DB. The `applyCompletedJob` function acknowledges the job fire-and-forget BEFORE confirming the lead update succeeded. If the DB write fails silently, the meetings are lost and the job can never be retried.
 
-The screenshot confirms both: Brady Blackett shows "Timed out after 5 minutes" while the edge function was likely still processing.
+### 3. Zombie "processing" jobs blocking future runs
+Jobs stuck as `processing` + `acknowledged: true` (from cancel) or `processing` + `acknowledged: false` (from server death) pile up. While the stale detector catches some on mount, it doesn't run periodically during the session.
 
 ## Fix Plan
 
-### 1. Remove the destructive `.catch()` in `ProcessingContext.tsx`
+### Step 1: Reduce speaker-name fallback scope
+**File:** `supabase/functions/fetch-fireflies/index.ts`
+- Reduce `MAX_SCAN_BATCHES` from 20 to 5 (scan 250 recent transcripts instead of 1000)
+- This cuts the fallback from ~70s to ~18s per brand, keeping the overall edge function under 400s
 
-The `.catch()` on `supabase.functions.invoke` currently marks the job as failed in the DB. This is wrong — the edge function continues running server-side regardless of the HTTP response. Change it to just log the error, not update the DB.
+### Step 2: Add elapsed-time guard to run-lead-job
+**File:** `supabase/functions/run-lead-job/index.ts`
+- Track start time; before each major step (AI call, synthesis), check if >300s elapsed
+- If approaching timeout, write partial results to DB and return — better to save 2 of 4 meetings than lose all
+- Add a timeout to the `synthesize-deal-intelligence` sub-call (30s) so it doesn't block indefinitely
 
-```
-// Before (destructive):
-.catch(async (e) => {
-  await supabase.from("processing_jobs")
-    .update({ status: "failed", error: ... })
-    .eq("id", jobRow.id);
-});
+### Step 3: Ensure meetings persist before acknowledging
+**File:** `src/contexts/ProcessingContext.tsx`
+- In `applyCompletedJob`, `await` the `updateLeadInDb` call (via `updateLead`) before acknowledging the job
+- If the DB write fails, do NOT acknowledge — the job will be retried on next page load
+- Currently `updateLead` fires the DB write and forgets; add a callback or check pattern to confirm persistence
 
-// After (safe):
-.catch((e) => {
-  console.warn(`HTTP timeout for ${lead.name} — edge function continues server-side`);
-});
-```
-
-### 2. Increase `waitForJobCompletion` timeout from 5 to 10 minutes
-
-The edge function can legitimately take 5+ minutes for leads with multiple meetings. Increase the safety timeout to 10 minutes to match the server-side stale job detection (also 10 min).
-
-### 3. Add retry logic for timed-out jobs
-
-When `waitForJobCompletion` times out, check the actual job status in the DB before declaring failure. The job may have completed while we were waiting (race condition). If it's still "processing", don't mark it failed — just report it as "still running" and move on.
+### Step 4: Clean up zombie jobs on mount
+**File:** `src/contexts/ProcessingContext.tsx`
+- In the hydration `useEffect`, also clean up any jobs with `status: "processing"` and `acknowledged: true` (left over from cancelled bulk runs) — update them to `failed` status
+- Add a periodic check (every 2 minutes) during active bulk processing to catch jobs that went stale mid-session
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/contexts/ProcessingContext.tsx` | Remove destructive `.catch()`, increase timeout to 10 min, add DB status check on timeout |
+| `supabase/functions/fetch-fireflies/index.ts` | Reduce speaker-scan batches from 20 to 5 |
+| `supabase/functions/run-lead-job/index.ts` | Add elapsed-time guard + timeout on synthesis call |
+| `src/contexts/ProcessingContext.tsx` | Await DB persistence before acknowledging; periodic zombie cleanup |
 
-## Why This Fixes Brady Blackett
+## Why This Fixes It
 
-His edge function was running fine server-side. The browser's HTTP fetch timed out → `.catch()` marked the job as "failed" in the DB → the edge function's eventual completion was ignored (job already acknowledged). With these fixes, the client just waits patiently for the DB update from the server.
+- **Brady/Blake timeout**: Speaker fallback goes from ~140s to ~36s (both brands), keeping total under 400s
+- **Lost meetings**: Jobs aren't acknowledged until meetings are confirmed in DB
+- **Zombie jobs**: Cleaned up on mount and periodically, so they don't block future runs
+- **Partial results preserved**: If edge function approaches timeout, it saves what it has rather than losing everything
 
