@@ -45,7 +45,7 @@ export interface BulkJobState {
 interface ProcessingContextType {
   bulkJob: BulkJobState;
   leadJobs: Record<string, LeadJobState>;
-  startBulkProcessing: () => void;
+  startBulkProcessing: (limit?: number) => void;
   cancelBulk: () => void;
   dismissBulk: () => void;
   pauseBulk: () => void;
