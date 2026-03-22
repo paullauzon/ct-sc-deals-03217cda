@@ -505,67 +505,68 @@ serve(async (req) => {
       console.log(`Metadata scan found ${metadataMatches.length} matches. Fetching full transcripts...`);
 
       if (metadataMatches.length === 0 && searchNames.length > 0) {
-        // ── Speaker-name fallback: metadata missed, try matching on speaker names in full transcripts ──
+        // ── Speaker-name fallback: use bulk query with speaker_name field ──
         console.log(`Metadata found 0 matches but have searchNames — falling back to speaker-name scan...`);
         
-        // Fetch ALL transcript IDs (metadata only, no filter)
-        const allMetadata = await fetchMetadataPaginated(FIREFLIES_API_KEY, null, 500, since || undefined);
-        console.log(`Fetched ${allMetadata.length} total transcripts for speaker-name scanning`);
+        const lowerFullNames = searchNames.map((n) => n.toLowerCase().trim());
         
-        if (allMetadata.length > 0) {
-          // Build name matcher for speaker names
-          const lowerFullNames = searchNames.map((n) => n.toLowerCase().trim());
-          
-          const speakerNameMatches = (sentences: any[]): boolean => {
-            if (!sentences || sentences.length === 0) return false;
-            const speakerNames = new Set(
-              sentences.map((s: any) => (s.speaker_name || "").toLowerCase()).filter(Boolean)
-            );
-            for (const fullName of lowerFullNames) {
-              const nameParts = fullName.split(/\s+/).filter((p) => p.length >= 2);
-              if (nameParts.length === 0) continue;
-              const firstName = nameParts[0];
-              const firstNameVariants = getNameVariants(firstName);
-              const restParts = nameParts.slice(1);
-              
-              for (const speaker of speakerNames) {
-                const hasFirst = firstNameVariants.some((v) => wordBoundaryMatch(speaker, v));
-                if (!hasFirst) continue;
-                const hasRest = restParts.every((part) => wordBoundaryMatch(speaker, part));
-                if (hasRest) return true;
-              }
-            }
-            return false;
-          };
-          
-          // Fetch full transcripts in batches of 2 and check speaker names
-          const speakerMatched: any[] = [];
-          const allIds = allMetadata.map((t: any) => t.id);
-          
-          for (let i = 0; i < allIds.length; i += 2) {
-            const batch = allIds.slice(i, i + 2);
-            const promises = batch.map((id: string) =>
-              firefliesRequest(FIREFLIES_API_KEY, FULL_TRANSCRIPT_QUERY, { id })
-                .then((data) => data?.transcript)
-                .catch((e) => {
-                  console.error(`Failed to fetch transcript ${id}:`, e);
-                  return null;
-                })
-            );
-            const batchResults = await Promise.all(promises);
+        const speakerNameMatches = (sentences: any[]): boolean => {
+          if (!sentences || sentences.length === 0) return false;
+          const speakerNames = new Set(
+            sentences.map((s: any) => (s.speaker_name || "").toLowerCase()).filter(Boolean)
+          );
+          for (const fullName of lowerFullNames) {
+            const nameParts = fullName.split(/\s+/).filter((p) => p.length >= 2);
+            if (nameParts.length === 0) continue;
+            const firstName = nameParts[0];
+            const firstNameVariants = getNameVariants(firstName);
+            const restParts = nameParts.slice(1);
             
-            for (const t of batchResults) {
-              if (t && speakerNameMatches(t.sentences)) {
-                console.log(`Speaker-name match found: "${t.title}" (${t.id})`);
-                speakerMatched.push(t);
-              }
+            for (const speaker of speakerNames) {
+              const hasFirst = firstNameVariants.some((v) => wordBoundaryMatch(speaker, v));
+              if (!hasFirst) continue;
+              const hasRest = restParts.every((part) => wordBoundaryMatch(speaker, part));
+              if (hasRest) return true;
             }
-            
-            if (speakerMatched.length >= limit) break;
           }
-          
-          console.log(`Speaker-name fallback found ${speakerMatched.length} matches`);
-          fullTranscripts = speakerMatched;
+          return false;
+        };
+        
+        // Paginate through ALL transcripts using bulk speaker-scan query
+        const speakerMatchedIds: string[] = [];
+        let skip = 0;
+        const SCAN_BATCH = 50;
+        const MAX_SCAN_BATCHES = 20;
+        
+        for (let batch = 0; batch < MAX_SCAN_BATCHES; batch++) {
+          console.log(`Speaker-scan batch ${batch + 1} (skip=${skip})`);
+          try {
+            const data = await firefliesRequest(FIREFLIES_API_KEY, SPEAKER_SCAN_QUERY, { limit: SCAN_BATCH, skip });
+            const transcripts = data?.transcripts || [];
+            
+            if (transcripts.length === 0) break;
+            
+            for (const t of transcripts) {
+              if (speakerNameMatches(t.sentences)) {
+                console.log(`Speaker-name match found: "${t.title}" (${t.id})`);
+                speakerMatchedIds.push(t.id);
+              }
+            }
+            
+            if (speakerMatchedIds.length >= limit) break;
+            if (transcripts.length < SCAN_BATCH) break;
+            skip += SCAN_BATCH;
+          } catch (e) {
+            console.error(`Speaker-scan batch ${batch + 1} failed:`, e);
+            break;
+          }
+        }
+        
+        console.log(`Speaker-name fallback found ${speakerMatchedIds.length} matches`);
+        
+        if (speakerMatchedIds.length > 0) {
+          // Now fetch full transcripts for matches only
+          fullTranscripts = await fetchFullTranscripts(FIREFLIES_API_KEY, speakerMatchedIds);
         } else {
           fullTranscripts = [];
         }
