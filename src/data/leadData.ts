@@ -181,6 +181,7 @@ function parseTargetLeads(): Lead[] {
     enrichmentStatus: "",
     linkedinUrl: "",
     linkedinTitle: "",
+    createdAt: "",
   }));
 }
 
