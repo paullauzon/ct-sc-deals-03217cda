@@ -421,17 +421,17 @@ serve(async (req) => {
     // Write results to DB
     await supabase.from("processing_jobs").update({
       status: "completed",
-      new_meetings: processedMeetings,
+      new_meetings: allProcessedMeetings,
       applied_updates: appliedUpdates,
       applied_fields: appliedFields,
       pending_suggestions: uniquePending,
       deal_intelligence: dealIntelligence,
-      progress_message: `Found ${processedMeetings.length} new meeting(s)`,
+      progress_message: `Found ${processedMeetings.length} meeting(s)${noRecProcessed.length > 0 ? ` + ${noRecProcessed.length} with no recording` : ""}`,
       updated_at: new Date().toISOString(),
     }).eq("id", jobId);
 
     return new Response(
-      JSON.stringify({ success: true, newMeetings: processedMeetings.length }),
+      JSON.stringify({ success: true, newMeetings: allProcessedMeetings.length }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e: any) {
