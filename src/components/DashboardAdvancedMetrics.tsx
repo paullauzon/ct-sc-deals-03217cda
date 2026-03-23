@@ -20,6 +20,7 @@ interface Props {
   leads: Lead[];
   onSelectLead?: (id: string) => void;
   section: "pipeline" | "team";
+  onDrillDown?: (title: string, leads: Lead[]) => void;
 }
 
 export function DashboardAdvancedMetrics({ leads, onSelectLead, section }: Props) {
