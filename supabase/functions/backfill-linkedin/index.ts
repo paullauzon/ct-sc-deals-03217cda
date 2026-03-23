@@ -321,7 +321,26 @@ async function aiSearchAgent(
 
       if (parsed.action === "scrape" && parsed.url) {
         console.log(`  Turn ${turn + 1}: Scraping "${parsed.url}"`);
-        const scraped = await firecrawlScrape(parsed.url, firecrawlKey);
+        let scraped = await firecrawlScrape(parsed.url, firecrawlKey);
+        
+        // Fallback: if scraping a LinkedIn profile returned empty (403 block), search for the slug instead
+        if (!scraped && parsed.url.includes("linkedin.com/in/")) {
+          const slug = parsed.url.split("/in/")[1]?.split("/")[0]?.split("?")[0];
+          if (slug) {
+            console.log(`  Turn ${turn + 1}: LinkedIn scrape blocked, searching for slug "${slug}"`);
+            const fallbackResults = await firecrawlSearch(`"${slug}" site:linkedin.com`, firecrawlKey, 3, true);
+            if (fallbackResults.length > 0) {
+              scraped = fallbackResults.map((r, i) => {
+                const parts = [`Result ${i + 1}: ${r.url}`];
+                if (r.title) parts.push(`Title: ${r.title}`);
+                if (r.description) parts.push(`Description: ${r.description}`);
+                if (r.markdown) parts.push(`Content: ${r.markdown.substring(0, 600)}`);
+                return parts.join("\n");
+              }).join("\n\n");
+              scraped = `[LinkedIn scrape was blocked. Here are search results for the slug "${slug}" instead:]\n\n${scraped}`;
+            }
+          }
+        }
         
         const preview = scraped.length > 2000 ? scraped.substring(0, 2000) + "\n...(truncated)" : scraped;
         messages.push({
