@@ -230,26 +230,61 @@ async function aiSearchAgent(
   if (lead.targetRevenue) contextParts.push(`Target Revenue: ${lead.targetRevenue}`);
   if (lead.message) contextParts.push(`Submission Message: "${lead.message.substring(0, 600)}"`);
 
-  // Build initial context hints for the agent
-  const emailHints: string[] = [];
+  // ─── Pre-execute priority strategies programmatically ───
+  const preSearchResults: string[] = [];
+
+  // Strategy A: Search company LinkedIn page for employees
+  if (lead.company) {
+    console.log(`  Pre-search: Company LinkedIn page for "${lead.company}"`);
+    const companyResults = await firecrawlSearch(`"${lead.company}" site:linkedin.com/company`, firecrawlKey, 3, false);
+    const companyLinkedinUrl = companyResults.find(r => r.url.includes("linkedin.com/company/"))?.url;
+    if (companyLinkedinUrl) {
+      const scraped = await firecrawlScrape(companyLinkedinUrl, firecrawlKey);
+      if (scraped) {
+        // Extract any linkedin.com/in/ links from the scraped content
+        const linkedinProfileLinks = scraped.match(/linkedin\.com\/in\/[a-zA-Z0-9_-]+/g) || [];
+        const uniqueLinks = [...new Set(linkedinProfileLinks)];
+        if (uniqueLinks.length > 0) {
+          preSearchResults.push(`Company LinkedIn page (${companyLinkedinUrl}) employee profiles found:\n${uniqueLinks.map(l => `https://${l}`).join("\n")}`);
+        }
+        // Also include any name mentions near linkedin links
+        const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
+        if (nameFirst && scraped.toLowerCase().includes(nameFirst)) {
+          preSearchResults.push(`The company LinkedIn page mentions "${nameFirst}" — check the profile links above.`);
+        }
+      }
+    }
+  }
+
+  // Strategy B: Try email initials as LinkedIn slug
   if (lead.email) {
     const localPart = lead.email.split("@")[0];
     if (localPart.includes(".")) {
       const parts = localPart.split(".");
-      const initials = parts.map((p: string) => p[0]).join("");
-      emailHints.push(`Email-derived initials: "${initials}" (from ${localPart}) — try searching LinkedIn for slugs containing these initials`);
+      // Try various initial combinations
+      const initials2 = parts.map((p: string) => p[0]).join(""); // e.g. "eb"
+      const initials3 = parts[0][0] + (parts[0].length > 1 ? parts[0][1] : "") + parts.slice(1).map((p: string) => p[0]).join(""); // e.g. "elb" or "emb" (if middle initial)
+      
+      // Search for these initials + company
+      const initialsQuery = `"${initials2}" OR "${initials3}" "${lead.company || ""}" site:linkedin.com/in`;
+      console.log(`  Pre-search: Email initials "${initials2}", "${initials3}"`);
+      const initialsResults = await firecrawlSearch(initialsQuery, firecrawlKey, 5, false);
+      const initialsLinkedins = initialsResults.filter(r => r.url.includes("linkedin.com/in/"));
+      if (initialsLinkedins.length > 0) {
+        preSearchResults.push(`LinkedIn profiles matching email initials (${initials2}/${initials3}):\n${initialsLinkedins.map(r => `${r.url} — ${r.title || ""} ${r.description || ""}`).join("\n")}`);
+      }
     }
   }
 
-  const companyLinkedinHint = lead.company
-    ? `\nIMPORTANT: If direct name searches fail, you MUST try scraping the company's LinkedIn page. Search for "${lead.company} site:linkedin.com/company" to find it, then scrape the company page to find employees.`
+  const preSearchContext = preSearchResults.length > 0
+    ? `\n\nPRE-SEARCH RESULTS (from automated priority strategies):\n${preSearchResults.join("\n\n")}\n\nAnalyze these results first. If any profile matches ${lead.name}, verify and report it as found.`
     : "";
 
   const messages: Array<{ role: string; content: string }> = [
     { role: "system", content: buildSystemPrompt(maxTurns) },
     {
       role: "user",
-      content: `Find the LinkedIn profile for this person:\n\n${contextParts.join("\n")}${emailHints.length > 0 ? "\n" + emailHints.join("\n") : ""}${companyLinkedinHint}\n\nWhat would you like to do first?`,
+      content: `Find the LinkedIn profile for this person:\n\n${contextParts.join("\n")}${preSearchContext}\n\nWhat would you like to do first?`,
     },
   ];
 
