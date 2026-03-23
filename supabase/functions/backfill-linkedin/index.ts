@@ -443,11 +443,13 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Check for single-lead mode (triggered by ingest-lead)
+  // Parse request body
   let singleLeadId: string | null = null;
+  let retryFailed = false;
   try {
     const body = await req.json();
     singleLeadId = body?.leadId || null;
+    retryFailed = body?.retryFailed === true;
   } catch {
     // No body or invalid JSON — proceed with batch mode
   }
