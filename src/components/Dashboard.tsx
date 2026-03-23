@@ -702,6 +702,9 @@ export function Dashboard() {
               </div>
             )}
           </div>
+
+          {/* Loss & Competitive Intelligence */}
+          <DashboardLossIntelligence leads={filteredLeads} onDrillDown={handleDrillDown} />
         </div>
       )}
 
