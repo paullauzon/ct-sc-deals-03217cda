@@ -783,7 +783,13 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="border border-t-0 border-border rounded-b-lg p-3 space-y-3 -mt-1">
+        <div className={`border border-t-0 rounded-b-lg p-3 space-y-3 -mt-1 ${meeting.noRecording ? "border-border/50 bg-muted/20" : "border-border"}`}>
+          {meeting.noRecording ? (
+            <p className="text-xs text-muted-foreground italic py-2">
+              This meeting was found in Fireflies but has no recording or transcript. This could indicate a no-show, a forwarded email, or a recording failure.
+            </p>
+          ) : (
+          <>
           {/* Draft Follow-Up button */}
           {(intel || meeting.summary) && (
             <div className="flex justify-end">
