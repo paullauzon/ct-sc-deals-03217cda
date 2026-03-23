@@ -45,7 +45,7 @@ interface Props {
   onDrillDown?: (title: string, leads: Lead[]) => void;
 }
 
-export function DashboardPersonaMetrics({ leads, onSelectLead }: Props) {
+export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Props) {
   const data = useMemo(() => {
     // ── Block 1: Buyer Type Matrix ──
     const buyerTypes = new Map<string, Lead[]>();

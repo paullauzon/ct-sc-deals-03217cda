@@ -23,7 +23,7 @@ interface Props {
   onDrillDown?: (title: string, leads: Lead[]) => void;
 }
 
-export function DashboardAdvancedMetrics({ leads, onSelectLead, section }: Props) {
+export function DashboardAdvancedMetrics({ leads, onSelectLead, section, onDrillDown }: Props) {
   const data = useMemo(() => {
     const owners = ["Malik", "Valeria", "Tomos", ""] as const;
 
