@@ -577,11 +577,18 @@ Deno.serve(async (req) => {
     }
 
     // Check how many remain
-    const { count: remaining } = await supabase
+    let remainingQuery = supabase
       .from("leads")
       .select("id", { count: "exact", head: true })
-      .is("linkedin_url", null)
       .neq("name", "");
+
+    if (retryFailed) {
+      remainingQuery = remainingQuery.eq("linkedin_url", "");
+    } else {
+      remainingQuery = remainingQuery.is("linkedin_url", null);
+    }
+
+    const { count: remaining } = await remainingQuery;
 
     const avgTurns = processed > 0 ? (agentStats.totalTurns / processed).toFixed(1) : "0";
     console.log(`\nRun complete: ${found}/${processed} matched, ${remaining || 0} leads remaining`);
