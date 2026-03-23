@@ -253,7 +253,12 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between border-b border-border pb-1">
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-          Meetings ({meetings.length})
+          Meetings ({meetings.filter(m => !m.noRecording).length})
+          {meetings.some(m => m.noRecording) && (
+            <span className="text-muted-foreground/50 ml-1 normal-case font-normal">
+              + {meetings.filter(m => m.noRecording).length} no recording
+            </span>
+          )}
         </h3>
         <div className="flex gap-1.5">
           {meetings.length > 0 && (
