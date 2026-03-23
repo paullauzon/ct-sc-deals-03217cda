@@ -1,56 +1,47 @@
 
 
-# Fix: End-to-End Bulk Processing Reliability
+# Fix: LinkedIn Discovery for Non-Standard Profile Slugs
 
-## Problems Found
+## Root Cause
 
-### 1. Edge functions dying mid-execution (server-side timeout)
-The `run-lead-job` edge function exceeds Supabase's ~400s wall-clock limit. Root cause: the **speaker-name fallback** in `fetch-fireflies` scans 1000 transcripts per brand (20 batches x 50), taking ~70s each. With two brands + AI processing + deal intelligence synthesis, total time easily exceeds 400s. When the edge function is killed, the DB is left with `status: "processing"` forever.
+Two issues combined to miss Ellie Burei:
 
-Evidence: Brady's job shows `progress_message: "Synthesizing deal intelligence..."` but `new_meetings: []` — it was killed before writing results. Blake Jackman's job stuck at "AI analyzing meeting 3/4".
+1. **Agent verification is too strict on URL slugs**: The system prompt tells the AI agent to verify that "The LinkedIn URL slug should contain at least part of the person's name." The correct profile `linkedin.com/in/emb339/` has initials-based slug — no substring of "Ellie" or "Burei" appears. The agent either never found it, or found it and rejected it due to this rule.
 
-### 2. Meetings not persisting to DB despite successful jobs
-Brady had a **completed** job on March 4 with 2 meetings found, and it was acknowledged. But the lead still shows 0 meetings in the DB. The `applyCompletedJob` function acknowledges the job fire-and-forget BEFORE confirming the lead update succeeded. If the DB write fails silently, the meetings are lost and the job can never be retried.
-
-### 3. Zombie "processing" jobs blocking future runs
-Jobs stuck as `processing` + `acknowledged: true` (from cancel) or `processing` + `acknowledged: false` (from server death) pile up. While the stale detector catches some on mount, it doesn't run periodically during the session.
+2. **No retry mechanism**: Once the agent gives up, `linkedin_url` is set to `""` (empty string). Batch mode only processes `linkedin_url IS NULL`, so these leads are permanently abandoned. There's no way to re-trigger enrichment for a failed lead.
 
 ## Fix Plan
 
-### Step 1: Reduce speaker-name fallback scope
-**File:** `supabase/functions/fetch-fireflies/index.ts`
-- Reduce `MAX_SCAN_BATCHES` from 20 to 5 (scan 250 recent transcripts instead of 1000)
-- This cuts the fallback from ~70s to ~18s per brand, keeping the overall edge function under 400s
+### 1. Relax URL slug verification in agent prompt
+**File**: `supabase/functions/backfill-linkedin/index.ts` — update `buildSystemPrompt()`
 
-### Step 2: Add elapsed-time guard to run-lead-job
-**File:** `supabase/functions/run-lead-job/index.ts`
-- Track start time; before each major step (AI call, synthesis), check if >300s elapsed
-- If approaching timeout, write partial results to DB and return — better to save 2 of 4 meetings than lose all
-- Add a timeout to the `synthesize-deal-intelligence` sub-call (30s) so it doesn't block indefinitely
+Change the verification rule from requiring name in the slug to:
+```
+- The LinkedIn URL slug does NOT need to match the person's name — many people use initials, 
+  numbers, or random slugs (e.g., "emb339" for "Ellie M. Burei")
+- Instead, verify by SCRAPING the profile or reading the search snippet to confirm the 
+  person's name and company match
+- If a search result shows the right name + company but has an unusual slug, that's CORRECT
+```
 
-### Step 3: Ensure meetings persist before acknowledging
-**File:** `src/contexts/ProcessingContext.tsx`
-- In `applyCompletedJob`, `await` the `updateLeadInDb` call (via `updateLead`) before acknowledging the job
-- If the DB write fails, do NOT acknowledge — the job will be retried on next page load
-- Currently `updateLead` fires the DB write and forgets; add a callback or check pattern to confirm persistence
+This makes the agent rely on **content verification** (name + company in the profile) rather than **URL pattern matching**.
 
-### Step 4: Clean up zombie jobs on mount
-**File:** `src/contexts/ProcessingContext.tsx`
-- In the hydration `useEffect`, also clean up any jobs with `status: "processing"` and `acknowledged: true` (left over from cancelled bulk runs) — update them to `failed` status
-- Add a periodic check (every 2 minutes) during active bulk processing to catch jobs that went stale mid-session
+### 2. Add "retry failed" capability to batch mode
+**File**: `supabase/functions/backfill-linkedin/index.ts`
+
+Accept an optional `retryFailed: true` parameter. When set, query leads where `linkedin_url = ''` (empty string = previously failed) instead of `linkedin_url IS NULL`. This allows re-running the agent on leads that failed with the old, stricter rules.
+
+### 3. Immediately fix Ellie Burei
+Since we already know the correct URL, we should also allow manual LinkedIn URL assignment. But the prompt fix + retry is the systematic solution.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/fetch-fireflies/index.ts` | Reduce speaker-scan batches from 20 to 5 |
-| `supabase/functions/run-lead-job/index.ts` | Add elapsed-time guard + timeout on synthesis call |
-| `src/contexts/ProcessingContext.tsx` | Await DB persistence before acknowledging; periodic zombie cleanup |
+| `supabase/functions/backfill-linkedin/index.ts` | Relax slug verification in prompt; add `retryFailed` param |
 
-## Why This Fixes It
-
-- **Brady/Blake timeout**: Speaker fallback goes from ~140s to ~36s (both brands), keeping total under 400s
-- **Lost meetings**: Jobs aren't acknowledged until meetings are confirmed in DB
-- **Zombie jobs**: Cleaned up on mount and periodically, so they don't block future runs
-- **Partial results preserved**: If edge function approaches timeout, it saves what it has rather than losing everything
+## Impact
+- Fixes Ellie Burei and any other leads with non-standard LinkedIn slugs (initials, numbers, maiden names)
+- Existing correct matches unaffected — the agent still verifies name + company from profile content
+- Retry capability lets us re-process the ~100+ leads that previously failed
 
