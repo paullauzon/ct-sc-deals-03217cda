@@ -1,38 +1,36 @@
 
 
-# Manually Ingest Brian Steel / Catskill Partners Lead
+# Fix JSON Parse Failures in ingest-lead + Recover Prit Lavani
 
-## Context
-The lead was submitted via the SC Free Targets Form but hit a JSON parse error in the `ingest-lead` edge function (visible in logs). The payload never made it to the database.
+## Root Cause
+Zapier sends form field values containing literal newline characters (`\n`, `\r`) inside JSON string values. This is invalid JSON — newlines inside strings must be escaped as `\\n`. Our `ingest-lead` function does a raw `JSON.parse()` which fails on these payloads. This is **our bug**, not Zapier's.
 
-## What to Do
+## Changes
 
-### 1. Insert the lead directly into the database
-Using the data from the edge function error log and the user's screenshot:
+### 1. Fix `ingest-lead` to handle multi-line payloads
 
-- **ID**: `SC-T-060` (next after SC-T-059)
-- **brand**: SourceCo
-- **source**: SC Free Targets Form
-- **name**: Brian Steel
-- **email**: brian.steel@catskillpartners.com
-- **phone**: 9522127249
-- **company**: Catskill Partners
-- **role**: Private Equity
-- **currentSourcing**: "Internal BD team, Buy-side firm(s), Manual outreach (Grata, Pitchbook, LinkedIn, etc.)"
-- **acquisitionStrategy**: "We're mid-process on 1–2 deals"
-- **message**: (from screenshot — the LMM / $2-20M EBITDA / Advanced Manf. text)
-- **stage**: New Lead
-- **date_submitted**: 2026-03-20 (date from log timestamp)
+In `supabase/functions/ingest-lead/index.ts`, before `JSON.parse(rawText)`:
+- Sanitize the raw text by escaping literal newlines/carriage returns that appear inside JSON string values
+- Use a regex to replace unescaped `\n` and `\r` within strings with `\\n` and `\\r`
+- This makes the JSON valid before parsing, handling any multi-line form field from Zapier
 
-Insert via a database migration with an `INSERT` statement, including a proper `submissions` JSONB array with the form data.
+### 2. Manually ingest Prit Lavani
 
-### 2. Trigger scoring and enrichment
-After insert, invoke `score-lead` and `backfill-linkedin` edge functions for this lead so it gets the same treatment as any normally ingested lead.
+Using the data visible in the error log:
+- **name**: Prit Lavani
+- **email**: plavani19@gmail.com
+- **brand**: Captarget
+- **source**: CT Free Targets Form
+- **role**: Independent Sponsor / Search Fund
+- **companyUrl**: www.p
+- **targetCriteria**: Manufacturing business criteria (NJ, NY, PA, FL, $4M-$8M revenue, $500K+ EBITDA, Food/Defense/Medical/Electronics/Packaging)
 
-### Files Changed
+Insert via database migration, then trigger scoring and LinkedIn enrichment.
+
+## Files Changed
+
 | File | Change |
 |------|--------|
-| Database migration | `INSERT` the Brian Steel lead record |
-
-Post-migration: manually invoke `score-lead` and `backfill-linkedin` for lead `SC-T-060`.
+| `supabase/functions/ingest-lead/index.ts` | Sanitize raw body to escape literal newlines before `JSON.parse()` |
+| Database migration | `INSERT` Prit Lavani lead record |
 
