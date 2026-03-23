@@ -722,7 +722,7 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
-        <button className="w-full text-left border border-border rounded-lg p-3 hover:bg-secondary/20 transition-colors">
+        <button className={`w-full text-left border rounded-lg p-3 transition-colors ${meeting.noRecording ? "border-border/50 bg-muted/30 hover:bg-muted/50" : "border-border hover:bg-secondary/20"}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs shrink-0">{open ? "▾" : "▸"}</span>
@@ -731,9 +731,14 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
                   {meeting.sourceBrand === "Captarget" ? "CT" : "SC"}
                 </span>
               )}
-              <span className="text-sm font-medium truncate">{meeting.title}</span>
+              <span className={`text-sm font-medium truncate ${meeting.noRecording ? "text-muted-foreground" : ""}`}>{meeting.title}</span>
+              {meeting.noRecording && (
+                <Badge variant="outline" className="text-[9px] h-4 bg-muted text-muted-foreground border-border shrink-0">
+                  No Recording
+                </Badge>
+              )}
               {/* Quick signal badges in collapsed view */}
-              {!open && intel && (
+              {!open && intel && !meeting.noRecording && (
                 <div className="hidden sm:flex gap-1">
                   {intel.dealSignals?.buyingIntent && (
                     <Badge className={`text-[9px] h-4 ${intentColors[intel.dealSignals.buyingIntent] || ""}`}>
@@ -769,8 +774,11 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
               )}
             </div>
           </div>
-          {!open && meeting.summary && (
+          {!open && !meeting.noRecording && meeting.summary && (
             <p className="text-xs text-muted-foreground mt-1.5 line-clamp-3 pl-5">{intel?.summary || meeting.summary}</p>
+          )}
+          {!open && meeting.noRecording && (
+            <p className="text-xs text-muted-foreground/50 mt-1 pl-5 italic">Meeting scheduled but no recording captured</p>
           )}
         </button>
       </CollapsibleTrigger>
