@@ -174,17 +174,20 @@ TOOLS AVAILABLE:
 
 RESPONSE FORMAT — respond with ONLY a JSON object, no markdown, no explanation.
 
-SEARCH STRATEGIES (use your judgment on which to try):
+PRIORITY STRATEGIES (try these FIRST for small/niche companies):
+A. COMPANY LINKEDIN PAGE: Search "CompanyName site:linkedin.com/company", then SCRAPE the company's LinkedIn page (e.g., linkedin.com/company/companyname/people or /about) to find the person among employees
+B. EMAIL INITIALS INFERENCE: If the person's email is firstname.lastname@domain, try searching for their initials as a LinkedIn slug (e.g., ellie.burei → try "emb" or "eb" combined with company name, or directly try linkedin.com/in/emb* variations)
+C. COMPANY WEBSITE TEAM PAGE: If they have a company_url, SCRAPE that URL's /about or /team page to find LinkedIn links directly
+
+GENERAL SEARCH STRATEGIES (use your judgment on which to try):
 1. Direct search: "FirstName LastName" "Company" site:linkedin.com/in
 2. If company name looks concatenated (e.g. "Treatyoakequity"), break it into words: "Treaty Oak Equity"
 3. Use the email domain to infer the real company name (e.g. hanacovc.com → "Hanaco Ventures")
 4. Search WITHOUT site: restriction: "Name" "Company" linkedin — catches third-party mentions
 5. Search for the company on LinkedIn first, then look for the person among results
 6. Try common nicknames (Michael→Mike, Robert→Bob, William→Bill, etc.)
-7. If they have a company_url, SCRAPE that URL's /about or /team page to find LinkedIn links directly
-8. Scrape the company's LinkedIn page (linkedin.com/company/...) and look for employee mentions
-9. If the email domain is a company, scrape it to find team/about pages
-10. If all else fails, try just the person's name with their city/geography
+7. If the email domain is a company, scrape it to find team/about pages
+8. If all else fails, try just the person's name with their city/geography
 
 VERIFICATION RULES (before saying "found"):
 - The LinkedIn URL slug does NOT need to match the person's name — many people use initials, numbers, or random slugs (e.g., "emb339" for "Ellie M. Burei", "jsmith42" for "John Smith")
