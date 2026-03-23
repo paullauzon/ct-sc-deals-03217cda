@@ -261,18 +261,39 @@ async function aiSearchAgent(
     const localPart = lead.email.split("@")[0];
     if (localPart.includes(".")) {
       const parts = localPart.split(".");
-      // Try various initial combinations
-      const initials2 = parts.map((p: string) => p[0]).join(""); // e.g. "eb"
-      const initials3 = parts[0][0] + (parts[0].length > 1 ? parts[0][1] : "") + parts.slice(1).map((p: string) => p[0]).join(""); // e.g. "elb" or "emb" (if middle initial)
+      const firstInitial = parts[0][0];
+      const lastInitial = parts[parts.length - 1][0];
       
-      // Search for these initials + company
-      const initialsQuery = `"${initials2}" OR "${initials3}" "${lead.company || ""}" site:linkedin.com/in`;
-      console.log(`  Pre-search: Email initials "${initials2}", "${initials3}"`);
-      const initialsResults = await firecrawlSearch(initialsQuery, firecrawlKey, 5, false);
+      // Generate all possible initial combinations:
+      // 1. Two-letter: first+last initial (e.g. "eb")
+      const initials2 = firstInitial + lastInitial;
+      // 2. Three-letter with middle initial: try all 26 letters between first and last
+      //    This catches cases like "emb" for "Ellie M. Burei" where middle initial is unknown
+      const initialsVariants = [initials2];
+      const alphabet = "abcdefghijklmnopqrstuvwxyz";
+      for (const mid of alphabet) {
+        initialsVariants.push(firstInitial + mid + lastInitial);
+      }
+      // 3. Also try first 2 chars of first name + last initial (e.g. "elb")
+      if (parts[0].length > 1) {
+        initialsVariants.push(parts[0].substring(0, 2) + lastInitial);
+      }
+      // 4. Full local part without dots (e.g. "ellieburei")
+      initialsVariants.push(localPart.replace(/\./g, ""));
+      
+      // Search using the most likely variants (2-letter + all 3-letter middle-initial combos)
+      // Use a compact search: just search the slug patterns with company name
+      const searchVariants = [initials2, ...alphabet.split("").map(m => firstInitial + m + lastInitial)];
+      const searchQuery = searchVariants.slice(0, 5).map(v => `"${v}"`).join(" OR ") + ` "${lead.company || ""}" site:linkedin.com/in`;
+      console.log(`  Pre-search: Email initials "${initials2}", middle-initial variants (${firstInitial}[a-z]${lastInitial})`);
+      const initialsResults = await firecrawlSearch(searchQuery, firecrawlKey, 5, false);
       const initialsLinkedins = initialsResults.filter(r => r.url.includes("linkedin.com/in/"));
       if (initialsLinkedins.length > 0) {
-        preSearchResults.push(`LinkedIn profiles matching email initials (${initials2}/${initials3}):\n${initialsLinkedins.map(r => `${r.url} — ${r.title || ""} ${r.description || ""}`).join("\n")}`);
+        preSearchResults.push(`LinkedIn profiles matching email initials patterns:\n${initialsLinkedins.map(r => `${r.url} — ${r.title || ""} ${r.description || ""}`).join("\n")}`);
       }
+      
+      // Also provide the initials variants to the agent context
+      preSearchResults.push(`Email initials hint: The email "${lead.email}" suggests possible LinkedIn slugs starting with: ${initials2}, ${firstInitial}[a-z]${lastInitial} (e.g. ${firstInitial}a${lastInitial}, ${firstInitial}m${lastInitial}), ${localPart.replace(/\./g, "")}, ${localPart.replace(/\./g, "-")}`);
     }
   }
 
