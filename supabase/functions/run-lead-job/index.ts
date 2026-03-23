@@ -347,10 +347,27 @@ serve(async (req) => {
       return true;
     });
 
+    // Add no-recording meetings to processed list (stored but not AI-analyzed)
+    const noRecProcessed = noRecordingMeetings.map((m: any) => ({
+      id: generateMeetingId(),
+      date: m.date || new Date().toISOString().split("T")[0],
+      title: m.title || "Untitled Meeting",
+      firefliesId: m.firefliesId,
+      firefliesUrl: m.transcriptUrl || "",
+      transcript: "",
+      summary: "No recording available",
+      nextSteps: "",
+      addedAt: new Date().toISOString(),
+      sourceBrand: m.sourceBrand,
+      noRecording: true,
+    }));
+    const allProcessedMeetings = [...processedMeetings, ...noRecProcessed];
+
     // Synthesize deal intelligence (skip if approaching timeout)
+    // Exclude no-recording meetings from intelligence synthesis
     let dealIntelligence: any = null;
     const allMeetings = [...existingMeetings, ...processedMeetings];
-    const meetingsWithIntel = allMeetings.filter((m: any) => m.intelligence);
+    const meetingsWithIntel = allMeetings.filter((m: any) => m.intelligence && !m.noRecording);
 
     if (meetingsWithIntel.length > 0 && !isApproachingTimeout()) {
       try {
