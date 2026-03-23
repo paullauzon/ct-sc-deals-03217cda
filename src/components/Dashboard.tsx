@@ -708,8 +708,6 @@ export function Dashboard() {
 
         </div>
       )}
-        </div>
-      )}
 
       {/* ═══════════════════ TEAM TAB ═══════════════════ */}
       {activeTab === "team" && (
