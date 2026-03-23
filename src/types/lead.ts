@@ -179,6 +179,7 @@ export interface Meeting {
   nextSteps: string;
   addedAt: string;
   sourceBrand?: Brand;
+  noRecording?: boolean;
   intelligence?: MeetingIntelligence;
 }
 

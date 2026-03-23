@@ -253,7 +253,12 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between border-b border-border pb-1">
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-          Meetings ({meetings.length})
+          Meetings ({meetings.filter(m => !m.noRecording).length})
+          {meetings.some(m => m.noRecording) && (
+            <span className="text-muted-foreground/50 ml-1 normal-case font-normal">
+              + {meetings.filter(m => m.noRecording).length} no recording
+            </span>
+          )}
         </h3>
         <div className="flex gap-1.5">
           {meetings.length > 0 && (
@@ -717,7 +722,7 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
-        <button className="w-full text-left border border-border rounded-lg p-3 hover:bg-secondary/20 transition-colors">
+        <button className={`w-full text-left border rounded-lg p-3 transition-colors ${meeting.noRecording ? "border-border/50 bg-muted/30 hover:bg-muted/50" : "border-border hover:bg-secondary/20"}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs shrink-0">{open ? "▾" : "▸"}</span>
@@ -726,9 +731,14 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
                   {meeting.sourceBrand === "Captarget" ? "CT" : "SC"}
                 </span>
               )}
-              <span className="text-sm font-medium truncate">{meeting.title}</span>
+              <span className={`text-sm font-medium truncate ${meeting.noRecording ? "text-muted-foreground" : ""}`}>{meeting.title}</span>
+              {meeting.noRecording && (
+                <Badge variant="outline" className="text-[9px] h-4 bg-muted text-muted-foreground border-border shrink-0">
+                  No Recording
+                </Badge>
+              )}
               {/* Quick signal badges in collapsed view */}
-              {!open && intel && (
+              {!open && intel && !meeting.noRecording && (
                 <div className="hidden sm:flex gap-1">
                   {intel.dealSignals?.buyingIntent && (
                     <Badge className={`text-[9px] h-4 ${intentColors[intel.dealSignals.buyingIntent] || ""}`}>
@@ -764,69 +774,76 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
               )}
             </div>
           </div>
-          {!open && meeting.summary && (
+          {!open && !meeting.noRecording && meeting.summary && (
             <p className="text-xs text-muted-foreground mt-1.5 line-clamp-3 pl-5">{intel?.summary || meeting.summary}</p>
+          )}
+          {!open && meeting.noRecording && (
+            <p className="text-xs text-muted-foreground/50 mt-1 pl-5 italic">Meeting scheduled but no recording captured</p>
           )}
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="border border-t-0 border-border rounded-b-lg p-3 space-y-3 -mt-1">
-          {/* Draft Follow-Up button */}
-          {(intel || meeting.summary) && (
-            <div className="flex justify-end">
-              <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={onDraftFollowUp} disabled={generatingFollowUp}>
-                <Mail className="h-3 w-3" />
-                {generatingFollowUp ? "Drafting..." : "Draft Follow-Up"}
-              </Button>
-            </div>
-          )}
-
-          {/* Re-process button for meetings with transcript but no intelligence */}
-          {!intel && meeting.transcript && meeting.transcript.length > 20 && onReprocess && (
-            <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
-              <span className="text-xs text-yellow-700">⚠️ AI analysis missing for this meeting.</span>
-              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 ml-auto" onClick={onReprocess} disabled={reprocessing}>
-                <Loader2 className={`h-3 w-3 ${reprocessing ? "animate-spin" : "hidden"}`} />
-                {reprocessing ? "Re-processing..." : "Re-process with AI"}
-              </Button>
-            </div>
-          )}
-
-          {intel ? (
-            <IntelligenceDisplay intel={intel} />
+        <div className={`border border-t-0 rounded-b-lg p-3 space-y-3 -mt-1 ${meeting.noRecording ? "border-border/50 bg-muted/20" : "border-border"}`}>
+          {meeting.noRecording ? (
+            <p className="text-xs text-muted-foreground italic py-2">
+              This meeting was found in Fireflies but has no recording or transcript. This could indicate a no-show, a forwarded email, or a recording failure.
+            </p>
           ) : (
             <>
-              {meeting.summary && (
-                <div>
-                  <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Summary</label>
-                  <div className="mt-1 text-sm leading-relaxed p-4 bg-secondary/30 rounded-md whitespace-pre-line min-h-[80px]">
-                    {meeting.summary}
-                  </div>
+              {(intel || meeting.summary) && (
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={onDraftFollowUp} disabled={generatingFollowUp}>
+                    <Mail className="h-3 w-3" />
+                    {generatingFollowUp ? "Drafting..." : "Draft Follow-Up"}
+                  </Button>
                 </div>
               )}
-              {meeting.nextSteps && (
-                <div>
-                  <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Next Steps</label>
-                  <div className="mt-1 text-sm leading-relaxed p-3 bg-secondary/30 rounded-md whitespace-pre-line">
-                    {meeting.nextSteps}
-                  </div>
+              {!intel && meeting.transcript && meeting.transcript.length > 20 && onReprocess && (
+                <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+                  <span className="text-xs text-yellow-700">⚠️ AI analysis missing for this meeting.</span>
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1 ml-auto" onClick={onReprocess} disabled={reprocessing}>
+                    <Loader2 className={`h-3 w-3 ${reprocessing ? "animate-spin" : "hidden"}`} />
+                    {reprocessing ? "Re-processing..." : "Re-process with AI"}
+                  </Button>
                 </div>
+              )}
+              {intel ? (
+                <IntelligenceDisplay intel={intel} />
+              ) : (
+                <>
+                  {meeting.summary && (
+                    <div>
+                      <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Summary</label>
+                      <div className="mt-1 text-sm leading-relaxed p-4 bg-secondary/30 rounded-md whitespace-pre-line min-h-[80px]">
+                        {meeting.summary}
+                      </div>
+                    </div>
+                  )}
+                  {meeting.nextSteps && (
+                    <div>
+                      <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Next Steps</label>
+                      <div className="mt-1 text-sm leading-relaxed p-3 bg-secondary/30 rounded-md whitespace-pre-line">
+                        {meeting.nextSteps}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              {meeting.transcript && (
+                <Collapsible>
+                  <CollapsibleTrigger asChild>
+                    <button className="text-xs text-primary hover:underline">Show full transcript</button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <ScrollArea className="max-h-60 mt-2">
+                      <pre className="text-xs leading-relaxed p-3 bg-secondary/20 rounded-md whitespace-pre-wrap font-sans">
+                        {meeting.transcript}
+                      </pre>
+                    </ScrollArea>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
             </>
-          )}
-          {meeting.transcript && (
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <button className="text-xs text-primary hover:underline">Show full transcript</button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <ScrollArea className="max-h-60 mt-2">
-                  <pre className="text-xs leading-relaxed p-3 bg-secondary/20 rounded-md whitespace-pre-wrap font-sans">
-                    {meeting.transcript}
-                  </pre>
-                </ScrollArea>
-              </CollapsibleContent>
-            </Collapsible>
           )}
         </div>
       </CollapsibleContent>

@@ -154,12 +154,19 @@ serve(async (req) => {
       newMeetings = foundMeetings.filter((m: any) => !existingIds.has(m.firefliesId));
     }
 
-    // Filter out meetings with no real transcript content (forwarded emails, bot entries)
-    const preFilterCount = newMeetings.length;
-    newMeetings = newMeetings.filter((m: any) => (m.transcript || "").length >= 50);
-    if (preFilterCount > newMeetings.length) {
-      console.log(`Filtered out ${preFilterCount - newMeetings.length} meetings with no transcript content`);
+    // Split meetings into real (with transcript) and no-recording (empty transcript)
+    const realMeetings: any[] = [];
+    const noRecordingMeetings: any[] = [];
+    for (const m of newMeetings) {
+      if ((m.transcript || "").length >= 50) {
+        realMeetings.push(m);
+      } else {
+        noRecordingMeetings.push({ ...m, noRecording: true, transcript: "", summary: "No recording available" });
+        console.log(`Tagging meeting "${m.title}" as no-recording (transcript length: ${(m.transcript || "").length})`);
+      }
     }
+    // Only process real meetings through AI; no-recording ones are stored as-is
+    newMeetings = realMeetings;
 
     // Cap at 20 meetings to prevent edge function timeouts
     const MAX_MEETINGS = 20;
@@ -170,7 +177,7 @@ serve(async (req) => {
       newMeetings = newMeetings.slice(0, MAX_MEETINGS);
     }
 
-    if (newMeetings.length === 0) {
+    if (newMeetings.length === 0 && noRecordingMeetings.length === 0) {
       await supabase.from("processing_jobs").update({
         status: "completed",
         new_meetings: [],
@@ -183,6 +190,38 @@ serve(async (req) => {
 
       return new Response(
         JSON.stringify({ success: true, newMeetings: 0 }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // If only no-recording meetings exist and no real ones, store them and finish
+    if (newMeetings.length === 0) {
+      const noRecProcessed = noRecordingMeetings.map((m: any) => ({
+        id: generateMeetingId(),
+        date: m.date || new Date().toISOString().split("T")[0],
+        title: m.title || "Untitled Meeting",
+        firefliesId: m.firefliesId,
+        firefliesUrl: m.transcriptUrl || "",
+        transcript: "",
+        summary: "No recording available",
+        nextSteps: "",
+        addedAt: new Date().toISOString(),
+        sourceBrand: m.sourceBrand,
+        noRecording: true,
+      }));
+
+      await supabase.from("processing_jobs").update({
+        status: "completed",
+        new_meetings: noRecProcessed,
+        pending_suggestions: [],
+        applied_updates: {},
+        applied_fields: [],
+        progress_message: `Found ${noRecProcessed.length} meeting(s) with no recording`,
+        updated_at: new Date().toISOString(),
+      }).eq("id", jobId);
+
+      return new Response(
+        JSON.stringify({ success: true, newMeetings: noRecProcessed.length }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -308,10 +347,27 @@ serve(async (req) => {
       return true;
     });
 
+    // Add no-recording meetings to processed list (stored but not AI-analyzed)
+    const noRecProcessed = noRecordingMeetings.map((m: any) => ({
+      id: generateMeetingId(),
+      date: m.date || new Date().toISOString().split("T")[0],
+      title: m.title || "Untitled Meeting",
+      firefliesId: m.firefliesId,
+      firefliesUrl: m.transcriptUrl || "",
+      transcript: "",
+      summary: "No recording available",
+      nextSteps: "",
+      addedAt: new Date().toISOString(),
+      sourceBrand: m.sourceBrand,
+      noRecording: true,
+    }));
+    const allProcessedMeetings = [...processedMeetings, ...noRecProcessed];
+
     // Synthesize deal intelligence (skip if approaching timeout)
+    // Exclude no-recording meetings from intelligence synthesis
     let dealIntelligence: any = null;
     const allMeetings = [...existingMeetings, ...processedMeetings];
-    const meetingsWithIntel = allMeetings.filter((m: any) => m.intelligence);
+    const meetingsWithIntel = allMeetings.filter((m: any) => m.intelligence && !m.noRecording);
 
     if (meetingsWithIntel.length > 0 && !isApproachingTimeout()) {
       try {
@@ -365,17 +421,17 @@ serve(async (req) => {
     // Write results to DB
     await supabase.from("processing_jobs").update({
       status: "completed",
-      new_meetings: processedMeetings,
+      new_meetings: allProcessedMeetings,
       applied_updates: appliedUpdates,
       applied_fields: appliedFields,
       pending_suggestions: uniquePending,
       deal_intelligence: dealIntelligence,
-      progress_message: `Found ${processedMeetings.length} new meeting(s)`,
+      progress_message: `Found ${processedMeetings.length} meeting(s)${noRecProcessed.length > 0 ? ` + ${noRecProcessed.length} with no recording` : ""}`,
       updated_at: new Date().toISOString(),
     }).eq("id", jobId);
 
     return new Response(
-      JSON.stringify({ success: true, newMeetings: processedMeetings.length }),
+      JSON.stringify({ success: true, newMeetings: allProcessedMeetings.length }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e: any) {
