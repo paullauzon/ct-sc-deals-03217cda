@@ -64,6 +64,7 @@ export function leadToRow(lead: Lead): Record<string, any> {
     tier: lead.tier,
     tier_override: lead.tierOverride,
     enrichment_status: lead.enrichmentStatus,
+    created_at: lead.createdAt,
   };
 }
 
