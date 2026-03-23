@@ -1,36 +1,32 @@
 
 
-# Move Intel Into Dashboard as Sub-Tab
+# Persist Navigation State Across Refreshes
 
-## What Changes
+## Problem
+Both the top-level view (`dashboard`/`pipeline`/`leads`/`today`) and the Dashboard sub-tab (`overview`/`pipeline`/`team`/`buyers`/`intel`) reset to defaults on page refresh.
 
-### 1. Dashboard gets a new "Intel" sub-tab after "Buyers"
+## Approach
+Use URL hash parameters to persist state. On tab change, update the hash; on mount, read from it. This is better than `localStorage` because it also makes views shareable/bookmarkable.
 
-In `src/components/Dashboard.tsx`:
-- Add `"intel"` to the `DashboardTab` type: `"overview" | "pipeline" | "team" | "buyers" | "intel"`
-- Add entry to `TABS` array: `{ key: "intel", label: "Intel", desc: "Signal Center" }`
-- Import `IntelligenceCenter` component
-- Add rendering block: when `activeTab === "intel"`, render `<IntelligenceCenter />`
+Format: `#view=pipeline` or `#view=dashboard&tab=intel`
 
-### 2. Remove Intel as standalone top-level tab
-
-In `src/pages/Index.tsx`:
-- Remove `"intel"` from `View` type (back to 4 tabs: `"dashboard" | "pipeline" | "leads" | "today"`)
-- Remove the Intel entry from `NAV_ITEMS`
-- Remove `{view === "intel" && <IntelligenceCenter />}` render line
-- Remove `Brain` icon import (no longer needed here)
-
-### 3. Update Command Palette
-
-In `src/components/CommandPalette.tsx`:
-- Remove the standalone "Intel — Signal Center" navigation item
-- The Intel content is now accessible via Dashboard sub-tabs, so no separate top-level nav entry needed
-
-### Files Changed
+## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/components/Dashboard.tsx` | Add "intel" sub-tab after "buyers", import and render `IntelligenceCenter` |
-| `src/pages/Index.tsx` | Remove "intel" from top-level nav, revert to 4 tabs |
-| `src/components/CommandPalette.tsx` | Remove Intel navigation item |
+| `src/pages/Index.tsx` | Initialize `view` from `window.location.hash`, update hash on `setView` |
+| `src/components/Dashboard.tsx` | Initialize `activeTab` from hash param `tab`, update hash on `setActiveTab` |
+
+### Implementation Detail
+
+**Index.tsx:**
+- Parse `#view=X` on mount to set initial `view` state
+- Wrap `setView` to also write `window.location.hash`
+- Listen for `hashchange` event for back/forward browser nav
+
+**Dashboard.tsx:**
+- Parse `&tab=X` from hash on mount to set initial `activeTab`
+- Wrap `setActiveTab` to update the hash (preserving `view=dashboard`)
+
+This keeps both levels of navigation persistent with zero external dependencies.
 
