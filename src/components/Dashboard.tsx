@@ -5,6 +5,7 @@ import { computeDaysInStage } from "@/lib/leadUtils";
 import { LeadDetail } from "@/components/LeadsTable";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics";
+import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
 import { PipelineSnapshots } from "@/components/PipelineSnapshots";
 import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -481,6 +482,9 @@ export function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Buyer Persona Intelligence */}
+      <DashboardPersonaMetrics leads={leads} onSelectLead={setSelectedLeadId} />
 
       {/* Advanced Metrics: Sales Velocity, Weighted Pipeline, Win/Loss, Rep Scorecard, Source ROI */}
       <DashboardAdvancedMetrics leads={leads} onSelectLead={setSelectedLeadId} />
