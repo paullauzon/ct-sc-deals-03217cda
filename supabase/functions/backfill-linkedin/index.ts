@@ -297,8 +297,29 @@ async function aiSearchAgent(
     }
   }
 
+  // Strategy C: Scrape company website for LinkedIn links
+  const companyWebsite = lead.companyUrl || lead.websiteUrl;
+  if (companyWebsite && !companyWebsite.includes("linkedin.com")) {
+    console.log(`  Pre-search: Scraping company website "${companyWebsite}" for LinkedIn links`);
+    const websiteContent = await firecrawlScrape(companyWebsite, firecrawlKey);
+    if (websiteContent) {
+      const websiteLinkedIns = websiteContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/g) || [];
+      const uniqueWebsiteLinks = [...new Set(websiteLinkedIns)];
+      if (uniqueWebsiteLinks.length > 0) {
+        // Check if any contain the person's first name
+        const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
+        const matchingLinks = uniqueWebsiteLinks.filter(l => {
+          const slug = l.split("/in/")[1]?.toLowerCase() || "";
+          return slug.includes(nameFirst) || slug.includes(nameFirst.substring(0, 3));
+        });
+        const linksToReport = matchingLinks.length > 0 ? matchingLinks : uniqueWebsiteLinks;
+        preSearchResults.push(`IMPORTANT — LinkedIn URLs found on company website (${companyWebsite}):\n${linksToReport.join("\n")}\nThese are HIGH-PRIORITY candidates. Try to verify these FIRST by searching for the slug.`);
+      }
+    }
+  }
+
   const preSearchContext = preSearchResults.length > 0
-    ? `\n\nPRE-SEARCH RESULTS (from automated priority strategies):\n${preSearchResults.join("\n\n")}\n\nAnalyze these results first. If any profile matches ${lead.name}, verify and report it as found.`
+    ? `\n\nPRE-SEARCH RESULTS (from automated priority strategies):\n${preSearchResults.join("\n\n")}\n\nIMPORTANT: Analyze these results first. If any LinkedIn URL was found on the company website, try to verify it by searching for the slug (e.g. search for "slug_name" site:linkedin.com). If a profile matches ${lead.name}, report it as found. Do NOT skip these just because the slug looks unusual.`
     : "";
 
   const messages: Array<{ role: string; content: string }> = [
