@@ -8,7 +8,8 @@ import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics"
 import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
 import { DashboardTrends } from "@/components/DashboardTrends";
 import { DashboardLossIntelligence } from "@/components/DashboardLossIntelligence";
-import { PipelineSnapshots } from "@/components/PipelineSnapshots";
+import { DashboardSignalIntelligence } from "@/components/DashboardSignalIntelligence";
+import { DashboardCompetitiveRadar } from "@/components/DashboardCompetitiveRadar";
 import { DashboardFilterBar, DEFAULT_FILTERS, useDashboardFilters, type DashboardFilters } from "@/components/DashboardFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { toPng } from "html-to-image";
