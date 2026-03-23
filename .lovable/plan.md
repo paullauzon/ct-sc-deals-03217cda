@@ -1,36 +1,21 @@
 
 
-# Fix JSON Parse Failures in ingest-lead + Recover Prit Lavani
+# Add Submission Timestamps to Leads Table
 
-## Root Cause
-Zapier sends form field values containing literal newline characters (`\n`, `\r`) inside JSON string values. This is invalid JSON — newlines inside strings must be escaped as `\\n`. Our `ingest-lead` function does a raw `JSON.parse()` which fails on these payloads. This is **our bug**, not Zapier's.
+## Problem
+The Date column shows only `dateSubmitted` (a plain date string like "2026-03-20") with no time component. The database has a `created_at` timestamp with full precision but it's not exposed to the frontend.
 
 ## Changes
 
-### 1. Fix `ingest-lead` to handle multi-line payloads
+### 1. Add `createdAt` to the Lead type and mapping
+- **`src/types/lead.ts`**: Add `createdAt: string` to `Lead` interface
+- **`src/lib/leadDbMapping.ts`**: Map `created_at` ↔ `createdAt` in `rowToLead`, `leadToRow`, and `leadUpdatesToRow`
 
-In `supabase/functions/ingest-lead/index.ts`, before `JSON.parse(rawText)`:
-- Sanitize the raw text by escaping literal newlines/carriage returns that appear inside JSON string values
-- Use a regex to replace unescaped `\n` and `\r` within strings with `\\n` and `\\r`
-- This makes the JSON valid before parsing, handling any multi-line form field from Zapier
+### 2. Update the Date column display
+- **`src/components/LeadsTable.tsx`**: 
+  - Change the Date column to show `createdAt` formatted as "Mar 23, 2:15 PM" (date + time)
+  - Update the sort for `dateSubmitted` key to use `createdAt` for proper chronological ordering
+  - Default sort remains `dateSubmitted` / `desc` (newest first) — which already works
 
-### 2. Manually ingest Prit Lavani
-
-Using the data visible in the error log:
-- **name**: Prit Lavani
-- **email**: plavani19@gmail.com
-- **brand**: Captarget
-- **source**: CT Free Targets Form
-- **role**: Independent Sponsor / Search Fund
-- **companyUrl**: www.p
-- **targetCriteria**: Manufacturing business criteria (NJ, NY, PA, FL, $4M-$8M revenue, $500K+ EBITDA, Food/Defense/Medical/Electronics/Packaging)
-
-Insert via database migration, then trigger scoring and LinkedIn enrichment.
-
-## Files Changed
-
-| File | Change |
-|------|--------|
-| `supabase/functions/ingest-lead/index.ts` | Sanitize raw body to escape literal newlines before `JSON.parse()` |
-| Database migration | `INSERT` Prit Lavani lead record |
+This gives you exact day and time each lead came in, sorted newest-first by default.
 
