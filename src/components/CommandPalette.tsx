@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandSeparator } from "@/components/ui/command";
-import { BarChart3, Kanban, List, CalendarDays, User } from "lucide-react";
+import { BarChart3, Kanban, List, CalendarDays, User, Brain } from "lucide-react";
 
 interface Props {
   onNavigate: (view: string) => void;
