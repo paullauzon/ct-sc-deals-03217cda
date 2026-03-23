@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandSeparator } from "@/components/ui/command";
-import { BarChart3, Kanban, List, CalendarDays, User } from "lucide-react";
+import { BarChart3, Kanban, List, CalendarDays, User, Brain } from "lucide-react";
 
 interface Props {
   onNavigate: (view: string) => void;
@@ -64,6 +64,10 @@ export function CommandPalette({ onNavigate, onSelectLead, externalOpen, onExter
           <CommandItem onSelect={() => handleNav("pipeline")}>
             <Kanban className="mr-2 h-4 w-4" />
             Pipeline — Deal Flow
+          </CommandItem>
+          <CommandItem onSelect={() => handleNav("intel")}>
+            <Brain className="mr-2 h-4 w-4" />
+            Intel — Signal Center
           </CommandItem>
           <CommandItem onSelect={() => handleNav("leads")}>
             <List className="mr-2 h-4 w-4" />

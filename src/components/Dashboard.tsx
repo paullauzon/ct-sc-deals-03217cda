@@ -7,9 +7,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics";
 import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
 import { DashboardTrends } from "@/components/DashboardTrends";
-import { DashboardLossIntelligence } from "@/components/DashboardLossIntelligence";
-import { DashboardSignalIntelligence } from "@/components/DashboardSignalIntelligence";
-import { DashboardCompetitiveRadar } from "@/components/DashboardCompetitiveRadar";
+
 import { PipelineSnapshots } from "@/components/PipelineSnapshots";
 import { DashboardFilterBar, DEFAULT_FILTERS, useDashboardFilters, type DashboardFilters } from "@/components/DashboardFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -603,8 +601,6 @@ export function Dashboard() {
           {/* Row 5: Trend Analytics */}
           <DashboardTrends leads={filteredLeads} />
 
-          {/* Row 6: Intelligence Briefing */}
-          <DashboardSignalIntelligence leads={filteredLeads} onDrillDown={handleDrillDown} />
         </div>
       )}
 
@@ -708,11 +704,6 @@ export function Dashboard() {
             )}
           </div>
 
-          {/* Loss & Competitive Intelligence */}
-          <DashboardLossIntelligence leads={filteredLeads} onDrillDown={handleDrillDown} />
-
-          {/* Competitive & Engagement Intelligence */}
-          <DashboardCompetitiveRadar leads={filteredLeads} onDrillDown={handleDrillDown} onSelectLead={setSelectedLeadId} />
         </div>
       )}
 
