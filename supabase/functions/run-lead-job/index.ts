@@ -160,7 +160,6 @@ serve(async (req) => {
     if (preFilterCount > newMeetings.length) {
       console.log(`Filtered out ${preFilterCount - newMeetings.length} meetings with no transcript content`);
     }
-    }
 
     // Cap at 20 meetings to prevent edge function timeouts
     const MAX_MEETINGS = 20;
