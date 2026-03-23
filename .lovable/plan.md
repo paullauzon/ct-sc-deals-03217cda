@@ -1,123 +1,59 @@
 
 
-# Enhanced Loss & Competitive Intelligence
+# Verification & Navigation Improvements
 
-## The Insight
+## Verification: Loss Intelligence Rewrite — COMPLETE
 
-The current Loss Intelligence section relies on shallow CRM fields (`closeReason`, `lostReason`) which are often just "Budget" or "No Response" — a salesperson's best guess in 2 seconds. But we have **deep intelligence** sitting unused on these same leads:
+All 6 blocks from the plan are implemented in `DashboardLossIntelligence.tsx` (553 lines):
+- Block 1: Synthesized Loss Reasons with priority hierarchy
+- Block 2: Deal Autopsy Cards (top 5 by value, rep vs synthesized reason)
+- Block 3: Engagement Decay Signals (time buckets + sentiment/engagement/momentum columns + summary stats)
+- Block 4: Risk Factor Frequency Map (top 12, mitigation %, fatal %)
+- Block 5: Dropped Ball Tracker (by action item + by owner)
+- Block 6: Enhanced Re-engagement Opportunities (with synthesized reason + re-engage angle)
 
-- **Meeting Intelligence**: `painPoints`, `dealSignals` (buying intent, sentiment, objections, risk factors, competitors), `engagementLevel`, `talkRatio`, `questionQuality`
-- **Deal Intelligence**: `dealNarrative`, `stakeholderMap` (with stances like Blocker/Skeptic), `riskRegister`, `momentumSignals`, `psychologicalProfile`, `powerDynamics`, `winStrategy`
-- **Enrichment**: `companyDescription`, `buyerMotivation`, `urgency`, `competitiveLandscape`
-- **Action Items**: dropped/overdue items that were never completed
+Integration in `Dashboard.tsx` line 707 renders it in the Pipeline tab. No errors in console. No fixes needed.
 
-The plan: synthesize ALL of this into a **true loss autopsy** that surfaces what actually killed deals, not what the rep typed.
+---
 
-## What Changes
+## Navigation Restructure
 
-Replace the current 4-block layout with a **6-block intelligence-driven layout**:
+Current state: 4 top-level tabs — **Today, Dashboard, Leads, Pipeline** — with "Today" as default. Issues:
 
-```text
-┌─────────────────────────┬──────────────────────────┐
-│ 1. Synthesized Loss     │ 2. Deal Autopsy Cards    │
-│    Reasons (AI-derived) │    (per-lead deep view)  │
-├─────────────────────────┼──────────────────────────┤
-│ 3. Engagement Decay     │ 4. Risk Factor           │
-│    Signals              │    Frequency Map         │
-├─────────────────────────┼──────────────────────────┤
-│ 5. Dropped Ball         │ 6. Re-engagement         │
-│    Tracker              │    Opportunities         │
-└─────────────────────────┴──────────────────────────┘
-```
+1. **"Today" as default is wrong** — a returning user wants the big picture first, not a task queue. "Dashboard" should be the landing view.
+2. **Tab labels are generic** — "Today" and "Dashboard" don't clearly communicate their purpose. A sales veteran opens the app and needs to immediately know where to go.
+3. **Tab order doesn't follow workflow** — the natural sales workflow is: see the big picture → drill into pipeline → review leads → act on today's tasks. Current order is reversed.
+4. **No visual hierarchy** — all tabs look identical. The active tab has an underline but there's no iconography or subtle cues to orient the user.
 
-### Block 1: Synthesized Loss Reasons (replaces current Loss Patterns)
+### Changes
 
-Instead of just counting `closeReason` values, synthesize a "true reason" for each lost deal by mining:
-- `closeReason` / `lostReason` (rep's stated reason — baseline)
-- `dealIntelligence.riskRegister` — unmitigated Critical/High risks
-- `dealIntelligence.objectionTracker` — recurring/open objections at time of loss
-- `dealIntelligence.momentumSignals.momentum` — was it "Stalling"/"Stalled"?
-- `dealIntelligence.stakeholderMap` — any Blockers with unaddressed concerns?
-- `dealIntelligence.psychologicalProfile.fearFactor` — psychological barriers
-- Meeting intelligence `dealSignals.sentiment` trajectory — did sentiment decline?
-- `dealSignals.competitors` — were competitors mentioned?
+**Reorder and relabel** the 4 tabs for clarity and workflow alignment:
 
-For each lost lead, derive a **composite loss category** from a priority hierarchy:
-1. Competitor displacement (competitors mentioned + lost)
-2. Blocker/champion issues (blocker in stakeholder map, champion left)
-3. Stalled momentum (momentum signals show Stalling/Stalled + no meeting activity)
-4. Unresolved objections (recurring objections never addressed)
-5. Risk materialization (critical risks that were unmitigated)
-6. Engagement decay (sentiment went negative, engagement dropped)
-7. Rep-stated reason (fallback to `closeReason`)
+| Current | New Label | New Position | Rationale |
+|---------|-----------|-------------|-----------|
+| Dashboard | **Dashboard** | 1st (default) | Executive overview is the home base |
+| Pipeline | **Pipeline** | 2nd | Operational drill-down from dashboard |
+| Leads | **Leads** | 3rd | Individual lead management |
+| Today | **Today** | 4th | Daily action queue — tactical, not strategic |
 
-Display as the same bar chart but with these richer categories. Each bar is clickable for drill-down.
+**Default view**: Change `useState<View>("today")` → `useState<View>("dashboard")`
 
-### Block 2: Deal Autopsy Cards (NEW — replaces nothing, adds depth)
+**Add tab icons**: Small Lucide icons next to each label for instant recognition:
+- Dashboard → `BarChart3`
+- Pipeline → `Kanban`  
+- Leads → `Users`
+- Today → `CalendarCheck`
 
-For lost deals that HAVE meeting intelligence or deal intelligence, show a compact "autopsy card" — the top 3-5 lost deals by value, each showing:
-- Lead name, company, deal value, days in pipeline
-- **Rep's reason** vs **Synthesized reason** (side by side — highlights discrepancy)
-- Last known sentiment + engagement level
-- Key unresolved objection or risk
-- Blocker name if one existed
+**Add subtle tab descriptions**: On wider screens, show a micro-description under each tab label (e.g., "Executive Summary" under Dashboard) — same pattern used inside the Dashboard component's inner tabs.
 
-Clickable to open the lead. This is the "FBI case file" view — what actually happened.
+**Unseen badge stays on Leads** — no change needed, already works.
 
-### Block 3: Engagement Decay Signals (replaces Time-to-Dark)
+**Command palette navigation labels**: Update to match new order/labels.
 
-Upgrade from simple "days to dark" buckets to a richer view:
-- Keep the time buckets but add columns for: **last sentiment**, **last engagement level**, **momentum at loss**
-- Add a summary row: "X% of dark leads showed declining engagement before going dark" (from `engagementTrajectory`)
-- Add: "Average meetings before going dark: X" and "% that had a Stalled momentum signal"
+### Files Changed
 
-This answers: "Could we have seen it coming?"
-
-### Block 4: Risk Factor Frequency Map (replaces Objection Frequency)
-
-Broaden from just objections to ALL risk signals across lost deals:
-- Aggregate `riskRegister` entries from deal intelligence (risk text, severity, mitigation status)
-- Aggregate `dealSignals.riskFactors` from meeting intelligence
-- Aggregate `dealSignals.objections` from meeting intelligence
-- Combine with `objectionTracker` 
-
-Show top 12 risk/objection themes with:
-- Frequency count
-- % that were mitigated vs unmitigated
-- Correlation: when mitigated, what % still lost? (shows which risks are fatal vs manageable)
-
-### Block 5: Dropped Ball Tracker (NEW)
-
-Aggregate `actionItemTracker` from deal intelligence across ALL lost deals. Filter for items with status "Dropped" or "Overdue". Group by owner. Shows:
-- Which action items were never completed before the deal died
-- Who dropped the ball most often
-- Pattern: "Follow-up proposal" dropped 4 times across lost deals = systematic failure
-
-This is the accountability view — surfaces process failures, not just prospect issues.
-
-### Block 6: Re-engagement Opportunities (KEPT, enhanced)
-
-Keep current logic but add:
-- Show the synthesized loss reason next to each candidate
-- Add a "re-engage angle" — if the original issue was timing/budget, and it's been 60+ days, flag as "Timing may have shifted"
-- Sort by a composite score: ICP fit weight + deal value + recency
-
-## Implementation
-
-### Modified: `src/components/DashboardLossIntelligence.tsx`
-
-Complete rewrite of the component internals. Same props interface (`leads`, `onDrillDown`). Six blocks in a 2x3 grid.
-
-New helper functions:
-- `synthesizeLossReason(lead)` — examines all intelligence sources, returns a composite category
-- `buildAutopsyCard(lead)` — extracts key signals for the autopsy view
-- `aggregateRiskSignals(leads)` — combines risk register + objection tracker + meeting deal signals
-
-### No other files changed
-
-Dashboard.tsx already renders `<DashboardLossIntelligence>` in the Pipeline tab. No integration changes needed.
-
-## Technical Details
-
-All computation is client-side in `useMemo` hooks — no new API calls, no new edge functions. We're mining data that already exists on each lead's `meetings[].intelligence`, `dealIntelligence`, and `enrichment` objects. The synthesized loss reason is deterministic (priority hierarchy, not AI inference), so it's fast and predictable.
+| File | Change |
+|------|--------|
+| `src/pages/Index.tsx` | Reorder tabs, default to "dashboard", add icons + micro-descriptions |
+| `src/components/CommandPalette.tsx` | Update navigation order to match |
 
