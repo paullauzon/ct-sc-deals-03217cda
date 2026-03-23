@@ -476,14 +476,6 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
               <p className="text-[10px] text-muted-foreground mt-1">{data.noRevData} leads without target revenue data</p>
             )}
           </div>
-          <div className="mt-2 pt-2 border-t border-border">
-            <div className="grid grid-cols-4 gap-1 text-[10px] text-muted-foreground uppercase tracking-wider text-right">
-              <span className="text-left">Header</span>
-              <span>Count</span>
-              <span>Win %</span>
-              <span>Revenue</span>
-            </div>
-          </div>
         </div>
 
         {/* Block 7: Deal Size Segmentation */}

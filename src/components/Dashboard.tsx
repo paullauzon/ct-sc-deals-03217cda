@@ -6,6 +6,8 @@ import { LeadDetail } from "@/components/LeadsTable";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics";
 import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
+import { DashboardTrends } from "@/components/DashboardTrends";
+import { DashboardLossIntelligence } from "@/components/DashboardLossIntelligence";
 import { PipelineSnapshots } from "@/components/PipelineSnapshots";
 import { DashboardFilterBar, DEFAULT_FILTERS, useDashboardFilters, type DashboardFilters } from "@/components/DashboardFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -595,6 +597,9 @@ export function Dashboard() {
               <p className="text-[10px] text-muted-foreground mt-2 text-center">Weakest: {analytics.weakestLink.from} → {analytics.weakestLink.to} ({analytics.weakestLink.rate}%)</p>
             )}
           </div>
+
+          {/* Row 5: Trend Analytics */}
+          <DashboardTrends leads={filteredLeads} />
         </div>
       )}
 
@@ -697,6 +702,9 @@ export function Dashboard() {
               </div>
             )}
           </div>
+
+          {/* Loss & Competitive Intelligence */}
+          <DashboardLossIntelligence leads={filteredLeads} onDrillDown={handleDrillDown} />
         </div>
       )}
 
