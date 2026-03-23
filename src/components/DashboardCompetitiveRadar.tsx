@@ -31,21 +31,45 @@ export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: 
 
   // ─── Block 1: Competitor Mentions ───
   const competitorData = useMemo(() => {
-    const compMap = new Map<string, { active: Lead[]; lost: Lead[]; won: Lead[] }>();
+    const compMap = new Map<string, { active: Lead[]; lost: Lead[]; won: Lead[]; topStrength: string; topWeakness: string }>();
 
     for (const l of leads) {
+      // Collect structured details if available
+      const detailsMap = new Map<string, { strengths: string[]; weaknesses: string[] }>();
+      for (const m of l.meetings || []) {
+        for (const cd of m.intelligence?.dealSignals?.competitorDetails || []) {
+          const name = cd.name.trim();
+          if (!detailsMap.has(name)) detailsMap.set(name, { strengths: [], weaknesses: [] });
+          const d = detailsMap.get(name)!;
+          d.strengths.push(...cd.strengthsMentioned);
+          d.weaknesses.push(...cd.weaknessesMentioned);
+        }
+      }
+
+      // Also collect from flat competitors array for backward compat
       const competitors = new Set<string>();
       for (const m of l.meetings || []) {
         for (const c of m.intelligence?.dealSignals?.competitors || []) {
           competitors.add(c.trim());
         }
+        for (const cd of m.intelligence?.dealSignals?.competitorDetails || []) {
+          competitors.add(cd.name.trim());
+        }
       }
+
       for (const c of competitors) {
-        if (!compMap.has(c)) compMap.set(c, { active: [], lost: [], won: [] });
+        if (!compMap.has(c)) compMap.set(c, { active: [], lost: [], won: [], topStrength: "", topWeakness: "" });
         const entry = compMap.get(c)!;
         if (l.stage === "Closed Won") entry.won.push(l);
         else if (l.stage === "Closed Lost") entry.lost.push(l);
         else if (!CLOSED_STAGES.has(l.stage)) entry.active.push(l);
+
+        // Aggregate top strength/weakness from details
+        const details = detailsMap.get(c);
+        if (details) {
+          if (details.strengths.length > 0 && !entry.topStrength) entry.topStrength = details.strengths[0];
+          if (details.weaknesses.length > 0 && !entry.topWeakness) entry.topWeakness = details.weaknesses[0];
+        }
       }
     }
 
@@ -58,6 +82,8 @@ export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: 
         total: data.active.length + data.lost.length + data.won.length,
         winRate: (data.won.length + data.lost.length) > 0 ? Math.round((data.won.length / (data.won.length + data.lost.length)) * 100) : null,
         leads: [...data.active, ...data.lost, ...data.won],
+        topStrength: data.topStrength,
+        topWeakness: data.topWeakness,
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
