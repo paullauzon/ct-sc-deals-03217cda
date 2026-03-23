@@ -989,6 +989,11 @@ export function Dashboard() {
         </div>
       )}
 
+      {/* ═══════════════════ INTEL TAB ═══════════════════ */}
+      {activeTab === "intel" && (
+        <IntelligenceCenter />
+      )}
+
       {/* Drill-Down Sheet */}
       <Sheet open={!!drillDown} onOpenChange={(open) => !open && setDrillDown(null)}>
         <SheetContent className="overflow-y-auto">
