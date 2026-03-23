@@ -1,100 +1,86 @@
 
 
-# Phase 1: Dashboard Restructure — Tab-Based Information Architecture
+# Phase 2: Cross-Tab Filters, Metric Click-Through & Export
 
-## The Problem
+## What This Phase Delivers
 
-The current dashboard is a **vertical scroll of 20+ metric blocks** with no narrative hierarchy. Metrics repeat across sections (win rate appears 3 times, source data in 4 places, owner workload duplicated). Critical insights are buried in collapsibles. A C-suite exec scanning for 30 seconds sees the same wall as a sales ops person doing deep analysis.
+Three capabilities that transform the dashboard from "read-only report" to "interactive command center":
 
-## The Solution: Tabbed Dashboard with Audience-Driven Sections
+1. **Cross-tab filter bar** — filter by date range, brand, owner, and priority; filters persist across all 4 tabs
+2. **Metric click-through** — click any number in any dashboard block to jump to a filtered lead list
+3. **Overview tab export** — copy the Overview tab as an image for board decks
 
-Replace the single scrolling page with **4 tabs**, each answering a different strategic question:
+---
+
+## 1. Cross-Tab Filter Bar
+
+A compact filter row rendered between the tab navigation and tab content. Applies to all tabs simultaneously.
 
 ```text
-┌────────────────────────────────────────────────────────┐
-│ Dashboard    148 leads · Pipeline health & intelligence │
-│                                                        │
-│ ┌──────────┬──────────┬──────────┬───────────┐         │
-│ │ OVERVIEW │ PIPELINE │  TEAM    │  BUYERS   │         │
-│ └──────────┴──────────┴──────────┴───────────┘         │
-│                                                        │
-│  (tab content below)                                   │
-└────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│ OVERVIEW  PIPELINE  TEAM  BUYERS                         │
+├──────────────────────────────────────────────────────────┤
+│ 📅 Last 90d ▾  │ Brand: All ▾  │ Owner: All ▾  │ Clear  │
+├──────────────────────────────────────────────────────────┤
+│ (tab content, now filtered)                              │
+└──────────────────────────────────────────────────────────┘
 ```
 
-### Tab 1: OVERVIEW (C-Suite / Default View)
-**Question: "How's the business doing?"**
+**Filters:**
+- **Date range**: Last 30d / 60d / 90d / All Time (filters by `dateSubmitted`)
+- **Brand**: Captarget / SourceCo / Both
+- **Owner**: Malik / Valeria / Tomos / Unassigned / All
+- **Priority**: High / Medium / Low / All
 
-Everything a CEO needs in one screen, no scrolling:
+Filters are stored in component state (not localStorage — dashboard filters are session-scoped, unlike pipeline filters which persist). A "Showing X of Y leads" indicator sits below the filter bar.
 
-- **Row 1 — 4 Hero KPIs**: Total Leads, Pipeline Value (weighted), MRR/ARR, Win Rate
-- **Row 2 — 4 Trend Indicators**: This Week volume, MoM Growth, Sales Velocity $/day, Coverage Ratio
-- **Row 3 — 3 blocks side by side**:
-  - Pipeline Trend sparkline (from snapshots)
-  - Forecast vs Target (commit/best case/gap bar)
-  - Deal Health summary (critical/warning/healthy + at-risk revenue)
-- **Row 4 — Stage Conversion Funnel** (compact horizontal bars with weakest-link highlight)
+### Implementation
+- **`src/components/DashboardFilters.tsx`** (new) — renders the filter bar, exposes `filteredLeads` via a callback
+- **`src/components/Dashboard.tsx`** — wrap all tab content to use `filteredLeads` instead of raw `leads`. The `analytics` useMemo receives the filtered array. Add filter state above the tab switch.
 
-Moves Intelligence Coverage, Deal Momentum, LVR into the trend indicators row. Consolidates 3 current sections into 1 tight view.
+---
 
-### Tab 2: PIPELINE (Sales Ops)
-**Question: "Where are deals and what needs attention?"**
+## 2. Metric Click-Through
 
-- **Row 1 — Sales Velocity + Weighted Pipeline** (the 2 hero cards from current AdvancedMetrics)
-- **Row 2 — Pipeline Funnel** (full visual, currently hidden in collapsible) + **Revenue at Risk** (with clickable at-risk leads)
-- **Row 3 — Stale Leads** (currently hidden) + **Forecast Summary** (Commit/Best Case/Pipeline/Omit)
-- **Row 4 — Win/Loss Analysis** (won/lost counts, cycle times, close reason chart) + **Win Rate by Source**
-- **Row 5 — Contract Renewals** (30/60/90 day buckets)
+Any numeric value on the dashboard becomes clickable. Clicking opens the existing `LeadDetail` sheet with a pre-filtered lead list, or navigates to the Pipeline tab with matching filters applied.
 
-### Tab 3: TEAM (Sales Management)
-**Question: "How are reps performing?"**
+**Examples:**
+- Click "12 critical" in Deal Health → opens a list of those 12 leads
+- Click "PE" row in Buyer Type Matrix → filters pipeline to PE leads
+- Click a rep name in Team scorecard → filters to that rep's deals
+- Click a stale lead → opens LeadDetail (already works)
 
-- **Row 1 — Rep Performance Scorecard** (the table from AdvancedMetrics)
-- **Row 2 — Coaching Insights** (talk ratio, question quality, objection handling per rep)
-- **Row 3 — Owner Workload** (replaces the duplicate in "More Analytics") + **Rep Pipeline Distribution** (who owns what stages)
+### Implementation
+- Add a new state: `filterOverlay: { title: string, leads: Lead[] } | null`
+- Render a sheet/dialog listing those leads when set (reuse the bordered list style from Stale Leads)
+- Pass `onDrillDown` callbacks into `DashboardAdvancedMetrics` and `DashboardPersonaMetrics`
+- Wrap numeric values in clickable spans with `cursor-pointer hover:underline` styling
 
-### Tab 4: BUYERS (Marketing & Strategy)
-**Question: "Who converts and through what channels?"**
+---
 
-The 4 blocks from DashboardPersonaMetrics, **no longer in a collapsible** — they're the primary content:
-- **Row 1 — Buyer Type Matrix** + **Acquisition Intent**
-- **Row 2 — Channel Attribution** + **Tier vs Outcomes**
-- **Row 3 — Operational extras**: Lead Volume chart (16 weeks), Brand Comparison, Service by Brand, Source Breakdown, How SC Found Us, Deals Planned, Role Distribution, Day of Week, Company Leaderboard, Duplicates
+## 3. Overview Export
 
-Row 3 goes inside a "More Detail" collapsible within this tab.
+A small "Copy as Image" button in the Overview tab header. Uses `html-to-image` to capture the Overview content as a PNG, copies to clipboard or downloads.
 
-## What Gets Eliminated / Deduplicated
+### Implementation
+- Add `html-to-image` package
+- Wrap Overview tab content in a `ref`
+- Button calls `toPng(ref.current)` and triggers download
+- Minimal — single button, no configuration
 
-| Current Duplication | Resolution |
-|---|---|
-| Win Rate in Hero + AdvancedMetrics + PersonaMetrics | Once in Overview hero, once contextually in Pipeline tab |
-| Owner Workload table + Rep Scorecard table | Single Rep Scorecard in Team tab |
-| Source Breakdown chart + Lead Source ROI table + Channel Attribution | Source ROI in Pipeline, Channel Attribution in Buyers |
-| Pipeline Funnel (hidden) + Stage Conversion (visible) | Funnel in Pipeline tab, conversion bars in Overview |
-| Forecast Summary (hidden) + Forecast vs Target (visible) | Combined in Overview + Pipeline |
+---
 
-## Implementation
+## Files Changed
 
-### Modified: `src/components/Dashboard.tsx`
-- Add tab state: `useState<"overview" | "pipeline" | "team" | "buyers">("overview")`
-- Render tab bar using the existing design system (border-b-2 pattern from nav)
-- Each tab renders its section. Move inline analytics computations into the `analytics` useMemo (already computed)
-- Remove the two `Collapsible` wrappers ("More Analytics" and "Buyer Persona Intelligence")
+| File | Change |
+|------|--------|
+| `src/components/DashboardFilters.tsx` | **New** — filter bar with date range, brand, owner, priority dropdowns |
+| `src/components/Dashboard.tsx` | Add filter state, pass `filteredLeads` to analytics and all tabs, add drill-down overlay, add export button |
+| `src/components/DashboardAdvancedMetrics.tsx` | Accept `onDrillDown` prop, make numeric values clickable |
+| `src/components/DashboardPersonaMetrics.tsx` | Accept `onDrillDown` prop, make table rows clickable |
+| `package.json` | Add `html-to-image` dependency |
 
-### Modified: `src/components/DashboardAdvancedMetrics.tsx`
-- Accept a `section` prop to render only the relevant blocks for each tab
-- Or split into exported sub-components: `SalesVelocityCards`, `WinLossAnalysis`, `RepScorecard`, `CoachingInsights`, `ContractRenewals`, `SourceROI`
+## Scope
 
-### Modified: `src/components/DashboardPersonaMetrics.tsx`
-- Remove the `Collapsible` wrapper — renders directly in the Buyers tab
-- Keep as-is internally, just remove the open/close state
-
-### No new files in Phase 1
-All restructuring happens within existing components.
-
-## What Phase 2 Would Cover
-- Interactive filters (date range, brand, owner) that persist across tabs
-- Click-through from any metric to filtered lead list
-- PDF/image export of Overview tab for board reporting
-- Geography heatmap in Buyers tab
+This is a single implementation phase. No new tabs, no new metrics — purely adding interactivity to what's already built.
 
