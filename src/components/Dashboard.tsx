@@ -30,13 +30,14 @@ const ACTIVE_STAGES = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Mee
 
 const ALL_SERVICES = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"] as const;
 
-type DashboardTab = "overview" | "pipeline" | "team" | "buyers";
+type DashboardTab = "overview" | "pipeline" | "team" | "buyers" | "intel";
 
 const TABS: { key: DashboardTab; label: string; desc: string }[] = [
   { key: "overview", label: "Overview", desc: "Executive summary" },
   { key: "pipeline", label: "Pipeline", desc: "Sales ops" },
   { key: "team", label: "Team", desc: "Management" },
   { key: "buyers", label: "Buyers", desc: "Strategy" },
+  { key: "intel", label: "Intel", desc: "Signal Center" },
 ];
 
 interface DrillDown {

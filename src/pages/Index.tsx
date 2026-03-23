@@ -3,7 +3,6 @@ import { Dashboard } from "@/components/Dashboard";
 import { LeadsTable, LeadDetail } from "@/components/LeadsTable";
 import { Pipeline } from "@/components/Pipeline";
 import { ActionQueue } from "@/components/ActionQueue";
-import { IntelligenceCenter } from "@/components/IntelligenceCenter";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useLeads } from "@/contexts/LeadContext";
 import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";

@@ -65,10 +65,6 @@ export function CommandPalette({ onNavigate, onSelectLead, externalOpen, onExter
             <Kanban className="mr-2 h-4 w-4" />
             Pipeline — Deal Flow
           </CommandItem>
-          <CommandItem onSelect={() => handleNav("intel")}>
-            <Brain className="mr-2 h-4 w-4" />
-            Intel — Signal Center
-          </CommandItem>
           <CommandItem onSelect={() => handleNav("leads")}>
             <List className="mr-2 h-4 w-4" />
             Leads — All Contacts
