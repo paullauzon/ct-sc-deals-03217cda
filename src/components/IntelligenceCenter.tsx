@@ -9,7 +9,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import {
   Radar, Crosshair, ShieldAlert, GraduationCap, Megaphone,
   TrendingUp, TrendingDown, Brain, HeartPulse, Lightbulb, Zap,
-  AlertTriangle, Timer, Mic, HelpCircle, Target, BarChart3
+  AlertTriangle, Timer, Mic, HelpCircle, Target, BarChart3,
+  Route, Shield, Handshake, Lock
 } from "lucide-react";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
