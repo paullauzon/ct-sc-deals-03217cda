@@ -1,19 +1,43 @@
 
 
-# Fix Blank Preview (Vite Cache Issue)
+# Build Calendly Webhook Integration
 
-## Problem
-The preview shows a blank white screen due to a stale Vite dependency pre-bundling cache causing React's `useEffect` to resolve as null. Clearing `node_modules/.vite` was attempted but the preview wasn't refreshed afterward.
+## How It Works
 
-## Solution
-Force a full Vite cache rebuild by:
-1. Deleting `node_modules/.vite` directory (the pre-bundled dependency cache)
-2. Adding a trivial comment change to `vite.config.ts` to force Vite to fully restart and re-resolve all dependencies
+1. **Calendly Setup**: You configure a webhook in Calendly (under Integrations → Webhooks) pointing to our endpoint. Subscribe to the `invitee.created` event.
+2. **When someone books**: Calendly sends a POST with the invitee's email, name, scheduled time, and event details.
+3. **Our function**: Matches the booking to an existing lead by email, then auto-updates their stage to "Meeting Set" with the correct dates and timing metrics.
 
-This is not a code bug — it's an environment issue where Vite's cached dependency graph has a stale React reference after `date-fns` was added.
+## Changes
 
-## Files Changed
+### 1. New edge function: `ingest-calendly-booking`
+**`supabase/functions/ingest-calendly-booking/index.ts`**
+
+- Accepts Calendly `invitee.created` webhook payload
+- Authenticates via `INGEST_API_KEY` header (reuses existing secret)
+- Extracts: invitee email, invitee name, scheduled event start time, event type name
+- Looks up existing lead by email in the `leads` table
+- If found and stage is before "Meeting Set":
+  - Updates `stage` → "Meeting Set"
+  - Sets `meeting_date` to the scheduled event time
+  - Sets `meeting_set_date` to now
+  - Calculates `hours_to_meeting_set` (hours between `created_at` and now)
+  - Sets `stage_entered_date` to now
+  - Logs activity via insert to `lead_activity_log`
+- If no matching lead found, logs a warning (the lead will arrive via Zapier separately)
+- Returns 200 OK to Calendly
+
+### 2. Add to `supabase/config.toml`
+Add `[functions.ingest-calendly-booking]` with `verify_jwt = false` (webhook from external service).
+
+## Calendly Setup Instructions
+After deployment, you'll configure in Calendly:
+- **URL**: `https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/ingest-calendly-booking`
+- **Header**: `x-api-key: <your INGEST_API_KEY value>`
+- **Event**: `invitee.created`
+
 | File | Change |
 |------|--------|
-| `vite.config.ts` | Add innocuous comment to force config reload |
+| `supabase/functions/ingest-calendly-booking/index.ts` | New edge function |
+| `supabase/config.toml` | Add function config block |
 
