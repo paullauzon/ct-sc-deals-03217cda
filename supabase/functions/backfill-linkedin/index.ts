@@ -187,7 +187,9 @@ SEARCH STRATEGIES (use your judgment on which to try):
 10. If all else fails, try just the person's name with their city/geography
 
 VERIFICATION RULES (before saying "found"):
-- The LinkedIn URL slug should contain at least part of the person's name (first name is sufficient)
+- The LinkedIn URL slug does NOT need to match the person's name — many people use initials, numbers, or random slugs (e.g., "emb339" for "Ellie M. Burei", "jsmith42" for "John Smith")
+- Instead, verify by reading the search snippet or SCRAPING the LinkedIn profile to confirm the person's NAME and COMPANY match
+- If a search result shows the right name + company but has an unusual slug, that's CORRECT
 - The profile's company/role context must align with the lead's data
 - If the email domain is "xyz.com" and the LinkedIn shows a completely different company, that's wrong
 - When in doubt, SCRAPE the LinkedIn profile to verify the person's details
