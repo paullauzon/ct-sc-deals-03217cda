@@ -64,6 +64,7 @@ export function leadToRow(lead: Lead): Record<string, any> {
     tier: lead.tier,
     tier_override: lead.tierOverride,
     enrichment_status: lead.enrichmentStatus,
+    created_at: lead.createdAt,
   };
 }
 
@@ -131,6 +132,7 @@ export function rowToLead(row: Record<string, any>): Lead {
     tier: row.tier != null ? Number(row.tier) : null,
     tierOverride: row.tier_override || false,
     enrichmentStatus: row.enrichment_status || "",
+    createdAt: row.created_at || "",
   };
 }
 
@@ -164,6 +166,7 @@ export function leadUpdatesToRow(updates: Partial<Lead>): Record<string, any> {
     linkedinUrl: "linkedin_url", linkedinTitle: "linkedin_title",
     stage1Score: "stage1_score", stage2Score: "stage2_score",
     tier: "tier", tierOverride: "tier_override", enrichmentStatus: "enrichment_status",
+    createdAt: "created_at",
   };
 
   const row: Record<string, any> = {};

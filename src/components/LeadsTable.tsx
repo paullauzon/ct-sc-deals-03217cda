@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { computeDaysInStage, getCompanyAssociates, getSharedIntelligence } from "@/lib/leadUtils";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
+import { format, parseISO } from "date-fns";
 
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
@@ -1028,7 +1029,7 @@ export function LeadsTable() {
         case "dealValue": return dir * (a.dealValue - b.dealValue);
         case "days": return dir * (computeDaysInStage(a.stageEnteredDate) - computeDaysInStage(b.stageEnteredDate));
         case "priority": return dir * ((PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1));
-        case "dateSubmitted": return dir * a.dateSubmitted.localeCompare(b.dateSubmitted);
+        case "dateSubmitted": return dir * (a.createdAt || a.dateSubmitted).localeCompare(b.createdAt || b.dateSubmitted);
         case "source": return dir * a.source.localeCompare(b.source);
         case "serviceInterest": return dir * a.serviceInterest.localeCompare(b.serviceInterest);
         case "score": return dir * ((a.stage2Score ?? a.stage1Score ?? -1) - (b.stage2Score ?? b.stage1Score ?? -1));
@@ -1212,7 +1213,7 @@ export function LeadsTable() {
                   ) : "—"}
                 </td>
                 <td className="px-4 py-3 text-xs">{lead.priority}</td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{lead.dateSubmitted}</td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{lead.createdAt ? format(parseISO(lead.createdAt), "MMM d, h:mm a") : lead.dateSubmitted}</td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{SOURCE_LABELS[lead.source] || lead.source}</td>
               </tr>
             ))}
@@ -1250,7 +1251,7 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
       subscriptionValue: 0, billingFrequency: "" as const, contractStart: "", contractEnd: "",
       firefliesUrl: "", firefliesTranscript: "", firefliesSummary: "", firefliesNextSteps: "",
       stage1Score: null, stage2Score: null, tier: null, tierOverride: false, enrichmentStatus: "",
-      linkedinUrl: "", linkedinTitle: "",
+      linkedinUrl: "", linkedinTitle: "", createdAt: new Date().toISOString(),
     });
     setForm({ name: "", email: "", phone: "", company: "", companyUrl: "", role: "", message: "", dealsPlanned: "0-2" });
     onClose();
