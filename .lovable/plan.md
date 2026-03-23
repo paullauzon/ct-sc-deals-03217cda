@@ -1,47 +1,50 @@
 
 
-# Fix: LinkedIn Discovery for Non-Standard Profile Slugs
+# Fix: LinkedIn Discovery for Hard-to-Find Profiles
 
-## Root Cause
+## Why It Failed
 
-Two issues combined to miss Ellie Burei:
+The agent's 5 searches all relied on **name + company** keywords. For Ellie Burei:
+- LinkedIn slug `emb339` contains no name text — search engines won't match it to "Ellie Burei"
+- LucaFah is a small firm, so there's minimal web presence linking her name to a LinkedIn URL
+- The agent never tried **scraping the company's LinkedIn page** to find employees, despite having that strategy in the prompt
 
-1. **Agent verification is too strict on URL slugs**: The system prompt tells the AI agent to verify that "The LinkedIn URL slug should contain at least part of the person's name." The correct profile `linkedin.com/in/emb339/` has initials-based slug — no substring of "Ellie" or "Burei" appears. The agent either never found it, or found it and rejected it due to this rule.
+Two fixable issues:
+1. **5 turns is too few** for hard cases — the agent ran out before trying company-LinkedIn-page scraping
+2. **No company LinkedIn search** — the agent should proactively search for the company on LinkedIn and scrape its page to find employee links
 
-2. **No retry mechanism**: Once the agent gives up, `linkedin_url` is set to `""` (empty string). Batch mode only processes `linkedin_url IS NULL`, so these leads are permanently abandoned. There's no way to re-trigger enrichment for a failed lead.
+## Plan
 
-## Fix Plan
-
-### 1. Relax URL slug verification in agent prompt
-**File**: `supabase/functions/backfill-linkedin/index.ts` — update `buildSystemPrompt()`
-
-Change the verification rule from requiring name in the slug to:
-```
-- The LinkedIn URL slug does NOT need to match the person's name — many people use initials, 
-  numbers, or random slugs (e.g., "emb339" for "Ellie M. Burei")
-- Instead, verify by SCRAPING the profile or reading the search snippet to confirm the 
-  person's name and company match
-- If a search result shows the right name + company but has an unusual slug, that's CORRECT
-```
-
-This makes the agent rely on **content verification** (name + company in the profile) rather than **URL pattern matching**.
-
-### 2. Add "retry failed" capability to batch mode
+### 1. Increase single-lead retry turns from 5 to 8
 **File**: `supabase/functions/backfill-linkedin/index.ts`
 
-Accept an optional `retryFailed: true` parameter. When set, query leads where `linkedin_url = ''` (empty string = previously failed) instead of `linkedin_url IS NULL`. This allows re-running the agent on leads that failed with the old, stricter rules.
+In the single-lead mode section, use 8 turns instead of `FLASH_MAX_TURNS` (5). This gives the agent enough room to try broader strategies after initial searches fail.
 
-### 3. Immediately fix Ellie Burei
-Since we already know the correct URL, we should also allow manual LinkedIn URL assignment. But the prompt fix + retry is the systematic solution.
+### 2. Add "company LinkedIn page" as a priority strategy in the prompt
+**File**: `supabase/functions/backfill-linkedin/index.ts` — `buildSystemPrompt()`
+
+Add an explicit high-priority strategy:
+```
+PRIORITY STRATEGY for small/niche companies:
+- Search for the COMPANY on LinkedIn: "CompanyName site:linkedin.com/company"
+- SCRAPE the company's LinkedIn page (linkedin.com/company/companyname/people or /about)
+- Look for the person's name in the employee list or "people" section
+- This is especially important when direct name searches fail
+```
+
+### 3. Add email-username inference strategy
+The email `ellie.burei@lucafah.com` → initials could be "eb" or "emb". Add a prompt hint:
+```
+- If the person's email is firstname.lastname@domain, try searching for their initials 
+  as a LinkedIn slug (e.g., ellie.burei → "emb" or "eb") combined with the company name
+```
+
+### 4. Use gpt-4o for retry/failed leads instead of gpt-4o-mini
+When processing a single lead (retry mode), use `gpt-4o` for better reasoning about creative search strategies. Keep `gpt-4o-mini` for batch mode to control costs.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/backfill-linkedin/index.ts` | Relax slug verification in prompt; add `retryFailed` param |
-
-## Impact
-- Fixes Ellie Burei and any other leads with non-standard LinkedIn slugs (initials, numbers, maiden names)
-- Existing correct matches unaffected — the agent still verifies name + company from profile content
-- Retry capability lets us re-process the ~100+ leads that previously failed
+| `supabase/functions/backfill-linkedin/index.ts` | Enhanced prompt strategies, 8 turns for single-lead, gpt-4o for retries |
 
