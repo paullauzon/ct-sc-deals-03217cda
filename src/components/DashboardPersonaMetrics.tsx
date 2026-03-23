@@ -181,7 +181,127 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
       else scoringAccuracy = "Inverted — recalibrate";
     }
 
-    return { buyerTypeRows, intentRows, channelRows, tierRows, untiered, scoringAccuracy };
+    // ── Block 5: Geography Performance ──
+    const geoMap = new Map<string, Lead[]>();
+    for (const l of leads) {
+      const geo = l.geography?.trim() || "Not Specified";
+      if (!geoMap.has(geo)) geoMap.set(geo, []);
+      geoMap.get(geo)!.push(l);
+    }
+    const geoRows = Array.from(geoMap.entries())
+      .map(([region, group]) => {
+        const active = group.filter(l => !CLOSED_STAGES.has(l.stage));
+        const won = group.filter(l => l.stage === "Closed Won");
+        const closed = won.length + group.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark").length;
+        return {
+          region,
+          count: group.length,
+          pipeValue: active.reduce((s, l) => s + l.dealValue, 0),
+          wonCount: won.length,
+          winRate: pct(won.length, closed),
+          avgDeal: won.length ? Math.round(won.reduce((s, l) => s + l.dealValue, 0) / won.length) : 0,
+          revenue: won.reduce((s, l) => s + l.dealValue, 0),
+          leads: group,
+        };
+      })
+      .filter(r => r.count > 0)
+      .sort((a, b) => b.revenue - a.revenue || b.count - a.count);
+
+    // ── Block 6: Target Revenue Distribution ──
+    const revBuckets: { label: string; min: number; max: number }[] = [
+      { label: "<$5M", min: 0, max: 5 },
+      { label: "$5M–$25M", min: 5, max: 25 },
+      { label: "$25M–$100M", min: 25, max: 100 },
+      { label: "$100M–$500M", min: 100, max: 500 },
+      { label: "$500M+", min: 500, max: Infinity },
+    ];
+    function parseRevenue(s: string): number | null {
+      if (!s) return null;
+      const n = s.replace(/[^0-9.]/g, "");
+      const val = parseFloat(n);
+      if (isNaN(val)) return null;
+      if (s.toLowerCase().includes("b")) return val * 1000;
+      if (s.toLowerCase().includes("m")) return val;
+      if (val > 1000) return val / 1000000;
+      return val;
+    }
+    const revRows = revBuckets.map(bucket => {
+      const group = leads.filter(l => {
+        const rev = parseRevenue(l.targetRevenue);
+        return rev !== null && rev >= bucket.min && rev < bucket.max;
+      });
+      const won = group.filter(l => l.stage === "Closed Won");
+      const closed = won.length + group.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark").length;
+      return {
+        label: bucket.label,
+        count: group.length,
+        winRate: pct(won.length, closed),
+        avgDeal: won.length ? Math.round(won.reduce((s, l) => s + l.dealValue, 0) / won.length) : 0,
+        revenue: won.reduce((s, l) => s + l.dealValue, 0),
+        leads: group,
+      };
+    });
+    const noRevData = leads.filter(l => !l.targetRevenue || parseRevenue(l.targetRevenue) === null).length;
+
+    // ── Block 7: Deal Size Segmentation ──
+    const sizeBuckets: { label: string; min: number; max: number }[] = [
+      { label: "Small (<$5K)", min: 0, max: 5000 },
+      { label: "Mid ($5K–$20K)", min: 5000, max: 20000 },
+      { label: "Large ($20K–$50K)", min: 20000, max: 50000 },
+      { label: "Enterprise ($50K+)", min: 50000, max: Infinity },
+    ];
+    const sizeRows = sizeBuckets.map(bucket => {
+      const group = leads.filter(l => l.dealValue >= bucket.min && l.dealValue < bucket.max && l.dealValue > 0);
+      const active = group.filter(l => !CLOSED_STAGES.has(l.stage));
+      const won = group.filter(l => l.stage === "Closed Won");
+      const closed = won.length + group.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark").length;
+      const wonCycleDays = won
+        .map(l => {
+          if (!l.dateSubmitted || !l.closedDate) return null;
+          return Math.floor((new Date(l.closedDate).getTime() - new Date(l.dateSubmitted).getTime()) / 86400000);
+        })
+        .filter((d): d is number => d !== null);
+      return {
+        label: bucket.label,
+        count: group.length,
+        pipeValue: active.reduce((s, l) => s + l.dealValue, 0),
+        wonCount: won.length,
+        winRate: pct(won.length, closed),
+        avgCycle: wonCycleDays.length ? Math.round(wonCycleDays.reduce((s, d) => s + d, 0) / wonCycleDays.length) : null,
+        leads: group,
+      };
+    });
+    const noDealValue = leads.filter(l => l.dealValue === 0).length;
+
+    // ── Block 8: ICP Fit Deep-Dive ──
+    const icpCategories = ["Strong", "Moderate", "Weak"] as const;
+    const icpRows = icpCategories.map(fit => {
+      const group = leads.filter(l => l.icpFit === fit);
+      const active = group.filter(l => !CLOSED_STAGES.has(l.stage));
+      const won = group.filter(l => l.stage === "Closed Won");
+      const closed = won.length + group.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark").length;
+      const wonCycleDays = won
+        .map(l => {
+          if (!l.dateSubmitted || !l.closedDate) return null;
+          return Math.floor((new Date(l.closedDate).getTime() - new Date(l.dateSubmitted).getTime()) / 86400000);
+        })
+        .filter((d): d is number => d !== null);
+      return {
+        fit,
+        count: group.length,
+        pipeValue: active.reduce((s, l) => s + l.dealValue, 0),
+        wonCount: won.length,
+        wonValue: won.reduce((s, l) => s + l.dealValue, 0),
+        winRate: pct(won.length, closed),
+        avgDeal: won.length ? Math.round(won.reduce((s, l) => s + l.dealValue, 0) / won.length) : 0,
+        avgCycle: wonCycleDays.length ? Math.round(wonCycleDays.reduce((s, d) => s + d, 0) / wonCycleDays.length) : null,
+        meetingRate: pct(group.filter(l => POST_MEETING_STAGES.has(l.stage)).length, group.length),
+        leads: group,
+      };
+    });
+    const unscored = leads.filter(l => !l.icpFit).length;
+
+    return { buyerTypeRows, intentRows, channelRows, tierRows, untiered, scoringAccuracy, geoRows, revRows, noRevData, sizeRows, noDealValue, icpRows, unscored };
   }, [leads]);
 
   const maxBuyerCount = Math.max(...data.buyerTypeRows.map(r => r.count), 1);
@@ -300,6 +420,148 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
               }`}>{data.scoringAccuracy}</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ── Phase 3 Blocks ── */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Block 5: Geography Performance */}
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Geography Performance</p>
+          <div className="space-y-0">
+            <div className="grid grid-cols-[1fr_40px_60px_40px_50px_50px_60px] gap-1 text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-border">
+              <span>Region</span>
+              <span className="text-right">Leads</span>
+              <span className="text-right">Pipeline</span>
+              <span className="text-right">Won</span>
+              <span className="text-right">Win %</span>
+              <span className="text-right">Avg $</span>
+              <span className="text-right">Revenue</span>
+            </div>
+            {data.geoRows.slice(0, 10).map(r => (
+              <div
+                key={r.region}
+                className="grid grid-cols-[1fr_40px_60px_40px_50px_50px_60px] gap-1 text-xs py-1.5 border-b border-border/50 last:border-0 cursor-pointer hover:bg-secondary/20 transition-colors"
+                onClick={() => onDrillDown?.(`${r.region} Leads`, r.leads)}
+              >
+                <span className="font-medium truncate">{r.region}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.count}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{fmt$(r.pipeValue)}</span>
+                <span className="text-right tabular-nums font-medium">{r.wonCount}</span>
+                <span className="text-right tabular-nums font-medium">{r.winRate > 0 ? `${r.winRate}%` : "—"}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.avgDeal > 0 ? fmt$(r.avgDeal) : "—"}</span>
+                <span className="text-right tabular-nums font-medium">{r.revenue > 0 ? fmt$(r.revenue) : "—"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Block 6: Target Revenue Distribution */}
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Target Revenue Correlation</p>
+          <div className="space-y-2">
+            {data.revRows.map(r => (
+              <div key={r.label} className="flex items-center gap-3 cursor-pointer hover:bg-secondary/20 transition-colors rounded px-1 py-0.5" onClick={() => onDrillDown?.(`${r.label} Target Revenue`, r.leads)}>
+                <span className="text-xs font-medium w-24 shrink-0">{r.label}</span>
+                <HBar value={r.count} max={Math.max(...data.revRows.map(t => t.count), 1)} />
+                <div className="flex gap-3 text-[10px] tabular-nums text-muted-foreground shrink-0">
+                  <span className="w-8 text-right">{r.count}</span>
+                  <span className="w-10 text-right font-medium text-foreground">{r.winRate > 0 ? `${r.winRate}%` : "—"}</span>
+                  <span className="w-12 text-right">{r.avgDeal > 0 ? fmt$(r.avgDeal) : "—"}</span>
+                  <span className="w-12 text-right">{r.revenue > 0 ? fmt$(r.revenue) : "—"}</span>
+                </div>
+              </div>
+            ))}
+            {data.noRevData > 0 && (
+              <p className="text-[10px] text-muted-foreground mt-1">{data.noRevData} leads without target revenue data</p>
+            )}
+          </div>
+          <div className="mt-2 pt-2 border-t border-border">
+            <div className="grid grid-cols-4 gap-1 text-[10px] text-muted-foreground uppercase tracking-wider text-right">
+              <span className="text-left">Header</span>
+              <span>Count</span>
+              <span>Win %</span>
+              <span>Revenue</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Block 7: Deal Size Segmentation */}
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Deal Size Segmentation</p>
+          <div className="space-y-0">
+            <div className="grid grid-cols-[1fr_40px_60px_40px_50px_50px] gap-1 text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-border">
+              <span>Segment</span>
+              <span className="text-right">Deals</span>
+              <span className="text-right">Pipeline</span>
+              <span className="text-right">Won</span>
+              <span className="text-right">Win %</span>
+              <span className="text-right">Cycle</span>
+            </div>
+            {data.sizeRows.map(r => (
+              <div
+                key={r.label}
+                className="grid grid-cols-[1fr_40px_60px_40px_50px_50px] gap-1 text-xs py-1.5 border-b border-border/50 last:border-0 cursor-pointer hover:bg-secondary/20 transition-colors"
+                onClick={() => onDrillDown?.(`${r.label} Deals`, r.leads)}
+              >
+                <span className="font-medium truncate">{r.label}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.count}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{fmt$(r.pipeValue)}</span>
+                <span className="text-right tabular-nums font-medium">{r.wonCount}</span>
+                <span className="text-right tabular-nums font-medium">{r.winRate > 0 ? `${r.winRate}%` : "—"}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.avgCycle !== null ? `${r.avgCycle}d` : "—"}</span>
+              </div>
+            ))}
+            {data.noDealValue > 0 && (
+              <p className="text-[10px] text-muted-foreground mt-2">{data.noDealValue} leads with $0 deal value</p>
+            )}
+          </div>
+        </div>
+
+        {/* Block 8: ICP Fit Deep-Dive */}
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">ICP Fit vs Outcomes</p>
+          <div className="space-y-0">
+            <div className="grid grid-cols-[1fr_40px_60px_40px_60px_50px_50px_50px] gap-1 text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-border">
+              <span>Fit</span>
+              <span className="text-right">Leads</span>
+              <span className="text-right">Pipeline</span>
+              <span className="text-right">Won</span>
+              <span className="text-right">Won $</span>
+              <span className="text-right">Win %</span>
+              <span className="text-right">Mtg %</span>
+              <span className="text-right">Cycle</span>
+            </div>
+            {data.icpRows.map(r => (
+              <div
+                key={r.fit}
+                className="grid grid-cols-[1fr_40px_60px_40px_60px_50px_50px_50px] gap-1 text-xs py-1.5 border-b border-border/50 last:border-0 cursor-pointer hover:bg-secondary/20 transition-colors"
+                onClick={() => onDrillDown?.(`ICP ${r.fit} Leads`, r.leads)}
+              >
+                <span className={`font-medium ${r.fit === "Strong" ? "text-emerald-600 dark:text-emerald-400" : r.fit === "Weak" ? "text-red-500" : "text-foreground"}`}>{r.fit}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.count}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{fmt$(r.pipeValue)}</span>
+                <span className="text-right tabular-nums font-medium">{r.wonCount}</span>
+                <span className="text-right tabular-nums font-medium">{r.wonValue > 0 ? fmt$(r.wonValue) : "—"}</span>
+                <span className="text-right tabular-nums font-medium">{r.winRate > 0 ? `${r.winRate}%` : "—"}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.meetingRate}%</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.avgCycle !== null ? `${r.avgCycle}d` : "—"}</span>
+              </div>
+            ))}
+            {data.unscored > 0 && (
+              <p className="text-[10px] text-muted-foreground mt-2">{data.unscored} leads without ICP fit rating</p>
+            )}
+          </div>
+          {data.icpRows[0]?.winRate > 0 && data.icpRows[2]?.winRate > 0 && (
+            <div className="mt-3 pt-2 border-t border-border">
+              <p className="text-[10px] text-muted-foreground">
+                Strong ICP wins at <span className="font-medium text-foreground">{data.icpRows[0].winRate}%</span> vs Weak at <span className="font-medium text-foreground">{data.icpRows[2].winRate}%</span>
+                {data.icpRows[0].winRate > data.icpRows[2].winRate
+                  ? " — ICP scoring validated"
+                  : " — ICP criteria need review"}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
