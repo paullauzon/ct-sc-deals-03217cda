@@ -42,6 +42,7 @@ function StageBar({ leads }: { leads: Lead[] }) {
 interface Props {
   leads: Lead[];
   onSelectLead: (id: string) => void;
+  onDrillDown?: (title: string, leads: Lead[]) => void;
 }
 
 export function DashboardPersonaMetrics({ leads, onSelectLead }: Props) {
