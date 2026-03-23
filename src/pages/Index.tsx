@@ -34,18 +34,20 @@ function AppContent() {
         <div className="max-w-7xl mx-auto px-6 flex items-center h-14 gap-8">
           <span className="text-sm font-bold tracking-tight">CAPTARGET</span>
           <div className="flex gap-1">
-            {(["today", "dashboard", "leads", "pipeline"] as View[]).map((v) => (
+            {NAV_ITEMS.map(({ key, label, desc, icon: Icon }) => (
               <button
-                key={v}
-                onClick={() => setView(v)}
-                className={`relative px-3 py-1.5 text-sm transition-colors border-b-2 ${
-                  view === v
+                key={key}
+                onClick={() => setView(key)}
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors border-b-2 ${
+                  view === key
                     ? "border-foreground text-foreground font-medium"
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {v === "today" ? "Today" : v.charAt(0).toUpperCase() + v.slice(1)}
-                {v === "leads" && unseenCount > 0 && (
+                <Icon className="h-3.5 w-3.5" />
+                <span>{label}</span>
+                <span className="hidden lg:inline text-[10px] text-muted-foreground/60 ml-0.5">· {desc}</span>
+                {key === "leads" && unseenCount > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1 animate-pulse">
                     {unseenCount}
                   </span>

@@ -57,21 +57,21 @@ export function CommandPalette({ onNavigate, onSelectLead, externalOpen, onExter
         <CommandEmpty>No results found.</CommandEmpty>
         
         <CommandGroup heading="Navigation">
-          <CommandItem onSelect={() => handleNav("today")}>
-            <CalendarDays className="mr-2 h-4 w-4" />
-            Go to Today
-          </CommandItem>
           <CommandItem onSelect={() => handleNav("dashboard")}>
             <BarChart3 className="mr-2 h-4 w-4" />
-            Go to Dashboard
-          </CommandItem>
-          <CommandItem onSelect={() => handleNav("leads")}>
-            <List className="mr-2 h-4 w-4" />
-            Go to Leads
+            Dashboard — Executive Summary
           </CommandItem>
           <CommandItem onSelect={() => handleNav("pipeline")}>
             <Kanban className="mr-2 h-4 w-4" />
-            Go to Pipeline
+            Pipeline — Deal Flow
+          </CommandItem>
+          <CommandItem onSelect={() => handleNav("leads")}>
+            <List className="mr-2 h-4 w-4" />
+            Leads — All Contacts
+          </CommandItem>
+          <CommandItem onSelect={() => handleNav("today")}>
+            <CalendarDays className="mr-2 h-4 w-4" />
+            Today — Action Queue
           </CommandItem>
         </CommandGroup>
 
