@@ -35,10 +35,21 @@ const NAV_ITEMS: { key: View; label: string; desc: string; icon: typeof BarChart
 ];
 
 function AppContent() {
-  const [view, setView] = useState<View>("dashboard");
+  const [view, setViewState] = useState<View>(parseViewFromHash);
   const { unseenCount, clearUnseen } = useLeads();
   const [cmdLeadId, setCmdLeadId] = useState<string | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
+
+  const setView = useCallback((v: View) => {
+    setViewState(v);
+    updateHash(v);
+  }, []);
+
+  useEffect(() => {
+    const onHashChange = () => setViewState(parseViewFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   useEffect(() => {
     if (view === "leads") clearUnseen();
@@ -46,7 +57,7 @@ function AppContent() {
 
   const handleCmdNavigate = useCallback((v: string) => {
     setView(v as View);
-  }, []);
+  }, [setView]);
 
   const handleCmdSelectLead = useCallback((id: string) => {
     setCmdLeadId(id);
