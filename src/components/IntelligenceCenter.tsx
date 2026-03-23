@@ -77,16 +77,31 @@ export function IntelligenceCenter() {
 
           {/* Block 7: Decision Process Intelligence */}
           <DecisionProcessIntel leads={leads} onDrillDown={handleDrillDown} />
+
+          {/* Block 8: Buyer Journey Distribution */}
+          <BuyerJourneyDistribution leads={activeLeads} onDrillDown={handleDrillDown} />
+
+          {/* Block 9: Champion Strength Overview */}
+          <ChampionStrengthOverview leads={leads} activeLeads={activeLeads} wonLeads={wonLeads} lostLeads={lostLeads} onDrillDown={handleDrillDown} />
         </div>
       )}
 
       {/* ═══ COMPETITORS TAB ═══ */}
       {subTab === "competitors" && (
         <div className="space-y-8">
+          {/* Current Solutions Map */}
+          <CurrentSolutionsMap leads={leads} activeLeads={activeLeads} onDrillDown={handleDrillDown} />
+
           <DashboardCompetitiveRadar leads={leads} onDrillDown={handleDrillDown} onSelectLead={setSelectedLeadId} />
+
+          {/* Evaluation Criteria Frequency */}
+          <EvaluationCriteriaFrequency leads={leads} wonLeads={wonLeads} lostLeads={lostLeads} onDrillDown={handleDrillDown} />
 
           {/* Block 4: Competitive Win/Loss Deep Dive */}
           <CompetitiveWinLoss leads={leads} onDrillDown={handleDrillDown} />
+
+          {/* Switching Barriers Analysis */}
+          <SwitchingBarriersAnalysis leads={leads} activeLeads={activeLeads} lostLeads={lostLeads} onDrillDown={handleDrillDown} />
 
           {/* Block 5: Competitive Positioning */}
           <CompetitivePositioning leads={leads} onDrillDown={handleDrillDown} />
