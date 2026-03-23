@@ -1,46 +1,51 @@
 
 
-# Track Empty-Transcript Meetings as "No Recording" Entries
+# Fix: Deduplicate Meetings for Affected Leads
 
-## Approach
+## Problem
 
-Instead of completely filtering out meetings with no transcript, **keep them but tag them** so they're visible for no-show/recording-failure monitoring while still being excluded from AI processing.
+The two migrations ran in sequence:
+1. First migration deleted meetings with transcript < 50 chars (emptied the array)
+2. Second migration tagged meetings with `noRecording: true` — but since re-processing re-fetched from Fireflies, it created **new entries alongside old ones** with the same `firefliesId`
 
-## Plan
+Result: 7 entries for CT-051 where there should be 4. Three meetings are duplicated (once raw, once tagged), and one (Jan 6) was never tagged.
 
-### 1. Store empty-transcript meetings with a `noRecording` flag
-**File**: `supabase/functions/run-lead-job/index.ts`
+## Fix
 
-Instead of discarding meetings with transcript < 50 chars, split them into two lists:
-- **Real meetings** (transcript ≥ 50 chars) → proceed to AI processing as today
-- **No-recording meetings** (transcript < 50 chars) → store with `noRecording: true`, empty summary set to "No recording available", skip AI processing
+### 1. Database cleanup migration
+Run a single SQL migration that for each affected lead:
+- Deduplicates by `firefliesId` — keep only one entry per unique ID
+- For entries with transcript < 50 chars, ensure `noRecording: true` is set
+- This covers all 5 affected leads
 
-Both lists get saved to the final `new_meetings` array in the job result and written to the lead's `meetings` JSONB.
+```sql
+UPDATE leads
+SET meetings = (
+  SELECT COALESCE(jsonb_agg(deduped), '[]'::jsonb)
+  FROM (
+    SELECT DISTINCT ON (m->>'firefliesId')
+      CASE 
+        WHEN length(COALESCE(m->>'transcript', '')) < 50
+        THEN m || '{"noRecording": true, "summary": "No recording available"}'::jsonb
+        ELSE m
+      END as deduped
+    FROM jsonb_array_elements(meetings) m
+    ORDER BY m->>'firefliesId', (m->>'noRecording') DESC NULLS LAST
+  ) sub
+)
+WHERE id IN ('CT-051', 'CT-036', 'SC-T-026', 'CT-044', 'SC-I-032');
+```
 
-### 2. Add `noRecording` flag to Meeting type
-**File**: `src/types/lead.ts`
-
-Add optional `noRecording?: boolean` to the `Meeting` interface.
-
-### 3. Display no-recording meetings in MeetingsSection with a visual indicator
-**File**: `src/components/MeetingsSection.tsx`
-
-Show these meetings in the meetings list with a distinct visual treatment:
-- Gray/muted card with a "No Recording" badge
-- Show date and title (so you can see the meeting was set)
-- No transcript/summary/intelligence tabs — just a note like "Meeting scheduled but no recording captured"
-- Exclude from meeting count used for intelligence synthesis
-
-### 4. Exclude no-recording meetings from AI processing and intelligence synthesis
-**File**: `supabase/functions/run-lead-job/index.ts`
-
-When building `meetingsWithIntel` for deal intelligence synthesis, filter out `noRecording` meetings. The AI loop already skips them (transcript < 20 guard), but make it explicit.
+### 2. Fix dedup guard in `run-lead-job`
+Ensure the edge function's existing `firefliesId` dedup check covers both tagged and untagged entries so this can't recur.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/run-lead-job/index.ts` | Keep empty-transcript meetings tagged with `noRecording: true` instead of filtering them out |
-| `src/types/lead.ts` | Add `noRecording?: boolean` to `Meeting` interface |
-| `src/components/MeetingsSection.tsx` | Render no-recording meetings with muted styling and "No Recording" badge |
+| DB migration | Deduplicate meetings by firefliesId, tag all empty-transcript entries |
+| `supabase/functions/run-lead-job/index.ts` | Verify dedup guard uses firefliesId correctly (read-only check) |
+
+## Expected Result
+CT-051 will have exactly 4 meetings, all tagged `noRecording: true` (since none have real transcripts).
 
