@@ -3,16 +3,18 @@ import { Dashboard } from "@/components/Dashboard";
 import { LeadsTable, LeadDetail } from "@/components/LeadsTable";
 import { Pipeline } from "@/components/Pipeline";
 import { ActionQueue } from "@/components/ActionQueue";
+import { IntelligenceCenter } from "@/components/IntelligenceCenter";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useLeads } from "@/contexts/LeadContext";
 import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";
-import { Search, BarChart3, Kanban, Users, CalendarCheck } from "lucide-react";
+import { Search, BarChart3, Kanban, Users, CalendarCheck, Brain } from "lucide-react";
 
-type View = "dashboard" | "pipeline" | "leads" | "today";
+type View = "dashboard" | "pipeline" | "intel" | "leads" | "today";
 
 const NAV_ITEMS: { key: View; label: string; desc: string; icon: typeof BarChart3 }[] = [
   { key: "dashboard", label: "Dashboard", desc: "Executive Summary", icon: BarChart3 },
   { key: "pipeline", label: "Pipeline", desc: "Deal Flow", icon: Kanban },
+  { key: "intel", label: "Intel", desc: "Signal Center", icon: Brain },
   { key: "leads", label: "Leads", desc: "All Contacts", icon: Users },
   { key: "today", label: "Today", desc: "Action Queue", icon: CalendarCheck },
 ];
