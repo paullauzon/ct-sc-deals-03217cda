@@ -1029,7 +1029,7 @@ export function LeadsTable() {
         case "dealValue": return dir * (a.dealValue - b.dealValue);
         case "days": return dir * (computeDaysInStage(a.stageEnteredDate) - computeDaysInStage(b.stageEnteredDate));
         case "priority": return dir * ((PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1));
-        case "dateSubmitted": return dir * a.dateSubmitted.localeCompare(b.dateSubmitted);
+        case "dateSubmitted": return dir * (a.createdAt || a.dateSubmitted).localeCompare(b.createdAt || b.dateSubmitted);
         case "source": return dir * a.source.localeCompare(b.source);
         case "serviceInterest": return dir * a.serviceInterest.localeCompare(b.serviceInterest);
         case "score": return dir * ((a.stage2Score ?? a.stage1Score ?? -1) - (b.stage2Score ?? b.stage1Score ?? -1));
