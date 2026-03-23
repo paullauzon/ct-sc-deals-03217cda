@@ -337,6 +337,16 @@ Context: The firm helps private equity firms and strategic acquirers find and cl
 
 Your analysis must be thorough, specific, and actionable. Extract every signal that could inform the deal process. Use concrete details from the transcript — never be vague or generic.
 
+## COMPETITIVE INTELLIGENCE RULES
+
+Extract the DEEPEST possible competitive intelligence:
+- For EVERY competitor, alternative, or incumbent solution mentioned, provide STRUCTURED details — name, context, prospect sentiment, specific strengths they cite, specific weaknesses they mention. Do NOT just list names.
+- ALWAYS capture the prospect's CURRENT SOLUTION even if it's "doing nothing", "using internal team", or "working with a broker informally". There is always a current state.
+- Extract EVALUATION CRITERIA from what the prospect asks about, what they compare, what they emphasize matters. E.g., if they ask "how fast can you launch?" that's an evaluation criterion ("speed to launch").
+- Capture SWITCHING BARRIERS — contracts, existing relationships, sunk cost, comfort with status quo, internal politics, "we've always done it this way". These predict deal velocity.
+- Note any COMPETITOR PRICING intelligence — what they're paying now, what alternatives cost, budget benchmarks they reference.
+- The competitorDetails array should mirror the competitors array but with rich context. If a competitor is mentioned, it MUST appear in both.
+
 ${hasPrior ? "IMPORTANT: You have prior meeting history. Track which prior action items were addressed, which are outstanding, and how the relationship has progressed. Note changes in sentiment, intent, or engagement." : "This is the first meeting with this prospect."}
 
 ## CRM FIELD UPDATE RULES (suggestedLeadUpdates)
