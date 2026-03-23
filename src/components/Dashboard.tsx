@@ -48,7 +48,22 @@ interface DrillDown {
 export function Dashboard() {
   const { getMetrics, leads } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const [activeTab, setActiveTabState] = useState<DashboardTab>(() => {
+    const hash = window.location.hash.replace("#", "");
+    const params = new URLSearchParams(hash);
+    const t = params.get("tab");
+    const valid: DashboardTab[] = ["overview", "pipeline", "team", "buyers", "intel"];
+    return t && valid.includes(t as DashboardTab) ? (t as DashboardTab) : "overview";
+  });
+
+  const setActiveTab = (tab: DashboardTab) => {
+    setActiveTabState(tab);
+    const hash = window.location.hash.replace("#", "");
+    const params = new URLSearchParams(hash);
+    params.set("view", "dashboard");
+    params.set("tab", tab);
+    window.location.hash = params.toString();
+  };
   const [moreDetailOpen, setMoreDetailOpen] = useState(false);
   const [filters, setFilters] = useState<DashboardFilters>(DEFAULT_FILTERS);
   const [drillDown, setDrillDown] = useState<DrillDown | null>(null);
