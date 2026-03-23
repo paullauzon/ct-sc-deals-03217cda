@@ -23,10 +23,21 @@ const ACTIVE_STAGES = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Mee
 
 const ALL_SERVICES = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"] as const;
 
+type DashboardTab = "overview" | "pipeline" | "team" | "buyers";
+
+const TABS: { key: DashboardTab; label: string; desc: string }[] = [
+  { key: "overview", label: "Overview", desc: "Executive summary" },
+  { key: "pipeline", label: "Pipeline", desc: "Sales ops" },
+  { key: "team", label: "Team", desc: "Management" },
+  { key: "buyers", label: "Buyers", desc: "Strategy" },
+];
+
 export function Dashboard() {
   const { getMetrics, leads } = useLeads();
   const m = getMetrics();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const [moreDetailOpen, setMoreDetailOpen] = useState(false);
 
   const analytics = useMemo(() => {
     const now = new Date("2026-03-03");
@@ -173,7 +184,7 @@ export function Dashboard() {
       SC: scLeads.filter((l) => l.stage === stage).length,
     }));
 
-    // Lead Velocity Rate: qualified leads per week (last 4 weeks vs prior 4 weeks)
+    // Lead Velocity Rate
     const fourWeeksAgo = new Date(now.getTime() - 28 * 86400000);
     const eightWeeksAgo = new Date(now.getTime() - 56 * 86400000);
     const qualifiedStages = new Set(["Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won"]);
@@ -186,7 +197,7 @@ export function Dashboard() {
     const lvrPrior = Math.round(qualifiedPrior / 4 * 10) / 10;
     const lvrChange = lvrPrior > 0 ? Math.round(((lvrCurrent - lvrPrior) / lvrPrior) * 100) : 0;
 
-    // Stale leads (>14 days in stage, excluding closed)
+    // Stale leads
     const closedStages = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
     const staleLeads = leads
       .filter((l) => !closedStages.has(l.stage) && computeDaysInStage(l.stageEnteredDate) > 14)
@@ -222,7 +233,7 @@ export function Dashboard() {
       if (!l.subscriptionValue) return s;
       if (l.billingFrequency === "Quarterly") return s + l.subscriptionValue / 3;
       if (l.billingFrequency === "Annually") return s + l.subscriptionValue / 12;
-      return s + l.subscriptionValue; // Monthly or default
+      return s + l.subscriptionValue;
     }, 0);
     const totalContractValue = closedWonLeads.reduce((s, l) => s + (l.subscriptionValue || 0), 0);
 
@@ -241,11 +252,6 @@ export function Dashboard() {
     const avgTalkRatio = allMeetingsWithCoaching.length
       ? Math.round(allMeetingsWithCoaching.reduce((s, m) => s + (m.intelligence?.talkRatio || 0), 0) / allMeetingsWithCoaching.length)
       : null;
-    const questionQualityDist = { Strong: 0, Adequate: 0, Weak: 0 };
-    for (const m of allMeetingsWithCoaching) {
-      const q = m.intelligence?.questionQuality;
-      if (q && q in questionQualityDist) questionQualityDist[q as keyof typeof questionQualityDist]++;
-    }
 
     // Deal health summary
     const activeLeads = leads.filter((l) => !closedStages.has(l.stage));
@@ -292,6 +298,21 @@ export function Dashboard() {
     const coverageRatio = forecastTarget > 0 ? ((commitValue + bestCaseValue) / forecastTarget) : 0;
     const forecastGap = Math.max(0, forecastTarget - commitValue);
 
+    // Sales velocity for overview
+    const activeDeals = leads.filter(l => !closedStages.has(l.stage));
+    const wonLeads2 = leads.filter(l => l.stage === "Closed Won");
+    const lostLeads2 = leads.filter(l => l.stage === "Closed Lost");
+    const totalClosed = wonLeads2.length + lostLeads2.length;
+    const winRateVal = totalClosed > 0 ? wonLeads2.length / totalClosed : 0;
+    const avgDealVal = activeDeals.length > 0
+      ? activeDeals.reduce((s, l) => s + l.dealValue, 0) / (activeDeals.filter(l => l.dealValue > 0).length || 1)
+      : 0;
+    const wonWithCycle = wonLeads2.filter(l => l.dateSubmitted && l.closedDate);
+    const avgCycleDays = wonWithCycle.length > 0
+      ? wonWithCycle.reduce((s, l) => s + Math.max(1, Math.floor((new Date(l.closedDate).getTime() - new Date(l.dateSubmitted).getTime()) / 86400000)), 0) / wonWithCycle.length
+      : 30;
+    const salesVelocity = avgCycleDays > 0 ? Math.round((activeDeals.length * avgDealVal * winRateVal) / avgCycleDays) : 0;
+
     return {
       leadsThisWeek, leadsThisMonth, momGrowth, lvrCurrent, lvrChange,
       ctLeads, scLeads, weeklyData, sourceBreakdown, roleData,
@@ -300,204 +321,195 @@ export function Dashboard() {
       stageFunnel, maxStageCount, conversionByBrand,
       staleLeads, priorityData, forecastData, ownerData,
       totalMRR, totalContractValue, leadsWithMeetings, leadsWithIntel, leadsWithDealIntel,
-      momentumDist, avgTalkRatio, questionQualityDist,
+      momentumDist, avgTalkRatio,
       criticalAlerts, warningAlerts, cleanDeals,
       atRiskRevenue, atRiskLeads, stageConversions, weakestLink,
-      forecastTarget, commitValue, bestCaseValue, pipelineValue: pipelineValue, coverageRatio, forecastGap,
+      forecastTarget, commitValue, bestCaseValue, pipelineValue, coverageRatio, forecastGap,
+      salesVelocity,
     };
   }, [leads, m]);
 
-  const [moreOpen, setMoreOpen] = useState(false);
-
-  const secondaryMetrics = [
-    { label: "This Week", value: analytics.leadsThisWeek },
-    { label: "This Month", value: analytics.leadsThisMonth },
-    { label: "MoM Growth", value: `${analytics.momGrowth > 0 ? "+" : ""}${analytics.momGrowth}%` },
-    { label: "LVR / wk", value: analytics.lvrCurrent, sub: analytics.lvrChange !== 0 ? `${analytics.lvrChange > 0 ? "+" : ""}${analytics.lvrChange}%` : undefined },
-    { label: "Meetings Set", value: m.meetingsSet },
-    { label: "Won / Lost", value: `${m.closedWon} / ${m.closedLost}` },
-  ];
-
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">{leads.length} leads · Pipeline health & deal intelligence</p>
       </div>
 
-      {/* Row 1: Hero Metrics */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: "Total Leads", value: String(m.totalLeads) },
-          { label: "Pipeline Value", value: `$${m.totalPipelineValue.toLocaleString()}` },
-          { label: "Win Rate", value: `${m.conversionRate}%` },
-          { label: "Avg Days to Meeting", value: m.avgDaysToMeeting || "—" },
-        ].map((stat) => (
-          <div key={stat.label} className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-            <p className="text-2xl font-semibold tabular-nums mt-1">{stat.value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Row 2: Action Strip */}
-      <div className="grid grid-cols-6 gap-3">
-        {secondaryMetrics.map((stat) => (
-          <div key={stat.label} className="border border-border rounded-lg px-4 py-3">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
-              <p className="text-lg font-semibold tabular-nums">{stat.value}</p>
-              {stat.sub && <span className={`text-xs tabular-nums ${stat.sub.startsWith("+") ? "text-emerald-600" : "text-red-500"}`}>{stat.sub}</span>}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Row 2b: Intelligence & Revenue Metrics */}
-      <div className="grid grid-cols-4 gap-4">
-        <div className="border border-border rounded-lg px-5 py-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">MRR (Won)</p>
-          <p className="text-2xl font-semibold tabular-nums mt-1">${Math.round(analytics.totalMRR).toLocaleString()}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">ARR: ${Math.round(analytics.totalMRR * 12).toLocaleString()}</p>
-        </div>
-        <div className="border border-border rounded-lg px-5 py-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Intelligence Coverage</p>
-          <div className="flex items-baseline gap-2 mt-1">
-            <p className="text-2xl font-semibold tabular-nums">{analytics.leadsWithMeetings}</p>
-            <span className="text-xs text-muted-foreground">w/ meetings</span>
-          </div>
-          <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
-            <span>{analytics.leadsWithIntel} processed</span>
-            <span>{analytics.leadsWithDealIntel} synthesized</span>
-          </div>
-        </div>
-        <div className="border border-border rounded-lg px-5 py-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Deal Momentum</p>
-          <div className="flex items-center gap-2 mt-2">
-            {Object.entries(analytics.momentumDist).map(([key, val]) => val > 0 && (
-              <span key={key} className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-                {val} {key}
-              </span>
-            ))}
-            {Object.values(analytics.momentumDist).every(v => v === 0) && (
-              <span className="text-xs text-muted-foreground">No data yet</span>
-            )}
-          </div>
-        </div>
-        <div className="border border-border rounded-lg px-5 py-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Deal Health</p>
-          <div className="flex items-center gap-2 mt-2">
-            {analytics.criticalAlerts > 0 && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-foreground font-medium">
-                {analytics.criticalAlerts} critical
-              </span>
-            )}
-            {analytics.warningAlerts > 0 && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-                {analytics.warningAlerts} warning
-              </span>
-            )}
-            {analytics.cleanDeals > 0 && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-                {analytics.cleanDeals} healthy
-              </span>
-            )}
-          </div>
-          {analytics.avgTalkRatio !== null && (
-            <p className="text-xs text-muted-foreground mt-1">Avg talk ratio: {analytics.avgTalkRatio}%</p>
-          )}
+      {/* Tab Navigation */}
+      <div className="border-b border-border">
+        <div className="flex gap-0">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab.key
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+              }`}
+            >
+              <span className="uppercase tracking-wider text-xs">{tab.label}</span>
+              <span className="text-[10px] text-muted-foreground ml-1.5 hidden sm:inline">{tab.desc}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Pipeline Snapshots + At Risk Revenue + Forecast Gap */}
-      <PipelineSnapshots leads={leads} />
-      <div className="grid grid-cols-3 gap-4">
-        <div className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Revenue at Risk</p>
-          <p className="text-2xl font-bold tabular-nums mt-1">${analytics.atRiskRevenue.toLocaleString()}</p>
-          <p className="text-xs text-muted-foreground mt-1">{analytics.atRiskLeads.length} deals stalling, dark, or high-risk</p>
-          {analytics.atRiskLeads.length > 0 && (
-            <div className="mt-2 space-y-1 max-h-[80px] overflow-y-auto">
-              {analytics.atRiskLeads.slice(0, 5).map(l => (
-                <p key={l.id} onClick={() => setSelectedLeadId(l.id)} className="text-xs text-muted-foreground cursor-pointer hover:text-foreground truncate">
-                  {l.name} · ${l.dealValue.toLocaleString()}
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Forecast vs Target</p>
-            <input
-              type="number"
-              defaultValue={analytics.forecastTarget}
-              onBlur={(e) => localStorage.setItem("captarget_quarterly_target", e.target.value)}
-              className="w-24 text-xs text-right border border-border rounded px-2 py-1 bg-background tabular-nums"
-              title="Edit quarterly target"
-            />
-          </div>
-          <div className="mt-2 space-y-1">
-            <div className="flex justify-between text-xs">
-              <span>Commit</span><span className="tabular-nums font-medium">${analytics.commitValue.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Best Case</span><span className="tabular-nums">${analytics.bestCaseValue.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Pipeline</span><span className="tabular-nums">${analytics.pipelineValue.toLocaleString()}</span>
-            </div>
-            <div className="w-full h-3 bg-secondary/50 rounded overflow-hidden mt-1.5">
-              <div className="h-full bg-foreground/30 rounded transition-all" style={{ width: `${Math.min(100, (analytics.commitValue / analytics.forecastTarget) * 100)}%` }} />
-            </div>
-            <div className="flex justify-between text-xs mt-1">
-              <span className={analytics.forecastGap > 0 ? "text-red-600 dark:text-red-400 font-medium" : "text-emerald-600 dark:text-emerald-400 font-medium"}>
-                Gap: ${analytics.forecastGap.toLocaleString()}
-              </span>
-              <span className={`tabular-nums ${analytics.coverageRatio < 2 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-                {analytics.coverageRatio.toFixed(1)}x coverage
-              </span>
-            </div>
-          </div>
-        </div>
-        <div className="border border-border rounded-lg px-5 py-4">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Stage Conversion Funnel</p>
-          <div className="mt-2 space-y-1">
-            {analytics.stageConversions.map(s => (
-              <div key={s.from} className="flex items-center gap-2 text-xs">
-                <span className="w-20 text-muted-foreground truncate text-right">{s.from.split(" ").map(w => w[0]).join("")}</span>
-                <span className="text-muted-foreground">→</span>
-                <div className="flex-1 h-2 bg-secondary/50 rounded overflow-hidden">
-                  <div
-                    className={`h-full rounded transition-all ${s === analytics.weakestLink ? "bg-red-400 dark:bg-red-500" : "bg-foreground/25"}`}
-                    style={{ width: `${s.rate}%` }}
-                  />
-                </div>
-                <span className={`w-10 text-right tabular-nums font-medium ${s === analytics.weakestLink ? "text-red-600 dark:text-red-400" : ""}`}>{s.rate}%</span>
+      {/* ═══════════════════ OVERVIEW TAB ═══════════════════ */}
+      {activeTab === "overview" && (
+        <div className="space-y-6">
+          {/* Row 1: Hero KPIs */}
+          <div className="grid grid-cols-4 gap-4">
+            {[
+              { label: "Total Leads", value: String(m.totalLeads) },
+              { label: "Pipeline Value", value: `$${m.totalPipelineValue.toLocaleString()}` },
+              { label: "MRR (Won)", value: `$${Math.round(analytics.totalMRR).toLocaleString()}` },
+              { label: "Win Rate", value: `${m.conversionRate}%` },
+            ].map((stat) => (
+              <div key={stat.label} className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">{stat.label}</p>
+                <p className="text-2xl font-semibold tabular-nums mt-1">{stat.value}</p>
               </div>
             ))}
           </div>
-          {analytics.weakestLink && (
-            <p className="text-[10px] text-muted-foreground mt-2">Weakest: {analytics.weakestLink.from} → {analytics.weakestLink.to} ({analytics.weakestLink.rate}%)</p>
-          )}
+
+          {/* Row 2: Trend Indicators */}
+          <div className="grid grid-cols-6 gap-3">
+            {[
+              { label: "This Week", value: analytics.leadsThisWeek },
+              { label: "MoM Growth", value: `${analytics.momGrowth > 0 ? "+" : ""}${analytics.momGrowth}%` },
+              { label: "Sales Velocity", value: `$${analytics.salesVelocity.toLocaleString()}/d` },
+              { label: "Coverage", value: `${analytics.coverageRatio.toFixed(1)}x`, sub: analytics.coverageRatio < 2 ? "Low" : undefined },
+              { label: "LVR / wk", value: analytics.lvrCurrent, sub: analytics.lvrChange !== 0 ? `${analytics.lvrChange > 0 ? "+" : ""}${analytics.lvrChange}%` : undefined },
+              { label: "Won / Lost", value: `${m.closedWon} / ${m.closedLost}` },
+            ].map((stat) => (
+              <div key={stat.label} className="border border-border rounded-lg px-4 py-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">{stat.label}</p>
+                <div className="flex items-baseline gap-1.5 mt-0.5">
+                  <p className="text-lg font-semibold tabular-nums">{stat.value}</p>
+                  {stat.sub && <span className={`text-xs tabular-nums ${String(stat.sub).startsWith("+") ? "text-emerald-600" : "text-red-500"}`}>{stat.sub}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Row 3: Pipeline Trend + Forecast + Deal Health */}
+          <PipelineSnapshots leads={leads} />
+          <div className="grid grid-cols-3 gap-4">
+            <div className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Revenue at Risk</p>
+              <p className="text-2xl font-bold tabular-nums mt-1">${analytics.atRiskRevenue.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground mt-1">{analytics.atRiskLeads.length} deals stalling, dark, or high-risk</p>
+              {analytics.atRiskLeads.length > 0 && (
+                <div className="mt-2 space-y-1 max-h-[80px] overflow-y-auto">
+                  {analytics.atRiskLeads.slice(0, 5).map(l => (
+                    <p key={l.id} onClick={() => setSelectedLeadId(l.id)} className="text-xs text-muted-foreground cursor-pointer hover:text-foreground truncate">
+                      {l.name} · ${l.dealValue.toLocaleString()}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Forecast vs Target</p>
+                <input
+                  type="number"
+                  defaultValue={analytics.forecastTarget}
+                  onBlur={(e) => localStorage.setItem("captarget_quarterly_target", e.target.value)}
+                  className="w-24 text-xs text-right border border-border rounded px-2 py-1 bg-background tabular-nums"
+                  title="Edit quarterly target"
+                />
+              </div>
+              <div className="mt-2 space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span>Commit</span><span className="tabular-nums font-medium">${analytics.commitValue.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Best Case</span><span className="tabular-nums">${analytics.bestCaseValue.toLocaleString()}</span>
+                </div>
+                <div className="w-full h-3 bg-secondary/50 rounded overflow-hidden mt-1.5">
+                  <div className="h-full bg-foreground/30 rounded transition-all" style={{ width: `${Math.min(100, (analytics.commitValue / analytics.forecastTarget) * 100)}%` }} />
+                </div>
+                <div className="flex justify-between text-xs mt-1">
+                  <span className={analytics.forecastGap > 0 ? "text-red-600 dark:text-red-400 font-medium" : "text-emerald-600 dark:text-emerald-400 font-medium"}>
+                    Gap: ${analytics.forecastGap.toLocaleString()}
+                  </span>
+                  <span className={`tabular-nums ${analytics.coverageRatio < 2 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                    {analytics.coverageRatio.toFixed(1)}x coverage
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="border border-border rounded-lg px-5 py-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Deal Health</p>
+              <div className="flex items-center gap-2 mt-2">
+                {analytics.criticalAlerts > 0 && (
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-foreground font-medium">
+                    {analytics.criticalAlerts} critical
+                  </span>
+                )}
+                {analytics.warningAlerts > 0 && (
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                    {analytics.warningAlerts} warning
+                  </span>
+                )}
+                {analytics.cleanDeals > 0 && (
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                    {analytics.cleanDeals} healthy
+                  </span>
+                )}
+              </div>
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">Intel Coverage:</span>
+                  <span className="font-medium tabular-nums">{analytics.leadsWithMeetings} w/ meetings</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="tabular-nums">{analytics.leadsWithDealIntel} synthesized</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  {Object.entries(analytics.momentumDist).map(([key, val]) => val > 0 && (
+                    <span key={key} className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                      {val} {key}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 4: Stage Conversion Funnel */}
+          <div className="border border-border rounded-lg px-5 py-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Stage Conversion Funnel</p>
+            <div className="grid grid-cols-7 gap-2">
+              {analytics.stageConversions.map(s => (
+                <div key={s.from} className="text-center">
+                  <span className="text-[10px] text-muted-foreground block mb-1">{s.from.split(" ").map(w => w[0]).join("")} → {s.to.split(" ").map(w => w[0]).join("")}</span>
+                  <div className="h-16 flex items-end justify-center">
+                    <div
+                      className={`w-8 rounded-t transition-all ${s === analytics.weakestLink ? "bg-red-400 dark:bg-red-500" : "bg-foreground/20"}`}
+                      style={{ height: `${Math.max(8, s.rate * 0.6)}%` }}
+                    />
+                  </div>
+                  <span className={`text-xs tabular-nums font-medium mt-1 block ${s === analytics.weakestLink ? "text-red-600 dark:text-red-400" : ""}`}>{s.rate}%</span>
+                </div>
+              ))}
+            </div>
+            {analytics.weakestLink && (
+              <p className="text-[10px] text-muted-foreground mt-2 text-center">Weakest: {analytics.weakestLink.from} → {analytics.weakestLink.to} ({analytics.weakestLink.rate}%)</p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Buyer Persona Intelligence */}
-      <DashboardPersonaMetrics leads={leads} onSelectLead={setSelectedLeadId} />
+      {/* ═══════════════════ PIPELINE TAB ═══════════════════ */}
+      {activeTab === "pipeline" && (
+        <div className="space-y-6">
+          <DashboardAdvancedMetrics leads={leads} onSelectLead={setSelectedLeadId} section="pipeline" />
 
-      {/* Advanced Metrics: Sales Velocity, Weighted Pipeline, Win/Loss, Rep Scorecard, Source ROI */}
-      <DashboardAdvancedMetrics leads={leads} onSelectLead={setSelectedLeadId} />
-
-
-      {/* More Analytics (Collapsible) */}
-      <Collapsible open={moreOpen} onOpenChange={setMoreOpen}>
-        <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-          <span>{moreOpen ? "▾" : "▸"}</span>
-          <span className="uppercase tracking-wider font-medium text-xs">More Analytics</span>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="space-y-6 mt-4">
-          {/* Pipeline Funnel + Owner Workload */}
+          {/* Pipeline Funnel */}
           <div className="grid grid-cols-2 gap-6">
             <div>
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Pipeline Funnel</h2>
@@ -521,42 +533,8 @@ export function Dashboard() {
                 })}
               </div>
             </div>
-            <div>
-              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Owner Workload</h2>
-              <div className="border border-border rounded-md overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-secondary/50">
-                      <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Owner</th>
-                      <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Active</th>
-                      <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Pipeline $</th>
-                      <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Won</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {analytics.ownerData.map((o) => (
-                      <tr key={o.owner}>
-                        <td className="px-4 py-2.5 font-medium flex items-center gap-2">
-                          {o.owner !== "Unassigned" ? (
-                            <span className="w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">{o.owner[0]}</span>
-                          ) : (
-                            <span className="w-6 h-6 rounded-full border border-dashed border-muted-foreground/40 flex items-center justify-center text-[10px] text-muted-foreground/50 shrink-0">?</span>
-                          )}
-                          {o.owner}
-                        </td>
-                        <td className="px-4 py-2.5 text-right tabular-nums">{o.count}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">${o.value.toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-right tabular-nums">{o.won}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
 
-          {/* Stale Leads + Forecast */}
-          <div className="grid grid-cols-2 gap-6">
+            {/* Stale Leads */}
             {analytics.staleLeads.length > 0 ? (
               <div>
                 <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
@@ -590,292 +568,315 @@ export function Dashboard() {
                 </div>
               </div>
             )}
-            <div>
-              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Forecast Summary</h2>
-              {analytics.forecastData.length > 0 ? (
-                <div className="border border-border rounded-md divide-y divide-border">
-                  {analytics.forecastData.map((f) => (
-                    <div key={f.category} className="flex items-center justify-between px-4 py-3 text-sm">
-                      <span className="font-medium">{f.category}</span>
-                      <div className="flex items-center gap-4">
-                        <span className="tabular-nums text-muted-foreground">{f.count} leads</span>
-                        <span className="tabular-nums font-semibold">${f.value.toLocaleString()}</span>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="flex items-center justify-between px-4 py-3 text-sm bg-secondary/30">
-                    <span className="font-medium">Total Forecasted</span>
-                    <span className="tabular-nums font-semibold">${analytics.forecastData.reduce((s, f) => s + f.value, 0).toLocaleString()}</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="border border-border rounded-md px-4 py-8 text-center">
-                  <p className="text-sm text-muted-foreground">No forecast categories assigned yet</p>
-                  <p className="text-xs text-muted-foreground mt-1">Set forecast categories on individual leads</p>
-                </div>
-              )}
-            </div>
           </div>
 
-          {/* Lead Volume */}
+          {/* Forecast Summary */}
           <div>
-            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Lead Volume (16 weeks)</h2>
-            <div className="border border-border rounded-lg p-4">
-              <ResponsiveContainer width="100%" height={240}>
-                <AreaChart data={analytics.weeklyData}>
-                  <defs>
-                    <linearGradient id="gradCT" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(0,0%,15%)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(0,0%,15%)" stopOpacity={0.05} />
-                    </linearGradient>
-                    <linearGradient id="gradSC" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(0,0%,55%)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(0,0%,55%)" stopOpacity={0.05} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
-                  <XAxis dataKey="week" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-                  <YAxis yAxisId="left" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} stroke="hsl(0,0%,75%)" />
-                  <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", background: "hsl(0,0%,100%)", borderRadius: 6 }} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Area yAxisId="left" type="monotone" dataKey="CT" stackId="1" stroke="hsl(0,0%,15%)" fill="url(#gradCT)" strokeWidth={2} name="Captarget" />
-                  <Area yAxisId="left" type="monotone" dataKey="SC" stackId="1" stroke="hsl(0,0%,55%)" fill="url(#gradSC)" strokeWidth={2} name="SourceCo" />
-                  <Line yAxisId="right" type="monotone" dataKey="cumulative" stroke="hsl(0,0%,40%)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} name="Cumulative" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Brand Comparison + Service by Brand */}
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Brand Comparison</h2>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { brand: "Captarget", data: analytics.ctLeads, abbr: "CT" },
-                  { brand: "SourceCo", data: analytics.scLeads, abbr: "SC" },
-                ].map(({ brand, data, abbr }) => (
-                  <div key={brand} className="border border-border rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs font-mono px-1.5 py-0.5 border border-border rounded">{abbr}</span>
-                      <span className="text-sm font-medium">{brand}</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-sm">
-                      <div><p className="text-xs text-muted-foreground">Total</p><p className="font-semibold tabular-nums">{data.length}</p></div>
-                      <div><p className="text-xs text-muted-foreground">Pipeline</p><p className="font-semibold tabular-nums">${data.filter((l) => !["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)).reduce((s, l) => s + l.dealValue, 0).toLocaleString()}</p></div>
-                      <div><p className="text-xs text-muted-foreground">Won</p><p className="font-semibold tabular-nums">{data.filter((l) => l.stage === "Closed Won").length}</p></div>
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Forecast Summary</h2>
+            {analytics.forecastData.length > 0 ? (
+              <div className="border border-border rounded-md divide-y divide-border">
+                {analytics.forecastData.map((f) => (
+                  <div key={f.category} className="flex items-center justify-between px-4 py-3 text-sm">
+                    <span className="font-medium">{f.category}</span>
+                    <div className="flex items-center gap-4">
+                      <span className="tabular-nums text-muted-foreground">{f.count} leads</span>
+                      <span className="tabular-nums font-semibold">${f.value.toLocaleString()}</span>
                     </div>
                   </div>
                 ))}
+                <div className="flex items-center justify-between px-4 py-3 text-sm bg-secondary/30">
+                  <span className="font-medium">Total Forecasted</span>
+                  <span className="tabular-nums font-semibold">${analytics.forecastData.reduce((s, f) => s + f.value, 0).toLocaleString()}</span>
+                </div>
               </div>
-            </div>
-            <div>
-              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Service Interest by Brand</h2>
-              <div className="border border-border rounded-lg p-4">
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={analytics.serviceByBrand} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
-                    <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-                    <YAxis dataKey="service" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={85} />
-                    <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
-                    <Bar dataKey="CT" fill="hsl(0,0%,20%)" radius={[0, 3, 3, 0]} name="Captarget" />
-                    <Bar dataKey="SC" fill="hsl(0,0%,65%)" radius={[0, 3, 3, 0]} name="SourceCo" />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                  </BarChart>
-                </ResponsiveContainer>
+            ) : (
+              <div className="border border-border rounded-md px-4 py-8 text-center">
+                <p className="text-sm text-muted-foreground">No forecast categories assigned yet</p>
               </div>
-            </div>
+            )}
           </div>
-          {/* Stage Distribution by Brand */}
-          <div>
-            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Stage Distribution by Brand</h2>
-            <div className="border border-border rounded-lg p-4">
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={analytics.conversionByBrand} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
-                  <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-                  <YAxis dataKey="stage" type="category" tick={{ fontSize: 9 }} stroke="hsl(0,0%,60%)" width={85} />
-                  <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
-                  <Bar dataKey="CT" fill="hsl(0,0%,20%)" radius={[0, 3, 3, 0]} name="Captarget" />
-                  <Bar dataKey="SC" fill="hsl(0,0%,65%)" radius={[0, 3, 3, 0]} name="SourceCo" />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+        </div>
+      )}
 
-          {/* Source + How SC Found Us */}
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Source Breakdown</h2>
-              <div className="border border-border rounded-lg p-4">
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={analytics.sourceBreakdown} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
-                    <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-                    <YAxis dataKey="source" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={80} />
-                    <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
-                    <Bar dataKey="count" fill="hsl(0,0%,25%)" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            {analytics.hearData.length > 0 && (
+      {/* ═══════════════════ TEAM TAB ═══════════════════ */}
+      {activeTab === "team" && (
+        <DashboardAdvancedMetrics leads={leads} onSelectLead={setSelectedLeadId} section="team" />
+      )}
+
+      {/* ═══════════════════ BUYERS TAB ═══════════════════ */}
+      {activeTab === "buyers" && (
+        <div className="space-y-6">
+          <DashboardPersonaMetrics leads={leads} onSelectLead={setSelectedLeadId} />
+
+          {/* More Detail Collapsible */}
+          <Collapsible open={moreDetailOpen} onOpenChange={setMoreDetailOpen}>
+            <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+              <span>{moreDetailOpen ? "▾" : "▸"}</span>
+              <span className="uppercase tracking-wider font-medium text-xs">Operational Detail</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-6 mt-4">
+              {/* Lead Volume */}
               <div>
-                <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">How SC Leads Found Us</h2>
+                <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Lead Volume (16 weeks)</h2>
                 <div className="border border-border rounded-lg p-4">
-                  <ResponsiveContainer width="100%" height={Math.max(180, analytics.hearData.length * 32)}>
-                    <BarChart data={analytics.hearData} layout="vertical" margin={{ left: 10 }}>
+                  <ResponsiveContainer width="100%" height={240}>
+                    <AreaChart data={analytics.weeklyData}>
+                      <defs>
+                        <linearGradient id="gradCT" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(0,0%,15%)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(0,0%,15%)" stopOpacity={0.05} />
+                        </linearGradient>
+                        <linearGradient id="gradSC" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(0,0%,55%)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(0,0%,55%)" stopOpacity={0.05} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                      <XAxis dataKey="week" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                      <YAxis yAxisId="left" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                      <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} stroke="hsl(0,0%,75%)" />
+                      <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", background: "hsl(0,0%,100%)", borderRadius: 6 }} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Area yAxisId="left" type="monotone" dataKey="CT" stackId="1" stroke="hsl(0,0%,15%)" fill="url(#gradCT)" strokeWidth={2} name="Captarget" />
+                      <Area yAxisId="left" type="monotone" dataKey="SC" stackId="1" stroke="hsl(0,0%,55%)" fill="url(#gradSC)" strokeWidth={2} name="SourceCo" />
+                      <Line yAxisId="right" type="monotone" dataKey="cumulative" stroke="hsl(0,0%,40%)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} name="Cumulative" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Brand Comparison + Service by Brand */}
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Brand Comparison</h2>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { brand: "Captarget", data: analytics.ctLeads, abbr: "CT" },
+                      { brand: "SourceCo", data: analytics.scLeads, abbr: "SC" },
+                    ].map(({ brand, data, abbr }) => (
+                      <div key={brand} className="border border-border rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-mono px-1.5 py-0.5 border border-border rounded">{abbr}</span>
+                          <span className="text-sm font-medium">{brand}</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-sm">
+                          <div><p className="text-xs text-muted-foreground">Total</p><p className="font-semibold tabular-nums">{data.length}</p></div>
+                          <div><p className="text-xs text-muted-foreground">Pipeline</p><p className="font-semibold tabular-nums">${data.filter((l) => !["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)).reduce((s, l) => s + l.dealValue, 0).toLocaleString()}</p></div>
+                          <div><p className="text-xs text-muted-foreground">Won</p><p className="font-semibold tabular-nums">{data.filter((l) => l.stage === "Closed Won").length}</p></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Service Interest by Brand</h2>
+                  <div className="border border-border rounded-lg p-4">
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={analytics.serviceByBrand} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                        <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                        <YAxis dataKey="service" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={85} />
+                        <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
+                        <Bar dataKey="CT" fill="hsl(0,0%,20%)" radius={[0, 3, 3, 0]} name="Captarget" />
+                        <Bar dataKey="SC" fill="hsl(0,0%,65%)" radius={[0, 3, 3, 0]} name="SourceCo" />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stage Distribution by Brand */}
+              <div>
+                <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Stage Distribution by Brand</h2>
+                <div className="border border-border rounded-lg p-4">
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart data={analytics.conversionByBrand} layout="vertical">
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
                       <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
-                      <YAxis dataKey="channel" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={90} />
-                      <Tooltip
-                        contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }}
-                        formatter={(value: number, _: string, props: any) => [`${value} (${props.payload.pct}%)`, "Leads"]}
-                      />
-                      <Bar dataKey="count" fill="hsl(0,0%,45%)" radius={[0, 4, 4, 0]}>
-                        {analytics.hearData.map((_, i) => (
-                          <Cell key={i} fill={`hsl(0,0%,${25 + i * 5}%)`} />
-                        ))}
-                      </Bar>
+                      <YAxis dataKey="stage" type="category" tick={{ fontSize: 9 }} stroke="hsl(0,0%,60%)" width={85} />
+                      <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
+                      <Bar dataKey="CT" fill="hsl(0,0%,20%)" radius={[0, 3, 3, 0]} name="Captarget" />
+                      <Bar dataKey="SC" fill="hsl(0,0%,65%)" radius={[0, 3, 3, 0]} name="SourceCo" />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Priority + Role */}
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Active Pipeline by Priority</h2>
-              <div className="border border-border rounded-md divide-y divide-border">
-                {analytics.priorityData.map((p) => {
-                  const total = analytics.priorityData.reduce((s, x) => s + x.count, 0);
-                  return (
-                    <div key={p.priority} className="flex items-center justify-between px-4 py-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${p.priority === "High" ? "bg-foreground" : p.priority === "Medium" ? "bg-foreground/50" : "bg-foreground/20"}`} />
-                        <span className="font-medium">{p.priority}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-24 h-3 bg-secondary/50 rounded overflow-hidden">
-                          <div className="h-full bg-foreground/20 rounded" style={{ width: `${total > 0 ? (p.count / total) * 100 : 0}%` }} />
+              {/* Source + How SC Found Us */}
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Source Breakdown</h2>
+                  <div className="border border-border rounded-lg p-4">
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart data={analytics.sourceBreakdown} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                        <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                        <YAxis dataKey="source" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={80} />
+                        <Tooltip contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }} />
+                        <Bar dataKey="count" fill="hsl(0,0%,25%)" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                {analytics.hearData.length > 0 && (
+                  <div>
+                    <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">How SC Leads Found Us</h2>
+                    <div className="border border-border rounded-lg p-4">
+                      <ResponsiveContainer width="100%" height={Math.max(180, analytics.hearData.length * 32)}>
+                        <BarChart data={analytics.hearData} layout="vertical" margin={{ left: 10 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,88%)" />
+                          <XAxis type="number" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" />
+                          <YAxis dataKey="channel" type="category" tick={{ fontSize: 10 }} stroke="hsl(0,0%,60%)" width={90} />
+                          <Tooltip
+                            contentStyle={{ fontSize: 12, border: "1px solid hsl(0,0%,85%)", borderRadius: 6 }}
+                            formatter={(value: number, _: string, props: any) => [`${value} (${props.payload.pct}%)`, "Leads"]}
+                          />
+                          <Bar dataKey="count" fill="hsl(0,0%,45%)" radius={[0, 4, 4, 0]}>
+                            {analytics.hearData.map((_, i) => (
+                              <Cell key={i} fill={`hsl(0,0%,${25 + i * 5}%)`} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Priority + Role */}
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Active Pipeline by Priority</h2>
+                  <div className="border border-border rounded-md divide-y divide-border">
+                    {analytics.priorityData.map((p) => {
+                      const total = analytics.priorityData.reduce((s, x) => s + x.count, 0);
+                      return (
+                        <div key={p.priority} className="flex items-center justify-between px-4 py-3 text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${p.priority === "High" ? "bg-foreground" : p.priority === "Medium" ? "bg-foreground/50" : "bg-foreground/20"}`} />
+                            <span className="font-medium">{p.priority}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="w-24 h-3 bg-secondary/50 rounded overflow-hidden">
+                              <div className="h-full bg-foreground/20 rounded" style={{ width: `${total > 0 ? (p.count / total) * 100 : 0}%` }} />
+                            </div>
+                            <span className="tabular-nums font-medium w-8 text-right">{p.count}</span>
+                          </div>
                         </div>
-                        <span className="tabular-nums font-medium w-8 text-right">{p.count}</span>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Role / Buyer Type</h2>
+                  <div className="border border-border rounded-md divide-y divide-border max-h-[200px] overflow-y-auto">
+                    {analytics.roleData.map((r) => (
+                      <div key={r.role} className="flex items-center justify-between px-4 py-2 text-sm">
+                        <span className="text-muted-foreground truncate">{r.role}</span>
+                        <span className="font-medium tabular-nums">{r.count}</span>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Role / Buyer Type</h2>
-              <div className="border border-border rounded-md divide-y divide-border max-h-[200px] overflow-y-auto">
-                {analytics.roleData.map((r) => (
-                  <div key={r.role} className="flex items-center justify-between px-4 py-2 text-sm">
-                    <span className="text-muted-foreground truncate">{r.role}</span>
-                    <span className="font-medium tabular-nums">{r.count}</span>
+                    ))}
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Service Interest + Deals + Day of Week */}
-          <div className="grid grid-cols-3 gap-6">
-            <div>
-              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Service Interest (All)</h2>
-              <div className="border border-border rounded-md divide-y divide-border">
-                {analytics.serviceData.map((s) => (
-                  <div key={s.label} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                    <span className="text-muted-foreground truncate">{s.label}</span>
-                    <span className="font-medium tabular-nums">{s.count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Deals Planned</h2>
-              <div className="border border-border rounded-md divide-y divide-border">
-                {analytics.dealsData.map((d) => (
-                  <div key={d.range} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                    <span className="text-muted-foreground">{d.range}</span>
-                    <span className="font-medium tabular-nums">{d.count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Submissions by Day</h2>
-              <div className="border border-border rounded-md divide-y divide-border">
-                {analytics.dayOfWeek.map((d) => (
-                  <div key={d.day} className="flex items-center justify-between px-4 py-2 text-sm">
-                    <span className="text-muted-foreground">{d.day}</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-16 h-3 bg-secondary/50 rounded overflow-hidden">
-                        <div className="h-full bg-foreground/20 rounded" style={{ width: `${(d.count / Math.max(...analytics.dayOfWeek.map((x) => x.count), 1)) * 100}%` }} />
+              {/* Service Interest + Deals + Day of Week */}
+              <div className="grid grid-cols-3 gap-6">
+                <div>
+                  <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Service Interest (All)</h2>
+                  <div className="border border-border rounded-md divide-y divide-border">
+                    {analytics.serviceData.map((s) => (
+                      <div key={s.label} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                        <span className="text-muted-foreground truncate">{s.label}</span>
+                        <span className="font-medium tabular-nums">{s.count}</span>
                       </div>
-                      <span className="font-medium tabular-nums text-xs w-6 text-right">{d.count}</span>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Company Leaderboard */}
-          <div>
-            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Company Leaderboard (Top 15)</h2>
-            <div className="border border-border rounded-md overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-secondary/50">
-                    <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Company</th>
-                    <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Leads</th>
-                    <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Deal Value</th>
-                    <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Sources</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {analytics.companyLeaderboard.map((c) => (
-                    <tr key={c.company} className="hover:bg-secondary/30 transition-colors">
-                      <td className="px-4 py-2 font-medium">{c.company}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{c.count}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{c.value ? `$${c.value.toLocaleString()}` : "—"}</td>
-                      <td className="px-4 py-2 text-right text-xs text-muted-foreground">{c.sources}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Duplicates */}
-          <div>
-            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
-              Cross-Brand Duplicates <span className="text-xs font-normal ml-1">({analytics.duplicatePairs.length} pairs)</span>
-            </h2>
-            {analytics.duplicatePairs.length > 0 ? (
-              <div className="border border-border rounded-md divide-y divide-border max-h-[240px] overflow-y-auto">
-                {analytics.duplicatePairs.map((pair, i) => (
-                  <div key={i} className="px-4 py-2.5 text-sm space-y-0.5">
-                    <p className="font-medium">{pair.ctLead.name}</p>
-                    <p className="text-xs text-muted-foreground">{pair.ctLead.email}</p>
-                    <div className="flex gap-2 text-xs">
-                      <span className="px-1 py-0.5 border border-border rounded">CT: {pair.ctLead.source.replace("CT ", "")}</span>
-                      <span className="px-1 py-0.5 border border-border rounded">SC: {pair.scLead.source.replace("SC ", "")}</span>
-                    </div>
+                </div>
+                <div>
+                  <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Deals Planned</h2>
+                  <div className="border border-border rounded-md divide-y divide-border">
+                    {analytics.dealsData.map((d) => (
+                      <div key={d.range} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                        <span className="text-muted-foreground">{d.range}</span>
+                        <span className="font-medium tabular-nums">{d.count}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+                <div>
+                  <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Submissions by Day</h2>
+                  <div className="border border-border rounded-md divide-y divide-border">
+                    {analytics.dayOfWeek.map((d) => (
+                      <div key={d.day} className="flex items-center justify-between px-4 py-2 text-sm">
+                        <span className="text-muted-foreground">{d.day}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-3 bg-secondary/50 rounded overflow-hidden">
+                            <div className="h-full bg-foreground/20 rounded" style={{ width: `${(d.count / Math.max(...analytics.dayOfWeek.map((x) => x.count), 1)) * 100}%` }} />
+                          </div>
+                          <span className="font-medium tabular-nums text-xs w-6 text-right">{d.count}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No cross-brand duplicates found</p>
-            )}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
+
+              {/* Company Leaderboard */}
+              <div>
+                <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Company Leaderboard (Top 15)</h2>
+                <div className="border border-border rounded-md overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-secondary/50">
+                        <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Company</th>
+                        <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Leads</th>
+                        <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Deal Value</th>
+                        <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Sources</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {analytics.companyLeaderboard.map((c) => (
+                        <tr key={c.company} className="hover:bg-secondary/30 transition-colors">
+                          <td className="px-4 py-2 font-medium">{c.company}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{c.count}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{c.value ? `$${c.value.toLocaleString()}` : "—"}</td>
+                          <td className="px-4 py-2 text-right text-xs text-muted-foreground">{c.sources}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Duplicates */}
+              <div>
+                <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
+                  Cross-Brand Duplicates <span className="text-xs font-normal ml-1">({analytics.duplicatePairs.length} pairs)</span>
+                </h2>
+                {analytics.duplicatePairs.length > 0 ? (
+                  <div className="border border-border rounded-md divide-y divide-border max-h-[240px] overflow-y-auto">
+                    {analytics.duplicatePairs.map((pair, i) => (
+                      <div key={i} className="px-4 py-2.5 text-sm space-y-0.5">
+                        <p className="font-medium">{pair.ctLead.name}</p>
+                        <p className="text-xs text-muted-foreground">{pair.ctLead.email}</p>
+                        <div className="flex gap-2 text-xs">
+                          <span className="px-1 py-0.5 border border-border rounded">CT: {pair.ctLead.source.replace("CT ", "")}</span>
+                          <span className="px-1 py-0.5 border border-border rounded">SC: {pair.scLead.source.replace("SC ", "")}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No cross-brand duplicates found</p>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
 
       <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
     </div>
