@@ -1,50 +1,56 @@
 
 
-# Fix: LinkedIn Discovery for Hard-to-Find Profiles
+# Fix: LinkedIn Profile Verification When Scraping Fails
 
-## Why It Failed
+## Root Cause
 
-The agent's 5 searches all relied on **name + company** keywords. For Ellie Burei:
-- LinkedIn slug `emb339` contains no name text — search engines won't match it to "Ellie Burei"
-- LucaFah is a small firm, so there's minimal web presence linking her name to a LinkedIn URL
-- The agent never tried **scraping the company's LinkedIn page** to find employees, despite having that strategy in the prompt
+The agent **found** `linkedin.com/in/emb339` on Turn 4 but couldn't verify it because:
 
-Two fixable issues:
-1. **5 turns is too few** for hard cases — the agent ran out before trying company-LinkedIn-page scraping
-2. **No company LinkedIn search** — the agent should proactively search for the company on LinkedIn and scrape its page to find employee links
+1. **LinkedIn blocks Firecrawl scraping** (403 error) — the agent got "(empty page)" and moved on
+2. **Email initials logic is wrong** — code generates "eb" and "elb" but never "emb" (first + middle + last initial). The slug `emb339` would only match if we tried middle-initial combinations.
 
-## Plan
+## Fix Plan
 
-### 1. Increase single-lead retry turns from 5 to 8
-**File**: `supabase/functions/backfill-linkedin/index.ts`
+### 1. Auto-verify LinkedIn URLs via search fallback when scrape fails
+**File**: `supabase/functions/backfill-linkedin/index.ts` — scrape handler (lines 322-331)
 
-In the single-lead mode section, use 8 turns instead of `FLASH_MAX_TURNS` (5). This gives the agent enough room to try broader strategies after initial searches fail.
+When the agent scrapes a `linkedin.com/in/` URL and gets an empty response (403), automatically run a **search-based verification** instead of returning "(empty page)":
+- Search for the LinkedIn slug (e.g., `"emb339" site:linkedin.com`)  
+- Return the search snippet (which often contains name + headline) to the agent
+- This lets the agent verify without needing to scrape the blocked page
 
-### 2. Add "company LinkedIn page" as a priority strategy in the prompt
-**File**: `supabase/functions/backfill-linkedin/index.ts` — `buildSystemPrompt()`
-
-Add an explicit high-priority strategy:
 ```
-PRIORITY STRATEGY for small/niche companies:
-- Search for the COMPANY on LinkedIn: "CompanyName site:linkedin.com/company"
-- SCRAPE the company's LinkedIn page (linkedin.com/company/companyname/people or /about)
-- Look for the person's name in the employee list or "people" section
-- This is especially important when direct name searches fail
+// Pseudocode for the fallback:
+if (parsed.url.includes("linkedin.com/in/") && scraped === "") {
+  const slug = parsed.url.split("/in/")[1]?.split("/")[0];
+  const fallbackResults = await firecrawlSearch(`"${slug}" site:linkedin.com`, ...);
+  // Return snippet to agent instead of "(empty page)"
+}
 ```
 
-### 3. Add email-username inference strategy
-The email `ellie.burei@lucafah.com` → initials could be "eb" or "emb". Add a prompt hint:
-```
-- If the person's email is firstname.lastname@domain, try searching for their initials 
-  as a LinkedIn slug (e.g., ellie.burei → "emb" or "eb") combined with the company name
-```
+### 2. Fix email initials generation to include middle-initial variants
+**File**: `supabase/functions/backfill-linkedin/index.ts` — lines 260-277
 
-### 4. Use gpt-4o for retry/failed leads instead of gpt-4o-mini
-When processing a single lead (retry mode), use `gpt-4o` for better reasoning about creative search strategies. Keep `gpt-4o-mini` for batch mode to control costs.
+Current logic for `ellie.burei`:
+- `initials2` = "eb" (correct)
+- `initials3` = "elb" (wrong — takes first 2 chars of first name + first of last)
+
+Fix: generate ALL reasonable initial combinations including single-letter initials with a middle letter between them. For "ellie.burei", generate: "eb", "emb", "elb", "eab", "ecb"... or more practically, just try all 26 middle-initial variants: `e[a-z]b`.
+
+Simpler approach: generate the slug prefix patterns and search for them:
+- "eb" (first+last initial)
+- "e_b" pattern where _ is any letter (covers middle initials like "emb")
+- The full local part "ellieburei" or "ellie-burei"
+
+### 3. Add the LinkedIn URL directly to pre-search context when found on company website
+When the pre-search scrapes the company website (lucafah.com) and finds a LinkedIn link, include it prominently so the agent tries to verify it immediately rather than searching from scratch.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/backfill-linkedin/index.ts` | Enhanced prompt strategies, 8 turns for single-lead, gpt-4o for retries |
+| `supabase/functions/backfill-linkedin/index.ts` | Search-based fallback for 403'd LinkedIn scrapes; fix initials generation; enhance pre-search LinkedIn link handling |
+
+## Expected Result
+The agent will: find `emb339` on lucafah.com → try to scrape it → get 403 → auto-search for the slug → get snippet showing "Ellie Burei" → verify match → report found.
 
