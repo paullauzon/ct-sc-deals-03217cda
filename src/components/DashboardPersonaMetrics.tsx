@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Lead } from "@/types/lead";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 const POST_MEETING_STAGES = new Set(["Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Closed Lost", "Went Dark"]);
@@ -46,8 +45,6 @@ interface Props {
 }
 
 export function DashboardPersonaMetrics({ leads, onSelectLead }: Props) {
-  const [open, setOpen] = useState(false);
-
   const data = useMemo(() => {
     // ── Block 1: Buyer Type Matrix ──
     const buyerTypes = new Map<string, Lead[]>();
@@ -134,7 +131,6 @@ export function DashboardPersonaMetrics({ leads, onSelectLead }: Props) {
           k.includes("referral") || k.includes("friend") || k.includes("word of mouth") ? "Referral" :
           l.hearAboutUs;
       } else {
-        // Fall back to source for CT leads
         ch = l.source.includes("Contact") ? "Contact Form" :
           l.source.includes("Targets") ? "Targets Form" : l.source;
       }
@@ -174,7 +170,6 @@ export function DashboardPersonaMetrics({ leads, onSelectLead }: Props) {
     });
     const untiered = leads.filter(l => !l.tier);
 
-    // Scoring accuracy: are higher tiers winning more?
     const tiersWithWins = tierRows.filter(t => t.count > 0);
     let scoringAccuracy = "—";
     if (tiersWithWins.length >= 2) {
@@ -192,119 +187,113 @@ export function DashboardPersonaMetrics({ leads, onSelectLead }: Props) {
   const maxChannelCount = Math.max(...data.channelRows.map(r => r.count), 1);
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-        <span>{open ? "▾" : "▸"}</span>
-        <span className="uppercase tracking-wider font-medium text-xs">Buyer Persona Intelligence</span>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-4 mt-4">
-        <div className="grid grid-cols-2 gap-4">
-          {/* Block 1: Buyer Type Matrix */}
-          <div className="border border-border rounded-lg px-5 py-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Buyer Type Performance</p>
-            <div className="space-y-0">
-              <div className="grid grid-cols-[1fr_40px_60px_40px_50px_50px_80px] gap-1 text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-border">
-                <span>Type</span>
-                <span className="text-right">Leads</span>
-                <span className="text-right">Pipeline</span>
-                <span className="text-right">Won</span>
-                <span className="text-right">Win %</span>
-                <span className="text-right">Cycle</span>
-                <span className="text-right">ICP S/M/W</span>
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        {/* Block 1: Buyer Type Matrix */}
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Buyer Type Performance</p>
+          <div className="space-y-0">
+            <div className="grid grid-cols-[1fr_40px_60px_40px_50px_50px_80px] gap-1 text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-border">
+              <span>Type</span>
+              <span className="text-right">Leads</span>
+              <span className="text-right">Pipeline</span>
+              <span className="text-right">Won</span>
+              <span className="text-right">Win %</span>
+              <span className="text-right">Cycle</span>
+              <span className="text-right">ICP S/M/W</span>
+            </div>
+            {data.buyerTypeRows.map(r => (
+              <div key={r.type} className="grid grid-cols-[1fr_40px_60px_40px_50px_50px_80px] gap-1 text-xs py-1.5 border-b border-border/50 last:border-0">
+                <span className="font-medium truncate">{r.type}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.count}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{fmt$(r.pipeValue)}</span>
+                <span className="text-right tabular-nums font-medium">{r.wonCount}</span>
+                <span className="text-right tabular-nums font-medium">{r.winRate > 0 ? `${r.winRate}%` : "—"}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.avgCycle !== null ? `${r.avgCycle}d` : "—"}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.icpStrong}/{r.icpMod}/{r.icpWeak}</span>
               </div>
-              {data.buyerTypeRows.map(r => (
-                <div key={r.type} className="grid grid-cols-[1fr_40px_60px_40px_50px_50px_80px] gap-1 text-xs py-1.5 border-b border-border/50 last:border-0">
-                  <span className="font-medium truncate">{r.type}</span>
-                  <span className="text-right tabular-nums text-muted-foreground">{r.count}</span>
-                  <span className="text-right tabular-nums text-muted-foreground">{fmt$(r.pipeValue)}</span>
-                  <span className="text-right tabular-nums font-medium">{r.wonCount}</span>
-                  <span className="text-right tabular-nums font-medium">{r.winRate > 0 ? `${r.winRate}%` : "—"}</span>
-                  <span className="text-right tabular-nums text-muted-foreground">{r.avgCycle !== null ? `${r.avgCycle}d` : "—"}</span>
-                  <span className="text-right tabular-nums text-muted-foreground">{r.icpStrong}/{r.icpMod}/{r.icpWeak}</span>
-                </div>
-              ))}
-            </div>
+            ))}
           </div>
+        </div>
 
-          {/* Block 2: Acquisition Intent */}
-          <div className="border border-border rounded-lg px-5 py-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Acquisition Intent Segmentation</p>
-            <div className="space-y-3">
-              {data.intentRows.map(r => (
-                <div key={r.label}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium">{r.label}</span>
-                    <div className="flex gap-3 text-[10px] text-muted-foreground tabular-nums">
-                      <span>{r.count} leads</span>
-                      <span>{fmt$(r.pipeValue)} pipe</span>
-                      <span>{r.meetingRate}% mtg</span>
-                      <span className="font-medium text-foreground">{r.winRate}% win</span>
-                    </div>
-                  </div>
-                  <StageBar leads={r.leads} />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Block 3: Channel Attribution */}
-          <div className="border border-border rounded-lg px-5 py-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Channel → Close Attribution</p>
-            <div className="space-y-0">
-              <div className="grid grid-cols-[1fr_40px_50px_50px_50px_60px] gap-1 text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-border">
-                <span>Channel</span>
-                <span className="text-right">Leads</span>
-                <span className="text-right">Mtg %</span>
-                <span className="text-right">Win %</span>
-                <span className="text-right">Avg $</span>
-                <span className="text-right">Revenue</span>
-              </div>
-              {data.channelRows.slice(0, 10).map(r => (
-                <div key={r.channel} className="grid grid-cols-[1fr_40px_50px_50px_50px_60px] gap-1 text-xs py-1.5 border-b border-border/50 last:border-0">
-                  <span className="font-medium truncate">{r.channel}</span>
-                  <span className="text-right tabular-nums text-muted-foreground">{r.count}</span>
-                  <span className="text-right tabular-nums text-muted-foreground">{r.meetingRate}%</span>
-                  <span className="text-right tabular-nums font-medium">{r.winRate > 0 ? `${r.winRate}%` : "—"}</span>
-                  <span className="text-right tabular-nums text-muted-foreground">{r.avgDealValue > 0 ? fmt$(r.avgDealValue) : "—"}</span>
-                  <span className="text-right tabular-nums font-medium">{r.revenue > 0 ? fmt$(r.revenue) : "—"}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Block 4: Tier vs Outcomes */}
-          <div className="border border-border rounded-lg px-5 py-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Lead Quality Tiers vs Outcomes</p>
-            <div className="space-y-2">
-              {data.tierRows.map(r => (
-                <div key={r.tier} className="flex items-center gap-3">
-                  <span className="text-xs font-medium w-8">T{r.tier}</span>
-                  <HBar value={r.count} max={Math.max(...data.tierRows.map(t => t.count), 1)} />
-                  <div className="flex gap-3 text-[10px] tabular-nums text-muted-foreground shrink-0">
-                    <span className="w-8 text-right">{r.count}</span>
-                    <span className="w-12 text-right">{fmt$(r.pipeValue)}</span>
-                    <span className="w-10 text-right font-medium text-foreground">{r.winRate > 0 ? `${r.winRate}%` : "—"}</span>
-                    <span className="w-10 text-right">{r.avgDeal > 0 ? fmt$(r.avgDeal) : "—"}</span>
+        {/* Block 2: Acquisition Intent */}
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Acquisition Intent Segmentation</p>
+          <div className="space-y-3">
+            {data.intentRows.map(r => (
+              <div key={r.label}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium">{r.label}</span>
+                  <div className="flex gap-3 text-[10px] text-muted-foreground tabular-nums">
+                    <span>{r.count} leads</span>
+                    <span>{fmt$(r.pipeValue)} pipe</span>
+                    <span>{r.meetingRate}% mtg</span>
+                    <span className="font-medium text-foreground">{r.winRate}% win</span>
                   </div>
                 </div>
-              ))}
-              {data.untiered.length > 0 && (
-                <p className="text-[10px] text-muted-foreground mt-1">{data.untiered.length} leads unscored</p>
-              )}
-            </div>
-            <div className="mt-3 pt-2 border-t border-border">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Scoring Accuracy</span>
-                <span className={`text-xs font-medium ${
-                  data.scoringAccuracy === "Calibrated" ? "text-emerald-600 dark:text-emerald-400" :
-                  data.scoringAccuracy.includes("Inverted") ? "text-red-600 dark:text-red-400" :
-                  "text-muted-foreground"
-                }`}>{data.scoringAccuracy}</span>
+                <StageBar leads={r.leads} />
               </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Block 3: Channel Attribution */}
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Channel → Close Attribution</p>
+          <div className="space-y-0">
+            <div className="grid grid-cols-[1fr_40px_50px_50px_50px_60px] gap-1 text-[10px] text-muted-foreground uppercase tracking-wider pb-1 border-b border-border">
+              <span>Channel</span>
+              <span className="text-right">Leads</span>
+              <span className="text-right">Mtg %</span>
+              <span className="text-right">Win %</span>
+              <span className="text-right">Avg $</span>
+              <span className="text-right">Revenue</span>
+            </div>
+            {data.channelRows.slice(0, 10).map(r => (
+              <div key={r.channel} className="grid grid-cols-[1fr_40px_50px_50px_50px_60px] gap-1 text-xs py-1.5 border-b border-border/50 last:border-0">
+                <span className="font-medium truncate">{r.channel}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.count}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.meetingRate}%</span>
+                <span className="text-right tabular-nums font-medium">{r.winRate > 0 ? `${r.winRate}%` : "—"}</span>
+                <span className="text-right tabular-nums text-muted-foreground">{r.avgDealValue > 0 ? fmt$(r.avgDealValue) : "—"}</span>
+                <span className="text-right tabular-nums font-medium">{r.revenue > 0 ? fmt$(r.revenue) : "—"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Block 4: Tier vs Outcomes */}
+        <div className="border border-border rounded-lg px-5 py-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Lead Quality Tiers vs Outcomes</p>
+          <div className="space-y-2">
+            {data.tierRows.map(r => (
+              <div key={r.tier} className="flex items-center gap-3">
+                <span className="text-xs font-medium w-8">T{r.tier}</span>
+                <HBar value={r.count} max={Math.max(...data.tierRows.map(t => t.count), 1)} />
+                <div className="flex gap-3 text-[10px] tabular-nums text-muted-foreground shrink-0">
+                  <span className="w-8 text-right">{r.count}</span>
+                  <span className="w-12 text-right">{fmt$(r.pipeValue)}</span>
+                  <span className="w-10 text-right font-medium text-foreground">{r.winRate > 0 ? `${r.winRate}%` : "—"}</span>
+                  <span className="w-10 text-right">{r.avgDeal > 0 ? fmt$(r.avgDeal) : "—"}</span>
+                </div>
+              </div>
+            ))}
+            {data.untiered.length > 0 && (
+              <p className="text-[10px] text-muted-foreground mt-1">{data.untiered.length} leads unscored</p>
+            )}
+          </div>
+          <div className="mt-3 pt-2 border-t border-border">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Scoring Accuracy</span>
+              <span className={`text-xs font-medium ${
+                data.scoringAccuracy === "Calibrated" ? "text-emerald-600 dark:text-emerald-400" :
+                data.scoringAccuracy.includes("Inverted") ? "text-red-600 dark:text-red-400" :
+                "text-muted-foreground"
+              }`}>{data.scoringAccuracy}</span>
             </div>
           </div>
         </div>
-      </CollapsibleContent>
-    </Collapsible>
+      </div>
+    </div>
   );
 }

@@ -19,9 +19,10 @@ const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 interface Props {
   leads: Lead[];
   onSelectLead?: (id: string) => void;
+  section: "pipeline" | "team";
 }
 
-export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
+export function DashboardAdvancedMetrics({ leads, onSelectLead, section }: Props) {
   const data = useMemo(() => {
     const owners = ["Malik", "Valeria", "Tomos", ""] as const;
 
@@ -76,15 +77,6 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
       };
     });
 
-    // Stage where deals die most
-    const stageDropOff: { stage: string; lost: number }[] = [];
-    for (const l of lostLeads) {
-      // Use the stage before they were moved to Closed Lost — approximate via stageEnteredDate
-      // Since we don't track prior stage, we count lost deals by their close reason context
-    }
-    // Count deals that went dark or lost from each source stage isn't tracked directly
-    // Instead show the "last active stage" distribution is not available — skip this
-
     // ─── Rep Performance Scorecard ───
     const repScorecard = owners.map(owner => {
       const ownerLeads = leads.filter(l => l.assignedTo === owner);
@@ -122,7 +114,7 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
       };
     });
 
-    // ─── Coaching Insights (aggregated per rep) ───
+    // ─── Coaching Insights ───
     const repCoaching = owners.filter(o => o !== "").map(owner => {
       const ownerMeetings = leads
         .filter(l => l.assignedTo === owner)
@@ -171,17 +163,162 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
       return end > new Date(now.getTime() + 60 * 86400000) && end <= new Date(now.getTime() + 90 * 86400000);
     });
 
+    // ─── Rep Pipeline Distribution ───
+    const ACTIVE_STAGES = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
+    const repPipelineDist = owners.filter(o => o !== "").map(owner => {
+      const ownerActive = leads.filter(l => l.assignedTo === owner && !CLOSED_STAGES.has(l.stage));
+      const stageCounts = ACTIVE_STAGES.map(s => ({
+        stage: s,
+        count: ownerActive.filter(l => l.stage === s).length,
+      }));
+      return { owner: owner as string, total: ownerActive.length, stages: stageCounts };
+    });
+
     return {
       salesVelocity, avgDealValue: Math.round(avgDealValue), winRate: Math.round(winRate * 100),
       avgSalesCycleDays: Math.round(avgSalesCycleDays), activeDealsCount: activeDeals.length,
       rawPipeline, weightedPipeline: Math.round(weightedPipeline),
       closeReasonData, avgCycleWon, avgCycleLost, winRateBySource,
       wonCount: wonLeads.length, lostCount: lostLeads.length,
-      repScorecard, sourceROI, repCoaching,
+      repScorecard, sourceROI, repCoaching, repPipelineDist,
       renewals30, renewals60, renewals90,
     };
   }, [leads]);
 
+  if (section === "team") {
+    return (
+      <div className="space-y-6">
+        {/* Rep Performance Scorecard */}
+        <div>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Rep Performance Scorecard</h2>
+          <div className="border border-border rounded-md overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/50">
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Rep</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Active</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Pipeline $</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Won</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Lost</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Win %</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Avg Deal</th>
+                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Avg Cycle</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {data.repScorecard.map(r => (
+                  <tr key={r.owner} className="hover:bg-secondary/30 transition-colors">
+                    <td className="px-4 py-2.5 font-medium flex items-center gap-2">
+                      {r.owner !== "Unassigned" ? (
+                        <span className="w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">{r.owner[0]}</span>
+                      ) : (
+                        <span className="w-6 h-6 rounded-full border border-dashed border-muted-foreground/40 flex items-center justify-center text-[10px] text-muted-foreground/50 shrink-0">?</span>
+                      )}
+                      {r.owner}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{r.activeDeals}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">${r.pipelineValue.toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{r.won}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-red-600 dark:text-red-400">{r.lost}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{r.winRate > 0 ? `${r.winRate}%` : "—"}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.avgDealSize > 0 ? `$${r.avgDealSize.toLocaleString()}` : "—"}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.avgCycleDays > 0 ? `${r.avgCycleDays}d` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Coaching Insights */}
+        {data.repCoaching.some(r => r.meetingCount > 0) && (
+          <div>
+            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Coaching Insights</h2>
+            <div className="border border-border rounded-md overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-secondary/50">
+                    <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Rep</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Meetings</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Talk Ratio</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Q Quality</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Objections</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Flag</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {data.repCoaching.map(r => (
+                    <tr key={r.owner} className="hover:bg-secondary/30 transition-colors">
+                      <td className="px-4 py-2.5 font-medium flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">{r.owner[0]}</span>
+                        {r.owner}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{r.meetingCount}</td>
+                      <td className={`px-3 py-2.5 text-right tabular-nums ${r.avgTalkRatio && r.avgTalkRatio > 60 ? "text-red-600 dark:text-red-400 font-medium" : ""}`}>
+                        {r.avgTalkRatio !== null ? `${r.avgTalkRatio}%` : "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <span className="text-xs">{r.questionQuality.Strong}S / {r.questionQuality.Adequate}A / {r.questionQuality.Weak}W</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <span className="text-xs">{r.objectionHandling.Effective}E / {r.objectionHandling.Partial}P / {r.objectionHandling.Missed}M</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        {r.needsCoaching && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Needs coaching</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Rep Pipeline Distribution */}
+        <div>
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Rep Pipeline Distribution</h2>
+          <div className="border border-border rounded-md overflow-hidden">
+            {data.repPipelineDist.map(rep => (
+              <div key={rep.owner} className="px-4 py-3 border-b border-border last:border-0">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">{rep.owner[0]}</span>
+                    <span className="text-sm font-medium">{rep.owner}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground tabular-nums">{rep.total} active</span>
+                </div>
+                <div className="flex h-3 rounded overflow-hidden bg-secondary/30">
+                  {rep.stages.map((s, i) => s.count > 0 && (
+                    <div
+                      key={s.stage}
+                      className="h-full transition-all"
+                      style={{
+                        width: `${(s.count / Math.max(rep.total, 1)) * 100}%`,
+                        opacity: 0.2 + (i / rep.stages.length) * 0.8,
+                        backgroundColor: "hsl(var(--foreground))",
+                      }}
+                      title={`${s.stage}: ${s.count}`}
+                    />
+                  ))}
+                </div>
+                <div className="flex gap-2 mt-1 flex-wrap">
+                  {rep.stages.filter(s => s.count > 0).map(s => (
+                    <span key={s.stage} className="text-[10px] text-muted-foreground tabular-nums">
+                      {s.stage.split(" ").map(w => w[0]).join("")}:{s.count}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // section === "pipeline"
   return (
     <div className="space-y-6">
       {/* Sales Velocity + Weighted Pipeline */}
@@ -217,7 +354,7 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
         </div>
       </div>
 
-      {/* Win/Loss Analysis */}
+      {/* Win/Loss Analysis + Win Rate by Source */}
       <div className="grid grid-cols-2 gap-6">
         <div>
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Win/Loss Analysis</h2>
@@ -280,48 +417,6 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
         </div>
       </div>
 
-      {/* Rep Performance Scorecard */}
-      <div>
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Rep Performance Scorecard</h2>
-        <div className="border border-border rounded-md overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-secondary/50">
-                <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Rep</th>
-                <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Active</th>
-                <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Pipeline $</th>
-                <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Won</th>
-                <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Lost</th>
-                <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Win %</th>
-                <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Avg Deal</th>
-                <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Avg Cycle</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {data.repScorecard.map(r => (
-                <tr key={r.owner} className="hover:bg-secondary/30 transition-colors">
-                  <td className="px-4 py-2.5 font-medium flex items-center gap-2">
-                    {r.owner !== "Unassigned" ? (
-                      <span className="w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">{r.owner[0]}</span>
-                    ) : (
-                      <span className="w-6 h-6 rounded-full border border-dashed border-muted-foreground/40 flex items-center justify-center text-[10px] text-muted-foreground/50 shrink-0">?</span>
-                    )}
-                    {r.owner}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{r.activeDeals}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">${r.pipelineValue.toLocaleString()}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{r.won}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-red-600 dark:text-red-400">{r.lost}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{r.winRate > 0 ? `${r.winRate}%` : "—"}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.avgDealSize > 0 ? `$${r.avgDealSize.toLocaleString()}` : "—"}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">{r.avgCycleDays > 0 ? `${r.avgCycleDays}d` : "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       {/* Lead Source ROI */}
       <div>
         <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">Lead Source ROI</h2>
@@ -354,52 +449,6 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead }: Props) {
           </table>
         </div>
       </div>
-
-      {/* Coaching Insights */}
-      {data.repCoaching.some(r => r.meetingCount > 0) && (
-        <div>
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Coaching Insights</h2>
-          <div className="border border-border rounded-md overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-secondary/50">
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Rep</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Meetings</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Talk Ratio</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Q Quality</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Objections</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">Flag</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {data.repCoaching.map(r => (
-                  <tr key={r.owner} className="hover:bg-secondary/30 transition-colors">
-                    <td className="px-4 py-2.5 font-medium flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">{r.owner[0]}</span>
-                      {r.owner}
-                    </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{r.meetingCount}</td>
-                    <td className={`px-3 py-2.5 text-right tabular-nums ${r.avgTalkRatio && r.avgTalkRatio > 60 ? "text-red-600 dark:text-red-400 font-medium" : ""}`}>
-                      {r.avgTalkRatio !== null ? `${r.avgTalkRatio}%` : "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <span className="text-xs">{r.questionQuality.Strong}S / {r.questionQuality.Adequate}A / {r.questionQuality.Weak}W</span>
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <span className="text-xs">{r.objectionHandling.Effective}E / {r.objectionHandling.Partial}P / {r.objectionHandling.Missed}M</span>
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      {r.needsCoaching && (
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Needs coaching</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* Contract Renewals */}
       {(data.renewals30.length > 0 || data.renewals60.length > 0 || data.renewals90.length > 0) && (
