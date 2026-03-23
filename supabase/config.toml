@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.verify-linkedin-matches]
 verify_jwt = false
+
+[functions.ingest-calendly-booking]
+verify_jwt = false
