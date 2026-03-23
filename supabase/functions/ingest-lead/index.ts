@@ -96,7 +96,14 @@ Deno.serve(async (req) => {
     let rawText = "";
     try {
       rawText = await req.text();
-      body = JSON.parse(rawText);
+      // Zapier can send literal newlines/carriage returns inside JSON string values
+      // which is invalid JSON. Escape them before parsing.
+      const sanitizedText = rawText
+        .replace(/\r\n/g, "\\n")
+        .replace(/\r/g, "\\n")
+        .replace(/\n/g, "\\n")
+        .replace(/\t/g, "\\t");
+      body = JSON.parse(sanitizedText);
     } catch (parseErr) {
       console.error("JSON parse error. Raw body (first 500 chars):", rawText.slice(0, 500));
       return new Response(
