@@ -261,23 +261,65 @@ async function aiSearchAgent(
     const localPart = lead.email.split("@")[0];
     if (localPart.includes(".")) {
       const parts = localPart.split(".");
-      // Try various initial combinations
-      const initials2 = parts.map((p: string) => p[0]).join(""); // e.g. "eb"
-      const initials3 = parts[0][0] + (parts[0].length > 1 ? parts[0][1] : "") + parts.slice(1).map((p: string) => p[0]).join(""); // e.g. "elb" or "emb" (if middle initial)
+      const firstInitial = parts[0][0];
+      const lastInitial = parts[parts.length - 1][0];
       
-      // Search for these initials + company
-      const initialsQuery = `"${initials2}" OR "${initials3}" "${lead.company || ""}" site:linkedin.com/in`;
-      console.log(`  Pre-search: Email initials "${initials2}", "${initials3}"`);
-      const initialsResults = await firecrawlSearch(initialsQuery, firecrawlKey, 5, false);
+      // Generate all possible initial combinations:
+      // 1. Two-letter: first+last initial (e.g. "eb")
+      const initials2 = firstInitial + lastInitial;
+      // 2. Three-letter with middle initial: try all 26 letters between first and last
+      //    This catches cases like "emb" for "Ellie M. Burei" where middle initial is unknown
+      const initialsVariants = [initials2];
+      const alphabet = "abcdefghijklmnopqrstuvwxyz";
+      for (const mid of alphabet) {
+        initialsVariants.push(firstInitial + mid + lastInitial);
+      }
+      // 3. Also try first 2 chars of first name + last initial (e.g. "elb")
+      if (parts[0].length > 1) {
+        initialsVariants.push(parts[0].substring(0, 2) + lastInitial);
+      }
+      // 4. Full local part without dots (e.g. "ellieburei")
+      initialsVariants.push(localPart.replace(/\./g, ""));
+      
+      // Search using the most likely variants (2-letter + all 3-letter middle-initial combos)
+      // Use a compact search: just search the slug patterns with company name
+      const searchVariants = [initials2, ...alphabet.split("").map(m => firstInitial + m + lastInitial)];
+      const searchQuery = searchVariants.slice(0, 5).map(v => `"${v}"`).join(" OR ") + ` "${lead.company || ""}" site:linkedin.com/in`;
+      console.log(`  Pre-search: Email initials "${initials2}", middle-initial variants (${firstInitial}[a-z]${lastInitial})`);
+      const initialsResults = await firecrawlSearch(searchQuery, firecrawlKey, 5, false);
       const initialsLinkedins = initialsResults.filter(r => r.url.includes("linkedin.com/in/"));
       if (initialsLinkedins.length > 0) {
-        preSearchResults.push(`LinkedIn profiles matching email initials (${initials2}/${initials3}):\n${initialsLinkedins.map(r => `${r.url} — ${r.title || ""} ${r.description || ""}`).join("\n")}`);
+        preSearchResults.push(`LinkedIn profiles matching email initials patterns:\n${initialsLinkedins.map(r => `${r.url} — ${r.title || ""} ${r.description || ""}`).join("\n")}`);
+      }
+      
+      // Also provide the initials variants to the agent context
+      preSearchResults.push(`Email initials hint: The email "${lead.email}" suggests possible LinkedIn slugs starting with: ${initials2}, ${firstInitial}[a-z]${lastInitial} (e.g. ${firstInitial}a${lastInitial}, ${firstInitial}m${lastInitial}), ${localPart.replace(/\./g, "")}, ${localPart.replace(/\./g, "-")}`);
+    }
+  }
+
+  // Strategy C: Scrape company website for LinkedIn links
+  const companyWebsite = lead.companyUrl || lead.websiteUrl;
+  if (companyWebsite && !companyWebsite.includes("linkedin.com")) {
+    console.log(`  Pre-search: Scraping company website "${companyWebsite}" for LinkedIn links`);
+    const websiteContent = await firecrawlScrape(companyWebsite, firecrawlKey);
+    if (websiteContent) {
+      const websiteLinkedIns = websiteContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/g) || [];
+      const uniqueWebsiteLinks = [...new Set(websiteLinkedIns)];
+      if (uniqueWebsiteLinks.length > 0) {
+        // Check if any contain the person's first name
+        const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
+        const matchingLinks = uniqueWebsiteLinks.filter(l => {
+          const slug = l.split("/in/")[1]?.toLowerCase() || "";
+          return slug.includes(nameFirst) || slug.includes(nameFirst.substring(0, 3));
+        });
+        const linksToReport = matchingLinks.length > 0 ? matchingLinks : uniqueWebsiteLinks;
+        preSearchResults.push(`IMPORTANT — LinkedIn URLs found on company website (${companyWebsite}):\n${linksToReport.join("\n")}\nThese are HIGH-PRIORITY candidates. Try to verify these FIRST by searching for the slug.`);
       }
     }
   }
 
   const preSearchContext = preSearchResults.length > 0
-    ? `\n\nPRE-SEARCH RESULTS (from automated priority strategies):\n${preSearchResults.join("\n\n")}\n\nAnalyze these results first. If any profile matches ${lead.name}, verify and report it as found.`
+    ? `\n\nPRE-SEARCH RESULTS (from automated priority strategies):\n${preSearchResults.join("\n\n")}\n\nIMPORTANT: Analyze these results first. If any LinkedIn URL was found on the company website, try to verify it by searching for the slug (e.g. search for "slug_name" site:linkedin.com). If a profile matches ${lead.name}, report it as found. Do NOT skip these just because the slug looks unusual.`
     : "";
 
   const messages: Array<{ role: string; content: string }> = [
@@ -321,7 +363,26 @@ async function aiSearchAgent(
 
       if (parsed.action === "scrape" && parsed.url) {
         console.log(`  Turn ${turn + 1}: Scraping "${parsed.url}"`);
-        const scraped = await firecrawlScrape(parsed.url, firecrawlKey);
+        let scraped = await firecrawlScrape(parsed.url, firecrawlKey);
+        
+        // Fallback: if scraping a LinkedIn profile returned empty (403 block), search for the slug instead
+        if (!scraped && parsed.url.includes("linkedin.com/in/")) {
+          const slug = parsed.url.split("/in/")[1]?.split("/")[0]?.split("?")[0];
+          if (slug) {
+            console.log(`  Turn ${turn + 1}: LinkedIn scrape blocked, searching for slug "${slug}"`);
+            const fallbackResults = await firecrawlSearch(`"${slug}" site:linkedin.com`, firecrawlKey, 3, true);
+            if (fallbackResults.length > 0) {
+              scraped = fallbackResults.map((r, i) => {
+                const parts = [`Result ${i + 1}: ${r.url}`];
+                if (r.title) parts.push(`Title: ${r.title}`);
+                if (r.description) parts.push(`Description: ${r.description}`);
+                if (r.markdown) parts.push(`Content: ${r.markdown.substring(0, 600)}`);
+                return parts.join("\n");
+              }).join("\n\n");
+              scraped = `[LinkedIn scrape was blocked. Here are search results for the slug "${slug}" instead:]\n\n${scraped}`;
+            }
+          }
+        }
         
         const preview = scraped.length > 2000 ? scraped.substring(0, 2000) + "\n...(truncated)" : scraped;
         messages.push({
