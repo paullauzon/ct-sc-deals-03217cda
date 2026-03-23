@@ -132,6 +132,7 @@ export function rowToLead(row: Record<string, any>): Lead {
     tier: row.tier != null ? Number(row.tier) : null,
     tierOverride: row.tier_override || false,
     enrichmentStatus: row.enrichment_status || "",
+    createdAt: row.created_at || "",
   };
 }
 
