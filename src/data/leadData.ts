@@ -278,6 +278,7 @@ function createLead(r: { date: string; name: string; phone: string; email: strin
     enrichmentStatus: "",
     linkedinUrl: "",
     linkedinTitle: "",
+    createdAt: "",
   };
 }
 

@@ -97,6 +97,7 @@ function makeSCLead(
     enrichmentStatus: "",
     linkedinUrl: "",
     linkedinTitle: "",
+    createdAt: "",
   };
 }
 
