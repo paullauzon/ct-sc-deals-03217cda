@@ -98,13 +98,32 @@ const INTELLIGENCE_TOOL = {
             timeline: { type: "string", description: "E.g. 'Q2 2026', 'Next 30 days', 'No timeline discussed'" },
             budgetMentioned: { type: "string", description: "Any budget signals or ranges mentioned, or 'Not discussed'" },
             champions: { type: "array", items: { type: "string" }, description: "Internal advocates or supporters" },
-            competitors: { type: "array", items: { type: "string" }, description: "Competing solutions or vendors mentioned" },
+            competitors: { type: "array", items: { type: "string" }, description: "Competing solutions or vendors mentioned (names only, for backward compat)" },
+            competitorDetails: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string", description: "Competitor or alternative solution name" },
+                  context: { type: "string", description: "How/why they came up in conversation" },
+                  prospectSentiment: { type: "string", description: "How the prospect feels about this competitor: Favorable, Neutral, Unfavorable, Mixed" },
+                  strengthsMentioned: { type: "array", items: { type: "string" }, description: "Specific strengths the prospect attributes to this competitor" },
+                  weaknessesMentioned: { type: "array", items: { type: "string" }, description: "Specific weaknesses or complaints the prospect mentions about this competitor" },
+                },
+                required: ["name", "context", "prospectSentiment", "strengthsMentioned", "weaknessesMentioned"],
+              },
+              description: "Structured per-competitor intelligence. For EVERY competitor or alternative mentioned, extract detailed context — don't just list names.",
+            },
+            currentSolution: { type: "string", description: "What the prospect CURRENTLY uses to solve this problem — tool, vendor, internal process, manual effort, or 'Nothing / Greenfield'. Always capture this even if it's informal." },
+            evaluationCriteria: { type: "array", items: { type: "string" }, description: "Criteria the prospect uses to compare options (e.g., 'price', 'speed to launch', 'industry expertise', 'track record'). Extract from what they ask about or emphasize." },
+            switchingBarriers: { type: "array", items: { type: "string" }, description: "What's keeping them with their current solution — contracts, relationships, sunk cost, comfort, internal politics, etc." },
+            competitorPricingIntel: { type: "string", description: "Any intelligence about competitor pricing, fee structures, or budget benchmarks beyond our own pricing discussion. 'None mentioned' if nothing." },
             objections: { type: "array", items: { type: "string" }, description: "Concerns, pushback, or objections raised" },
             riskFactors: { type: "array", items: { type: "string" }, description: "Deal risks identified" },
             decisionProcess: { type: "string", description: "How decisions are made — who decides, approval process, etc." },
             urgencyDrivers: { type: "array", items: { type: "string" }, description: "What's driving urgency or lack thereof" },
           },
-          required: ["buyingIntent", "sentiment", "timeline", "budgetMentioned", "champions", "competitors", "objections", "riskFactors", "decisionProcess", "urgencyDrivers"],
+          required: ["buyingIntent", "sentiment", "timeline", "budgetMentioned", "champions", "competitors", "competitorDetails", "currentSolution", "evaluationCriteria", "switchingBarriers", "competitorPricingIntel", "objections", "riskFactors", "decisionProcess", "urgencyDrivers"],
         },
         priorFollowUps: {
           type: "array",
@@ -166,6 +185,20 @@ const INTELLIGENCE_TOOL = {
           type: "string",
           enum: ["Effective", "Partial", "Missed"],
           description: "When objections were raised, did our team address them effectively? Effective = acknowledged and provided compelling response. Missed = ignored or deflected.",
+        },
+        buyerJourney: {
+          type: "string",
+          enum: ["Problem Aware", "Solution Aware", "Evaluating", "Deciding", "Negotiating"],
+          description: "Where the prospect is in their buying journey based on conversation signals. Problem Aware = knows they have a problem. Solution Aware = exploring solutions. Evaluating = comparing options. Deciding = narrowing down. Negotiating = terms/pricing focus.",
+        },
+        internalChampionStrength: {
+          type: "string",
+          enum: ["Strong", "Emerging", "Weak", "None"],
+          description: "How strong is our internal champion at the prospect's organization? Strong = actively selling internally for us. Emerging = supportive but not yet advocating. Weak = lukewarm. None = no champion identified.",
+        },
+        nextMeetingRecommendation: {
+          type: "string",
+          description: "Based on this meeting's signals, what should the NEXT meeting focus on? Be specific and actionable.",
         },
         // ─── CRM Field Suggestions ───
         suggestedLeadUpdates: {
@@ -304,6 +337,16 @@ Context: The firm helps private equity firms and strategic acquirers find and cl
 
 Your analysis must be thorough, specific, and actionable. Extract every signal that could inform the deal process. Use concrete details from the transcript — never be vague or generic.
 
+## COMPETITIVE INTELLIGENCE RULES
+
+Extract the DEEPEST possible competitive intelligence:
+- For EVERY competitor, alternative, or incumbent solution mentioned, provide STRUCTURED details — name, context, prospect sentiment, specific strengths they cite, specific weaknesses they mention. Do NOT just list names.
+- ALWAYS capture the prospect's CURRENT SOLUTION even if it's "doing nothing", "using internal team", or "working with a broker informally". There is always a current state.
+- Extract EVALUATION CRITERIA from what the prospect asks about, what they compare, what they emphasize matters. E.g., if they ask "how fast can you launch?" that's an evaluation criterion ("speed to launch").
+- Capture SWITCHING BARRIERS — contracts, existing relationships, sunk cost, comfort with status quo, internal politics, "we've always done it this way". These predict deal velocity.
+- Note any COMPETITOR PRICING intelligence — what they're paying now, what alternatives cost, budget benchmarks they reference.
+- The competitorDetails array should mirror the competitors array but with rich context. If a competitor is mentioned, it MUST appear in both.
+
 ${hasPrior ? "IMPORTANT: You have prior meeting history. Track which prior action items were addressed, which are outstanding, and how the relationship has progressed. Note changes in sentiment, intent, or engagement." : "This is the first meeting with this prospect."}
 
 ## CRM FIELD UPDATE RULES (suggestedLeadUpdates)
@@ -364,7 +407,7 @@ CRITICAL: When in doubt, OMIT the field entirely. A missing suggestion is always
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-4o",
         messages: [
           { role: "system", content: systemPrompt },
           {

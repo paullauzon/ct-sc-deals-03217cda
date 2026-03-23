@@ -86,6 +86,14 @@ export interface PriorFollowUp {
   status: "Addressed" | "Outstanding" | "Dropped";
 }
 
+export interface CompetitorDetail {
+  name: string;
+  context: string;
+  prospectSentiment: string;
+  strengthsMentioned: string[];
+  weaknessesMentioned: string[];
+}
+
 export interface DealSignals {
   buyingIntent: "Strong" | "Moderate" | "Low" | "None detected";
   sentiment: "Very Positive" | "Positive" | "Neutral" | "Cautious" | "Negative";
@@ -93,6 +101,11 @@ export interface DealSignals {
   budgetMentioned: string;
   champions: string[];
   competitors: string[];
+  competitorDetails?: CompetitorDetail[];
+  currentSolution?: string;
+  evaluationCriteria?: string[];
+  switchingBarriers?: string[];
+  competitorPricingIntel?: string;
   objections: string[];
   riskFactors: string[];
   decisionProcess: string;
@@ -120,6 +133,10 @@ export interface MeetingIntelligence {
   talkRatio?: number;
   questionQuality?: "Strong" | "Adequate" | "Weak";
   objectionHandling?: "Effective" | "Partial" | "Missed";
+  // Enhanced intelligence fields
+  buyerJourney?: "Problem Aware" | "Solution Aware" | "Evaluating" | "Deciding" | "Negotiating" | "";
+  internalChampionStrength?: "Strong" | "Emerging" | "Weak" | "None" | "";
+  nextMeetingRecommendation?: string;
 }
 
 // ─── Meeting Prep Brief ───

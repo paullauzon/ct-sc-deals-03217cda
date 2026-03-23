@@ -31,21 +31,45 @@ export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: 
 
   // ─── Block 1: Competitor Mentions ───
   const competitorData = useMemo(() => {
-    const compMap = new Map<string, { active: Lead[]; lost: Lead[]; won: Lead[] }>();
+    const compMap = new Map<string, { active: Lead[]; lost: Lead[]; won: Lead[]; topStrength: string; topWeakness: string }>();
 
     for (const l of leads) {
+      // Collect structured details if available
+      const detailsMap = new Map<string, { strengths: string[]; weaknesses: string[] }>();
+      for (const m of l.meetings || []) {
+        for (const cd of m.intelligence?.dealSignals?.competitorDetails || []) {
+          const name = cd.name.trim();
+          if (!detailsMap.has(name)) detailsMap.set(name, { strengths: [], weaknesses: [] });
+          const d = detailsMap.get(name)!;
+          d.strengths.push(...cd.strengthsMentioned);
+          d.weaknesses.push(...cd.weaknessesMentioned);
+        }
+      }
+
+      // Also collect from flat competitors array for backward compat
       const competitors = new Set<string>();
       for (const m of l.meetings || []) {
         for (const c of m.intelligence?.dealSignals?.competitors || []) {
           competitors.add(c.trim());
         }
+        for (const cd of m.intelligence?.dealSignals?.competitorDetails || []) {
+          competitors.add(cd.name.trim());
+        }
       }
+
       for (const c of competitors) {
-        if (!compMap.has(c)) compMap.set(c, { active: [], lost: [], won: [] });
+        if (!compMap.has(c)) compMap.set(c, { active: [], lost: [], won: [], topStrength: "", topWeakness: "" });
         const entry = compMap.get(c)!;
         if (l.stage === "Closed Won") entry.won.push(l);
         else if (l.stage === "Closed Lost") entry.lost.push(l);
         else if (!CLOSED_STAGES.has(l.stage)) entry.active.push(l);
+
+        // Aggregate top strength/weakness from details
+        const details = detailsMap.get(c);
+        if (details) {
+          if (details.strengths.length > 0 && !entry.topStrength) entry.topStrength = details.strengths[0];
+          if (details.weaknesses.length > 0 && !entry.topWeakness) entry.topWeakness = details.weaknesses[0];
+        }
       }
     }
 
@@ -58,6 +82,8 @@ export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: 
         total: data.active.length + data.lost.length + data.won.length,
         winRate: (data.won.length + data.lost.length) > 0 ? Math.round((data.won.length / (data.won.length + data.lost.length)) * 100) : null,
         leads: [...data.active, ...data.lost, ...data.won],
+        topStrength: data.topStrength,
+        topWeakness: data.topWeakness,
       }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
@@ -143,23 +169,32 @@ export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: 
           {competitorData.length > 0 ? (
             <div className="space-y-2">
               {competitorData.map(c => (
-                <div
-                  key={c.name}
-                  className="flex items-center justify-between text-xs cursor-pointer hover:bg-secondary/20 rounded px-2 py-1.5 -mx-2 transition-colors"
-                  onClick={() => onDrillDown?.(`Deals vs ${c.name}`, c.leads)}
-                >
-                  <span className="font-medium text-foreground truncate max-w-[40%]">{c.name}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="tabular-nums text-muted-foreground">{c.activeCount} active</span>
-                    {c.wonCount > 0 && <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{c.wonCount}W</span>}
-                    {c.lostCount > 0 && <span className="tabular-nums text-red-600 dark:text-red-400">{c.lostCount}L</span>}
-                    {c.winRate !== null && (
-                      <span className={`tabular-nums font-medium ${c.winRate >= 50 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                        {c.winRate}%
-                      </span>
-                    )}
-                  </div>
-                </div>
+            <div
+              key={c.name}
+              className="flex items-center justify-between text-xs cursor-pointer hover:bg-secondary/20 rounded px-2 py-1.5 -mx-2 transition-colors"
+              onClick={() => onDrillDown?.(`Deals vs ${c.name}`, c.leads)}
+            >
+              <div className="max-w-[45%]">
+                <span className="font-medium text-foreground truncate block">{c.name}</span>
+                {(c.topStrength || c.topWeakness) && (
+                  <span className="text-[10px] text-muted-foreground truncate block">
+                    {c.topStrength && <span className="text-emerald-600 dark:text-emerald-400">+{c.topStrength}</span>}
+                    {c.topStrength && c.topWeakness && " · "}
+                    {c.topWeakness && <span className="text-red-600 dark:text-red-400">−{c.topWeakness}</span>}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="tabular-nums text-muted-foreground">{c.activeCount} active</span>
+                {c.wonCount > 0 && <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{c.wonCount}W</span>}
+                {c.lostCount > 0 && <span className="tabular-nums text-red-600 dark:text-red-400">{c.lostCount}L</span>}
+                {c.winRate !== null && (
+                  <span className={`tabular-nums font-medium ${c.winRate >= 50 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                    {c.winRate}%
+                  </span>
+                )}
+              </div>
+            </div>
               ))}
             </div>
           ) : (
