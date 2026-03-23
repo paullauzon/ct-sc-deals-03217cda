@@ -847,6 +847,7 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
               </CollapsibleContent>
             </Collapsible>
           )}
+          )}
         </div>
       </CollapsibleContent>
     </Collapsible>
