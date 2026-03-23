@@ -1213,7 +1213,7 @@ export function LeadsTable() {
                   ) : "—"}
                 </td>
                 <td className="px-4 py-3 text-xs">{lead.priority}</td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{lead.dateSubmitted}</td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{lead.createdAt ? format(parseISO(lead.createdAt), "MMM d, h:mm a") : lead.dateSubmitted}</td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{SOURCE_LABELS[lead.source] || lead.source}</td>
               </tr>
             ))}

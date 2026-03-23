@@ -166,6 +166,7 @@ export function leadUpdatesToRow(updates: Partial<Lead>): Record<string, any> {
     linkedinUrl: "linkedin_url", linkedinTitle: "linkedin_title",
     stage1Score: "stage1_score", stage2Score: "stage2_score",
     tier: "tier", tierOverride: "tier_override", enrichmentStatus: "enrichment_status",
+    createdAt: "created_at",
   };
 
   const row: Record<string, any> = {};

@@ -456,6 +456,7 @@ export interface Lead {
   // LinkedIn
   linkedinUrl: string;
   linkedinTitle: string;
+  createdAt: string;
   // Legacy fields (kept for migration)
   firefliesUrl: string;
   firefliesTranscript: string;
