@@ -931,7 +931,7 @@ function TalkRatioDeepDive({ leads }: { leads: Lead[] }) {
           ))}
         </div>
         <p className="text-[10px] text-muted-foreground mt-3 pt-2 border-t border-border">
-          Best performers talk less in discovery ("<"40%) and more in proposals/negotiations (45-55%)
+          Best performers talk less in discovery (&lt;40%) and more in proposals/negotiations (45-55%)
         </p>
       </div>
     </div>
