@@ -1,104 +1,100 @@
 
 
-# Persona Analytics for Pipeline Dashboard
+# Phase 1: Dashboard Restructure — Tab-Based Information Architecture
 
-## What We Have vs What's Missing
+## The Problem
 
-**Currently tracked per-lead but NOT surfaced on dashboard:**
-- `buyerType` (Private Equity, Corporate, Independent Sponsor, Advisor/Banker, Search Fund, Other)
-- `role` (only raw role distribution, no conversion analysis)
-- `acquisitionStrategy` (actively sourcing vs thesis-building mode)
-- `icpFit` (Strong / Moderate / Weak)
-- `tier` (1-4 lead scoring tiers)
-- `stage1Score` / `stage2Score` (AI-generated lead quality scores)
-- `dealsPlanned` (volume intent signal)
-- `serviceInterest` (shown as simple count, not correlated with outcomes)
-- `hearAboutUs` (shown for SC only, not correlated with conversion)
-- `geography` / `targetRevenue` (buyer profile signals)
+The current dashboard is a **vertical scroll of 20+ metric blocks** with no narrative hierarchy. Metrics repeat across sections (win rate appears 3 times, source data in 4 places, owner workload duplicated). Critical insights are buried in collapsibles. A C-suite exec scanning for 30 seconds sees the same wall as a sales ops person doing deep analysis.
 
-**The gap:** The dashboard shows *what's happening* (pipeline funnel, velocity, rep performance) but not *who converts and why*. A sales veteran needs to know which **buyer profiles** close, which **channels produce quality**, and where to focus outreach.
+## The Solution: Tabbed Dashboard with Audience-Driven Sections
 
-## Proposed Persona Intelligence Section
+Replace the single scrolling page with **4 tabs**, each answering a different strategic question:
 
-A new collapsible section titled **"Buyer Persona Intelligence"** placed between the Pipeline Snapshots row and the DashboardAdvancedMetrics. Contains 4 analytical blocks:
+```text
+┌────────────────────────────────────────────────────────┐
+│ Dashboard    148 leads · Pipeline health & intelligence │
+│                                                        │
+│ ┌──────────┬──────────┬──────────┬───────────┐         │
+│ │ OVERVIEW │ PIPELINE │  TEAM    │  BUYERS   │         │
+│ └──────────┴──────────┴──────────┴───────────┘         │
+│                                                        │
+│  (tab content below)                                   │
+└────────────────────────────────────────────────────────┘
+```
 
-### Block 1: Buyer Type Performance Matrix
-A table showing each `buyerType` (PE, Corporate, Ind. Sponsor, Advisor, Search Fund) with:
-- Lead count
-- Pipeline value (active deals)
-- Won count + won value
-- Win rate (% of closed that converted)
-- Avg deal size (won deals)
-- Avg cycle days (won deals)
-- ICP fit distribution (Strong/Moderate/Weak counts)
+### Tab 1: OVERVIEW (C-Suite / Default View)
+**Question: "How's the business doing?"**
 
-**Why:** Instantly shows which buyer archetypes close fastest at highest values. If PE firms win at 40% but Corporates at 10%, you know where to double down.
+Everything a CEO needs in one screen, no scrolling:
 
-### Block 2: Acquisition Intent Segmentation
-Two-row comparison: "Actively Sourcing" vs "Thesis-Building Mode" with:
-- Lead count, pipeline value, win rate, avg cycle
-- A horizontal stacked bar showing stage distribution for each segment
+- **Row 1 — 4 Hero KPIs**: Total Leads, Pipeline Value (weighted), MRR/ARR, Win Rate
+- **Row 2 — 4 Trend Indicators**: This Week volume, MoM Growth, Sales Velocity $/day, Coverage Ratio
+- **Row 3 — 3 blocks side by side**:
+  - Pipeline Trend sparkline (from snapshots)
+  - Forecast vs Target (commit/best case/gap bar)
+  - Deal Health summary (critical/warning/healthy + at-risk revenue)
+- **Row 4 — Stage Conversion Funnel** (compact horizontal bars with weakest-link highlight)
 
-**Why:** "Actively sourcing" buyers should close faster. If they don't, something is wrong with your pitch or qualification. This is the fastest campaign-tuning signal.
+Moves Intelligence Coverage, Deal Momentum, LVR into the trend indicators row. Consolidates 3 current sections into 1 tight view.
 
-### Block 3: Channel-to-Close Attribution
-Extends the existing `hearAboutUs` data (currently SC-only) to show for ALL leads by `source`:
-- Each channel (Google, LinkedIn, ChatGPT, Perplexity, Referral, etc.) with:
-  - Leads generated
-  - Meeting set rate (% that reached Meeting Set or beyond)
-  - Win rate
-  - Avg deal value (won)
-  - Revenue generated
+### Tab 2: PIPELINE (Sales Ops)
+**Question: "Where are deals and what needs attention?"**
 
-**Why:** Marketing ROI. If ChatGPT referrals produce 3x the deal value of Google, you optimize content for AI search. This is the most actionable campaign metric.
+- **Row 1 — Sales Velocity + Weighted Pipeline** (the 2 hero cards from current AdvancedMetrics)
+- **Row 2 — Pipeline Funnel** (full visual, currently hidden in collapsible) + **Revenue at Risk** (with clickable at-risk leads)
+- **Row 3 — Stale Leads** (currently hidden) + **Forecast Summary** (Commit/Best Case/Pipeline/Omit)
+- **Row 4 — Win/Loss Analysis** (won/lost counts, cycle times, close reason chart) + **Win Rate by Source**
+- **Row 5 — Contract Renewals** (30/60/90 day buckets)
 
-### Block 4: Lead Quality Tiers vs Outcomes
-A compact 4-row table (Tier 1 through Tier 4) showing:
-- Count per tier
-- Stage distribution (mini horizontal bar)
-- Win rate per tier
-- Avg deal value per tier
-- Pipeline value per tier
+### Tab 3: TEAM (Sales Management)
+**Question: "How are reps performing?"**
 
-Below it: a single-line "Scoring Accuracy" metric — correlation between tier and actual win rate. If Tier 1 wins at 50% and Tier 4 at 5%, scoring works. If flat, scoring needs recalibration.
+- **Row 1 — Rep Performance Scorecard** (the table from AdvancedMetrics)
+- **Row 2 — Coaching Insights** (talk ratio, question quality, objection handling per rep)
+- **Row 3 — Owner Workload** (replaces the duplicate in "More Analytics") + **Rep Pipeline Distribution** (who owns what stages)
 
-**Why:** Validates your AI lead scoring. If Tier 3 leads win more than Tier 1, the model is miscalibrated and you're wasting time on the wrong prospects.
+### Tab 4: BUYERS (Marketing & Strategy)
+**Question: "Who converts and through what channels?"**
+
+The 4 blocks from DashboardPersonaMetrics, **no longer in a collapsible** — they're the primary content:
+- **Row 1 — Buyer Type Matrix** + **Acquisition Intent**
+- **Row 2 — Channel Attribution** + **Tier vs Outcomes**
+- **Row 3 — Operational extras**: Lead Volume chart (16 weeks), Brand Comparison, Service by Brand, Source Breakdown, How SC Found Us, Deals Planned, Role Distribution, Day of Week, Company Leaderboard, Duplicates
+
+Row 3 goes inside a "More Detail" collapsible within this tab.
+
+## What Gets Eliminated / Deduplicated
+
+| Current Duplication | Resolution |
+|---|---|
+| Win Rate in Hero + AdvancedMetrics + PersonaMetrics | Once in Overview hero, once contextually in Pipeline tab |
+| Owner Workload table + Rep Scorecard table | Single Rep Scorecard in Team tab |
+| Source Breakdown chart + Lead Source ROI table + Channel Attribution | Source ROI in Pipeline, Channel Attribution in Buyers |
+| Pipeline Funnel (hidden) + Stage Conversion (visible) | Funnel in Pipeline tab, conversion bars in Overview |
+| Forecast Summary (hidden) + Forecast vs Target (visible) | Combined in Overview + Pipeline |
 
 ## Implementation
 
-### New file: `src/components/DashboardPersonaMetrics.tsx`
-A single component that receives `leads` and `onSelectLead` props. Computes all 4 blocks from the lead data using `useMemo`. Uses the same design system: monochrome borders, uppercase tracking-wider labels, tabular-nums, horizontal bar fills for rates.
+### Modified: `src/components/Dashboard.tsx`
+- Add tab state: `useState<"overview" | "pipeline" | "team" | "buyers">("overview")`
+- Render tab bar using the existing design system (border-b-2 pattern from nav)
+- Each tab renders its section. Move inline analytics computations into the `analytics` useMemo (already computed)
+- Remove the two `Collapsible` wrappers ("More Analytics" and "Buyer Persona Intelligence")
 
-### Modified file: `src/components/Dashboard.tsx`
-Import and render `<DashboardPersonaMetrics>` inside a new collapsible section between Pipeline Snapshots and Advanced Metrics. Uses the same `Collapsible` pattern as "More Analytics".
+### Modified: `src/components/DashboardAdvancedMetrics.tsx`
+- Accept a `section` prop to render only the relevant blocks for each tab
+- Or split into exported sub-components: `SalesVelocityCards`, `WinLossAnalysis`, `RepScorecard`, `CoachingInsights`, `ContractRenewals`, `SourceROI`
 
-## Visual Layout
+### Modified: `src/components/DashboardPersonaMetrics.tsx`
+- Remove the `Collapsible` wrapper — renders directly in the Buyers tab
+- Keep as-is internally, just remove the open/close state
 
-```text
-┌─────────────────────────────────────────────────────┐
-│ ▸ BUYER PERSONA INTELLIGENCE                        │
-├─────────────────────────────────────────────────────┤
-│ ┌──────────────────────┐  ┌──────────────────────┐  │
-│ │ BUYER TYPE MATRIX    │  │ ACQUISITION INTENT    │  │
-│ │ PE    12  $340K  38% │  │ Actively Sourcing ██░ │  │
-│ │ Corp   8  $120K  15% │  │ Thesis-Building   █░░ │  │
-│ │ IndSp  5  $200K  25% │  │                       │  │
-│ │ Advsr  3   $80K  10% │  │ ──stage bars──        │  │
-│ └──────────────────────┘  └──────────────────────┘  │
-│ ┌──────────────────────┐  ┌──────────────────────┐  │
-│ │ CHANNEL → CLOSE      │  │ TIER vs OUTCOMES      │  │
-│ │ Google    15  22% $8K│  │ T1  ██████ 45% $15K   │  │
-│ │ ChatGPT    8  35% 12K│  │ T2  ████░░ 28% $10K   │  │
-│ │ LinkedIn   6  18% $7K│  │ T3  ██░░░░ 12%  $6K   │  │
-│ │ Referral   4  50% 15K│  │ T4  █░░░░░  3%  $4K   │  │
-│ └──────────────────────┘  └──────────────────────┘  │
-└─────────────────────────────────────────────────────┘
-```
+### No new files in Phase 1
+All restructuring happens within existing components.
 
-## Files Changed
-
-| File | Change |
-|------|--------|
-| `src/components/DashboardPersonaMetrics.tsx` | New component with 4 analytical blocks |
-| `src/components/Dashboard.tsx` | Import and render in collapsible section |
+## What Phase 2 Would Cover
+- Interactive filters (date range, brand, owner) that persist across tabs
+- Click-through from any metric to filtered lead list
+- PDF/image export of Overview tab for board reporting
+- Geography heatmap in Buyers tab
 
