@@ -520,11 +520,21 @@ Deno.serve(async (req) => {
       console.log(`Extracted ${linkedinInCompanyUrl.length} LinkedIn URLs from company_url field`);
     }
 
-    // Get leads missing LinkedIn URL (NULL only — empty string means already searched)
-    const { data: leads, error } = await supabase
+    // Get leads needing LinkedIn lookup
+    // retryFailed=true: re-process leads where linkedin_url='' (previously failed with old rules)
+    // default: only process leads where linkedin_url IS NULL (never searched)
+    let leadsQuery = supabase
       .from("leads")
-      .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience")
-      .is("linkedin_url", null)
+      .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience");
+
+    if (retryFailed) {
+      leadsQuery = leadsQuery.eq("linkedin_url", "");
+      console.log("retryFailed=true: re-processing previously failed leads");
+    } else {
+      leadsQuery = leadsQuery.is("linkedin_url", null);
+    }
+
+    const { data: leads, error } = await leadsQuery
       .neq("name", "")
       .order("created_at", { ascending: false })
       .limit(MAX_LEADS_PER_RUN);
