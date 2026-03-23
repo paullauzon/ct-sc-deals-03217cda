@@ -56,7 +56,7 @@ export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: 
         lostCount: data.lost.length,
         wonCount: data.won.length,
         total: data.active.length + data.lost.length + data.won.length,
-        winRate: (data.wonCount + data.lostCount) > 0 ? Math.round((data.wonCount / (data.wonCount + data.lostCount)) * 100) : null,
+        winRate: (data.won.length + data.lost.length) > 0 ? Math.round((data.won.length / (data.won.length + data.lost.length)) * 100) : null,
         leads: [...data.active, ...data.lost, ...data.won],
       }))
       .sort((a, b) => b.total - a.total)
