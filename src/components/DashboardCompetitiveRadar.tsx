@@ -169,23 +169,32 @@ export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: 
           {competitorData.length > 0 ? (
             <div className="space-y-2">
               {competitorData.map(c => (
-                <div
-                  key={c.name}
-                  className="flex items-center justify-between text-xs cursor-pointer hover:bg-secondary/20 rounded px-2 py-1.5 -mx-2 transition-colors"
-                  onClick={() => onDrillDown?.(`Deals vs ${c.name}`, c.leads)}
-                >
-                  <span className="font-medium text-foreground truncate max-w-[40%]">{c.name}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="tabular-nums text-muted-foreground">{c.activeCount} active</span>
-                    {c.wonCount > 0 && <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{c.wonCount}W</span>}
-                    {c.lostCount > 0 && <span className="tabular-nums text-red-600 dark:text-red-400">{c.lostCount}L</span>}
-                    {c.winRate !== null && (
-                      <span className={`tabular-nums font-medium ${c.winRate >= 50 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                        {c.winRate}%
-                      </span>
-                    )}
-                  </div>
-                </div>
+            <div
+              key={c.name}
+              className="flex items-center justify-between text-xs cursor-pointer hover:bg-secondary/20 rounded px-2 py-1.5 -mx-2 transition-colors"
+              onClick={() => onDrillDown?.(`Deals vs ${c.name}`, c.leads)}
+            >
+              <div className="max-w-[45%]">
+                <span className="font-medium text-foreground truncate block">{c.name}</span>
+                {(c.topStrength || c.topWeakness) && (
+                  <span className="text-[10px] text-muted-foreground truncate block">
+                    {c.topStrength && <span className="text-emerald-600 dark:text-emerald-400">+{c.topStrength}</span>}
+                    {c.topStrength && c.topWeakness && " · "}
+                    {c.topWeakness && <span className="text-red-600 dark:text-red-400">−{c.topWeakness}</span>}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="tabular-nums text-muted-foreground">{c.activeCount} active</span>
+                {c.wonCount > 0 && <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{c.wonCount}W</span>}
+                {c.lostCount > 0 && <span className="tabular-nums text-red-600 dark:text-red-400">{c.lostCount}L</span>}
+                {c.winRate !== null && (
+                  <span className={`tabular-nums font-medium ${c.winRate >= 50 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                    {c.winRate}%
+                  </span>
+                )}
+              </div>
+            </div>
               ))}
             </div>
           ) : (
