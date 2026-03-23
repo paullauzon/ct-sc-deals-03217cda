@@ -706,11 +706,8 @@ export function Dashboard() {
             )}
           </div>
 
-          {/* Loss & Competitive Intelligence */}
-          <DashboardLossIntelligence leads={filteredLeads} onDrillDown={handleDrillDown} />
-
-          {/* Competitive & Engagement Intelligence */}
-          <DashboardCompetitiveRadar leads={filteredLeads} onDrillDown={handleDrillDown} onSelectLead={setSelectedLeadId} />
+        </div>
+      )}
         </div>
       )}
 
