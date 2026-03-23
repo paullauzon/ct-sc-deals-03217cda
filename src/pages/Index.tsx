@@ -6,12 +6,19 @@ import { ActionQueue } from "@/components/ActionQueue";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useLeads } from "@/contexts/LeadContext";
 import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";
-import { Search } from "lucide-react";
+import { Search, BarChart3, Kanban, Users, CalendarCheck } from "lucide-react";
 
-type View = "today" | "dashboard" | "leads" | "pipeline";
+type View = "dashboard" | "pipeline" | "leads" | "today";
+
+const NAV_ITEMS: { key: View; label: string; desc: string; icon: typeof BarChart3 }[] = [
+  { key: "dashboard", label: "Dashboard", desc: "Executive Summary", icon: BarChart3 },
+  { key: "pipeline", label: "Pipeline", desc: "Deal Flow", icon: Kanban },
+  { key: "leads", label: "Leads", desc: "All Contacts", icon: Users },
+  { key: "today", label: "Today", desc: "Action Queue", icon: CalendarCheck },
+];
 
 function AppContent() {
-  const [view, setView] = useState<View>("today");
+  const [view, setView] = useState<View>("dashboard");
   const { unseenCount, clearUnseen } = useLeads();
   const [cmdLeadId, setCmdLeadId] = useState<string | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
