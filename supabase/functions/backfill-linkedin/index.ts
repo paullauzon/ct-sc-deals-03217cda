@@ -174,17 +174,20 @@ TOOLS AVAILABLE:
 
 RESPONSE FORMAT — respond with ONLY a JSON object, no markdown, no explanation.
 
-SEARCH STRATEGIES (use your judgment on which to try):
+PRIORITY STRATEGIES (try these FIRST for small/niche companies):
+A. COMPANY LINKEDIN PAGE: Search "CompanyName site:linkedin.com/company", then SCRAPE the company's LinkedIn page (e.g., linkedin.com/company/companyname/people or /about) to find the person among employees
+B. EMAIL INITIALS INFERENCE: If the person's email is firstname.lastname@domain, try searching for their initials as a LinkedIn slug (e.g., ellie.burei → try "emb" or "eb" combined with company name, or directly try linkedin.com/in/emb* variations)
+C. COMPANY WEBSITE TEAM PAGE: If they have a company_url, SCRAPE that URL's /about or /team page to find LinkedIn links directly
+
+GENERAL SEARCH STRATEGIES (use your judgment on which to try):
 1. Direct search: "FirstName LastName" "Company" site:linkedin.com/in
 2. If company name looks concatenated (e.g. "Treatyoakequity"), break it into words: "Treaty Oak Equity"
 3. Use the email domain to infer the real company name (e.g. hanacovc.com → "Hanaco Ventures")
 4. Search WITHOUT site: restriction: "Name" "Company" linkedin — catches third-party mentions
 5. Search for the company on LinkedIn first, then look for the person among results
 6. Try common nicknames (Michael→Mike, Robert→Bob, William→Bill, etc.)
-7. If they have a company_url, SCRAPE that URL's /about or /team page to find LinkedIn links directly
-8. Scrape the company's LinkedIn page (linkedin.com/company/...) and look for employee mentions
-9. If the email domain is a company, scrape it to find team/about pages
-10. If all else fails, try just the person's name with their city/geography
+7. If the email domain is a company, scrape it to find team/about pages
+8. If all else fails, try just the person's name with their city/geography
 
 VERIFICATION RULES (before saying "found"):
 - The LinkedIn URL slug does NOT need to match the person's name — many people use initials, numbers, or random slugs (e.g., "emb339" for "Ellie M. Burei", "jsmith42" for "John Smith")
@@ -196,10 +199,13 @@ VERIFICATION RULES (before saying "found"):
 - When in doubt, try another search rather than guessing
 
 WHEN TO GIVE UP:
+- NEVER give up before trying ALL three priority strategies (A, B, C above)
 - Person appears to use a disposable/privacy email (mozmail.com, guerrillamail, etc.)
 - No real company information available
-- After trying multiple strategies with no relevant results
-- The person is clearly too obscure to have a findable LinkedIn profile`;
+- After trying company LinkedIn page scrape AND email initials AND multiple search variations with no results
+- The person is clearly too obscure to have a findable LinkedIn profile
+
+IMPORTANT: Do NOT give up just because direct name searches fail. Many people have non-obvious LinkedIn slugs. You MUST try the company LinkedIn page (strategy A) and email initials (strategy B) before giving up.`;
 }
 
 async function aiSearchAgent(
@@ -224,11 +230,61 @@ async function aiSearchAgent(
   if (lead.targetRevenue) contextParts.push(`Target Revenue: ${lead.targetRevenue}`);
   if (lead.message) contextParts.push(`Submission Message: "${lead.message.substring(0, 600)}"`);
 
+  // ─── Pre-execute priority strategies programmatically ───
+  const preSearchResults: string[] = [];
+
+  // Strategy A: Search company LinkedIn page for employees
+  if (lead.company) {
+    console.log(`  Pre-search: Company LinkedIn page for "${lead.company}"`);
+    const companyResults = await firecrawlSearch(`"${lead.company}" site:linkedin.com/company`, firecrawlKey, 3, false);
+    const companyLinkedinUrl = companyResults.find(r => r.url.includes("linkedin.com/company/"))?.url;
+    if (companyLinkedinUrl) {
+      const scraped = await firecrawlScrape(companyLinkedinUrl, firecrawlKey);
+      if (scraped) {
+        // Extract any linkedin.com/in/ links from the scraped content
+        const linkedinProfileLinks = scraped.match(/linkedin\.com\/in\/[a-zA-Z0-9_-]+/g) || [];
+        const uniqueLinks = [...new Set(linkedinProfileLinks)];
+        if (uniqueLinks.length > 0) {
+          preSearchResults.push(`Company LinkedIn page (${companyLinkedinUrl}) employee profiles found:\n${uniqueLinks.map(l => `https://${l}`).join("\n")}`);
+        }
+        // Also include any name mentions near linkedin links
+        const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
+        if (nameFirst && scraped.toLowerCase().includes(nameFirst)) {
+          preSearchResults.push(`The company LinkedIn page mentions "${nameFirst}" — check the profile links above.`);
+        }
+      }
+    }
+  }
+
+  // Strategy B: Try email initials as LinkedIn slug
+  if (lead.email) {
+    const localPart = lead.email.split("@")[0];
+    if (localPart.includes(".")) {
+      const parts = localPart.split(".");
+      // Try various initial combinations
+      const initials2 = parts.map((p: string) => p[0]).join(""); // e.g. "eb"
+      const initials3 = parts[0][0] + (parts[0].length > 1 ? parts[0][1] : "") + parts.slice(1).map((p: string) => p[0]).join(""); // e.g. "elb" or "emb" (if middle initial)
+      
+      // Search for these initials + company
+      const initialsQuery = `"${initials2}" OR "${initials3}" "${lead.company || ""}" site:linkedin.com/in`;
+      console.log(`  Pre-search: Email initials "${initials2}", "${initials3}"`);
+      const initialsResults = await firecrawlSearch(initialsQuery, firecrawlKey, 5, false);
+      const initialsLinkedins = initialsResults.filter(r => r.url.includes("linkedin.com/in/"));
+      if (initialsLinkedins.length > 0) {
+        preSearchResults.push(`LinkedIn profiles matching email initials (${initials2}/${initials3}):\n${initialsLinkedins.map(r => `${r.url} — ${r.title || ""} ${r.description || ""}`).join("\n")}`);
+      }
+    }
+  }
+
+  const preSearchContext = preSearchResults.length > 0
+    ? `\n\nPRE-SEARCH RESULTS (from automated priority strategies):\n${preSearchResults.join("\n\n")}\n\nAnalyze these results first. If any profile matches ${lead.name}, verify and report it as found.`
+    : "";
+
   const messages: Array<{ role: string; content: string }> = [
     { role: "system", content: buildSystemPrompt(maxTurns) },
     {
       role: "user",
-      content: `Find the LinkedIn profile for this person:\n\n${contextParts.join("\n")}\n\nWhat would you like to do first?`,
+      content: `Find the LinkedIn profile for this person:\n\n${contextParts.join("\n")}${preSearchContext}\n\nWhat would you like to do first?`,
     },
   ];
 
@@ -495,7 +551,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS);
+      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o", 8);
       console.log(`[single-lead] ${lead.name}: ${result.found ? "FOUND" : "NOT FOUND"} (${result.turnsUsed} turns)`);
 
       return new Response(JSON.stringify({ success: true, found: result.found, turnsUsed: result.turnsUsed }), {
