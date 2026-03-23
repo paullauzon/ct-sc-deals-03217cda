@@ -230,11 +230,26 @@ async function aiSearchAgent(
   if (lead.targetRevenue) contextParts.push(`Target Revenue: ${lead.targetRevenue}`);
   if (lead.message) contextParts.push(`Submission Message: "${lead.message.substring(0, 600)}"`);
 
+  // Build initial context hints for the agent
+  const emailHints: string[] = [];
+  if (lead.email) {
+    const localPart = lead.email.split("@")[0];
+    if (localPart.includes(".")) {
+      const parts = localPart.split(".");
+      const initials = parts.map((p: string) => p[0]).join("");
+      emailHints.push(`Email-derived initials: "${initials}" (from ${localPart}) — try searching LinkedIn for slugs containing these initials`);
+    }
+  }
+
+  const companyLinkedinHint = lead.company
+    ? `\nIMPORTANT: If direct name searches fail, you MUST try scraping the company's LinkedIn page. Search for "${lead.company} site:linkedin.com/company" to find it, then scrape the company page to find employees.`
+    : "";
+
   const messages: Array<{ role: string; content: string }> = [
     { role: "system", content: buildSystemPrompt(maxTurns) },
     {
       role: "user",
-      content: `Find the LinkedIn profile for this person:\n\n${contextParts.join("\n")}\n\nWhat would you like to do first?`,
+      content: `Find the LinkedIn profile for this person:\n\n${contextParts.join("\n")}${emailHints.length > 0 ? "\n" + emailHints.join("\n") : ""}${companyLinkedinHint}\n\nWhat would you like to do first?`,
     },
   ];
 
