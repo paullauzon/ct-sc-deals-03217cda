@@ -6,6 +6,8 @@ import { LeadDetail } from "@/components/LeadsTable";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics";
 import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
+import { DashboardTrends } from "@/components/DashboardTrends";
+import { DashboardLossIntelligence } from "@/components/DashboardLossIntelligence";
 import { PipelineSnapshots } from "@/components/PipelineSnapshots";
 import { DashboardFilterBar, DEFAULT_FILTERS, useDashboardFilters, type DashboardFilters } from "@/components/DashboardFilters";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
