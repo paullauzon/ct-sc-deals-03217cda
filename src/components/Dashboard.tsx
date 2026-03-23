@@ -602,6 +602,9 @@ export function Dashboard() {
 
           {/* Row 5: Trend Analytics */}
           <DashboardTrends leads={filteredLeads} />
+
+          {/* Row 6: Intelligence Briefing */}
+          <DashboardSignalIntelligence leads={filteredLeads} onDrillDown={handleDrillDown} />
         </div>
       )}
 
