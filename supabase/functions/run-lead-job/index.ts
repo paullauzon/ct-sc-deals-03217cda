@@ -154,6 +154,13 @@ serve(async (req) => {
       newMeetings = foundMeetings.filter((m: any) => !existingIds.has(m.firefliesId));
     }
 
+    // Filter out meetings with no real transcript content (forwarded emails, bot entries)
+    const preFilterCount = newMeetings.length;
+    newMeetings = newMeetings.filter((m: any) => (m.transcript || "").length >= 50);
+    if (preFilterCount > newMeetings.length) {
+      console.log(`Filtered out ${preFilterCount - newMeetings.length} meetings with no transcript content`);
+    }
+
     // Cap at 20 meetings to prevent edge function timeouts
     const MAX_MEETINGS = 20;
     if (newMeetings.length > MAX_MEETINGS) {
