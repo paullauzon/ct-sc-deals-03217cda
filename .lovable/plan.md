@@ -1,100 +1,56 @@
 
 
-# Verification & Future Phases Assessment
+# Phase 3 Fix + Phase 4 & 5 Implementation
 
-## Phase 1 Verification: Tab-Based Restructure — COMPLETE
+## Phase 3 Fix
 
-All planned items are implemented:
+One minor issue: Block 6 (Target Revenue Correlation, lines 479-486 in DashboardPersonaMetrics) has a vestigial "Header" row at the bottom that serves no purpose. Remove it.
 
-| Planned Item | Status |
-|---|---|
-| 4-tab navigation (Overview, Pipeline, Team, Buyers) | Implemented (lines 30-37, 411-429) |
-| **Overview**: 4 Hero KPIs (Total Leads, Pipeline Value, MRR, Win Rate) | Implemented (lines 447-463) |
-| **Overview**: 6 Trend Indicators (This Week, MoM, Velocity, Coverage, LVR, Won/Lost) | Implemented (lines 466-483) |
-| **Overview**: Pipeline Snapshots | Implemented (line 487) |
-| **Overview**: Revenue at Risk + Forecast vs Target + Deal Health (3-col) | Implemented (lines 488-575) |
-| **Overview**: Stage Conversion Funnel with weakest-link highlight | Implemented (lines 577-597) |
-| **Pipeline**: Sales Velocity + Weighted Pipeline | Implemented via `DashboardAdvancedMetrics section="pipeline"` (lines 330-363) |
-| **Pipeline**: Pipeline Funnel with drop-off % | Implemented (lines 606-632) |
-| **Pipeline**: Stale Leads | Implemented (lines 635-668) |
-| **Pipeline**: Win/Loss Analysis + Win Rate by Source | Implemented in AdvancedMetrics (lines 365-426) |
-| **Pipeline**: Lead Source ROI | Implemented (lines 428-458) |
-| **Pipeline**: Contract Renewals (30/60/90d) | Implemented (lines 461-496) |
-| **Pipeline**: Forecast Summary | Implemented (lines 671-699) |
-| **Team**: Rep Performance Scorecard | Implemented (lines 192-238) |
-| **Team**: Coaching Insights (talk ratio, question quality, objections) | Implemented (lines 241-285) |
-| **Team**: Rep Pipeline Distribution | Implemented (lines 287-324) |
-| **Buyers**: Buyer Type Matrix (clickable rows) | Implemented (lines 193-225 in PersonaMetrics) |
-| **Buyers**: Acquisition Intent Segmentation | Implemented (lines 227-245) |
-| **Buyers**: Channel Attribution | Implemented (lines 248-270) |
-| **Buyers**: Tier vs Outcomes + Scoring Accuracy | Implemented (lines 273-303) |
-| **Buyers**: "Operational Detail" collapsible with all granular data | Implemented (lines 713-977) |
-| Collapsibles removed for primary content | Done — persona metrics render directly |
-| Deduplication of repeated metrics | Done — single source of truth per tab |
+## Phase 4: Time-Series & Trend Analytics
 
-**Nothing was removed that shouldn't have been.** All original analytics (lead volume, brand comparison, service by brand, stage distribution, source breakdown, SC channel data, priority, role, service interest, deals planned, day of week, company leaderboard, duplicates) are preserved in the Buyers > Operational Detail collapsible.
+Add a new section to the **Overview tab** between the Pipeline Snapshots row and the Forecast/Deal Health row. Uses `pipeline_snapshots` table data (already fetched by PipelineSnapshots component) plus computed lead-level date analysis.
 
-## Phase 2 Verification: Filters, Click-Through & Export — COMPLETE
+### New component: `src/components/DashboardTrends.tsx`
 
-| Planned Item | Status |
-|---|---|
-| `DashboardFilters.tsx` — date range, brand, owner, priority | Implemented (full file) |
-| `useDashboardFilters` hook | Implemented |
-| Filter bar between tabs and content | Implemented (line 432) |
-| "Showing X of Y" indicator | Implemented (lines 113-116) |
-| Clear button | Implemented (line 111) |
-| All tabs use `filteredLeads` | Implemented — every tab receives `filteredLeads` |
-| Drill-down sheet (click metric → see leads) | Implemented (lines 983-1005) |
-| Hero KPIs clickable | Implemented (lines 449-458) |
-| At-risk deals clickable | Implemented (line 491) |
-| Pipeline funnel stages clickable | Implemented (line 618) |
-| Forecast categories clickable | Implemented (line 680) |
-| Rep scorecard rows clickable | Implemented (lines 210-217 in AdvancedMetrics) |
-| Buyer type rows clickable | Implemented (lines 206-222 in PersonaMetrics) |
-| Critical alerts clickable | Implemented (line 543) |
-| `onDrillDown` prop on AdvancedMetrics | Implemented (line 23) |
-| `onDrillDown` prop on PersonaMetrics | Implemented (line 45) |
-| Overview PNG export via `html-to-image` | Implemented (lines 389-401) |
-| `html-to-image` dependency | Added |
+Accepts `leads: Lead[]` and renders 4 compact trend blocks in a 2x2 grid:
 
----
+**Block 1: Win Rate Over Time** — Group leads by month of `closedDate`. For each month with closed deals, compute win rate. Show as a simple line/sparkline with the current month highlighted. Answers: "Are we getting better at closing?"
 
-## What Remains: Phases 3-5
+**Block 2: Sales Cycle Trend** — Group won deals by month of `closedDate`. Compute avg days from `dateSubmitted` to `closedDate` per month. Show as line. Answers: "Are deals closing faster or slower?"
 
-Against the original request — *"extremely intuitive, easy to use, extremely informative, C-suite reporting, and everything relevant"* — here is what the current implementation does NOT yet cover:
+**Block 3: Pipeline Value Trend** — Use `pipeline_snapshots` data (already queried in PipelineSnapshots component). Extract `weighted_pipeline_value` per snapshot. Show as area chart. Answers: "Are we growing or depleting pipeline?"
 
-### Phase 3: Geography & Deal Sizing Intelligence
+**Block 4: Cohort Analysis** — Group leads by quarter of `dateSubmitted` (Q1/Q2/Q3/Q4). For each cohort show: count, meeting rate, win rate, avg deal value. Table format. Answers: "Which intake period produces best results?"
 
-The data has `geography` and `targetRevenue` fields that are completely unsurfaced on the dashboard.
+### Integration in `Dashboard.tsx`
+- Import and render `<DashboardTrends>` inside the Overview tab after the Stage Conversion Funnel
+- For Pipeline Value Trend, pass snapshot data from PipelineSnapshots (need to lift the query or duplicate it — simplest: query `pipeline_snapshots` directly in the new component)
 
-- **Geography heatmap/table** in Buyers tab — which regions produce highest win rates and deal values
-- **Target Revenue distribution** — what EBITDA/revenue ranges correlate with closes
-- **Deal size segmentation** — small/mid/large deal performance comparison
-- **ICP Fit deep-dive** — Strong vs Moderate vs Weak correlation with actual outcomes (currently only shown as counts in buyer type rows)
+## Phase 5: Competitive & Loss Pattern Intelligence
 
-### Phase 4: Time-Series & Trend Analytics
+Add a new section to the **Pipeline tab** after the Forecast Summary. Contains 4 analytical blocks.
 
-The dashboard shows snapshot metrics but lacks trend analysis beyond the 16-week volume chart.
+### New component: `src/components/DashboardLossIntelligence.tsx`
 
-- **Win rate over time** — is it improving or declining month-over-month
-- **Sales cycle trend** — are deals closing faster or slower
-- **Pipeline value trend** — are we growing pipeline or depleting it (uses existing `pipeline_snapshots` table)
-- **Conversion rate trends** — per-stage conversion rates over time to spot emerging bottlenecks
-- **Cohort analysis** — leads from Q1 vs Q2 vs Q3: which cohort performs better
+Accepts `leads: Lead[]` and `onDrillDown` callback.
 
-### Phase 5: Competitive & Loss Pattern Intelligence
+**Block 1: Loss Pattern Analysis** — For all Closed Lost + Went Dark leads, group by `stage` at time of loss (use `closeReason` distribution per buyer type). Show which stages deals die at most, with a breakdown bar. Cross-reference with `buyerType` to show which buyer segments have highest attrition at each stage.
 
-Deep analysis of why deals fail and how to prevent it.
+**Block 2: Time-to-Dark Analysis** — For Went Dark leads, compute days from `dateSubmitted` to `closedDate` (or `stageEnteredDate` if no closedDate). Show distribution buckets (0-14d, 15-30d, 31-60d, 60d+). Correlate with last activity type (had meeting vs no meeting). Answers: "How fast do we lose them and does engagement help?"
 
-- **Loss pattern analysis** — which stages do deals die at most, by buyer type and channel
-- **Time-to-dark analysis** — how many days before a deal goes dark, correlated with last activity type
-- **Objection frequency map** — most common objections from meeting intelligence, correlated with outcomes
-- **Competitive displacement tracking** — if close reasons indicate competitor wins, surface patterns
-- **Re-engagement opportunities** — "Went Dark" leads that match high-performing buyer profiles
+**Block 3: Objection Frequency Map** — Aggregate `objectionTracker` from `dealIntelligence` across all leads. Count each unique objection text (normalized), group by status (Open/Addressed/Recurring). Show top 10 with their resolution rates. Cross-reference with outcomes (did addressing the objection lead to a win?). Also aggregate `closeReason` for Closed Lost leads.
 
-### Recommended Priority
+**Block 4: Re-engagement Opportunities** — Filter Went Dark leads that have: ICP fit Strong/Moderate, tier 1-2, deal value > median, and went dark < 90 days ago. These are high-value leads worth re-engaging. Show as clickable list with drill-down.
 
-Phase 3 is the most immediately actionable — geography and deal sizing directly inform campaign targeting. Phase 4 provides strategic trend context for C-suite quarterly reviews. Phase 5 is defensive intelligence.
+### Integration in `Dashboard.tsx`
+- Import and render `<DashboardLossIntelligence>` in the Pipeline tab after Forecast Summary
 
-**Recommendation**: Implement Phase 3 next. It adds 3-4 new analytical blocks to the Buyers tab and Overview tab without restructuring anything.
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `src/components/DashboardPersonaMetrics.tsx` | Remove vestigial header row (lines 479-486) |
+| `src/components/DashboardTrends.tsx` | **New** — 4 time-series trend blocks for Overview tab |
+| `src/components/DashboardLossIntelligence.tsx` | **New** — 4 loss/competitive intelligence blocks for Pipeline tab |
+| `src/components/Dashboard.tsx` | Import and render both new components in their respective tabs |
 
