@@ -81,6 +81,7 @@ function AppContent() {
       {view === "dashboard" && <Dashboard />}
       {view === "leads" && <LeadsTable />}
       {view === "pipeline" && <Pipeline />}
+      {view === "intel" && <IntelligenceCenter />}
 
       <CommandPalette onNavigate={handleCmdNavigate} onSelectLead={handleCmdSelectLead} externalOpen={cmdOpen} onExternalOpenChange={setCmdOpen} />
       <LeadDetail leadId={cmdLeadId} open={!!cmdLeadId} onClose={() => setCmdLeadId(null)} />
