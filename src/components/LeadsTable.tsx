@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { computeDaysInStage, getCompanyAssociates, getSharedIntelligence } from "@/lib/leadUtils";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
+import { format, parseISO } from "date-fns";
 
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
