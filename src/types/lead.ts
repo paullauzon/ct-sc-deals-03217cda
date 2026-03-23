@@ -133,6 +133,10 @@ export interface MeetingIntelligence {
   talkRatio?: number;
   questionQuality?: "Strong" | "Adequate" | "Weak";
   objectionHandling?: "Effective" | "Partial" | "Missed";
+  // Enhanced intelligence fields
+  buyerJourney?: "Problem Aware" | "Solution Aware" | "Evaluating" | "Deciding" | "Negotiating" | "";
+  internalChampionStrength?: "Strong" | "Emerging" | "Weak" | "None" | "";
+  nextMeetingRecommendation?: string;
 }
 
 // ─── Meeting Prep Brief ───
