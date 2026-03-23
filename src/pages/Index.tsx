@@ -10,6 +10,23 @@ import { Search, BarChart3, Kanban, Users, CalendarCheck } from "lucide-react";
 
 type View = "dashboard" | "pipeline" | "leads" | "today";
 
+const VALID_VIEWS = new Set<View>(["dashboard", "pipeline", "leads", "today"]);
+
+function parseViewFromHash(): View {
+  const hash = window.location.hash.replace("#", "");
+  const params = new URLSearchParams(hash);
+  const v = params.get("view");
+  return v && VALID_VIEWS.has(v as View) ? (v as View) : "dashboard";
+}
+
+function updateHash(view: View) {
+  const hash = window.location.hash.replace("#", "");
+  const params = new URLSearchParams(hash);
+  params.set("view", view);
+  if (view !== "dashboard") params.delete("tab");
+  window.location.hash = params.toString();
+}
+
 const NAV_ITEMS: { key: View; label: string; desc: string; icon: typeof BarChart3 }[] = [
   { key: "dashboard", label: "Dashboard", desc: "Executive Summary", icon: BarChart3 },
   { key: "pipeline", label: "Pipeline", desc: "Deal Flow", icon: Kanban },
@@ -18,10 +35,21 @@ const NAV_ITEMS: { key: View; label: string; desc: string; icon: typeof BarChart
 ];
 
 function AppContent() {
-  const [view, setView] = useState<View>("dashboard");
+  const [view, setViewState] = useState<View>(parseViewFromHash);
   const { unseenCount, clearUnseen } = useLeads();
   const [cmdLeadId, setCmdLeadId] = useState<string | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
+
+  const setView = useCallback((v: View) => {
+    setViewState(v);
+    updateHash(v);
+  }, []);
+
+  useEffect(() => {
+    const onHashChange = () => setViewState(parseViewFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   useEffect(() => {
     if (view === "leads") clearUnseen();
@@ -29,7 +57,7 @@ function AppContent() {
 
   const handleCmdNavigate = useCallback((v: string) => {
     setView(v as View);
-  }, []);
+  }, [setView]);
 
   const handleCmdSelectLead = useCallback((id: string) => {
     setCmdLeadId(id);
