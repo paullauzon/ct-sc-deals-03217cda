@@ -1377,6 +1377,307 @@ function ICPValidation({ leads }: { leads: Lead[] }) {
 }
 
 // ════════════════════════════════════════════════════════
+// SIGNALS: Buyer Journey Distribution
+// ════════════════════════════════════════════════════════
+
+function BuyerJourneyDistribution({ leads, onDrillDown }: { leads: Lead[]; onDrillDown: (t: string, l: Lead[]) => void }) {
+  const stages = ["Problem Aware", "Solution Aware", "Evaluating", "Deciding", "Negotiating"] as const;
+  const data = useMemo(() => {
+    const buckets: Record<string, { leads: Lead[]; value: number }> = {};
+    for (const s of stages) buckets[s] = { leads: [], value: 0 };
+    for (const l of leads) {
+      const meetings = (l.meetings || []).filter(m => m.intelligence?.buyerJourney);
+      if (meetings.length === 0) continue;
+      const last = meetings[meetings.length - 1].intelligence!.buyerJourney!;
+      if (buckets[last]) {
+        buckets[last].leads.push(l);
+        buckets[last].value += l.dealValue;
+      }
+    }
+    return stages.map(s => ({ stage: s, count: buckets[s].leads.length, value: buckets[s].value, leads: buckets[s].leads }));
+  }, [leads]);
+
+  const total = data.reduce((s, d) => s + d.count, 0);
+  if (total === 0) return null;
+
+  return (
+    <div>
+      <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+        <Route className="w-4 h-4" />
+        Buyer Journey Distribution
+      </h2>
+      <div className="border border-border rounded-lg px-5 py-4">
+        <div className="space-y-2">
+          {data.map(d => (
+            <div
+              key={d.stage}
+              className="flex items-center gap-3 text-xs cursor-pointer hover:bg-secondary/20 rounded px-2 py-1.5 -mx-2 transition-colors"
+              onClick={() => d.leads.length > 0 && onDrillDown(`${d.stage} Deals`, d.leads)}
+            >
+              <span className="w-28 text-muted-foreground">{d.stage}</span>
+              <div className="flex-1 h-3 bg-secondary/30 rounded overflow-hidden">
+                {total > 0 && <div className="h-full bg-foreground/20 rounded" style={{ width: `${(d.count / total) * 100}%` }} />}
+              </div>
+              <span className="tabular-nums font-medium w-8 text-right">{d.count}</span>
+              <span className="tabular-nums text-muted-foreground w-20 text-right">${(d.value / 1000).toFixed(0)}k</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-3 pt-2 border-t border-border">
+          Shows where active pipeline deals are in their buying journey. Healthy pipelines have deals spread across stages.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
+// SIGNALS: Champion Strength Overview
+// ════════════════════════════════════════════════════════
+
+function ChampionStrengthOverview({ leads, activeLeads, wonLeads, lostLeads, onDrillDown }: { leads: Lead[]; activeLeads: Lead[]; wonLeads: Lead[]; lostLeads: Lead[]; onDrillDown: (t: string, l: Lead[]) => void }) {
+  const strengths = ["Strong", "Emerging", "Weak", "None"] as const;
+  const data = useMemo(() => {
+    const getStrength = (l: Lead) => {
+      const meetings = (l.meetings || []).filter(m => m.intelligence?.internalChampionStrength);
+      if (meetings.length === 0) return null;
+      return meetings[meetings.length - 1].intelligence!.internalChampionStrength!;
+    };
+
+    return strengths.map(s => {
+      const active = activeLeads.filter(l => getStrength(l) === s);
+      const won = wonLeads.filter(l => getStrength(l) === s);
+      const lost = lostLeads.filter(l => getStrength(l) === s);
+      const winRate = (won.length + lost.length) > 0 ? Math.round((won.length / (won.length + lost.length)) * 100) : null;
+      return {
+        strength: s,
+        activeCount: active.length,
+        activeValue: active.reduce((sum, l) => sum + l.dealValue, 0),
+        wonCount: won.length,
+        lostCount: lost.length,
+        winRate,
+        leads: [...active, ...won, ...lost],
+      };
+    });
+  }, [activeLeads, wonLeads, lostLeads]);
+
+  const total = data.reduce((s, d) => s + d.activeCount, 0);
+  if (total === 0) return null;
+
+  const colors: Record<string, string> = { Strong: "text-emerald-600 dark:text-emerald-400", Emerging: "text-blue-600 dark:text-blue-400", Weak: "text-amber-600 dark:text-amber-400", None: "text-red-600 dark:text-red-400" };
+
+  return (
+    <div>
+      <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+        <Shield className="w-4 h-4" />
+        Internal Champion Strength
+      </h2>
+      <div className="border border-border rounded-lg px-5 py-4">
+        <div className="grid grid-cols-4 gap-4">
+          {data.map(d => (
+            <div
+              key={d.strength}
+              className="text-center cursor-pointer hover:bg-secondary/20 rounded p-3 transition-colors"
+              onClick={() => d.leads.length > 0 && onDrillDown(`${d.strength} Champion Deals`, d.leads)}
+            >
+              <p className={`text-2xl font-bold tabular-nums ${colors[d.strength]}`}>{d.activeCount}</p>
+              <p className="text-xs text-muted-foreground mt-1">{d.strength}</p>
+              <p className="text-xs tabular-nums text-muted-foreground">${(d.activeValue / 1000).toFixed(0)}k</p>
+              {d.winRate !== null && (
+                <p className={`text-[10px] mt-1 tabular-nums ${d.winRate >= 50 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                  {d.winRate}% win rate
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-3 pt-2 border-t border-border">
+          Champion strength is the #1 predictor of deal outcome. Deals with "None" need immediate attention.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
+// COMPETITORS: Current Solutions Map
+// ════════════════════════════════════════════════════════
+
+function CurrentSolutionsMap({ leads, activeLeads, onDrillDown }: { leads: Lead[]; activeLeads: Lead[]; onDrillDown: (t: string, l: Lead[]) => void }) {
+  const data = useMemo(() => {
+    const solMap = new Map<string, { leads: Lead[]; value: number }>();
+    for (const l of leads) {
+      const meetings = (l.meetings || []).filter(m => m.intelligence?.dealSignals?.currentSolution);
+      if (meetings.length === 0) continue;
+      const sol = meetings[meetings.length - 1].intelligence!.dealSignals.currentSolution!.trim();
+      if (!sol || sol.toLowerCase() === "none" || sol.toLowerCase() === "n/a") continue;
+      const normalized = sol.length > 50 ? sol.substring(0, 50) + "…" : sol;
+      if (!solMap.has(normalized)) solMap.set(normalized, { leads: [], value: 0 });
+      solMap.get(normalized)!.leads.push(l);
+      solMap.get(normalized)!.value += l.dealValue;
+    }
+    return Array.from(solMap.entries())
+      .map(([name, d]) => ({ name, count: d.leads.length, value: d.value, leads: d.leads }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [leads]);
+
+  if (data.length === 0) return null;
+
+  return (
+    <div>
+      <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+        <Handshake className="w-4 h-4" />
+        Current Solutions Map
+      </h2>
+      <div className="border border-border rounded-lg px-5 py-4">
+        <p className="text-xs text-muted-foreground mb-3">What prospects currently use — the solutions we're displacing.</p>
+        <div className="space-y-2">
+          {data.map(d => (
+            <div
+              key={d.name}
+              className="flex items-center justify-between text-xs cursor-pointer hover:bg-secondary/20 rounded px-2 py-1.5 -mx-2 transition-colors"
+              onClick={() => onDrillDown(`Current: ${d.name}`, d.leads)}
+            >
+              <span className="font-medium text-foreground truncate max-w-[50%]">{d.name}</span>
+              <div className="flex items-center gap-3">
+                <span className="tabular-nums text-muted-foreground">{d.count} deals</span>
+                <span className="tabular-nums text-muted-foreground">${(d.value / 1000).toFixed(0)}k</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
+// COMPETITORS: Evaluation Criteria Frequency
+// ════════════════════════════════════════════════════════
+
+function EvaluationCriteriaFrequency({ leads, wonLeads, lostLeads, onDrillDown }: { leads: Lead[]; wonLeads: Lead[]; lostLeads: Lead[]; onDrillDown: (t: string, l: Lead[]) => void }) {
+  const data = useMemo(() => {
+    const criteriaMap = new Map<string, { total: Lead[]; won: number; lost: number }>();
+    for (const l of leads) {
+      const allCriteria = new Set<string>();
+      for (const m of l.meetings || []) {
+        for (const c of m.intelligence?.dealSignals?.evaluationCriteria || []) {
+          allCriteria.add(c.trim().toLowerCase());
+        }
+      }
+      for (const c of allCriteria) {
+        if (!criteriaMap.has(c)) criteriaMap.set(c, { total: [], won: 0, lost: 0 });
+        const entry = criteriaMap.get(c)!;
+        entry.total.push(l);
+        if (l.stage === "Closed Won") entry.won++;
+        if (l.stage === "Closed Lost" || l.stage === "Went Dark") entry.lost++;
+      }
+    }
+    return Array.from(criteriaMap.entries())
+      .map(([name, d]) => ({
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        count: d.total.length,
+        winRate: (d.won + d.lost) > 0 ? Math.round((d.won / (d.won + d.lost)) * 100) : null,
+        leads: d.total,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [leads]);
+
+  if (data.length === 0) return null;
+
+  return (
+    <div>
+      <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+        <BarChart3 className="w-4 h-4" />
+        Evaluation Criteria Frequency
+      </h2>
+      <div className="border border-border rounded-lg px-5 py-4">
+        <p className="text-xs text-muted-foreground mb-3">What criteria prospects use to compare options — and which we win on.</p>
+        <div className="space-y-2">
+          {data.map(d => (
+            <div
+              key={d.name}
+              className="flex items-center justify-between text-xs cursor-pointer hover:bg-secondary/20 rounded px-2 py-1.5 -mx-2 transition-colors"
+              onClick={() => onDrillDown(`Criterion: ${d.name}`, d.leads)}
+            >
+              <span className="font-medium text-foreground truncate max-w-[40%]">{d.name}</span>
+              <div className="flex items-center gap-3">
+                <span className="tabular-nums text-muted-foreground">{d.count} mentions</span>
+                {d.winRate !== null && (
+                  <span className={`tabular-nums font-medium ${d.winRate >= 50 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                    {d.winRate}% win
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
+// COMPETITORS: Switching Barriers Analysis
+// ════════════════════════════════════════════════════════
+
+function SwitchingBarriersAnalysis({ leads, activeLeads, lostLeads, onDrillDown }: { leads: Lead[]; activeLeads: Lead[]; lostLeads: Lead[]; onDrillDown: (t: string, l: Lead[]) => void }) {
+  const data = useMemo(() => {
+    const barrierMap = new Map<string, { active: Lead[]; lost: Lead[]; total: number }>();
+    for (const l of leads) {
+      const allBarriers = new Set<string>();
+      for (const m of l.meetings || []) {
+        for (const b of m.intelligence?.dealSignals?.switchingBarriers || []) {
+          allBarriers.add(b.trim());
+        }
+      }
+      for (const b of allBarriers) {
+        if (!barrierMap.has(b)) barrierMap.set(b, { active: [], lost: [], total: 0 });
+        const entry = barrierMap.get(b)!;
+        entry.total++;
+        if (lostLeads.includes(l)) entry.lost.push(l);
+        else if (activeLeads.includes(l)) entry.active.push(l);
+      }
+    }
+    return Array.from(barrierMap.entries())
+      .map(([name, d]) => ({ name, activeCount: d.active.length, lostCount: d.lost.length, total: d.total, leads: [...d.active, ...d.lost] }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8);
+  }, [leads, activeLeads, lostLeads]);
+
+  if (data.length === 0) return null;
+
+  return (
+    <div>
+      <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+        <Lock className="w-4 h-4" />
+        Switching Barriers
+      </h2>
+      <div className="border border-border rounded-lg px-5 py-4">
+        <p className="text-xs text-muted-foreground mb-3">What's keeping prospects with their current solution — and which barriers correlate with losses.</p>
+        <div className="space-y-2">
+          {data.map(d => (
+            <div
+              key={d.name}
+              className="flex items-center justify-between text-xs cursor-pointer hover:bg-secondary/20 rounded px-2 py-1.5 -mx-2 transition-colors"
+              onClick={() => d.leads.length > 0 && onDrillDown(`Barrier: ${d.name}`, d.leads)}
+            >
+              <span className="font-medium text-foreground truncate max-w-[50%]">{d.name}</span>
+              <div className="flex items-center gap-2">
+                <span className="tabular-nums text-muted-foreground">{d.activeCount} active</span>
+                {d.lostCount > 0 && <span className="tabular-nums text-red-600 dark:text-red-400">{d.lostCount} lost</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════
 // UTILITY
 // ════════════════════════════════════════════════════════
 
