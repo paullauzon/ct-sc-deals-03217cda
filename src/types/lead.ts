@@ -86,6 +86,14 @@ export interface PriorFollowUp {
   status: "Addressed" | "Outstanding" | "Dropped";
 }
 
+export interface CompetitorDetail {
+  name: string;
+  context: string;
+  prospectSentiment: string;
+  strengthsMentioned: string[];
+  weaknessesMentioned: string[];
+}
+
 export interface DealSignals {
   buyingIntent: "Strong" | "Moderate" | "Low" | "None detected";
   sentiment: "Very Positive" | "Positive" | "Neutral" | "Cautious" | "Negative";
@@ -93,6 +101,11 @@ export interface DealSignals {
   budgetMentioned: string;
   champions: string[];
   competitors: string[];
+  competitorDetails?: CompetitorDetail[];
+  currentSolution?: string;
+  evaluationCriteria?: string[];
+  switchingBarriers?: string[];
+  competitorPricingIntel?: string;
   objections: string[];
   riskFactors: string[];
   decisionProcess: string;
