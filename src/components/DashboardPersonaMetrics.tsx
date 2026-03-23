@@ -203,16 +203,22 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
               <span className="text-right">Cycle</span>
               <span className="text-right">ICP S/M/W</span>
             </div>
-            {data.buyerTypeRows.map(r => (
-              <div key={r.type} className="grid grid-cols-[1fr_40px_60px_40px_50px_50px_80px] gap-1 text-xs py-1.5 border-b border-border/50 last:border-0">
-                <span className="font-medium truncate">{r.type}</span>
-                <span className="text-right tabular-nums text-muted-foreground">{r.count}</span>
-                <span className="text-right tabular-nums text-muted-foreground">{fmt$(r.pipeValue)}</span>
-                <span className="text-right tabular-nums font-medium">{r.wonCount}</span>
-                <span className="text-right tabular-nums font-medium">{r.winRate > 0 ? `${r.winRate}%` : "—"}</span>
-                <span className="text-right tabular-nums text-muted-foreground">{r.avgCycle !== null ? `${r.avgCycle}d` : "—"}</span>
-                <span className="text-right tabular-nums text-muted-foreground">{r.icpStrong}/{r.icpMod}/{r.icpWeak}</span>
-              </div>
+            {data.buyerTypeRows.map(r => {
+              const typeLeads = leads.filter(l => (l.buyerType || "Unknown") === (r.type === "—" ? "Unknown" : r.type));
+              return (
+                <div
+                  key={r.type}
+                  className="grid grid-cols-[1fr_40px_60px_40px_50px_50px_80px] gap-1 text-xs py-1.5 border-b border-border/50 last:border-0 cursor-pointer hover:bg-secondary/20 transition-colors"
+                  onClick={() => onDrillDown?.(r.type === "—" ? "Unknown Buyer Type" : `${r.type} Leads`, typeLeads)}
+                >
+                  <span className="font-medium truncate">{r.type}</span>
+                  <span className="text-right tabular-nums text-muted-foreground">{r.count}</span>
+                  <span className="text-right tabular-nums text-muted-foreground">{fmt$(r.pipeValue)}</span>
+                  <span className="text-right tabular-nums font-medium">{r.wonCount}</span>
+                  <span className="text-right tabular-nums font-medium">{r.winRate > 0 ? `${r.winRate}%` : "—"}</span>
+                  <span className="text-right tabular-nums text-muted-foreground">{r.avgCycle !== null ? `${r.avgCycle}d` : "—"}</span>
+                  <span className="text-right tabular-nums text-muted-foreground">{r.icpStrong}/{r.icpMod}/{r.icpWeak}</span>
+                </div>
               );
             })}
           </div>
