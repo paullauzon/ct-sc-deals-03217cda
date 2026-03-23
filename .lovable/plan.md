@@ -1,59 +1,99 @@
 
 
-# Verification & Navigation Improvements
+# Phase 6: Intelligence-Driven Dashboard Enrichment
 
-## Verification: Loss Intelligence Rewrite — COMPLETE
+## The Opportunity
 
-All 6 blocks from the plan are implemented in `DashboardLossIntelligence.tsx` (553 lines):
-- Block 1: Synthesized Loss Reasons with priority hierarchy
-- Block 2: Deal Autopsy Cards (top 5 by value, rep vs synthesized reason)
-- Block 3: Engagement Decay Signals (time buckets + sentiment/engagement/momentum columns + summary stats)
-- Block 4: Risk Factor Frequency Map (top 12, mitigation %, fatal %)
-- Block 5: Dropped Ball Tracker (by action item + by owner)
-- Block 6: Enhanced Re-engagement Opportunities (with synthesized reason + re-engage angle)
+We have rich intelligence sitting on leads — meeting transcripts processed into structured `dealSignals`, `painPoints`, `stakeholderMap`, `objectionTracker`, `enrichment` data, and `psychologicalProfile` — but the dashboard only uses this data in narrow contexts (Loss Intelligence, Deal Health alerts). None of the **positive signal intelligence** is surfaced at the aggregate level.
 
-Integration in `Dashboard.tsx` line 707 renders it in the Pipeline tab. No errors in console. No fixes needed.
+A 50-year sales veteran doesn't just look at what's failing. They look at **what's working and why**, **what buyers are actually saying**, and **where the opening is right now**. Here's what we can build using only data that already exists on each lead.
 
 ---
 
-## Navigation Restructure
+## New Components
 
-Current state: 4 top-level tabs — **Today, Dashboard, Leads, Pipeline** — with "Today" as default. Issues:
+### 1. `DashboardSignalIntelligence.tsx` — Overview Tab
 
-1. **"Today" as default is wrong** — a returning user wants the big picture first, not a task queue. "Dashboard" should be the landing view.
-2. **Tab labels are generic** — "Today" and "Dashboard" don't clearly communicate their purpose. A sales veteran opens the app and needs to immediately know where to go.
-3. **Tab order doesn't follow workflow** — the natural sales workflow is: see the big picture → drill into pipeline → review leads → act on today's tasks. Current order is reversed.
-4. **No visual hierarchy** — all tabs look identical. The active tab has an underline but there's no iconography or subtle cues to orient the user.
+An "Intelligence Briefing" section after Trend Analytics. Four blocks in a 2x2 grid:
 
-### Changes
+**Block 1: Buying Intent Radar**
+Aggregate `meetings[].intelligence.dealSignals.buyingIntent` across all active pipeline leads. Show distribution: Strong / Moderate / Low / None detected. Cross-reference with deal value to answer: "How much pipeline has strong buying signals?" The number that matters is `$X in Strong Intent pipeline` — that's the real forecast.
 
-**Reorder and relabel** the 4 tabs for clarity and workflow alignment:
+**Block 2: Pain Point Frequency Map**
+Aggregate `meetings[].intelligence.painPoints` across ALL leads (not just lost ones). Normalize and group similar themes. Show top 8 pain points with: frequency count, % that converted to won, avg deal value. This tells you: "What problems do our best customers have? Double down on these in marketing."
 
-| Current | New Label | New Position | Rationale |
-|---------|-----------|-------------|-----------|
-| Dashboard | **Dashboard** | 1st (default) | Executive overview is the home base |
-| Pipeline | **Pipeline** | 2nd | Operational drill-down from dashboard |
-| Leads | **Leads** | 3rd | Individual lead management |
-| Today | **Today** | 4th | Daily action queue — tactical, not strategic |
+**Block 3: Objection Readiness Score**
+Aggregate `dealIntelligence.objectionTracker` across active deals. Show: total open objections, total addressed, resolution rate. Then show the top 5 most common objections with win/loss correlation. Answers: "Which objections are we handling well, and which are deal-killers?"
 
-**Default view**: Change `useState<View>("today")` → `useState<View>("dashboard")`
+**Block 4: Stakeholder Power Map (Aggregate)**
+Aggregate `dealIntelligence.stakeholderMap` across active pipeline. Count: Champions, Supporters, Neutral, Skeptics, Blockers. Show total pipeline value controlled by each stance category. Answers: "How much of our pipeline has a champion vs. a blocker?" — the single most predictive deal signal.
 
-**Add tab icons**: Small Lucide icons next to each label for instant recognition:
-- Dashboard → `BarChart3`
-- Pipeline → `Kanban`  
-- Leads → `Users`
-- Today → `CalendarCheck`
+### 2. `DashboardCompetitiveRadar.tsx` — Pipeline Tab
 
-**Add subtle tab descriptions**: On wider screens, show a micro-description under each tab label (e.g., "Executive Summary" under Dashboard) — same pattern used inside the Dashboard component's inner tabs.
+A "Competitive Intelligence" section after Loss Intelligence. Three blocks:
 
-**Unseen badge stays on Leads** — no change needed, already works.
+**Block 1: Competitor Mentions Tracker**
+Aggregate `meetings[].intelligence.dealSignals.competitors` across all leads. Count frequency of each competitor name. Show which competitors appear in active deals vs. closed-lost deals. Answers: "Who are we running into most, and are we winning against them?"
 
-**Command palette navigation labels**: Update to match new order/labels.
+**Block 2: Sentiment & Engagement Heatmap**
+For each active deal, extract last meeting's `sentiment` and `engagementLevel`. Plot as a compact matrix: rows = leads (top 15 by value), columns = last 3 meetings sentiment trajectory. Color-coded. Answers: "Which deals are trending positive vs. cooling off?" — a leading indicator dashboard.
 
-### Files Changed
+**Block 3: Talk Ratio vs. Outcome Correlation**
+Aggregate `meetings[].intelligence.talkRatio` and cross-reference with deal outcomes. Show: avg talk ratio for won deals vs. lost deals. If there's a clear pattern (e.g., won deals have <40% talk ratio), surface it as an insight. This is the coaching feedback loop at the portfolio level.
+
+### 3. Enhancements to Existing Sections
+
+**Overview Tab — Deal Health Enhancement:**
+Add a "Champion Coverage" metric to the existing Deal Health block. Count how many active deals have at least one "Champion" in their `stakeholderMap`. Show as "X of Y deals have a champion" with the unchampioned pipeline value highlighted as risk.
+
+**Team Tab — Coaching Enhancement:**
+In `DashboardAdvancedMetrics` team section, add a row showing each rep's avg `questionQuality` and `objectionHandling` ratings from their meeting intelligence. Currently only `talkRatio` is shown. The data is already there in `meetings[].intelligence`.
+
+---
+
+## Implementation Details
+
+### `src/components/DashboardSignalIntelligence.tsx` (NEW)
+- Props: `leads: Lead[]`, `onDrillDown`
+- 4 blocks, 2x2 grid
+- All computation in `useMemo` — mines `meetings[].intelligence` and `dealIntelligence`
+- Clickable intent categories and pain points for drill-down
+
+### `src/components/DashboardCompetitiveRadar.tsx` (NEW)
+- Props: `leads: Lead[]`, `onDrillDown`, `onSelectLead`
+- 3 blocks in the Pipeline tab
+- Sentiment heatmap uses simple colored dots (no external charting library needed)
+
+### `src/components/Dashboard.tsx` (MODIFIED)
+- Import and render `DashboardSignalIntelligence` in Overview tab after `DashboardTrends`
+- Import and render `DashboardCompetitiveRadar` in Pipeline tab after `DashboardLossIntelligence`
+- Add champion coverage metric to the existing Deal Health block
+
+### `src/components/DashboardAdvancedMetrics.tsx` (MODIFIED)
+- In team section coaching block, add `questionQuality` and `objectionHandling` aggregates per rep
+
+---
+
+## What This Unlocks
+
+| Current State | After Phase 6 |
+|---|---|
+| Dashboard shows pipeline in dollars | Dashboard shows pipeline by **buying intent strength** |
+| Pain points only visible per-lead | Aggregate pain point map shows **what messaging works** |
+| Objections only in Loss Intelligence | Active deal objection readiness shows **where to intervene now** |
+| Stakeholder data buried in deal rooms | Aggregate champion coverage shows **pipeline quality** |
+| Competitor data invisible at portfolio level | Competitive radar shows **who we're fighting and winning against** |
+| Sentiment only per-meeting | Sentiment trajectory heatmap shows **deals trending cold before they go dark** |
+| Coaching only shows talk ratio | Full coaching scorecard with question quality and objection handling |
+
+## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/pages/Index.tsx` | Reorder tabs, default to "dashboard", add icons + micro-descriptions |
-| `src/components/CommandPalette.tsx` | Update navigation order to match |
+| `src/components/DashboardSignalIntelligence.tsx` | **New** — 4 intelligence blocks for Overview |
+| `src/components/DashboardCompetitiveRadar.tsx` | **New** — 3 competitive/sentiment blocks for Pipeline |
+| `src/components/Dashboard.tsx` | Import + render new components, add champion coverage to Deal Health |
+| `src/components/DashboardAdvancedMetrics.tsx` | Add question quality + objection handling to Team coaching |
+
+No new API calls, no new edge functions, no schema changes. All data already exists on lead objects.
 
