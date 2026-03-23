@@ -597,6 +597,9 @@ export function Dashboard() {
               <p className="text-[10px] text-muted-foreground mt-2 text-center">Weakest: {analytics.weakestLink.from} → {analytics.weakestLink.to} ({analytics.weakestLink.rate}%)</p>
             )}
           </div>
+
+          {/* Row 5: Trend Analytics */}
+          <DashboardTrends leads={filteredLeads} />
         </div>
       )}
 
