@@ -177,7 +177,7 @@ serve(async (req) => {
       newMeetings = newMeetings.slice(0, MAX_MEETINGS);
     }
 
-    if (newMeetings.length === 0) {
+    if (newMeetings.length === 0 && noRecordingMeetings.length === 0) {
       await supabase.from("processing_jobs").update({
         status: "completed",
         new_meetings: [],
@@ -190,6 +190,38 @@ serve(async (req) => {
 
       return new Response(
         JSON.stringify({ success: true, newMeetings: 0 }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // If only no-recording meetings exist and no real ones, store them and finish
+    if (newMeetings.length === 0) {
+      const noRecProcessed = noRecordingMeetings.map((m: any) => ({
+        id: generateMeetingId(),
+        date: m.date || new Date().toISOString().split("T")[0],
+        title: m.title || "Untitled Meeting",
+        firefliesId: m.firefliesId,
+        firefliesUrl: m.transcriptUrl || "",
+        transcript: "",
+        summary: "No recording available",
+        nextSteps: "",
+        addedAt: new Date().toISOString(),
+        sourceBrand: m.sourceBrand,
+        noRecording: true,
+      }));
+
+      await supabase.from("processing_jobs").update({
+        status: "completed",
+        new_meetings: noRecProcessed,
+        pending_suggestions: [],
+        applied_updates: {},
+        applied_fields: [],
+        progress_message: `Found ${noRecProcessed.length} meeting(s) with no recording`,
+        updated_at: new Date().toISOString(),
+      }).eq("id", jobId);
+
+      return new Response(
+        JSON.stringify({ success: true, newMeetings: noRecProcessed.length }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
