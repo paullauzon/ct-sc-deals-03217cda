@@ -154,12 +154,19 @@ serve(async (req) => {
       newMeetings = foundMeetings.filter((m: any) => !existingIds.has(m.firefliesId));
     }
 
-    // Filter out meetings with no real transcript content (forwarded emails, bot entries)
-    const preFilterCount = newMeetings.length;
-    newMeetings = newMeetings.filter((m: any) => (m.transcript || "").length >= 50);
-    if (preFilterCount > newMeetings.length) {
-      console.log(`Filtered out ${preFilterCount - newMeetings.length} meetings with no transcript content`);
+    // Split meetings into real (with transcript) and no-recording (empty transcript)
+    const realMeetings: any[] = [];
+    const noRecordingMeetings: any[] = [];
+    for (const m of newMeetings) {
+      if ((m.transcript || "").length >= 50) {
+        realMeetings.push(m);
+      } else {
+        noRecordingMeetings.push({ ...m, noRecording: true, transcript: "", summary: "No recording available" });
+        console.log(`Tagging meeting "${m.title}" as no-recording (transcript length: ${(m.transcript || "").length})`);
+      }
     }
+    // Only process real meetings through AI; no-recording ones are stored as-is
+    newMeetings = realMeetings;
 
     // Cap at 20 meetings to prevent edge function timeouts
     const MAX_MEETINGS = 20;
