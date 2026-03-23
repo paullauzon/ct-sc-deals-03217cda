@@ -199,10 +199,13 @@ VERIFICATION RULES (before saying "found"):
 - When in doubt, try another search rather than guessing
 
 WHEN TO GIVE UP:
+- NEVER give up before trying ALL three priority strategies (A, B, C above)
 - Person appears to use a disposable/privacy email (mozmail.com, guerrillamail, etc.)
 - No real company information available
-- After trying multiple strategies with no relevant results
-- The person is clearly too obscure to have a findable LinkedIn profile`;
+- After trying company LinkedIn page scrape AND email initials AND multiple search variations with no results
+- The person is clearly too obscure to have a findable LinkedIn profile
+
+IMPORTANT: Do NOT give up just because direct name searches fail. Many people have non-obvious LinkedIn slugs. You MUST try the company LinkedIn page (strategy A) and email initials (strategy B) before giving up.`;
 }
 
 async function aiSearchAgent(
