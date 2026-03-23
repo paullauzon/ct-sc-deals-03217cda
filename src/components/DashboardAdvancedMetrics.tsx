@@ -208,7 +208,14 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead, section, onDrill
               </thead>
               <tbody className="divide-y divide-border">
                 {data.repScorecard.map(r => (
-                  <tr key={r.owner} className="hover:bg-secondary/30 transition-colors">
+                  <tr
+                    key={r.owner}
+                    className="hover:bg-secondary/30 transition-colors cursor-pointer"
+                    onClick={() => onDrillDown?.(
+                      `${r.owner} Deals`,
+                      leads.filter(l => (r.owner === "Unassigned" ? !l.assignedTo : l.assignedTo === r.owner))
+                    )}
+                  >
                     <td className="px-4 py-2.5 font-medium flex items-center gap-2">
                       {r.owner !== "Unassigned" ? (
                         <span className="w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">{r.owner[0]}</span>

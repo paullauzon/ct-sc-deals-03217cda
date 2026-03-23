@@ -213,7 +213,8 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
                 <span className="text-right tabular-nums text-muted-foreground">{r.avgCycle !== null ? `${r.avgCycle}d` : "—"}</span>
                 <span className="text-right tabular-nums text-muted-foreground">{r.icpStrong}/{r.icpMod}/{r.icpWeak}</span>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
