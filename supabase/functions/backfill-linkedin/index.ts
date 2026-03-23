@@ -187,7 +187,9 @@ SEARCH STRATEGIES (use your judgment on which to try):
 10. If all else fails, try just the person's name with their city/geography
 
 VERIFICATION RULES (before saying "found"):
-- The LinkedIn URL slug should contain at least part of the person's name (first name is sufficient)
+- The LinkedIn URL slug does NOT need to match the person's name — many people use initials, numbers, or random slugs (e.g., "emb339" for "Ellie M. Burei", "jsmith42" for "John Smith")
+- Instead, verify by reading the search snippet or SCRAPING the LinkedIn profile to confirm the person's NAME and COMPANY match
+- If a search result shows the right name + company but has an unusual slug, that's CORRECT
 - The profile's company/role context must align with the lead's data
 - If the email domain is "xyz.com" and the LinkedIn shows a completely different company, that's wrong
 - When in doubt, SCRAPE the LinkedIn profile to verify the person's details
@@ -441,11 +443,13 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Check for single-lead mode (triggered by ingest-lead)
+  // Parse request body
   let singleLeadId: string | null = null;
+  let retryFailed = false;
   try {
     const body = await req.json();
     singleLeadId = body?.leadId || null;
+    retryFailed = body?.retryFailed === true;
   } catch {
     // No body or invalid JSON — proceed with batch mode
   }
@@ -516,11 +520,21 @@ Deno.serve(async (req) => {
       console.log(`Extracted ${linkedinInCompanyUrl.length} LinkedIn URLs from company_url field`);
     }
 
-    // Get leads missing LinkedIn URL (NULL only — empty string means already searched)
-    const { data: leads, error } = await supabase
+    // Get leads needing LinkedIn lookup
+    // retryFailed=true: re-process leads where linkedin_url='' (previously failed with old rules)
+    // default: only process leads where linkedin_url IS NULL (never searched)
+    let leadsQuery = supabase
       .from("leads")
-      .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience")
-      .is("linkedin_url", null)
+      .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience");
+
+    if (retryFailed) {
+      leadsQuery = leadsQuery.eq("linkedin_url", "");
+      console.log("retryFailed=true: re-processing previously failed leads");
+    } else {
+      leadsQuery = leadsQuery.is("linkedin_url", null);
+    }
+
+    const { data: leads, error } = await leadsQuery
       .neq("name", "")
       .order("created_at", { ascending: false })
       .limit(MAX_LEADS_PER_RUN);
@@ -563,11 +577,18 @@ Deno.serve(async (req) => {
     }
 
     // Check how many remain
-    const { count: remaining } = await supabase
+    let remainingQuery = supabase
       .from("leads")
       .select("id", { count: "exact", head: true })
-      .is("linkedin_url", null)
       .neq("name", "");
+
+    if (retryFailed) {
+      remainingQuery = remainingQuery.eq("linkedin_url", "");
+    } else {
+      remainingQuery = remainingQuery.is("linkedin_url", null);
+    }
+
+    const { count: remaining } = await remainingQuery;
 
     const avgTurns = processed > 0 ? (agentStats.totalTurns / processed).toFixed(1) : "0";
     console.log(`\nRun complete: ${found}/${processed} matched, ${remaining || 0} leads remaining`);
