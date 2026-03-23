@@ -789,64 +789,61 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
               This meeting was found in Fireflies but has no recording or transcript. This could indicate a no-show, a forwarded email, or a recording failure.
             </p>
           ) : (
-          <>
-          {/* Draft Follow-Up button */}
-          {(intel || meeting.summary) && (
-            <div className="flex justify-end">
-              <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={onDraftFollowUp} disabled={generatingFollowUp}>
-                <Mail className="h-3 w-3" />
-                {generatingFollowUp ? "Drafting..." : "Draft Follow-Up"}
-              </Button>
-            </div>
-          )}
-
-          {/* Re-process button for meetings with transcript but no intelligence */}
-          {!intel && meeting.transcript && meeting.transcript.length > 20 && onReprocess && (
-            <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
-              <span className="text-xs text-yellow-700">⚠️ AI analysis missing for this meeting.</span>
-              <Button variant="outline" size="sm" className="h-7 text-xs gap-1 ml-auto" onClick={onReprocess} disabled={reprocessing}>
-                <Loader2 className={`h-3 w-3 ${reprocessing ? "animate-spin" : "hidden"}`} />
-                {reprocessing ? "Re-processing..." : "Re-process with AI"}
-              </Button>
-            </div>
-          )}
-
-          {intel ? (
-            <IntelligenceDisplay intel={intel} />
-          ) : (
             <>
-              {meeting.summary && (
-                <div>
-                  <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Summary</label>
-                  <div className="mt-1 text-sm leading-relaxed p-4 bg-secondary/30 rounded-md whitespace-pre-line min-h-[80px]">
-                    {meeting.summary}
-                  </div>
+              {(intel || meeting.summary) && (
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={onDraftFollowUp} disabled={generatingFollowUp}>
+                    <Mail className="h-3 w-3" />
+                    {generatingFollowUp ? "Drafting..." : "Draft Follow-Up"}
+                  </Button>
                 </div>
               )}
-              {meeting.nextSteps && (
-                <div>
-                  <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Next Steps</label>
-                  <div className="mt-1 text-sm leading-relaxed p-3 bg-secondary/30 rounded-md whitespace-pre-line">
-                    {meeting.nextSteps}
-                  </div>
+              {!intel && meeting.transcript && meeting.transcript.length > 20 && onReprocess && (
+                <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+                  <span className="text-xs text-yellow-700">⚠️ AI analysis missing for this meeting.</span>
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1 ml-auto" onClick={onReprocess} disabled={reprocessing}>
+                    <Loader2 className={`h-3 w-3 ${reprocessing ? "animate-spin" : "hidden"}`} />
+                    {reprocessing ? "Re-processing..." : "Re-process with AI"}
+                  </Button>
                 </div>
+              )}
+              {intel ? (
+                <IntelligenceDisplay intel={intel} />
+              ) : (
+                <>
+                  {meeting.summary && (
+                    <div>
+                      <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Summary</label>
+                      <div className="mt-1 text-sm leading-relaxed p-4 bg-secondary/30 rounded-md whitespace-pre-line min-h-[80px]">
+                        {meeting.summary}
+                      </div>
+                    </div>
+                  )}
+                  {meeting.nextSteps && (
+                    <div>
+                      <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Next Steps</label>
+                      <div className="mt-1 text-sm leading-relaxed p-3 bg-secondary/30 rounded-md whitespace-pre-line">
+                        {meeting.nextSteps}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              {meeting.transcript && (
+                <Collapsible>
+                  <CollapsibleTrigger asChild>
+                    <button className="text-xs text-primary hover:underline">Show full transcript</button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <ScrollArea className="max-h-60 mt-2">
+                      <pre className="text-xs leading-relaxed p-3 bg-secondary/20 rounded-md whitespace-pre-wrap font-sans">
+                        {meeting.transcript}
+                      </pre>
+                    </ScrollArea>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
             </>
-          )}
-          {meeting.transcript && (
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <button className="text-xs text-primary hover:underline">Show full transcript</button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <ScrollArea className="max-h-60 mt-2">
-                  <pre className="text-xs leading-relaxed p-3 bg-secondary/20 rounded-md whitespace-pre-wrap font-sans">
-                    {meeting.transcript}
-                  </pre>
-                </ScrollArea>
-              </CollapsibleContent>
-            </Collapsible>
-          )}
           )}
         </div>
       </CollapsibleContent>
