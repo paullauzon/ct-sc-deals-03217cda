@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { Lead, LeadSource, Brand } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
@@ -7,6 +7,10 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics";
 import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
 import { PipelineSnapshots } from "@/components/PipelineSnapshots";
+import { DashboardFilterBar, DEFAULT_FILTERS, useDashboardFilters, type DashboardFilters } from "@/components/DashboardFilters";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { toPng } from "html-to-image";
+import { toast } from "sonner";
 import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, Legend,
@@ -32,12 +36,59 @@ const TABS: { key: DashboardTab; label: string; desc: string }[] = [
   { key: "buyers", label: "Buyers", desc: "Strategy" },
 ];
 
+interface DrillDown {
+  title: string;
+  leads: Lead[];
+}
+
 export function Dashboard() {
   const { getMetrics, leads } = useLeads();
-  const m = getMetrics();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [moreDetailOpen, setMoreDetailOpen] = useState(false);
+  const [filters, setFilters] = useState<DashboardFilters>(DEFAULT_FILTERS);
+  const [drillDown, setDrillDown] = useState<DrillDown | null>(null);
+  const overviewRef = useRef<HTMLDivElement>(null);
+
+  const filteredLeads = useDashboardFilters(leads, filters);
+
+  // Recompute metrics based on filtered leads
+  const m = useMemo(() => {
+    const closedStages = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+    const activeLeads = filteredLeads.filter(l => !closedStages.has(l.stage));
+    const totalPipelineValue = activeLeads.reduce((s, l) => s + l.dealValue, 0);
+    const wonLeads = filteredLeads.filter(l => l.stage === "Closed Won");
+    const lostLeads = filteredLeads.filter(l => l.stage === "Closed Lost");
+    const wentDark = filteredLeads.filter(l => l.stage === "Went Dark");
+    const totalClosed = wonLeads.length + lostLeads.length;
+    const conversionRate = totalClosed > 0 ? Math.round((wonLeads.length / totalClosed) * 100) : 0;
+
+    const meetingsSet = filteredLeads.filter(l => l.meetingSetDate).length;
+    const meetingsWithDate = filteredLeads.filter(l => l.meetingSetDate && l.dateSubmitted);
+    const avgDaysToMeeting = meetingsWithDate.length > 0
+      ? Math.round(meetingsWithDate.reduce((s, l) => s + Math.max(0, Math.floor((new Date(l.meetingSetDate).getTime() - new Date(l.dateSubmitted).getTime()) / 86400000)), 0) / meetingsWithDate.length)
+      : 0;
+
+    const stageValues: Record<string, { count: number; value: number }> = {};
+    for (const l of filteredLeads) {
+      if (!stageValues[l.stage]) stageValues[l.stage] = { count: 0, value: 0 };
+      stageValues[l.stage].count++;
+      stageValues[l.stage].value += l.dealValue;
+    }
+
+    return {
+      totalLeads: filteredLeads.length,
+      totalPipelineValue,
+      avgDealValue: activeLeads.length > 0 ? Math.round(totalPipelineValue / activeLeads.length) : 0,
+      meetingsSet,
+      closedWon: wonLeads.length,
+      closedLost: lostLeads.length,
+      wentDark: wentDark.length,
+      conversionRate,
+      avgDaysToMeeting,
+      stageValues,
+    };
+  }, [filteredLeads]);
 
   const analytics = useMemo(() => {
     const now = new Date("2026-03-03");
@@ -45,16 +96,16 @@ export function Dashboard() {
     const oneMonthAgo = new Date(now.getTime() - 30 * 86400000);
     const twoMonthsAgo = new Date(now.getTime() - 60 * 86400000);
 
-    const leadsThisWeek = leads.filter((l) => new Date(l.dateSubmitted) >= oneWeekAgo).length;
-    const leadsThisMonth = leads.filter((l) => new Date(l.dateSubmitted) >= oneMonthAgo).length;
-    const leadsLastMonth = leads.filter((l) => {
+    const leadsThisWeek = filteredLeads.filter((l) => new Date(l.dateSubmitted) >= oneWeekAgo).length;
+    const leadsThisMonth = filteredLeads.filter((l) => new Date(l.dateSubmitted) >= oneMonthAgo).length;
+    const leadsLastMonth = filteredLeads.filter((l) => {
       const d = new Date(l.dateSubmitted);
       return d >= twoMonthsAgo && d < oneMonthAgo;
     }).length;
     const momGrowth = leadsLastMonth > 0 ? Math.round(((leadsThisMonth - leadsLastMonth) / leadsLastMonth) * 100) : 0;
 
-    const ctLeads = leads.filter((l) => l.brand === "Captarget");
-    const scLeads = leads.filter((l) => l.brand === "SourceCo");
+    const ctLeads = filteredLeads.filter((l) => l.brand === "Captarget");
+    const scLeads = filteredLeads.filter((l) => l.brand === "SourceCo");
 
     // Weekly volume (last 16 weeks) with cumulative
     const weeklyData: { week: string; CT: number; SC: number; total: number; cumulative: number }[] = [];
@@ -63,8 +114,8 @@ export function Dashboard() {
       const weekStart = new Date(now.getTime() - (i + 1) * 7 * 86400000);
       const weekEnd = new Date(now.getTime() - i * 7 * 86400000);
       const label = `${weekStart.getMonth() + 1}/${weekStart.getDate()}`;
-      const ct = leads.filter((l) => l.brand === "Captarget" && new Date(l.dateSubmitted) >= weekStart && new Date(l.dateSubmitted) < weekEnd).length;
-      const sc = leads.filter((l) => l.brand === "SourceCo" && new Date(l.dateSubmitted) >= weekStart && new Date(l.dateSubmitted) < weekEnd).length;
+      const ct = filteredLeads.filter((l) => l.brand === "Captarget" && new Date(l.dateSubmitted) >= weekStart && new Date(l.dateSubmitted) < weekEnd).length;
+      const sc = filteredLeads.filter((l) => l.brand === "SourceCo" && new Date(l.dateSubmitted) >= weekStart && new Date(l.dateSubmitted) < weekEnd).length;
       cumulative += ct + sc;
       weeklyData.push({ week: label, CT: ct, SC: sc, total: ct + sc, cumulative });
     }
@@ -72,12 +123,12 @@ export function Dashboard() {
     // Source breakdown
     const sourceBreakdown = (["CT Contact Form", "CT Free Targets Form", "SC Intro Call Form", "SC Free Targets Form"] as LeadSource[]).map((s) => ({
       source: SOURCE_LABELS[s],
-      count: leads.filter((l) => l.source === s).length,
+      count: filteredLeads.filter((l) => l.source === s).length,
     }));
 
     // Role distribution
     const roleMap = new Map<string, number>();
-    for (const l of leads) {
+    for (const l of filteredLeads) {
       const role = l.role || "Unknown";
       roleMap.set(role, (roleMap.get(role) || 0) + 1);
     }
@@ -88,7 +139,7 @@ export function Dashboard() {
 
     // Company leaderboard
     const companyMap = new Map<string, { count: number; value: number; sources: Set<string> }>();
-    for (const l of leads) {
+    for (const l of filteredLeads) {
       const co = l.company || "(No Company)";
       if (!companyMap.has(co)) companyMap.set(co, { count: 0, value: 0, sources: new Set() });
       const entry = companyMap.get(co)!;
@@ -103,11 +154,11 @@ export function Dashboard() {
       .slice(0, 15);
 
     // Duplicates
-    const duplicates = leads.filter((l) => l.isDuplicate);
+    const duplicates = filteredLeads.filter((l) => l.isDuplicate);
     const duplicatePairs: { ctLead: Lead; scLead: Lead }[] = [];
     const seen = new Set<string>();
     for (const l of duplicates) {
-      const pair = leads.find((o) => o.id === l.duplicateOf);
+      const pair = filteredLeads.find((o) => o.id === l.duplicateOf);
       if (pair && !seen.has(`${l.email.toLowerCase()}`)) {
         seen.add(l.email.toLowerCase());
         const ct = l.brand === "Captarget" ? l : pair;
@@ -139,7 +190,7 @@ export function Dashboard() {
 
     // Service Interest (all brands)
     const serviceData = ALL_SERVICES.map((s) => ({
-      label: s, count: leads.filter((l) => l.serviceInterest === s).length,
+      label: s, count: filteredLeads.filter((l) => l.serviceInterest === s).length,
     })).filter((s) => s.count > 0);
 
     // Service Interest by Brand
@@ -155,7 +206,7 @@ export function Dashboard() {
 
     // Deals planned
     const dealsMap = new Map<string, number>();
-    for (const l of leads) {
+    for (const l of filteredLeads) {
       if (l.dealsPlanned) dealsMap.set(l.dealsPlanned, (dealsMap.get(l.dealsPlanned) || 0) + 1);
     }
     const dealsData = Array.from(dealsMap.entries())
@@ -166,7 +217,7 @@ export function Dashboard() {
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const dayOfWeek = dayNames.map((day, i) => ({
       day,
-      count: leads.filter((l) => new Date(l.dateSubmitted).getDay() === i).length,
+      count: filteredLeads.filter((l) => new Date(l.dateSubmitted).getDay() === i).length,
     }));
 
     // Pipeline funnel
@@ -188,8 +239,8 @@ export function Dashboard() {
     const fourWeeksAgo = new Date(now.getTime() - 28 * 86400000);
     const eightWeeksAgo = new Date(now.getTime() - 56 * 86400000);
     const qualifiedStages = new Set(["Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won"]);
-    const qualifiedRecent = leads.filter((l) => new Date(l.dateSubmitted) >= fourWeeksAgo && qualifiedStages.has(l.stage)).length;
-    const qualifiedPrior = leads.filter((l) => {
+    const qualifiedRecent = filteredLeads.filter((l) => new Date(l.dateSubmitted) >= fourWeeksAgo && qualifiedStages.has(l.stage)).length;
+    const qualifiedPrior = filteredLeads.filter((l) => {
       const d = new Date(l.dateSubmitted);
       return d >= eightWeeksAgo && d < fourWeeksAgo && qualifiedStages.has(l.stage);
     }).length;
@@ -199,36 +250,36 @@ export function Dashboard() {
 
     // Stale leads
     const closedStages = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
-    const staleLeads = leads
+    const staleLeads = filteredLeads
       .filter((l) => !closedStages.has(l.stage) && computeDaysInStage(l.stageEnteredDate) > 14)
       .sort((a, b) => computeDaysInStage(b.stageEnteredDate) - computeDaysInStage(a.stageEnteredDate));
 
     // Priority distribution
     const priorityData = (["High", "Medium", "Low"] as const).map((p) => ({
       priority: p,
-      count: leads.filter((l) => l.priority === p && !closedStages.has(l.stage)).length,
+      count: filteredLeads.filter((l) => l.priority === p && !closedStages.has(l.stage)).length,
     }));
 
     // Forecast summary
     const forecastData = (["Commit", "Best Case", "Pipeline", "Omit"] as const).map((cat) => {
-      const inCat = leads.filter((l) => l.forecastCategory === cat);
+      const inCat = filteredLeads.filter((l) => l.forecastCategory === cat);
       return { category: cat, count: inCat.length, value: inCat.reduce((s, l) => s + l.dealValue, 0) };
     }).filter((f) => f.count > 0);
 
     // Owner breakdown
     const owners = ["Malik", "Valeria", "Tomos", ""] as const;
     const ownerData = owners.map((owner) => {
-      const owned = leads.filter((l) => l.assignedTo === owner && !closedStages.has(l.stage));
+      const owned = filteredLeads.filter((l) => l.assignedTo === owner && !closedStages.has(l.stage));
       return {
         owner: owner || "Unassigned",
         count: owned.length,
         value: owned.reduce((s, l) => s + l.dealValue, 0),
-        won: leads.filter((l) => l.assignedTo === owner && l.stage === "Closed Won").length,
+        won: filteredLeads.filter((l) => l.assignedTo === owner && l.stage === "Closed Won").length,
       };
     });
 
     // Intelligence metrics
-    const closedWonLeads = leads.filter((l) => l.stage === "Closed Won");
+    const closedWonLeads = filteredLeads.filter((l) => l.stage === "Closed Won");
     const totalMRR = closedWonLeads.reduce((s, l) => {
       if (!l.subscriptionValue) return s;
       if (l.billingFrequency === "Quarterly") return s + l.subscriptionValue / 3;
@@ -237,24 +288,24 @@ export function Dashboard() {
     }, 0);
     const totalContractValue = closedWonLeads.reduce((s, l) => s + (l.subscriptionValue || 0), 0);
 
-    const leadsWithMeetings = leads.filter((l) => l.meetings?.length > 0).length;
-    const leadsWithIntel = leads.filter((l) => l.meetings?.some((m) => m.intelligence)).length;
-    const leadsWithDealIntel = leads.filter((l) => l.dealIntelligence).length;
+    const leadsWithMeetings = filteredLeads.filter((l) => l.meetings?.length > 0).length;
+    const leadsWithIntel = filteredLeads.filter((l) => l.meetings?.some((m) => m.intelligence)).length;
+    const leadsWithDealIntel = filteredLeads.filter((l) => l.dealIntelligence).length;
 
     const momentumDist = { Accelerating: 0, Steady: 0, Stalling: 0, Stalled: 0 };
-    for (const l of leads) {
+    for (const l of filteredLeads) {
       const mom = l.dealIntelligence?.momentumSignals?.momentum;
       if (mom && mom in momentumDist) momentumDist[mom as keyof typeof momentumDist]++;
     }
 
     // Coaching aggregates
-    const allMeetingsWithCoaching = leads.flatMap((l) => l.meetings || []).filter((m) => m.intelligence?.talkRatio);
+    const allMeetingsWithCoaching = filteredLeads.flatMap((l) => l.meetings || []).filter((m) => m.intelligence?.talkRatio);
     const avgTalkRatio = allMeetingsWithCoaching.length
       ? Math.round(allMeetingsWithCoaching.reduce((s, m) => s + (m.intelligence?.talkRatio || 0), 0) / allMeetingsWithCoaching.length)
       : null;
 
     // Deal health summary
-    const activeLeads = leads.filter((l) => !closedStages.has(l.stage));
+    const activeLeads = filteredLeads.filter((l) => !closedStages.has(l.stage));
     let criticalAlerts = 0;
     let warningAlerts = 0;
     let atRiskRevenue = 0;
@@ -277,11 +328,11 @@ export function Dashboard() {
     // Stage-to-stage conversion rates
     const stageConversions = ACTIVE_STAGES.slice(0, -1).map((stage, i) => {
       const nextStage = ACTIVE_STAGES[i + 1];
-      const inThisOrLater = leads.filter(l => {
+      const inThisOrLater = filteredLeads.filter(l => {
         const idx = ACTIVE_STAGES.indexOf(l.stage as any);
         return idx >= i || l.stage === "Closed Won";
       }).length;
-      const inNextOrLater = leads.filter(l => {
+      const inNextOrLater = filteredLeads.filter(l => {
         const idx = ACTIVE_STAGES.indexOf(l.stage as any);
         return idx >= i + 1 || l.stage === "Closed Won";
       }).length;
@@ -292,16 +343,16 @@ export function Dashboard() {
 
     // Forecast gap analysis
     const forecastTarget = parseInt(localStorage.getItem("captarget_quarterly_target") || "500000");
-    const commitValue = leads.filter(l => l.forecastCategory === "Commit").reduce((s, l) => s + l.dealValue, 0);
-    const bestCaseValue = leads.filter(l => l.forecastCategory === "Best Case").reduce((s, l) => s + l.dealValue, 0);
-    const pipelineValue = leads.filter(l => l.forecastCategory === "Pipeline").reduce((s, l) => s + l.dealValue, 0);
+    const commitValue = filteredLeads.filter(l => l.forecastCategory === "Commit").reduce((s, l) => s + l.dealValue, 0);
+    const bestCaseValue = filteredLeads.filter(l => l.forecastCategory === "Best Case").reduce((s, l) => s + l.dealValue, 0);
+    const pipelineValue = filteredLeads.filter(l => l.forecastCategory === "Pipeline").reduce((s, l) => s + l.dealValue, 0);
     const coverageRatio = forecastTarget > 0 ? ((commitValue + bestCaseValue) / forecastTarget) : 0;
     const forecastGap = Math.max(0, forecastTarget - commitValue);
 
     // Sales velocity for overview
-    const activeDeals = leads.filter(l => !closedStages.has(l.stage));
-    const wonLeads2 = leads.filter(l => l.stage === "Closed Won");
-    const lostLeads2 = leads.filter(l => l.stage === "Closed Lost");
+    const activeDeals = filteredLeads.filter(l => !closedStages.has(l.stage));
+    const wonLeads2 = filteredLeads.filter(l => l.stage === "Closed Won");
+    const lostLeads2 = filteredLeads.filter(l => l.stage === "Closed Lost");
     const totalClosed = wonLeads2.length + lostLeads2.length;
     const winRateVal = totalClosed > 0 ? wonLeads2.length / totalClosed : 0;
     const avgDealVal = activeDeals.length > 0
@@ -327,7 +378,27 @@ export function Dashboard() {
       forecastTarget, commitValue, bestCaseValue, pipelineValue, coverageRatio, forecastGap,
       salesVelocity,
     };
-  }, [leads, m]);
+  }, [filteredLeads, m]);
+
+  const handleDrillDown = (title: string, drillLeads: Lead[]) => {
+    if (drillLeads.length > 0) {
+      setDrillDown({ title, leads: drillLeads });
+    }
+  };
+
+  const handleExportOverview = async () => {
+    if (!overviewRef.current) return;
+    try {
+      const dataUrl = await toPng(overviewRef.current, { backgroundColor: "#ffffff", pixelRatio: 2 });
+      const link = document.createElement("a");
+      link.download = `dashboard-overview-${new Date().toISOString().slice(0, 10)}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Overview exported as PNG");
+    } catch {
+      toast.error("Export failed");
+    }
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -357,18 +428,35 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* Filter Bar */}
+      <DashboardFilterBar leads={leads} filters={filters} onFiltersChange={setFilters} />
+
       {/* ═══════════════════ OVERVIEW TAB ═══════════════════ */}
       {activeTab === "overview" && (
-        <div className="space-y-6">
+        <div className="space-y-6" ref={overviewRef}>
+          {/* Export button */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleExportOverview}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 border border-border rounded-md"
+            >
+              ↓ Export as PNG
+            </button>
+          </div>
+
           {/* Row 1: Hero KPIs */}
           <div className="grid grid-cols-4 gap-4">
             {[
-              { label: "Total Leads", value: String(m.totalLeads) },
-              { label: "Pipeline Value", value: `$${m.totalPipelineValue.toLocaleString()}` },
-              { label: "MRR (Won)", value: `$${Math.round(analytics.totalMRR).toLocaleString()}` },
-              { label: "Win Rate", value: `${m.conversionRate}%` },
+              { label: "Total Leads", value: String(m.totalLeads), drillLeads: filteredLeads, drillTitle: "All Leads" },
+              { label: "Pipeline Value", value: `$${m.totalPipelineValue.toLocaleString()}`, drillLeads: filteredLeads.filter(l => !["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)), drillTitle: "Active Pipeline" },
+              { label: "MRR (Won)", value: `$${Math.round(analytics.totalMRR).toLocaleString()}`, drillLeads: filteredLeads.filter(l => l.stage === "Closed Won"), drillTitle: "Closed Won" },
+              { label: "Win Rate", value: `${m.conversionRate}%`, drillLeads: filteredLeads.filter(l => ["Closed Won", "Closed Lost"].includes(l.stage)), drillTitle: "Closed Deals" },
             ].map((stat) => (
-              <div key={stat.label} className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
+              <div
+                key={stat.label}
+                className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4 cursor-pointer hover:bg-secondary/20 transition-colors"
+                onClick={() => handleDrillDown(stat.drillTitle, stat.drillLeads)}
+              >
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">{stat.label}</p>
                 <p className="text-2xl font-semibold tabular-nums mt-1">{stat.value}</p>
               </div>
@@ -396,16 +484,19 @@ export function Dashboard() {
           </div>
 
           {/* Row 3: Pipeline Trend + Forecast + Deal Health */}
-          <PipelineSnapshots leads={leads} />
+          <PipelineSnapshots leads={filteredLeads} />
           <div className="grid grid-cols-3 gap-4">
-            <div className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4">
+            <div
+              className="border border-border border-t-2 border-t-foreground rounded-lg px-5 py-4 cursor-pointer hover:bg-secondary/20 transition-colors"
+              onClick={() => handleDrillDown("At-Risk Deals", analytics.atRiskLeads)}
+            >
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Revenue at Risk</p>
               <p className="text-2xl font-bold tabular-nums mt-1">${analytics.atRiskRevenue.toLocaleString()}</p>
               <p className="text-xs text-muted-foreground mt-1">{analytics.atRiskLeads.length} deals stalling, dark, or high-risk</p>
               {analytics.atRiskLeads.length > 0 && (
                 <div className="mt-2 space-y-1 max-h-[80px] overflow-y-auto">
                   {analytics.atRiskLeads.slice(0, 5).map(l => (
-                    <p key={l.id} onClick={() => setSelectedLeadId(l.id)} className="text-xs text-muted-foreground cursor-pointer hover:text-foreground truncate">
+                    <p key={l.id} onClick={(e) => { e.stopPropagation(); setSelectedLeadId(l.id); }} className="text-xs text-muted-foreground cursor-pointer hover:text-foreground truncate">
                       {l.name} · ${l.dealValue.toLocaleString()}
                     </p>
                   ))}
@@ -447,7 +538,10 @@ export function Dashboard() {
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Deal Health</p>
               <div className="flex items-center gap-2 mt-2">
                 {analytics.criticalAlerts > 0 && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-foreground font-medium">
+                  <span
+                    className="text-xs px-1.5 py-0.5 rounded bg-secondary text-foreground font-medium cursor-pointer hover:bg-secondary/80"
+                    onClick={() => handleDrillDown("Critical Alerts", analytics.atRiskLeads.slice(0, analytics.criticalAlerts))}
+                  >
                     {analytics.criticalAlerts} critical
                   </span>
                 )}
@@ -507,7 +601,7 @@ export function Dashboard() {
       {/* ═══════════════════ PIPELINE TAB ═══════════════════ */}
       {activeTab === "pipeline" && (
         <div className="space-y-6">
-          <DashboardAdvancedMetrics leads={leads} onSelectLead={setSelectedLeadId} section="pipeline" />
+          <DashboardAdvancedMetrics leads={filteredLeads} onSelectLead={setSelectedLeadId} section="pipeline" onDrillDown={handleDrillDown} />
 
           {/* Pipeline Funnel */}
           <div className="grid grid-cols-2 gap-6">
@@ -518,7 +612,11 @@ export function Dashboard() {
                   const prev = i > 0 ? analytics.stageFunnel[i - 1].count : null;
                   const dropOff = prev && prev > 0 ? Math.round(((prev - s.count) / prev) * 100) : null;
                   return (
-                    <div key={s.label} className="flex items-center gap-3">
+                    <div
+                      key={s.label}
+                      className="flex items-center gap-3 cursor-pointer hover:bg-secondary/20 rounded px-1 -mx-1 transition-colors"
+                      onClick={() => handleDrillDown(`${s.label} Leads`, filteredLeads.filter(l => l.stage === s.label))}
+                    >
                       <span className="text-xs text-muted-foreground w-28 shrink-0 text-right">{s.label}</span>
                       <div className="flex-1 h-6 bg-secondary/50 rounded overflow-hidden">
                         <div className="h-full bg-foreground/20 rounded transition-all" style={{ width: `${Math.max((s.count / analytics.maxStageCount) * 100, 2)}%` }} />
@@ -576,7 +674,11 @@ export function Dashboard() {
             {analytics.forecastData.length > 0 ? (
               <div className="border border-border rounded-md divide-y divide-border">
                 {analytics.forecastData.map((f) => (
-                  <div key={f.category} className="flex items-center justify-between px-4 py-3 text-sm">
+                  <div
+                    key={f.category}
+                    className="flex items-center justify-between px-4 py-3 text-sm cursor-pointer hover:bg-secondary/20 transition-colors"
+                    onClick={() => handleDrillDown(`${f.category} Deals`, filteredLeads.filter(l => l.forecastCategory === f.category))}
+                  >
                     <span className="font-medium">{f.category}</span>
                     <div className="flex items-center gap-4">
                       <span className="tabular-nums text-muted-foreground">{f.count} leads</span>
@@ -600,13 +702,13 @@ export function Dashboard() {
 
       {/* ═══════════════════ TEAM TAB ═══════════════════ */}
       {activeTab === "team" && (
-        <DashboardAdvancedMetrics leads={leads} onSelectLead={setSelectedLeadId} section="team" />
+        <DashboardAdvancedMetrics leads={filteredLeads} onSelectLead={setSelectedLeadId} section="team" onDrillDown={handleDrillDown} />
       )}
 
       {/* ═══════════════════ BUYERS TAB ═══════════════════ */}
       {activeTab === "buyers" && (
         <div className="space-y-6">
-          <DashboardPersonaMetrics leads={leads} onSelectLead={setSelectedLeadId} />
+          <DashboardPersonaMetrics leads={filteredLeads} onSelectLead={setSelectedLeadId} onDrillDown={handleDrillDown} />
 
           {/* More Detail Collapsible */}
           <Collapsible open={moreDetailOpen} onOpenChange={setMoreDetailOpen}>
@@ -877,6 +979,36 @@ export function Dashboard() {
           </Collapsible>
         </div>
       )}
+
+      {/* Drill-Down Sheet */}
+      <Sheet open={!!drillDown} onOpenChange={(open) => !open && setDrillDown(null)}>
+        <SheetContent className="overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{drillDown?.title} ({drillDown?.leads.length})</SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 divide-y divide-border">
+            {drillDown?.leads.map(l => (
+              <div
+                key={l.id}
+                onClick={() => { setDrillDown(null); setSelectedLeadId(l.id); }}
+                className="flex items-center justify-between py-3 cursor-pointer hover:bg-secondary/20 px-2 -mx-2 rounded transition-colors"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded">{l.brand === "Captarget" ? "CT" : "SC"}</span>
+                    <span className="text-sm font-medium">{l.name}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">{l.company}</p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-xs px-1.5 py-0.5 border border-border rounded">{l.stage}</span>
+                  {l.dealValue > 0 && <span className="text-xs tabular-nums font-medium">${l.dealValue.toLocaleString()}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
     </div>
