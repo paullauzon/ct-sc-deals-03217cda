@@ -483,6 +483,9 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* Buyer Persona Intelligence */}
+      <DashboardPersonaMetrics leads={leads} onSelectLead={setSelectedLeadId} />
+
       {/* Advanced Metrics: Sales Velocity, Weighted Pipeline, Win/Loss, Rep Scorecard, Source ROI */}
       <DashboardAdvancedMetrics leads={leads} onSelectLead={setSelectedLeadId} />
 
