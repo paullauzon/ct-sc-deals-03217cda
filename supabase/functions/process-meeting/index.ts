@@ -186,6 +186,20 @@ const INTELLIGENCE_TOOL = {
           enum: ["Effective", "Partial", "Missed"],
           description: "When objections were raised, did our team address them effectively? Effective = acknowledged and provided compelling response. Missed = ignored or deflected.",
         },
+        buyerJourney: {
+          type: "string",
+          enum: ["Problem Aware", "Solution Aware", "Evaluating", "Deciding", "Negotiating"],
+          description: "Where the prospect is in their buying journey based on conversation signals. Problem Aware = knows they have a problem. Solution Aware = exploring solutions. Evaluating = comparing options. Deciding = narrowing down. Negotiating = terms/pricing focus.",
+        },
+        internalChampionStrength: {
+          type: "string",
+          enum: ["Strong", "Emerging", "Weak", "None"],
+          description: "How strong is our internal champion at the prospect's organization? Strong = actively selling internally for us. Emerging = supportive but not yet advocating. Weak = lukewarm. None = no champion identified.",
+        },
+        nextMeetingRecommendation: {
+          type: "string",
+          description: "Based on this meeting's signals, what should the NEXT meeting focus on? Be specific and actionable.",
+        },
         // ─── CRM Field Suggestions ───
         suggestedLeadUpdates: {
           type: "object",
