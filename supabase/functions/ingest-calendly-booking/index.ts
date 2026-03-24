@@ -14,8 +14,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Auth via x-api-key header
-    const apiKey = req.headers.get("x-api-key");
+    // Auth via x-api-key header OR ?key= query parameter
+    const url = new URL(req.url);
+    const apiKey = req.headers.get("x-api-key") || url.searchParams.get("key");
     const expectedKey = Deno.env.get("INGEST_API_KEY");
     if (!expectedKey || apiKey !== expectedKey) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
