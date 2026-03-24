@@ -1194,7 +1194,14 @@ export function LeadsTable() {
                 <td className="px-4 py-3 text-muted-foreground">{lead.company || "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{lead.role}</td>
                 <td className="px-4 py-3">
-                  <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
+                    {lead.calendlyBookedAt && (
+                      <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium" title={`Booked via Calendly${lead.meetingDate ? ` for ${lead.meetingDate}` : ""}`}>
+                        <CalendarCheck className="h-3 w-3" />
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{lead.serviceInterest !== "TBD" ? lead.serviceInterest : "—"}</td>
                 <td className="px-4 py-3 tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</td>
