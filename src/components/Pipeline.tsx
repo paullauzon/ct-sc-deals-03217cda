@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 
-import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3, Check, Linkedin } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3, Check, Linkedin, CalendarCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
