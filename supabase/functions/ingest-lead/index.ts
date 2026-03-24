@@ -309,31 +309,35 @@ Deno.serve(async (req) => {
 
     if (insertError) throw insertError;
 
-    // Trigger lead scoring asynchronously (fire and forget)
+    // Trigger scoring + LinkedIn enrichment in parallel, await both before returning
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-    fetch(`${SUPABASE_URL}/functions/v1/score-lead`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ record: newLead }),
-    }).catch((err) => {
-      console.error("Failed to trigger score-lead:", err);
-    });
 
-    // Trigger LinkedIn enrichment asynchronously (fire and forget)
-    fetch(`${SUPABASE_URL}/functions/v1/backfill-linkedin`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ leadId }),
-    }).catch((err) => {
-      console.error("Failed to trigger backfill-linkedin:", err);
-    });
+    const [scoreResult, linkedinResult] = await Promise.allSettled([
+      fetch(`${SUPABASE_URL}/functions/v1/score-lead`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ record: newLead }),
+      }),
+      fetch(`${SUPABASE_URL}/functions/v1/backfill-linkedin`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ leadId }),
+      }),
+    ]);
+
+    if (scoreResult.status === "rejected") {
+      console.error("Failed to trigger score-lead:", scoreResult.reason);
+    }
+    if (linkedinResult.status === "rejected") {
+      console.error("Failed to trigger backfill-linkedin:", linkedinResult.reason);
+    }
 
     return new Response(
       JSON.stringify({
