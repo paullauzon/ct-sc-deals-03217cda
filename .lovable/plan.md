@@ -1,23 +1,32 @@
 
 
-# Add Calendly Meeting Details to Deal Card Side Panel
+# Auto-Set Deal Owner from Calendly Host
 
-## Verification: Webhook is Live
-The Calendly webhook is active and the `ingest-calendly-booking` edge function + realtime handler in `LeadContext.tsx` are already wired up. New bookings will automatically update leads in real-time with toast notifications. This is confirmed working.
+## How It Works
+The Calendly webhook payload includes `scheduled_event.event_memberships` — an array of hosts for the event. Each entry has a `user_email` and `user_name`. We map these to your deal owners (Malik, Valeria, Tomos) and auto-set `assigned_to` on the lead.
 
-## Change: Show Calendly Booking in the Meeting Section
+## Changes
 
-In `src/components/LeadsTable.tsx`, in the "Meeting" section (around line 436), add a Calendly booking info block above the existing meeting fields when `lead.calendlyBookedAt` is present:
+### 1. Update `ingest-calendly-booking` edge function
+- Extract `payload.scheduled_event.event_memberships[0].user_email` (the host)
+- Map host email → deal owner name using a lookup object (e.g., `{ "malik@captarget.com": "Malik", "valeria@...": "Valeria", "tomos@...": "Tomos" }`)
+- If matched, set `assigned_to` on the lead update
+- Log the assignment in the activity log
 
-- Show a small card with a `CalendarCheck` icon, "Booked via Calendly" label
-- Display the meeting date/time formatted nicely (e.g., "Sun, Mar 30 at 2:00 PM")
-- Show "Booked on" with the `calendlyBookedAt` timestamp
-- This sits at the top of the Meeting section so it's immediately visible
+### 2. Update `backfill-calendly` edge function
+- Same logic: extract host from event memberships when iterating events
+- Set `assigned_to` for backfilled leads too
 
-The existing `meeting_date` field already stores the scheduled time from Calendly, and `calendlyBookedAt` stores when they booked. Both are already mapped and available on the `lead` object.
+### Pre-requisite: Your team's Calendly emails
+I'll need to know which Calendly account emails map to which deal owner. For example:
+- Malik's Calendly email → "Malik"
+- Valeria's Calendly email → "Valeria"  
+- Tomos's Calendly email → "Tomos"
 
-## Files Changed
 | File | Change |
 |------|--------|
-| `src/components/LeadsTable.tsx` | Add Calendly booking info card in the Meeting section when `calendlyBookedAt` is set |
+| `supabase/functions/ingest-calendly-booking/index.ts` | Extract host, map to deal owner, set `assigned_to` |
+| `supabase/functions/backfill-calendly/index.ts` | Same host→owner mapping for backfill |
+
+**Before I implement**: What are the Calendly email addresses for Malik, Valeria, and Tomos? I'll hardcode the mapping in the edge functions.
 
