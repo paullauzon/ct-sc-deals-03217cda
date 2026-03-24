@@ -115,6 +115,7 @@ Deno.serve(async (req) => {
         hours_to_meeting_set: hoursToMeetingSet,
         stage_entered_date: nowDate,
         last_contact_date: nowDate,
+        calendly_booked_at: nowISO,
         updated_at: nowISO,
       })
       .eq("id", lead.id);
