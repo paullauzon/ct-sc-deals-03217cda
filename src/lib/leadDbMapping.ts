@@ -134,6 +134,7 @@ export function rowToLead(row: Record<string, any>): Lead {
     tierOverride: row.tier_override || false,
     enrichmentStatus: row.enrichment_status || "",
     createdAt: row.created_at || "",
+    calendlyBookedAt: row.calendly_booked_at || "",
   };
 }
 
