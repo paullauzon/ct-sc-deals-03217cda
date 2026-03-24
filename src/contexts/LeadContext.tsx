@@ -178,7 +178,6 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         (payload) => {
           const updatedRow = payload.new;
           if (!updatedRow) return;
-          // Only apply scoring field updates from the DB to avoid overwriting local edits
           setLeads(prev => prev.map(l => {
             if (l.id !== updatedRow.id) return l;
             const scoringUpdates: Partial<Lead> = {};
@@ -202,6 +201,22 @@ export function LeadProvider({ children }: { children: ReactNode }) {
             }
             if (updatedRow.linkedin_title != null && l.linkedinTitle !== (updatedRow.linkedin_title || "")) {
               scoringUpdates.linkedinTitle = updatedRow.linkedin_title || "";
+            }
+            // Calendly booking: pick up stage, meeting_date, calendly_booked_at
+            if (updatedRow.calendly_booked_at && !l.calendlyBookedAt && updatedRow.calendly_booked_at !== "") {
+              scoringUpdates.calendlyBookedAt = updatedRow.calendly_booked_at;
+              scoringUpdates.stage = updatedRow.stage || l.stage;
+              scoringUpdates.meetingDate = updatedRow.meeting_date || l.meetingDate;
+              scoringUpdates.meetingSetDate = updatedRow.meeting_set_date || l.meetingSetDate;
+              scoringUpdates.stageEnteredDate = updatedRow.stage_entered_date || l.stageEnteredDate;
+              // Show booking toast
+              const meetingDateStr = updatedRow.meeting_date || "";
+              let dateLabel = meetingDateStr;
+              try { if (meetingDateStr) dateLabel = new Date(meetingDateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" }); } catch {}
+              toast(`📅 ${l.name} booked a meeting${dateLabel ? ` for ${dateLabel}` : ""}`, {
+                description: "Via Calendly — stage moved to Meeting Set",
+                duration: 10000,
+              });
             }
             if (Object.keys(scoringUpdates).length === 0) return l;
             return { ...l, ...scoringUpdates };

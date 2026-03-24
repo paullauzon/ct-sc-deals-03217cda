@@ -65,6 +65,7 @@ export function leadToRow(lead: Lead): Record<string, any> {
     tier_override: lead.tierOverride,
     enrichment_status: lead.enrichmentStatus,
     created_at: lead.createdAt,
+    calendly_booked_at: lead.calendlyBookedAt,
   };
 }
 
@@ -133,6 +134,7 @@ export function rowToLead(row: Record<string, any>): Lead {
     tierOverride: row.tier_override || false,
     enrichmentStatus: row.enrichment_status || "",
     createdAt: row.created_at || "",
+    calendlyBookedAt: row.calendly_booked_at || "",
   };
 }
 
@@ -167,6 +169,7 @@ export function leadUpdatesToRow(updates: Partial<Lead>): Record<string, any> {
     stage1Score: "stage1_score", stage2Score: "stage2_score",
     tier: "tier", tierOverride: "tier_override", enrichmentStatus: "enrichment_status",
     createdAt: "created_at",
+    calendlyBookedAt: "calendly_booked_at",
   };
 
   const row: Record<string, any> = {};

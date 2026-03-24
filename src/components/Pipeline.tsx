@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, DragEvent } from "react";
+import { format } from "date-fns";
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
 import { LeadStage, Lead } from "@/types/lead";
@@ -13,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 
-import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3, Check, Linkedin } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3, Check, Linkedin, CalendarCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -374,6 +375,12 @@ export function Pipeline() {
                             <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn"}>
                               <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] hover:opacity-70 transition-opacity" />
                             </a>
+                          )}
+                          {lead.calendlyBookedAt && lead.meetingDate && (
+                            <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium" title={`Calendly booking for ${lead.meetingDate}`}>
+                              <CalendarCheck className="h-3.5 w-3.5" />
+                              {(() => { try { return format(new Date(lead.meetingDate), "MMM d"); } catch { return lead.meetingDate; } })()}
+                            </span>
                           )}
                           {lead.meetings?.length > 0 && (
                             <div className="flex items-center gap-0.5">

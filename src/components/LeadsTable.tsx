@@ -20,7 +20,7 @@ import { format, parseISO } from "date-fns";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight, Clock, GitCommit, MessageSquare, Calendar, Search as SearchIcon, Linkedin } from "lucide-react";
+import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight, Clock, GitCommit, MessageSquare, Calendar, Search as SearchIcon, Linkedin, CalendarCheck } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -1194,7 +1194,14 @@ export function LeadsTable() {
                 <td className="px-4 py-3 text-muted-foreground">{lead.company || "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{lead.role}</td>
                 <td className="px-4 py-3">
-                  <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
+                    {lead.calendlyBookedAt && (
+                      <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium" title={`Booked via Calendly${lead.meetingDate ? ` for ${lead.meetingDate}` : ""}`}>
+                        <CalendarCheck className="h-3 w-3" />
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{lead.serviceInterest !== "TBD" ? lead.serviceInterest : "—"}</td>
                 <td className="px-4 py-3 tabular-nums">{lead.dealValue ? `$${lead.dealValue.toLocaleString()}` : "—"}</td>
@@ -1252,6 +1259,7 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
       firefliesUrl: "", firefliesTranscript: "", firefliesSummary: "", firefliesNextSteps: "",
       stage1Score: null, stage2Score: null, tier: null, tierOverride: false, enrichmentStatus: "",
       linkedinUrl: "", linkedinTitle: "", createdAt: new Date().toISOString(),
+      calendlyBookedAt: "",
     });
     setForm({ name: "", email: "", phone: "", company: "", companyUrl: "", role: "", message: "", dealsPlanned: "0-2" });
     onClose();

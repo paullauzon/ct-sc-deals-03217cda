@@ -102,6 +102,7 @@ export type Database = {
           billing_frequency: string
           brand: string
           buyer_type: string
+          calendly_booked_at: string
           close_reason: string
           closed_date: string
           company: string
@@ -179,6 +180,7 @@ export type Database = {
           billing_frequency?: string
           brand?: string
           buyer_type?: string
+          calendly_booked_at?: string
           close_reason?: string
           closed_date?: string
           company?: string
@@ -256,6 +258,7 @@ export type Database = {
           billing_frequency?: string
           brand?: string
           buyer_type?: string
+          calendly_booked_at?: string
           close_reason?: string
           closed_date?: string
           company?: string
