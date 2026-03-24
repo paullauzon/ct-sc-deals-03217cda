@@ -8,6 +8,13 @@ const corsHeaders = {
 // Stages that come before "Meeting Set" in the pipeline
 const PRE_MEETING_STAGES = ["New Lead", "Contacted", "Qualifying"];
 
+// Map Calendly host emails to deal owner names
+const HOST_EMAIL_TO_OWNER: Record<string, string> = {
+  "v.rivera@captarget.com": "Valeria",
+  "tomos.mughan@sourcecodeals.com": "Tomos",
+  // Add Malik's email here when available
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
