@@ -1,40 +1,23 @@
 
 
-# Backfill Calendly Bookings for Existing Leads
+# Add Calendly Meeting Details to Deal Card Side Panel
 
-## Problem
-The Calendly webhook was just activated today, so all historical bookings (like Sebastian Kocsis's March 30 Introductory Call) were never received. We need a one-time backfill that pulls all scheduled events from the Calendly API and matches invitee emails to existing leads.
+## Verification: Webhook is Live
+The Calendly webhook is active and the `ingest-calendly-booking` edge function + realtime handler in `LeadContext.tsx` are already wired up. New bookings will automatically update leads in real-time with toast notifications. This is confirmed working.
 
-## How It Works
-1. New edge function `backfill-calendly` fetches all scheduled events from `https://api.calendly.com/scheduled_events` using the `CALENDLY_API_TOKEN`
-2. For each event, fetches the invitees list to get their emails
-3. Matches each invitee email against leads in the database
-4. For leads still in a pre-meeting stage (New Lead, Contacted, Qualifying), updates them to "Meeting Set" with the correct meeting date and `calendly_booked_at` timestamp
-5. For leads already past "Meeting Set", just stamps `calendly_booked_at` so the Calendly icon shows up (doesn't regress their stage)
-6. Returns a summary of all matches, updates, and skips
+## Change: Show Calendly Booking in the Meeting Section
 
-## Changes
+In `src/components/LeadsTable.tsx`, in the "Meeting" section (around line 436), add a Calendly booking info block above the existing meeting fields when `lead.calendlyBookedAt` is present:
 
-### 1. New edge function: `backfill-calendly`
-**`supabase/functions/backfill-calendly/index.ts`**
+- Show a small card with a `CalendarCheck` icon, "Booked via Calendly" label
+- Display the meeting date/time formatted nicely (e.g., "Sun, Mar 30 at 2:00 PM")
+- Show "Booked on" with the `calendlyBookedAt` timestamp
+- This sits at the top of the Meeting section so it's immediately visible
 
-- Authenticated via `INGEST_API_KEY`
-- Fetches paginated scheduled events from Calendly API (status=active, min_start_time defaults to 30 days ago)
-- For each event, fetches `/scheduled_events/{uuid}/invitees`
-- Matches invitee emails to leads table
-- Updates matched leads:
-  - If pre-meeting stage → advance to "Meeting Set" + set meeting_date, calendly_booked_at, hours_to_meeting_set
-  - If already past "Meeting Set" → only set calendly_booked_at (so the icon shows)
-- Logs activity for each update
-- Returns JSON summary of all results
+The existing `meeting_date` field already stores the scheduled time from Calendly, and `calendlyBookedAt` stores when they booked. Both are already mapped and available on the `lead` object.
 
-### 2. Add config block
-**`supabase/config.toml`**: Add `[functions.backfill-calendly]` with `verify_jwt = false`
-
-After deployment, we invoke it once to backfill Sebastian Kocsis and any other leads with existing Calendly bookings.
-
+## Files Changed
 | File | Change |
 |------|--------|
-| `supabase/functions/backfill-calendly/index.ts` | New edge function |
-| `supabase/config.toml` | Add function config block |
+| `src/components/LeadsTable.tsx` | Add Calendly booking info card in the Meeting section when `calendlyBookedAt` is set |
 
