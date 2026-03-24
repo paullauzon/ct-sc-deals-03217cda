@@ -375,6 +375,12 @@ export function Pipeline() {
                               <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] hover:opacity-70 transition-opacity" />
                             </a>
                           )}
+                          {lead.calendlyBookedAt && lead.meetingDate && (
+                            <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium" title={`Calendly booking for ${lead.meetingDate}`}>
+                              <CalendarCheck className="h-3.5 w-3.5" />
+                              {(() => { try { return format(new Date(lead.meetingDate), "MMM d"); } catch { return lead.meetingDate; } })()}
+                            </span>
+                          )}
                           {lead.meetings?.length > 0 && (
                             <div className="flex items-center gap-0.5">
                               <img src="/fireflies-icon.svg" alt="Meetings" className="w-3.5 h-3.5" />
