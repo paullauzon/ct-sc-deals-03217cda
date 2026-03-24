@@ -7,11 +7,8 @@ const corsHeaders = {
 
 const PRE_MEETING_STAGES = ["New Lead", "Contacted", "Qualifying"];
 
-// Map Calendly host emails to deal owner names
-const HOST_EMAIL_TO_OWNER: Record<string, string> = {
-  "v.rivera@captarget.com": "Valeria",
-  "tomos.mughan@sourcecodeals.com": "Tomos",
-};
+// All Calendly bookings are Malik's calendar
+const CALENDLY_DEFAULT_OWNER = "Malik";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
