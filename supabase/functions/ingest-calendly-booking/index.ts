@@ -48,7 +48,12 @@ Deno.serve(async (req) => {
     const scheduledStart = payload.scheduled_event?.start_time || payload.event?.start_time || "";
     const eventName = payload.scheduled_event?.name || payload.event?.name || "Calendly Meeting";
 
-    console.log(`[ingest-calendly-booking] Booking: ${inviteeEmail} | ${inviteeName} | ${scheduledStart}`);
+    // Extract host email from event memberships
+    const memberships = payload.scheduled_event?.event_memberships || payload.event?.event_memberships || [];
+    const hostEmail = (memberships[0]?.user_email || "").toLowerCase().trim();
+    const hostOwner = HOST_EMAIL_TO_OWNER[hostEmail] || "";
+
+    console.log(`[ingest-calendly-booking] Booking: ${inviteeEmail} | ${inviteeName} | ${scheduledStart} | host: ${hostEmail} → ${hostOwner || "unmapped"}`);
 
     if (!inviteeEmail) {
       return new Response(JSON.stringify({ error: "No invitee email found in payload" }), {
