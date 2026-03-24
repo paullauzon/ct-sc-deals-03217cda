@@ -434,6 +434,32 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
 
           {/* Meeting Management */}
           <Section title="Meeting">
+            {lead.calendlyBookedAt && (
+              <div className="mb-3 flex items-start gap-3 rounded-md border border-primary/20 bg-primary/5 p-3">
+                <CalendarCheck className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium text-foreground">Booked via Calendly</p>
+                  {lead.meetingDate && (
+                    <p className="text-sm text-muted-foreground">
+                      {(() => {
+                        try {
+                          const d = parseISO(lead.meetingDate);
+                          return format(d, "EEE, MMM d 'at' h:mm a");
+                        } catch {
+                          return lead.meetingDate;
+                        }
+                      })()}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Booked on {(() => {
+                      try { return format(parseISO(lead.calendlyBookedAt), "MMM d, yyyy 'at' h:mm a"); }
+                      catch { return lead.calendlyBookedAt; }
+                    })()}
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-4 gap-3">
               <ClearableSelectField label="Outcome" value={lead.meetingOutcome} options={MEETING_OUTCOMES} onChange={(v) => save({ meetingOutcome: v as MeetingOutcome })} />
               <div>
