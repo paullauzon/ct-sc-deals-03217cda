@@ -8,6 +8,13 @@ const corsHeaders = {
 // Stages that come before "Meeting Set" in the pipeline
 const PRE_MEETING_STAGES = ["New Lead", "Contacted", "Qualifying"];
 
+// Map Calendly host emails to deal owner names
+const HOST_EMAIL_TO_OWNER: Record<string, string> = {
+  "v.rivera@captarget.com": "Valeria",
+  "tomos.mughan@sourcecodeals.com": "Tomos",
+  // Add Malik's email here when available
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -41,7 +48,12 @@ Deno.serve(async (req) => {
     const scheduledStart = payload.scheduled_event?.start_time || payload.event?.start_time || "";
     const eventName = payload.scheduled_event?.name || payload.event?.name || "Calendly Meeting";
 
-    console.log(`[ingest-calendly-booking] Booking: ${inviteeEmail} | ${inviteeName} | ${scheduledStart}`);
+    // Extract host email from event memberships
+    const memberships = payload.scheduled_event?.event_memberships || payload.event?.event_memberships || [];
+    const hostEmail = (memberships[0]?.user_email || "").toLowerCase().trim();
+    const hostOwner = HOST_EMAIL_TO_OWNER[hostEmail] || "";
+
+    console.log(`[ingest-calendly-booking] Booking: ${inviteeEmail} | ${inviteeName} | ${scheduledStart} | host: ${hostEmail} → ${hostOwner || "unmapped"}`);
 
     if (!inviteeEmail) {
       return new Response(JSON.stringify({ error: "No invitee email found in payload" }), {
@@ -106,27 +118,33 @@ Deno.serve(async (req) => {
       : "";
 
     // Update the lead
+    const updatePayload: Record<string, any> = {
+      stage: "Meeting Set",
+      meeting_date: meetingDate,
+      meeting_set_date: nowDate,
+      hours_to_meeting_set: hoursToMeetingSet,
+      stage_entered_date: nowDate,
+      last_contact_date: nowDate,
+      calendly_booked_at: nowISO,
+      updated_at: nowISO,
+    };
+    if (hostOwner) {
+      updatePayload.assigned_to = hostOwner;
+    }
+
     const { error: updateError } = await supabase
       .from("leads")
-      .update({
-        stage: "Meeting Set",
-        meeting_date: meetingDate,
-        meeting_set_date: nowDate,
-        hours_to_meeting_set: hoursToMeetingSet,
-        stage_entered_date: nowDate,
-        last_contact_date: nowDate,
-        calendly_booked_at: nowISO,
-        updated_at: nowISO,
-      })
+      .update(updatePayload)
       .eq("id", lead.id);
 
     if (updateError) throw updateError;
 
     // Log activity
+    const ownerNote = hostOwner ? `, assigned to ${hostOwner}` : "";
     await supabase.from("lead_activity_log").insert({
       lead_id: lead.id,
       event_type: "stage_change",
-      description: `Stage changed from "${lead.stage}" → "Meeting Set" (Calendly booking: ${eventName}, scheduled for ${meetingDate || "TBD"})`,
+      description: `Stage changed from "${lead.stage}" → "Meeting Set" (Calendly booking: ${eventName}, scheduled for ${meetingDate || "TBD"}${ownerNote})`,
       old_value: lead.stage,
       new_value: "Meeting Set",
     });
