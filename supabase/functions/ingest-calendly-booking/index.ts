@@ -118,27 +118,33 @@ Deno.serve(async (req) => {
       : "";
 
     // Update the lead
+    const updatePayload: Record<string, any> = {
+      stage: "Meeting Set",
+      meeting_date: meetingDate,
+      meeting_set_date: nowDate,
+      hours_to_meeting_set: hoursToMeetingSet,
+      stage_entered_date: nowDate,
+      last_contact_date: nowDate,
+      calendly_booked_at: nowISO,
+      updated_at: nowISO,
+    };
+    if (hostOwner) {
+      updatePayload.assigned_to = hostOwner;
+    }
+
     const { error: updateError } = await supabase
       .from("leads")
-      .update({
-        stage: "Meeting Set",
-        meeting_date: meetingDate,
-        meeting_set_date: nowDate,
-        hours_to_meeting_set: hoursToMeetingSet,
-        stage_entered_date: nowDate,
-        last_contact_date: nowDate,
-        calendly_booked_at: nowISO,
-        updated_at: nowISO,
-      })
+      .update(updatePayload)
       .eq("id", lead.id);
 
     if (updateError) throw updateError;
 
     // Log activity
+    const ownerNote = hostOwner ? `, assigned to ${hostOwner}` : "";
     await supabase.from("lead_activity_log").insert({
       lead_id: lead.id,
       event_type: "stage_change",
-      description: `Stage changed from "${lead.stage}" → "Meeting Set" (Calendly booking: ${eventName}, scheduled for ${meetingDate || "TBD"})`,
+      description: `Stage changed from "${lead.stage}" → "Meeting Set" (Calendly booking: ${eventName}, scheduled for ${meetingDate || "TBD"}${ownerNote})`,
       old_value: lead.stage,
       new_value: "Meeting Set",
     });
