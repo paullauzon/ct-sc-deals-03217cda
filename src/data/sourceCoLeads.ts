@@ -98,6 +98,7 @@ function makeSCLead(
     linkedinUrl: "",
     linkedinTitle: "",
     createdAt: "",
+    calendlyBookedAt: "",
   };
 }
 

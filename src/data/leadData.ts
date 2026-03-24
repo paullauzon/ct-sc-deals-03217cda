@@ -280,6 +280,7 @@ function createLead(r: { date: string; name: string; phone: string; email: strin
     linkedinUrl: "",
     linkedinTitle: "",
     createdAt: "",
+    calendlyBookedAt: "",
   };
 }
 

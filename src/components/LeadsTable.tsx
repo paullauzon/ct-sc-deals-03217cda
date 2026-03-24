@@ -1252,6 +1252,7 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
       firefliesUrl: "", firefliesTranscript: "", firefliesSummary: "", firefliesNextSteps: "",
       stage1Score: null, stage2Score: null, tier: null, tierOverride: false, enrichmentStatus: "",
       linkedinUrl: "", linkedinTitle: "", createdAt: new Date().toISOString(),
+      calendlyBookedAt: "",
     });
     setForm({ name: "", email: "", phone: "", company: "", companyUrl: "", role: "", message: "", dealsPlanned: "0-2" });
     onClose();
