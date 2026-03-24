@@ -65,6 +65,7 @@ export function leadToRow(lead: Lead): Record<string, any> {
     tier_override: lead.tierOverride,
     enrichment_status: lead.enrichmentStatus,
     created_at: lead.createdAt,
+    calendly_booked_at: lead.calendlyBookedAt,
   };
 }
 
