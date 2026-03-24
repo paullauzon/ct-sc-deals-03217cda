@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
     if (updateError) throw updateError;
 
     // Log activity
-    const ownerNote = hostOwner ? `, assigned to ${hostOwner}` : "";
+    const ownerNote = `, assigned to ${CALENDLY_DEFAULT_OWNER}`;
     await supabase.from("lead_activity_log").insert({
       lead_id: lead.id,
       event_type: "stage_change",
