@@ -118,10 +118,8 @@ Deno.serve(async (req) => {
       last_contact_date: nowDate,
       calendly_booked_at: nowISO,
       updated_at: nowISO,
+      assigned_to: CALENDLY_DEFAULT_OWNER,
     };
-    if (hostOwner) {
-      updatePayload.assigned_to = hostOwner;
-    }
 
     const { error: updateError } = await supabase
       .from("leads")
