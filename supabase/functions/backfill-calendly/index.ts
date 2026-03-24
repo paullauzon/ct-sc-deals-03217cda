@@ -7,11 +7,8 @@ const corsHeaders = {
 
 const PRE_MEETING_STAGES = ["New Lead", "Contacted", "Qualifying"];
 
-// Map Calendly host emails to deal owner names
-const HOST_EMAIL_TO_OWNER: Record<string, string> = {
-  "v.rivera@captarget.com": "Valeria",
-  "tomos.mughan@sourcecodeals.com": "Tomos",
-};
+// All Calendly bookings are Malik's calendar
+const CALENDLY_DEFAULT_OWNER = "Malik";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -79,11 +76,6 @@ Deno.serve(async (req) => {
       const startTime = event.start_time;
       const eventName = event.name || "Calendly Meeting";
 
-      // Extract host from event memberships
-      const memberships = event.event_memberships || [];
-      const hostEmail = (memberships[0]?.user_email || "").toLowerCase().trim();
-      const hostOwner = HOST_EMAIL_TO_OWNER[hostEmail] || "";
-
       // Fetch invitees
       const invRes = await fetch(`https://api.calendly.com/scheduled_events/${eventUuid}/invitees`, {
         headers: { Authorization: `Bearer ${calendlyToken}` },
@@ -101,7 +93,7 @@ Deno.serve(async (req) => {
         // Look up lead
         const { data: leads, error: lookupErr } = await supabase
           .from("leads")
-          .select("id, stage, created_at, name, calendly_booked_at, assigned_to")
+          .select("id, stage, created_at, name, calendly_booked_at")
           .eq("email", email)
           .limit(1);
 
@@ -124,14 +116,13 @@ Deno.serve(async (req) => {
         const meetingDate = startTime ? new Date(startTime).toISOString().split("T")[0] : "";
 
         if (PRE_MEETING_STAGES.includes(lead.stage)) {
-          // Advance to Meeting Set
           let hoursToMeetingSet: number | null = null;
           if (lead.created_at) {
             const createdAt = new Date(lead.created_at);
             hoursToMeetingSet = Math.round(((now.getTime() - createdAt.getTime()) / 3600000) * 10) / 10;
           }
 
-          const updatePayload: Record<string, any> = {
+          await supabase.from("leads").update({
             stage: "Meeting Set",
             meeting_date: meetingDate,
             meeting_set_date: nowDate,
@@ -139,34 +130,28 @@ Deno.serve(async (req) => {
             stage_entered_date: nowDate,
             last_contact_date: nowDate,
             calendly_booked_at: nowISO,
+            assigned_to: CALENDLY_DEFAULT_OWNER,
             updated_at: nowISO,
-          };
-          if (hostOwner) updatePayload.assigned_to = hostOwner;
+          }).eq("id", lead.id);
 
-          await supabase.from("leads").update(updatePayload).eq("id", lead.id);
-
-          const ownerNote = hostOwner ? `, assigned to ${hostOwner}` : "";
           await supabase.from("lead_activity_log").insert({
             lead_id: lead.id,
             event_type: "stage_change",
-            description: `Stage changed from "${lead.stage}" → "Meeting Set" (Calendly backfill: ${eventName}, scheduled for ${meetingDate || "TBD"}${ownerNote})`,
+            description: `Stage changed from "${lead.stage}" → "Meeting Set" (Calendly backfill: ${eventName}, scheduled for ${meetingDate || "TBD"}, assigned to ${CALENDLY_DEFAULT_OWNER})`,
             old_value: lead.stage,
             new_value: "Meeting Set",
           });
 
-          results.push({ email, lead: lead.name, status: "advanced_to_meeting_set", meetingDate, assignedTo: hostOwner });
+          results.push({ email, lead: lead.name, status: "advanced_to_meeting_set", meetingDate, assignedTo: CALENDLY_DEFAULT_OWNER });
         } else {
-          // Just stamp calendly_booked_at + assign owner if not already set
-          const updatePayload: Record<string, any> = {
+          await supabase.from("leads").update({
             calendly_booked_at: nowISO,
             meeting_date: lead.stage === "Meeting Set" && !meetingDate ? "" : meetingDate || undefined,
+            assigned_to: CALENDLY_DEFAULT_OWNER,
             updated_at: nowISO,
-          };
-          if (hostOwner && !lead.assigned_to) updatePayload.assigned_to = hostOwner;
+          }).eq("id", lead.id);
 
-          await supabase.from("leads").update(updatePayload).eq("id", lead.id);
-
-          results.push({ email, lead: lead.name, status: "stamped_only", currentStage: lead.stage, meetingDate });
+          results.push({ email, lead: lead.name, status: "stamped_only", currentStage: lead.stage, meetingDate, assignedTo: CALENDLY_DEFAULT_OWNER });
         }
       }
     }

@@ -8,12 +8,8 @@ const corsHeaders = {
 // Stages that come before "Meeting Set" in the pipeline
 const PRE_MEETING_STAGES = ["New Lead", "Contacted", "Qualifying"];
 
-// Map Calendly host emails to deal owner names
-const HOST_EMAIL_TO_OWNER: Record<string, string> = {
-  "v.rivera@captarget.com": "Valeria",
-  "tomos.mughan@sourcecodeals.com": "Tomos",
-  // Add Malik's email here when available
-};
+// All Calendly bookings are Malik's calendar
+const CALENDLY_DEFAULT_OWNER = "Malik";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -48,12 +44,7 @@ Deno.serve(async (req) => {
     const scheduledStart = payload.scheduled_event?.start_time || payload.event?.start_time || "";
     const eventName = payload.scheduled_event?.name || payload.event?.name || "Calendly Meeting";
 
-    // Extract host email from event memberships
-    const memberships = payload.scheduled_event?.event_memberships || payload.event?.event_memberships || [];
-    const hostEmail = (memberships[0]?.user_email || "").toLowerCase().trim();
-    const hostOwner = HOST_EMAIL_TO_OWNER[hostEmail] || "";
-
-    console.log(`[ingest-calendly-booking] Booking: ${inviteeEmail} | ${inviteeName} | ${scheduledStart} | host: ${hostEmail} → ${hostOwner || "unmapped"}`);
+    console.log(`[ingest-calendly-booking] Booking: ${inviteeEmail} | ${inviteeName} | ${scheduledStart} | owner: ${CALENDLY_DEFAULT_OWNER}`);
 
     if (!inviteeEmail) {
       return new Response(JSON.stringify({ error: "No invitee email found in payload" }), {
@@ -127,10 +118,8 @@ Deno.serve(async (req) => {
       last_contact_date: nowDate,
       calendly_booked_at: nowISO,
       updated_at: nowISO,
+      assigned_to: CALENDLY_DEFAULT_OWNER,
     };
-    if (hostOwner) {
-      updatePayload.assigned_to = hostOwner;
-    }
 
     const { error: updateError } = await supabase
       .from("leads")
@@ -140,7 +129,7 @@ Deno.serve(async (req) => {
     if (updateError) throw updateError;
 
     // Log activity
-    const ownerNote = hostOwner ? `, assigned to ${hostOwner}` : "";
+    const ownerNote = `, assigned to ${CALENDLY_DEFAULT_OWNER}`;
     await supabase.from("lead_activity_log").insert({
       lead_id: lead.id,
       event_type: "stage_change",
