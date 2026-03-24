@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
     await supabase.from("lead_activity_log").insert({
       lead_id: lead.id,
       event_type: "stage_change",
-      description: `Stage changed from "${lead.stage}" → "Meeting Set" (Calendly booking: ${eventName})`,
+      description: `Stage changed from "${lead.stage}" → "Meeting Set" (Calendly booking: ${eventName}, scheduled for ${meetingDate || "TBD"})`,
       old_value: lead.stage,
       new_value: "Meeting Set",
     });

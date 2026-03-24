@@ -1,0 +1,1 @@
+ALTER TABLE public.leads ADD COLUMN calendly_booked_at text NOT NULL DEFAULT '';
