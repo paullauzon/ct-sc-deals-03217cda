@@ -270,7 +270,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         if (updates.meetingSetDate && !l.meetingSetDate) {
           const submitted = new Date(l.dateSubmitted).getTime();
           const set = new Date(updates.meetingSetDate).getTime();
-          updated.hoursToMeetingSet = Math.round((set - submitted) / (1000 * 60 * 60));
+          updated.hoursToMeetingSet = Math.max(0, Math.round((set - submitted) / (1000 * 60 * 60)));
           dbPayload.hoursToMeetingSet = updated.hoursToMeetingSet;
         }
         // Persist only changed fields to DB with error surfacing
