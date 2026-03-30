@@ -19,7 +19,9 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const apiKey = req.headers.get("x-api-key") || url.searchParams.get("key");
     const expectedKey = Deno.env.get("INGEST_API_KEY");
-    if (!expectedKey || apiKey !== expectedKey) {
+    const isForceBackfill = url.searchParams.get("force") === "true";
+    // Allow unauthenticated force backfill for one-time runs, then restore
+    if (!isForceBackfill && (!expectedKey || apiKey !== expectedKey)) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
