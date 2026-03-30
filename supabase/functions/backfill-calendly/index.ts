@@ -26,6 +26,9 @@ Deno.serve(async (req) => {
       });
     }
 
+    const forceMode = url.searchParams.get("force") === "true";
+    console.log(`[backfill-calendly] Force mode: ${forceMode}`);
+
     const calendlyToken = Deno.env.get("CALENDLY_API_TOKEN");
     if (!calendlyToken) {
       return new Response(JSON.stringify({ error: "CALENDLY_API_TOKEN not configured" }), {
