@@ -251,7 +251,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
           // Auto-calculate hoursToMeetingSet when manually moving to Meeting Set
           if (updates.stage === "Meeting Set" && l.hoursToMeetingSet == null) {
             const createdAt = l.createdAt ? new Date(l.createdAt).getTime() : new Date(l.dateSubmitted).getTime();
-            const hours = Math.round(((now.getTime() - createdAt) / 3600000) * 10) / 10;
+            const hours = Math.max(0, Math.round(((now.getTime() - createdAt) / 3600000) * 10) / 10);
             updated.hoursToMeetingSet = hours;
             dbPayload.hoursToMeetingSet = hours;
             if (!updated.meetingSetDate) {
