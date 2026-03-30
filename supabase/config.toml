@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.backfill-calendly]
 verify_jwt = false
+
+[functions.register-calendly-webhook]
+verify_jwt = false
