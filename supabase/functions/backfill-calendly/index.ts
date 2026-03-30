@@ -134,11 +134,11 @@ Deno.serve(async (req) => {
           await supabase.from("leads").update({
             stage: "Meeting Set",
             meeting_date: meetingDate,
-            meeting_set_date: nowDate,
+            meeting_set_date: bookingDate,
             hours_to_meeting_set: hoursToMeetingSet,
-            stage_entered_date: nowDate,
-            last_contact_date: nowDate,
-            calendly_booked_at: nowISO,
+            stage_entered_date: bookingDate,
+            last_contact_date: bookingDate,
+            calendly_booked_at: bookingISO,
             assigned_to: CALENDLY_DEFAULT_OWNER,
             updated_at: nowISO,
           }).eq("id", lead.id);
