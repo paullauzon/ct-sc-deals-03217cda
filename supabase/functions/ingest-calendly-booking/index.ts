@@ -42,6 +42,7 @@ Deno.serve(async (req) => {
     const inviteeEmail = (payload.email || payload.invitee?.email || "").toLowerCase().trim();
     const inviteeName = payload.name || payload.invitee?.name || "";
     const scheduledStart = payload.scheduled_event?.start_time || payload.event?.start_time || "";
+    const eventCreatedAt = payload.scheduled_event?.created_at || payload.event?.created_at || "";
     const eventName = payload.scheduled_event?.name || payload.event?.name || "Calendly Meeting";
 
     console.log(`[ingest-calendly-booking] Booking: ${inviteeEmail} | ${inviteeName} | ${scheduledStart} | owner: ${CALENDLY_DEFAULT_OWNER}`);
