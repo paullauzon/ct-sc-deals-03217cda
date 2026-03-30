@@ -104,8 +104,8 @@ Deno.serve(async (req) => {
 
         const lead = leads[0];
 
-        // Skip if already has calendly_booked_at
-        if (lead.calendly_booked_at && lead.calendly_booked_at !== "") {
+        // Skip if already has calendly_booked_at (unless force mode)
+        if (!forceMode && lead.calendly_booked_at && lead.calendly_booked_at !== "") {
           results.push({ email, lead: lead.name, status: "already_stamped" });
           continue;
         }
