@@ -1,32 +1,23 @@
 
 
-# Register Calendly Webhook Subscription
+# Backfill Calendly: Remove "Already Stamped" Skip Check
 
 ## Problem
-The `ingest-calendly-booking` edge function exists and works, but Calendly was never told to send events to it. Zero webhook deliveries have occurred — all Calendly data came from the manual backfill.
+The first backfill run stamped `calendly_booked_at` on leads it matched. But the function also **skips leads that already have `calendly_booked_at` set** (line 108). This means if a lead was stamped but other fields (like `meeting_date`) weren't fully populated, or if new Calendly events exist for already-stamped leads, they get skipped. We need a "force" mode to re-process all matches.
 
 ## Solution
-Create a one-time utility edge function `register-calendly-webhook` that calls the Calendly API to create a webhook subscription pointing to our `ingest-calendly-booking` endpoint.
+Add a `?force=true` query parameter to the backfill function. When set, it skips the `already_stamped` check and updates `meeting_date`, `calendly_booked_at`, and `assigned_to` for all matched leads regardless of existing data — without regressing stages past "Meeting Set".
 
-### New edge function: `supabase/functions/register-calendly-webhook/index.ts`
-- Authenticates with `INGEST_API_KEY`
-- Calls `GET /users/me` to get the organization URI
-- Lists existing webhook subscriptions to avoid duplicates
-- Calls `POST /webhook_subscriptions` with:
-  - **url**: `https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/ingest-calendly-booking`
-  - **events**: `["invitee.created"]`
-  - **organization**: the org URI from `/users/me`
-  - **scope**: `organization`
-- Returns the subscription details for confirmation
+### Changes to `supabase/functions/backfill-calendly/index.ts`
+- Read `force` query param (default `false`)
+- When `force=true`, skip the `already_stamped` early-return on line 108
+- For already-stamped leads in force mode: update `meeting_date`, `calendly_booked_at`, and `assigned_to` without changing stage (same logic as the existing "stamped_only" branch on line 147)
+- This ensures no stage regression while filling in any missing meeting dates
 
-### Config
-Add `[functions.register-calendly-webhook]` block to `supabase/config.toml` with `verify_jwt = false`.
-
-After deployment, we invoke it once. From that point on, every new Calendly booking will automatically hit `ingest-calendly-booking` in real-time.
+After deployment, we invoke once with `?force=true` to catch all leads the first backfill skipped or only partially updated.
 
 ## Files Changed
 | File | Change |
 |------|--------|
-| `supabase/functions/register-calendly-webhook/index.ts` | New one-time utility to register the webhook |
-| `supabase/config.toml` | Add function config block |
+| `supabase/functions/backfill-calendly/index.ts` | Add `force` query param to bypass `already_stamped` skip |
 
