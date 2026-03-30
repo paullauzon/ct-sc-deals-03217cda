@@ -26,6 +26,9 @@ Deno.serve(async (req) => {
       });
     }
 
+    const forceMode = url.searchParams.get("force") === "true";
+    console.log(`[backfill-calendly] Force mode: ${forceMode}`);
+
     const calendlyToken = Deno.env.get("CALENDLY_API_TOKEN");
     if (!calendlyToken) {
       return new Response(JSON.stringify({ error: "CALENDLY_API_TOKEN not configured" }), {
@@ -104,8 +107,8 @@ Deno.serve(async (req) => {
 
         const lead = leads[0];
 
-        // Skip if already has calendly_booked_at
-        if (lead.calendly_booked_at && lead.calendly_booked_at !== "") {
+        // Skip if already has calendly_booked_at (unless force mode)
+        if (!forceMode && lead.calendly_booked_at && lead.calendly_booked_at !== "") {
           results.push({ email, lead: lead.name, status: "already_stamped" });
           continue;
         }
