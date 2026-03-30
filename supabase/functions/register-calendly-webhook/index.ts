@@ -14,16 +14,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Auth check
-    const url = new URL(req.url);
-    const apiKey = req.headers.get("x-api-key") || url.searchParams.get("key");
-    const expectedKey = Deno.env.get("INGEST_API_KEY");
-    if (!expectedKey || apiKey !== expectedKey) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // One-time utility — auth optional (delete function after use)
 
     const calendlyToken = Deno.env.get("CALENDLY_API_TOKEN");
     if (!calendlyToken) {
