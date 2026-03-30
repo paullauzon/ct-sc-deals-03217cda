@@ -1,49 +1,46 @@
 
 
-# Fix: `hours_to_meeting_set` Calculated Incorrectly
+# Fix hours_to_meeting_set & Store Full Meeting Timestamps
 
 ## Problems Found
 
-There are **3 different calculation methods** across the codebase, and **2 of them are wrong**:
+| Issue | Count | Cause |
+|-------|-------|-------|
+| Negative `hours_to_meeting_set` | 49 of 70 | Seeded leads have `created_at` = March 3 (DB seed date), which is **after** the actual Calendly booking. Formula: `booking - created_at` = negative |
+| Missing `meeting_set_date` | 42 of 70 | "Stamped only" branch in backfill doesn't always set it |
+| Meeting date loses time | All | `meeting_date` stored as `YYYY-MM-DD` only, discards Calendly's exact start time |
 
-| Location | Formula | Correct? |
-|----------|---------|----------|
-| **LeadContext.tsx** (manual stage change) | `meetingSetDate - dateSubmitted` | Closest to correct, but uses `dateSubmitted` instead of `created_at` |
-| **ingest-calendly-booking** (webhook) | `now() - created_at` | **Wrong** — uses current time instead of the Calendly booking time |
-| **backfill-calendly** (backfill) | `now() - created_at` | **Wrong** — uses backfill execution time, not actual booking time |
+### Root cause for negatives
+For imported leads, `created_at` is when the row was seeded into the DB (March 3), not when the lead actually submitted. The actual submission date is in `date_submitted`. When a lead submitted Jan 15 and booked Jan 16, but `created_at` = March 3, the formula gives `-1100 hours`.
 
-The correct formula should be: **time the meeting was actually booked** minus **when the lead was created** (`created_at`).
+## Fix Strategy
 
-### Specific bugs:
-1. **Webhook (`ingest-calendly-booking`)**: Uses `now` (when the webhook fires) which is roughly correct since it fires immediately — but should use the Calendly event's `created_at` for precision.
-2. **Backfill (`backfill-calendly`)**: Uses `now` at backfill runtime, which is **days/weeks** after the actual booking. A lead that booked 2 weeks ago gets `hours_to_meeting_set` = hundreds of hours too high.
-3. **UI (`LeadContext.tsx`)**: Uses `dateSubmitted` (form submission date string, date-only precision) instead of `created_at` (timestamp with time precision). Also only triggers when `meetingSetDate` is explicitly passed alongside the stage change.
+### 1. Backfill function (`backfill-calendly/index.ts`)
+- Use `date_submitted` as the lead origin time when `created_at > calendly_booked_at` (indicates imported/seeded data)
+- Clamp `hours_to_meeting_set` to 0 minimum
+- Store full ISO timestamp in `meeting_date` (e.g. `2026-03-30T16:00:00.000Z`) instead of date-only
+- Always set `meeting_set_date` from the Calendly event's `created_at` date
 
-### Screenshot context
-The screenshot shows "Hours to Meeting Set: —" which means `null`. This happens when a lead reaches "Meeting Set" via a path that doesn't set `meetingSetDate` (e.g., manual stage drag without also setting meeting date).
+### 2. Webhook function (`ingest-calendly-booking/index.ts`)
+- Same fallback logic: prefer `created_at`, fall back to `date_submitted` if `created_at > booking time`
+- Clamp to 0
+- Store full ISO timestamp for `meeting_date`
 
-## Fix
+### 3. UI context (`LeadContext.tsx`)
+- Clamp `hoursToMeetingSet` to 0 in manual "Meeting Set" stage changes
+- In `meetingSetDate` update handler, also clamp to 0
 
-### 1. `supabase/functions/ingest-calendly-booking/index.ts`
-- Use the Calendly event's creation timestamp (from webhook payload) instead of `now` for the calculation
-- Formula: `(calendly_event_created_at - lead.created_at) / 3600000`
+### 4. Calendly card display (`LeadsTable.tsx`)
+- Parse `meeting_date` as full ISO timestamp and display with time (e.g. "Mon, Mar 30 at 4:00 PM")
+- Already does this via `parseISO` + `format` — will work automatically once data includes time
 
-### 2. `supabase/functions/backfill-calendly/index.ts`  
-- Use the Calendly event's `created_at` field (available on each event object) instead of `now`
-- Formula: `(event.created_at - lead.created_at) / 3600000`
-
-### 3. `src/contexts/LeadContext.tsx`
-- When stage changes to "Meeting Set" (line ~237), auto-calculate `hoursToMeetingSet` using `createdAt` field if not already set
-- Use `new Date()` as the meeting-set moment (since user is manually setting it now)
-- Formula: `(now - lead.createdAt) / 3600000`
-- This ensures manual stage changes also populate the metric
+### 5. Re-run backfill with `?force=true`
+Corrects all 70 Calendly leads. For non-Calendly leads, `hours_to_meeting_set` stays null (correct — no booking happened).
 
 ## Files Changed
 | File | Change |
 |------|--------|
-| `supabase/functions/ingest-calendly-booking/index.ts` | Use Calendly event creation time instead of `now` |
-| `supabase/functions/backfill-calendly/index.ts` | Use event `created_at` instead of `now` |
-| `src/contexts/LeadContext.tsx` | Auto-calc `hoursToMeetingSet` on manual "Meeting Set" stage change |
-
-After fixing, we should re-run the backfill with `?force=true` to correct all existing values.
+| `supabase/functions/backfill-calendly/index.ts` | Use `date_submitted` fallback, clamp to 0, store full timestamp |
+| `supabase/functions/ingest-calendly-booking/index.ts` | Same fallback + clamp logic, store full timestamp |
+| `src/contexts/LeadContext.tsx` | Clamp `hoursToMeetingSet` to 0 |
 
