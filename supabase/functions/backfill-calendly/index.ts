@@ -153,9 +153,17 @@ Deno.serve(async (req) => {
 
           results.push({ email, lead: lead.name, status: "advanced_to_meeting_set", meetingDate, assignedTo: CALENDLY_DEFAULT_OWNER });
         } else {
+          // Also recalculate hours_to_meeting_set for stamped-only leads
+          let hoursToMeetingSet: number | null = null;
+          if (lead.created_at && eventCreatedAt) {
+            const createdAt = new Date(lead.created_at);
+            hoursToMeetingSet = Math.round(((bookingTime.getTime() - createdAt.getTime()) / 3600000) * 10) / 10;
+          }
+
           await supabase.from("leads").update({
-            calendly_booked_at: nowISO,
+            calendly_booked_at: bookingISO,
             meeting_date: lead.stage === "Meeting Set" && !meetingDate ? "" : meetingDate || undefined,
+            hours_to_meeting_set: hoursToMeetingSet,
             assigned_to: CALENDLY_DEFAULT_OWNER,
             updated_at: nowISO,
           }).eq("id", lead.id);

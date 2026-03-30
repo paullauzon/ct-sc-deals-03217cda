@@ -97,11 +97,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Calculate hours_to_meeting_set
+    // Calculate hours_to_meeting_set using when the booking was actually created
     let hoursToMeetingSet: number | null = null;
     if (lead.created_at) {
       const createdAt = new Date(lead.created_at);
-      hoursToMeetingSet = Math.round(((now.getTime() - createdAt.getTime()) / 3600000) * 10) / 10;
+      const bookingTime = eventCreatedAt ? new Date(eventCreatedAt) : now;
+      hoursToMeetingSet = Math.round(((bookingTime.getTime() - createdAt.getTime()) / 3600000) * 10) / 10;
     }
 
     // Format meeting_date as readable string
