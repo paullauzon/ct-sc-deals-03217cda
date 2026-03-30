@@ -77,6 +77,7 @@ Deno.serve(async (req) => {
       const eventUri = event.uri;
       const eventUuid = eventUri.split("/").pop();
       const startTime = event.start_time;
+      const eventCreatedAt = event.created_at || "";
       const eventName = event.name || "Calendly Meeting";
 
       // Fetch invitees
