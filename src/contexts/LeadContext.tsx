@@ -237,7 +237,8 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         const updated = { ...l, ...updates };
         const dbPayload: Partial<Lead> = { ...updates };
         if (updates.stage && updates.stage !== l.stage) {
-          const today = new Date().toISOString().split("T")[0];
+          const now = new Date();
+          const today = now.toISOString().split("T")[0];
           updated.stageEnteredDate = today;
           updated.daysInCurrentStage = 0;
           dbPayload.stageEnteredDate = today;
@@ -246,6 +247,17 @@ export function LeadProvider({ children }: { children: ReactNode }) {
           if (updates.stage !== "New Lead" && !updated.lastContactDate) {
             updated.lastContactDate = today;
             dbPayload.lastContactDate = today;
+          }
+          // Auto-calculate hoursToMeetingSet when manually moving to Meeting Set
+          if (updates.stage === "Meeting Set" && l.hoursToMeetingSet == null) {
+            const createdAt = l.createdAt ? new Date(l.createdAt).getTime() : new Date(l.dateSubmitted).getTime();
+            const hours = Math.round(((now.getTime() - createdAt) / 3600000) * 10) / 10;
+            updated.hoursToMeetingSet = hours;
+            dbPayload.hoursToMeetingSet = hours;
+            if (!updated.meetingSetDate) {
+              updated.meetingSetDate = today;
+              dbPayload.meetingSetDate = today;
+            }
           }
           if (["Closed Won", "Closed Lost", "Went Dark"].includes(updates.stage)) {
             updated.closedDate = today;

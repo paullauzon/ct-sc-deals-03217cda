@@ -42,6 +42,7 @@ Deno.serve(async (req) => {
     const inviteeEmail = (payload.email || payload.invitee?.email || "").toLowerCase().trim();
     const inviteeName = payload.name || payload.invitee?.name || "";
     const scheduledStart = payload.scheduled_event?.start_time || payload.event?.start_time || "";
+    const eventCreatedAt = payload.scheduled_event?.created_at || payload.event?.created_at || "";
     const eventName = payload.scheduled_event?.name || payload.event?.name || "Calendly Meeting";
 
     console.log(`[ingest-calendly-booking] Booking: ${inviteeEmail} | ${inviteeName} | ${scheduledStart} | owner: ${CALENDLY_DEFAULT_OWNER}`);
@@ -96,11 +97,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Calculate hours_to_meeting_set
+    // Calculate hours_to_meeting_set using when the booking was actually created
     let hoursToMeetingSet: number | null = null;
     if (lead.created_at) {
       const createdAt = new Date(lead.created_at);
-      hoursToMeetingSet = Math.round(((now.getTime() - createdAt.getTime()) / 3600000) * 10) / 10;
+      const bookingTime = eventCreatedAt ? new Date(eventCreatedAt) : now;
+      hoursToMeetingSet = Math.round(((bookingTime.getTime() - createdAt.getTime()) / 3600000) * 10) / 10;
     }
 
     // Format meeting_date as readable string

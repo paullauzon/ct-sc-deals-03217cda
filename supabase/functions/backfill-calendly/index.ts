@@ -77,6 +77,7 @@ Deno.serve(async (req) => {
       const eventUri = event.uri;
       const eventUuid = eventUri.split("/").pop();
       const startTime = event.start_time;
+      const eventCreatedAt = event.created_at || "";
       const eventName = event.name || "Calendly Meeting";
 
       // Fetch invitees
@@ -118,21 +119,26 @@ Deno.serve(async (req) => {
         const nowDate = nowISO.split("T")[0];
         const meetingDate = startTime ? new Date(startTime).toISOString().split("T")[0] : "";
 
+        // Use the Calendly event's creation time for accurate hours_to_meeting_set
+        const bookingTime = eventCreatedAt ? new Date(eventCreatedAt) : now;
+        const bookingISO = eventCreatedAt || nowISO;
+        const bookingDate = bookingTime.toISOString().split("T")[0];
+
         if (PRE_MEETING_STAGES.includes(lead.stage)) {
           let hoursToMeetingSet: number | null = null;
           if (lead.created_at) {
             const createdAt = new Date(lead.created_at);
-            hoursToMeetingSet = Math.round(((now.getTime() - createdAt.getTime()) / 3600000) * 10) / 10;
+            hoursToMeetingSet = Math.round(((bookingTime.getTime() - createdAt.getTime()) / 3600000) * 10) / 10;
           }
 
           await supabase.from("leads").update({
             stage: "Meeting Set",
             meeting_date: meetingDate,
-            meeting_set_date: nowDate,
+            meeting_set_date: bookingDate,
             hours_to_meeting_set: hoursToMeetingSet,
-            stage_entered_date: nowDate,
-            last_contact_date: nowDate,
-            calendly_booked_at: nowISO,
+            stage_entered_date: bookingDate,
+            last_contact_date: bookingDate,
+            calendly_booked_at: bookingISO,
             assigned_to: CALENDLY_DEFAULT_OWNER,
             updated_at: nowISO,
           }).eq("id", lead.id);
@@ -147,9 +153,17 @@ Deno.serve(async (req) => {
 
           results.push({ email, lead: lead.name, status: "advanced_to_meeting_set", meetingDate, assignedTo: CALENDLY_DEFAULT_OWNER });
         } else {
+          // Also recalculate hours_to_meeting_set for stamped-only leads
+          let hoursToMeetingSet: number | null = null;
+          if (lead.created_at && eventCreatedAt) {
+            const createdAt = new Date(lead.created_at);
+            hoursToMeetingSet = Math.round(((bookingTime.getTime() - createdAt.getTime()) / 3600000) * 10) / 10;
+          }
+
           await supabase.from("leads").update({
-            calendly_booked_at: nowISO,
+            calendly_booked_at: bookingISO,
             meeting_date: lead.stage === "Meeting Set" && !meetingDate ? "" : meetingDate || undefined,
+            hours_to_meeting_set: hoursToMeetingSet,
             assigned_to: CALENDLY_DEFAULT_OWNER,
             updated_at: nowISO,
           }).eq("id", lead.id);
