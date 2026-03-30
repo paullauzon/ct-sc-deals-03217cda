@@ -119,11 +119,16 @@ Deno.serve(async (req) => {
         const nowDate = nowISO.split("T")[0];
         const meetingDate = startTime ? new Date(startTime).toISOString().split("T")[0] : "";
 
+        // Use the Calendly event's creation time for accurate hours_to_meeting_set
+        const bookingTime = eventCreatedAt ? new Date(eventCreatedAt) : now;
+        const bookingISO = eventCreatedAt || nowISO;
+        const bookingDate = bookingTime.toISOString().split("T")[0];
+
         if (PRE_MEETING_STAGES.includes(lead.stage)) {
           let hoursToMeetingSet: number | null = null;
           if (lead.created_at) {
             const createdAt = new Date(lead.created_at);
-            hoursToMeetingSet = Math.round(((now.getTime() - createdAt.getTime()) / 3600000) * 10) / 10;
+            hoursToMeetingSet = Math.round(((bookingTime.getTime() - createdAt.getTime()) / 3600000) * 10) / 10;
           }
 
           await supabase.from("leads").update({
