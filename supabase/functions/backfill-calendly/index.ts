@@ -46,8 +46,7 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const apiKey = req.headers.get("x-api-key") || url.searchParams.get("key");
     const expectedKey = Deno.env.get("INGEST_API_KEY");
-    const tempBypass = url.searchParams.get("bypass") === "fix2026";
-    if (!tempBypass && (!expectedKey || apiKey !== expectedKey)) {
+    if (!expectedKey || apiKey !== expectedKey) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
