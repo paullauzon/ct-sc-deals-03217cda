@@ -162,8 +162,10 @@ Deno.serve(async (req) => {
           bookingTime
         );
 
+        const detectedBrand = detectBrand(eventName);
+
         if (PRE_MEETING_STAGES.includes(lead.stage)) {
-          await supabase.from("leads").update({
+          const updateData: Record<string, any> = {
             stage: "Meeting Set",
             meeting_date: meetingDateFull,
             meeting_set_date: bookingDate,
@@ -173,7 +175,9 @@ Deno.serve(async (req) => {
             calendly_booked_at: bookingISO,
             assigned_to: CALENDLY_DEFAULT_OWNER,
             updated_at: nowISO,
-          }).eq("id", lead.id);
+          };
+          if (detectedBrand) updateData.brand = detectedBrand;
+          await supabase.from("leads").update(updateData).eq("id", lead.id);
 
           await supabase.from("lead_activity_log").insert({
             lead_id: lead.id,
@@ -183,18 +187,20 @@ Deno.serve(async (req) => {
             new_value: "Meeting Set",
           });
 
-          results.push({ email, lead: lead.name, status: "advanced_to_meeting_set", meetingDate: meetingDateFull, hoursToMeetingSet, assignedTo: CALENDLY_DEFAULT_OWNER });
+          results.push({ email, lead: lead.name, status: "advanced_to_meeting_set", meetingDate: meetingDateFull, hoursToMeetingSet, assignedTo: CALENDLY_DEFAULT_OWNER, brand: detectedBrand });
         } else {
-          await supabase.from("leads").update({
+          const updateData: Record<string, any> = {
             calendly_booked_at: bookingISO,
             meeting_date: meetingDateFull || undefined,
             meeting_set_date: bookingDate,
             hours_to_meeting_set: hoursToMeetingSet,
             assigned_to: CALENDLY_DEFAULT_OWNER,
             updated_at: nowISO,
-          }).eq("id", lead.id);
+          };
+          if (detectedBrand) updateData.brand = detectedBrand;
+          await supabase.from("leads").update(updateData).eq("id", lead.id);
 
-          results.push({ email, lead: lead.name, status: "stamped_only", currentStage: lead.stage, meetingDate: meetingDateFull, hoursToMeetingSet, assignedTo: CALENDLY_DEFAULT_OWNER });
+          results.push({ email, lead: lead.name, status: "stamped_only", currentStage: lead.stage, meetingDate: meetingDateFull, hoursToMeetingSet, assignedTo: CALENDLY_DEFAULT_OWNER, brand: detectedBrand });
         }
       }
     }

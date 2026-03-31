@@ -140,6 +140,9 @@ Deno.serve(async (req) => {
       ? new Date(scheduledStart).toISOString().split("T")[0]
       : "";
 
+    // Detect brand from event name
+    const detectedBrand = detectBrand(eventName);
+
     // Update the lead
     const updatePayload: Record<string, any> = {
       stage: "Meeting Set",
@@ -152,6 +155,7 @@ Deno.serve(async (req) => {
       updated_at: nowISO,
       assigned_to: CALENDLY_DEFAULT_OWNER,
     };
+    if (detectedBrand) updatePayload.brand = detectedBrand;
 
     const { error: updateError } = await supabase
       .from("leads")
