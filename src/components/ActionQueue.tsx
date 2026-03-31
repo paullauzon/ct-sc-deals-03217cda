@@ -6,6 +6,7 @@ import { LeadDetail } from "@/components/LeadsTable";
 import { Filter } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getBrandBorderClass } from "@/lib/brandColors";
+import { BrandLogo } from "@/components/BrandLogo";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 const OWNERS = ["All", "Malik", "Valeria", "Tomos", "Unassigned"] as const;

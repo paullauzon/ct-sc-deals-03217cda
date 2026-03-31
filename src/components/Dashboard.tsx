@@ -9,6 +9,7 @@ import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
 import { DashboardTrends } from "@/components/DashboardTrends";
 import { IntelligenceCenter } from "@/components/IntelligenceCenter";
 import { getBrandBorderClass, getBrandDotClass } from "@/lib/brandColors";
+import { BrandLogo } from "@/components/BrandLogo";
 import { cn } from "@/lib/utils";
 
 import { PipelineSnapshots } from "@/components/PipelineSnapshots";
