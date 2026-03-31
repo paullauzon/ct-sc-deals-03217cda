@@ -107,6 +107,13 @@ export default function DealRoom() {
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">{lead.company} · {lead.role} · {days}d in stage · ${lead.dealValue.toLocaleString()}</p>
+            {lead.calendlyBookedAt && (
+              <p className="text-xs text-primary flex items-center gap-1 mt-0.5">
+                <CalendarCheck className="h-3 w-3 shrink-0" />
+                {lead.calendlyEventName || "Calendly Meeting"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration} min` : ""}
+                {lead.meetingDate && (() => { try { const d = new Date(lead.meetingDate); return ` · ${d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} at ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`; } catch { return ""; } })()}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {lead.assignedTo && (

@@ -1220,19 +1220,10 @@ export function LeadsTable() {
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
                     {lead.calendlyBookedAt && (
-                      <TooltipProvider delayDuration={200}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium cursor-default">
-                              <CalendarCheck className="h-3 w-3" />
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="text-xs">
-                            <p className="font-medium">{lead.calendlyEventName || "Calendly Meeting"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration} min` : ""}</p>
-                            {lead.meetingDate && <p className="text-muted-foreground">{(() => { try { return format(parseISO(lead.meetingDate), "EEE, MMM d 'at' h:mm a"); } catch { return lead.meetingDate; } })()}</p>}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium">
+                        <CalendarCheck className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{lead.calendlyEventName || "Calendly"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration}m` : ""}</span>
+                      </span>
                     )}
                   </div>
                 </td>
