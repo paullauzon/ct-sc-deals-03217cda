@@ -1,32 +1,47 @@
 
 
-# Add Brand Logos Back — Smaller & Properly Positioned
+# Add Calendly Meeting Details Tooltip
 
-## Approach
-Re-add `<BrandLogo>` everywhere, positioned **before the lead name** (left side), using a new smaller `"xxs"` size for dense views. Keep the colored left-border accents as they are — the logos add brand recognition on top.
+## Problem
+The CalendarCheck icons on pipeline cards and leads table show basic "Booked via Calendly" info, but no details about **which** meeting was booked (event name, type, duration). This data exists in Calendly but we don't store it.
 
-## BrandLogo Size Update
-Add an `xxs` size: `h-3 max-w-[56px]` — compact enough for table rows and pipeline cards without disrupting layout.
+## Solution
 
-## Where Logos Go Back
+### 1. Add 3 new columns to `leads` table
+- `calendly_event_name` (text, default `''`) — e.g. "SourceCo Intro", "CAPTARGET Intro"
+- `calendly_event_type` (text, default `''`) — e.g. "one_on_one", "group"
+- `calendly_event_duration` (integer, nullable) — duration in minutes
 
-| Location | Placement | Size |
-|----------|-----------|------|
-| **Leads table rows** | Before name, inside the name cell flex | `xxs` |
-| **Pipeline cards** | Before name in the first row | `xxs` |
-| **Action Queue items** | Before name | `xxs` |
-| **Dashboard stale leads** | Before name | `xxs` |
-| **Meetings section** | Before meeting title | `xxs` |
-| **Side panel header** | Keep as-is (`sm`) | `sm` |
-| **Deal Room header** | Keep as-is (`md`) | `md` |
+### 2. Update edge functions to store this data
+
+**`ingest-calendly-booking/index.ts`**: Extract `event.name`, `event.type`, and duration (calculated from `start_time`/`end_time`) from the Calendly payload and save to the new columns.
+
+**`backfill-calendly/index.ts`**: Same — extract name, type, duration from each scheduled event and store them. Re-run with `?force=true` to populate existing leads.
+
+### 3. Update data mapping & types
+- Add `calendlyEventName`, `calendlyEventType`, `calendlyEventDuration` to `Lead` type
+- Add mappings in `leadDbMapping.ts`
+
+### 4. Add tooltips on CalendarCheck icons
+
+**`Pipeline.tsx`**: Wrap the CalendarCheck icon+date in a `<Tooltip>` showing:
+```
+SourceCo Intro · 30 min
+Mar 15, 2026 at 2:00 PM
+```
+
+**`LeadsTable.tsx`**: Same tooltip on the CalendarCheck icon in table rows and in the side panel booking card.
 
 ## Files Changed
 | File | Change |
 |------|--------|
-| `src/components/BrandLogo.tsx` | Add `xxs` size option |
-| `src/components/LeadsTable.tsx` | Add `<BrandLogo size="xxs">` before name in table row |
-| `src/components/Pipeline.tsx` | Add `<BrandLogo size="xxs">` before name in card |
-| `src/components/ActionQueue.tsx` | Add `<BrandLogo size="xxs">` before name |
-| `src/components/Dashboard.tsx` | Add `<BrandLogo size="xxs">` before name in stale leads |
-| `src/components/MeetingsSection.tsx` | Add `<BrandLogo size="xxs">` before meeting title |
+| Migration | Add 3 columns to `leads` |
+| `supabase/functions/ingest-calendly-booking/index.ts` | Store event name, type, duration |
+| `supabase/functions/backfill-calendly/index.ts` | Store event name, type, duration |
+| `src/types/lead.ts` | Add 3 new fields |
+| `src/lib/leadDbMapping.ts` | Add mappings |
+| `src/components/Pipeline.tsx` | Add Tooltip on CalendarCheck |
+| `src/components/LeadsTable.tsx` | Add Tooltip on CalendarCheck (table row + side panel) |
+
+After deployment, run backfill with `?force=true` to populate all existing leads with meeting details.
 
