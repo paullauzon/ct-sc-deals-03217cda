@@ -9,6 +9,7 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { BrandLogo } from "@/components/BrandLogo";
+import { getBrandBorderClass } from "@/lib/brandColors";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -932,7 +933,6 @@ function SubmissionHistory({ submissions, currentLead }: { submissions: Submissi
                 isLatest ? "border-primary/30 bg-primary/5" : "border-border bg-secondary/20"
               )}>
                 <div className="flex items-center gap-2">
-                  <BrandLogo brand={sub.brand} size="xs" />
                   <span className="text-xs font-medium">{sourceLabel}</span>
                   <span className="text-xs text-muted-foreground">· {sub.dateSubmitted}</span>
                   {isLatest && <Badge variant="outline" className="text-[10px] px-1 py-0 ml-auto">Latest</Badge>}
@@ -1192,10 +1192,9 @@ export function LeadsTable() {
           </thead>
           <tbody className="divide-y divide-border">
             {sorted.map((lead) => (
-              <tr key={lead.id} onClick={() => { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }} className="cursor-pointer hover:bg-secondary/30 transition-colors">
+              <tr key={lead.id} onClick={() => { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }} className={cn("cursor-pointer hover:bg-secondary/30 transition-colors", getBrandBorderClass(lead.brand))}>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1.5">
-                    <BrandLogo brand={lead.brand} size="xs" />
                     <div>
                       <div className="font-medium flex items-center gap-1.5">
                         {lead.name}

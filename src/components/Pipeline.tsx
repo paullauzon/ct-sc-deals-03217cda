@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3, Check, Linkedin, CalendarCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { BrandLogo } from "@/components/BrandLogo";
+import { getBrandBorderClass } from "@/lib/brandColors";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
@@ -309,9 +309,10 @@ export function Pipeline() {
                         else { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }
                       }}
                       className={cn(
-                        "border-2 rounded-md p-3 transition-colors space-y-1.5",
+                        "rounded-md p-3 transition-colors space-y-1.5",
+                        getBrandBorderClass(lead.brand),
                         selectMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
-                        selectedIds.has(lead.id) ? "border-primary bg-primary/5" : getAgingClass(days) + " hover:bg-secondary/30"
+                        selectedIds.has(lead.id) ? "border-2 border-primary bg-primary/5" : "border border-border " + getAgingClass(days) + " hover:bg-secondary/30"
                       )}
                     >
                       {/* Row 1: Name + Owner */}
@@ -324,7 +325,6 @@ export function Pipeline() {
                             onClick={(e) => e.stopPropagation()}
                           />
                         )}
-                        <BrandLogo brand={lead.brand} size="xs" />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium leading-tight flex items-center gap-1.5">
                             {lead.name}

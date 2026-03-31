@@ -5,7 +5,7 @@ import { computeDaysInStage } from "@/lib/leadUtils";
 import { LeadDetail } from "@/components/LeadsTable";
 import { Filter } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { BrandLogo } from "@/components/BrandLogo";
+import { getBrandBorderClass } from "@/lib/brandColors";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 const OWNERS = ["All", "Malik", "Valeria", "Tomos", "Unassigned"] as const;
@@ -235,7 +235,6 @@ export function ActionQueue() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <BrandLogo brand={item.lead.brand} size="xs" />
                       <span className="text-sm font-medium">{item.lead.name}</span>
                       {item.lead.assignedTo && (
                         <span className="w-5 h-5 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">

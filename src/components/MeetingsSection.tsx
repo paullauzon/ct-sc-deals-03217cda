@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { BrandLogo } from "@/components/BrandLogo";
+import { getBrandBorderClass } from "@/lib/brandColors";
+import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -723,13 +724,10 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
-        <button className={`w-full text-left border rounded-lg p-3 transition-colors ${meeting.noRecording ? "border-border/50 bg-muted/30 hover:bg-muted/50" : "border-border hover:bg-secondary/20"}`}>
+        <button className={cn(`w-full text-left border rounded-lg p-3 transition-colors ${meeting.noRecording ? "border-border/50 bg-muted/30 hover:bg-muted/50" : "border-border hover:bg-secondary/20"}`, getBrandBorderClass(meeting.sourceBrand))}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs shrink-0">{open ? "▾" : "▸"}</span>
-              {meeting.sourceBrand && (
-                <BrandLogo brand={meeting.sourceBrand} size="xs" />
-              )}
               <span className={`text-sm font-medium truncate ${meeting.noRecording ? "text-muted-foreground" : ""}`}>{meeting.title}</span>
               {meeting.noRecording && (
                 <Badge variant="outline" className="text-[9px] h-4 bg-muted text-muted-foreground border-border shrink-0">
