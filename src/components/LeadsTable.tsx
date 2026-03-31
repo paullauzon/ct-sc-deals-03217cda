@@ -230,6 +230,14 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             )}
           </div>
           <p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>
+          {lead.calendlyBookedAt && (
+            <p className="flex items-center gap-1.5 text-xs text-primary font-medium mt-0.5">
+              <CalendarCheck className="h-3.5 w-3.5 shrink-0" />
+              {lead.calendlyEventName || "Calendly Meeting"}
+              {lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration} min` : ""}
+              {lead.meetingDate ? ` · ${(() => { try { return format(parseISO(lead.meetingDate), "EEE, MMM d 'at' h:mm a"); } catch { return lead.meetingDate; } })()}` : ""}
+            </p>
+          )}
           <div className="flex items-center gap-2 mt-1">
             {lead.submissions && lead.submissions.length > 1 && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0">
