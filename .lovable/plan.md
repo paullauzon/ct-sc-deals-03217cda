@@ -1,29 +1,28 @@
 
 
-# Show Calendly Meeting Info in Lead Panel Header
+# Add Meeting Date/Time to Leads Table Row
 
 ## Problem
-When a lead has a scheduled meeting, the Calendly booking details only appear far down in the "Meeting" section. It should also appear right below the role/company line in the panel header for immediate visibility.
+The leads table row shows Calendly event name and duration (e.g., "Introductory Call · 25m") but not **when** the meeting is scheduled. Users need the date/time at a glance.
 
 ## Change in `src/components/LeadsTable.tsx`
 
-After line 232 (`<p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>`), add a conditional line that shows when `lead.calendlyBookedAt` exists:
+**Line 1233**: Append a formatted meeting date after the duration:
 
 ```tsx
-{lead.calendlyBookedAt && (
-  <p className="flex items-center gap-1.5 text-xs text-primary font-medium mt-0.5">
-    <CalendarCheck className="h-3.5 w-3.5 shrink-0" />
-    {lead.calendlyEventName || "Calendly Meeting"}
-    {lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration} min` : ""}
-    {lead.meetingDate ? ` · ${(() => { try { return format(parseISO(lead.meetingDate), "EEE, MMM d 'at' h:mm a"); } catch { return lead.meetingDate; } })()}` : ""}
-  </p>
-)}
+<span className="whitespace-nowrap">
+  {lead.calendlyEventName || "Calendly"}
+  {lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration}m` : ""}
+  {lead.meetingDate ? ` · ${(() => { try { return format(parseISO(lead.meetingDate), "MMM d, h:mm a"); } catch { return ""; } })()}` : ""}
+</span>
 ```
 
-This mirrors the same format used in the DealRoom header.
+This produces: `Introductory Call · 25m · Apr 2, 2:00 PM`
+
+Also remove `truncate` class to prevent clipping (replace with `whitespace-nowrap`).
 
 ## Files Changed
 | File | Change |
 |------|--------|
-| `src/components/LeadsTable.tsx` | Add Calendly meeting line after role/company in side panel header |
+| `src/components/LeadsTable.tsx` | Add formatted meeting date/time to table row Calendly info (line 1233) |
 
