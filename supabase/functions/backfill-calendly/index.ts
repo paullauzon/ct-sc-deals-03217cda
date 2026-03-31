@@ -178,6 +178,9 @@ Deno.serve(async (req) => {
             stage_entered_date: bookingDate,
             last_contact_date: bookingDate,
             calendly_booked_at: bookingISO,
+            calendly_event_name: eventName,
+            calendly_event_type: eventType,
+            calendly_event_duration: eventDuration,
             assigned_to: CALENDLY_DEFAULT_OWNER,
             updated_at: nowISO,
           };
