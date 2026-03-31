@@ -441,7 +441,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
               <div className="mb-3 flex items-start gap-3 rounded-md border border-primary/20 bg-primary/5 p-3">
                 <CalendarCheck className="h-5 w-5 text-primary mt-0.5 shrink-0" />
                 <div className="space-y-0.5">
-                  <p className="text-sm font-medium text-foreground">Booked via Calendly</p>
+                  <p className="text-sm font-medium text-foreground">{lead.calendlyEventName || "Booked via Calendly"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration} min` : ""}</p>
                   {lead.meetingDate && (
                     <p className="text-sm text-muted-foreground">
                       {(() => {

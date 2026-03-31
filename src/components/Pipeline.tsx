@@ -381,10 +381,20 @@ export function Pipeline() {
                             </a>
                           )}
                           {lead.calendlyBookedAt && lead.meetingDate && (
-                            <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium" title={`Calendly booking for ${lead.meetingDate}`}>
-                              <CalendarCheck className="h-3.5 w-3.5" />
-                              {(() => { try { return format(new Date(lead.meetingDate), "MMM d"); } catch { return lead.meetingDate; } })()}
-                            </span>
+                            <TooltipProvider delayDuration={200}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium cursor-default">
+                                    <CalendarCheck className="h-3.5 w-3.5" />
+                                    {(() => { try { return format(new Date(lead.meetingDate), "MMM d"); } catch { return lead.meetingDate; } })()}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="text-xs">
+                                  <p className="font-medium">{lead.calendlyEventName || "Calendly Meeting"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration} min` : ""}</p>
+                                  <p className="text-muted-foreground">{(() => { try { return format(new Date(lead.meetingDate), "EEE, MMM d 'at' h:mm a"); } catch { return lead.meetingDate; } })()}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                           {lead.meetings?.length > 0 && (
                             <div className="flex items-center gap-0.5">
