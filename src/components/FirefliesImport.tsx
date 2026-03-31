@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { BrandLogo } from "@/components/BrandLogo";
 
 interface FirefliesMeeting {
   firefliesId: string;
