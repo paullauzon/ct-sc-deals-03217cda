@@ -110,8 +110,13 @@ Deno.serve(async (req) => {
       const eventUri = event.uri;
       const eventUuid = eventUri.split("/").pop();
       const startTime = event.start_time;
+      const endTime = event.end_time;
       const eventCreatedAt = event.created_at || "";
       const eventName = event.name || "Calendly Meeting";
+      const eventType = event.event_type || "";
+      const eventDuration = (startTime && endTime)
+        ? Math.round((new Date(endTime).getTime() - new Date(startTime).getTime()) / 60000)
+        : null;
 
       // Fetch invitees
       const invRes = await fetch(`https://api.calendly.com/scheduled_events/${eventUuid}/invitees`, {
