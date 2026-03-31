@@ -284,10 +284,32 @@ export function ActionQueue() {
   const { leads } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [ownerFilter, setOwnerFilter] = useState<string>("All");
+  const [meetingHorizon, setMeetingHorizon] = useState<number>(14);
 
-  const items = useMemo(() => buildActionItems(leads, ownerFilter), [leads, ownerFilter]);
+  const items = useMemo(() => buildActionItems(leads, ownerFilter, meetingHorizon), [leads, ownerFilter, meetingHorizon]);
 
   const meetings = useMemo(() => items.filter(i => i.type === "meeting"), [items]);
+
+  const groupedMeetings = useMemo(() => {
+    const now = new Date();
+    const groups: { label: string; items: ActionItem[] }[] = [];
+    const thisWeek = meetings.filter(m => {
+      const d = Math.floor((new Date(m.lead.meetingDate!).getTime() - now.getTime()) / 86400000);
+      return d <= 7;
+    });
+    const nextWeek = meetings.filter(m => {
+      const d = Math.floor((new Date(m.lead.meetingDate!).getTime() - now.getTime()) / 86400000);
+      return d > 7 && d <= 14;
+    });
+    const later = meetings.filter(m => {
+      const d = Math.floor((new Date(m.lead.meetingDate!).getTime() - now.getTime()) / 86400000);
+      return d > 14;
+    });
+    if (thisWeek.length > 0) groups.push({ label: "This Week", items: thisWeek });
+    if (nextWeek.length > 0) groups.push({ label: "Next Week", items: nextWeek });
+    if (later.length > 0) groups.push({ label: "Later", items: later });
+    return groups;
+  }, [meetings]);
   const tierItems = useMemo(() => {
     const nonMeeting = items.filter(i => i.type !== "meeting");
     return {
