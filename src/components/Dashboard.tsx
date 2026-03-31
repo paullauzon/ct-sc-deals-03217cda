@@ -9,6 +9,7 @@ import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
 import { DashboardTrends } from "@/components/DashboardTrends";
 import { IntelligenceCenter } from "@/components/IntelligenceCenter";
 import { getBrandBorderClass, getBrandDotClass } from "@/lib/brandColors";
+import { cn } from "@/lib/utils";
 
 import { PipelineSnapshots } from "@/components/PipelineSnapshots";
 import { DashboardFilterBar, DEFAULT_FILTERS, useDashboardFilters, type DashboardFilters } from "@/components/DashboardFilters";
