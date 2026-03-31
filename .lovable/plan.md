@@ -1,60 +1,37 @@
 
 
-# Replace Brand Text Badges with Company Logos
+# Fix Brand Logo Display Issues
 
-## What Changes
-Replace all the monochrome "CT" / "SC" text badges throughout the app with small logo images from each company's website. This gives instant visual brand recognition at a glance.
+## Problems Identified
 
-## Logo Sources
-- **Captarget**: The red "CAPTARGET" wordmark from captarget.com's navbar (`https://cdn.prod.website-files.com/...` — Webflow CDN)
-- **SourceCo**: The gold flower icon from sourcecodeals.com's navbar
+1. **Captarget wordmark too wide** — The PNG is a wide wordmark ("CAPTARGET") with only a height constraint (`h-3`). On pipeline cards especially, it dominates the row.
+2. **SourceCo gold cross invisible** — The 92×92 SVG cross renders at `h-3` (12px) which makes it nearly invisible, and leads without a brand show nothing at all.
+3. **No width constraint** — Neither logo has a max-width, so the Captarget wordmark stretches to its natural aspect ratio.
+4. **Vertical alignment in table** — The logo and name/email block aren't properly centered in the leads table rows.
 
-We'll download both logos and save them as static assets in `public/` to avoid external CDN dependency and ensure they always load.
+## Fix Strategy
 
-## Implementation
+### 1. Update `BrandLogo` component
+- Add `max-w` constraints so the Captarget wordmark doesn't dominate layouts
+- Adjust sizes to be more appropriate for each context:
+  - `xs`: `h-3.5 max-w-[72px]` (table rows, pipeline cards, action queue items)
+  - `sm`: `h-4 max-w-[80px]` (side panel headers)
+  - `md`: `h-5 max-w-[96px]` (deal room)
+- Ensure `shrink-0` and `object-contain` are on the img so it scales proportionally
+- Return `null` when brand is falsy/empty (leads without a brand set)
 
-### 1. Add logo assets
-- Save Captarget logo as `public/captarget-logo.svg` (or PNG)
-- Save SourceCo logo as `public/sourceco-logo.svg` (or PNG)
-- Extract these from the respective websites' navbar images
+### 2. Fix SourceCo logo
+The current SVG is a bare gold cross that's hard to see at small sizes. Replace it with the actual SourceCo wordmark/logo from their website for better legibility. Alternatively, if the cross is the intended icon, increase its rendering size or add the "SourceCo" text.
 
-### 2. Create `BrandLogo` component (`src/components/BrandLogo.tsx`)
-A small reusable component that renders the appropriate logo image based on brand:
+The best approach: fetch the actual SourceCo logo from sourcecodeals.com and save it as a properly sized asset. If the wordmark isn't available in a clean format, create a simple SVG with the gold cross at a more visible size with proper padding.
 
-```tsx
-function BrandLogo({ brand, size = "sm" }: { brand: string; size?: "xs" | "sm" | "md" }) {
-  const src = brand === "Captarget" ? "/captarget-logo.png" : "/sourceco-logo.png";
-  const dims = { xs: "h-3", sm: "h-3.5", md: "h-4" };
-  return <img src={src} alt={brand} className={`${dims[size]} object-contain`} />;
-}
-```
-
-### 3. Replace all brand badge instances
-Swap every `<span>...CT/SC...</span>` pattern with `<BrandLogo brand={lead.brand} />` across these files:
-
-| File | Locations |
-|------|-----------|
-| `src/components/Pipeline.tsx` | Pipeline card (line 326) |
-| `src/components/LeadsTable.tsx` | Table row (line 1202), side panel header (line 221), submission history (line 911) |
-| `src/components/Dashboard.tsx` | Leaderboard rows (lines 672, 1027), company sources (line 167) |
-| `src/components/ActionQueue.tsx` | Action item (line 238) |
-| `src/components/MeetingsSection.tsx` | Meeting brand badge (line 731) |
-| `src/components/FirefliesImport.tsx` | Meeting assignment (line 250), lead select options (line 305) |
-| `src/pages/DealRoom.tsx` | Deal room header (line 97) |
-
-The text-only references in `LeadContext.tsx` (toast descriptions) stay as "CT"/"SC" text since those are notification strings, not visual badges.
+### 3. Fix vertical alignment
+In `LeadsTable.tsx`, ensure the flex container for the name cell has `items-center` (it does) and that the logo image is properly `shrink-0` with consistent dimensions.
 
 ## Files Changed
 | File | Change |
 |------|--------|
-| `public/captarget-logo.png` | New — Captarget logo asset |
-| `public/sourceco-logo.png` | New — SourceCo logo asset |
-| `src/components/BrandLogo.tsx` | New — reusable logo component |
-| `src/components/Pipeline.tsx` | Replace text badge with `<BrandLogo>` |
-| `src/components/LeadsTable.tsx` | Replace 3 text badges with `<BrandLogo>` |
-| `src/components/Dashboard.tsx` | Replace 2 text badges with `<BrandLogo>` |
-| `src/components/ActionQueue.tsx` | Replace text badge with `<BrandLogo>` |
-| `src/components/MeetingsSection.tsx` | Replace text badge with `<BrandLogo>` |
-| `src/components/FirefliesImport.tsx` | Replace 2 text badges with `<BrandLogo>` |
-| `src/pages/DealRoom.tsx` | Replace text badge with `<BrandLogo>` |
+| `src/components/BrandLogo.tsx` | Add max-width constraints per size, return null for empty brand |
+| `public/sourceco-logo.svg` | Replace with a more visible version (larger cross or wordmark) |
+| `src/components/Pipeline.tsx` | Minor alignment fix if needed after logo resize |
 
