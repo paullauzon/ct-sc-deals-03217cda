@@ -728,6 +728,7 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs shrink-0">{open ? "▾" : "▸"}</span>
+              <BrandLogo brand={meeting.sourceBrand || ""} size="xxs" />
               <span className={`text-sm font-medium truncate ${meeting.noRecording ? "text-muted-foreground" : ""}`}>{meeting.title}</span>
               {meeting.noRecording && (
                 <Badge variant="outline" className="text-[9px] h-4 bg-muted text-muted-foreground border-border shrink-0">
