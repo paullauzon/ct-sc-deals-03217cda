@@ -1,37 +1,60 @@
 
 
-# Fix Brand Logo Display Issues
+# Rethink Brand Differentiation: Premium & Minimal
 
-## Problems Identified
+## Current Problem
+Logos jammed inline next to names look cluttered — the Captarget wordmark is especially wide and disrupts the clean layout. The SourceCo icon is too small to read. This fights the hyper-minimalist design language.
 
-1. **Captarget wordmark too wide** — The PNG is a wide wordmark ("CAPTARGET") with only a height constraint (`h-3`). On pipeline cards especially, it dominates the row.
-2. **SourceCo gold cross invisible** — The 92×92 SVG cross renders at `h-3` (12px) which makes it nearly invisible, and leads without a brand show nothing at all.
-3. **No width constraint** — Neither logo has a max-width, so the Captarget wordmark stretches to its natural aspect ratio.
-4. **Vertical alignment in table** — The logo and name/email block aren't properly centered in the leads table rows.
+## Proposed Approach: Colored Left Border Accent
 
-## Fix Strategy
+Instead of logos, use a **thin colored left border stripe** on cards and table rows — the same pattern Linear, Notion, and Stripe use for category differentiation:
 
-### 1. Update `BrandLogo` component
-- Add `max-w` constraints so the Captarget wordmark doesn't dominate layouts
-- Adjust sizes to be more appropriate for each context:
-  - `xs`: `h-3.5 max-w-[72px]` (table rows, pipeline cards, action queue items)
-  - `sm`: `h-4 max-w-[80px]` (side panel headers)
-  - `md`: `h-5 max-w-[96px]` (deal room)
-- Ensure `shrink-0` and `object-contain` are on the img so it scales proportionally
-- Return `null` when brand is falsy/empty (leads without a brand set)
+- **Captarget** → `border-l-2 border-l-red-500` (matches their red brand)
+- **SourceCo** → `border-l-2 border-l-amber-500` (matches their gold #C8A951)
+- **No brand** → no left border (default)
 
-### 2. Fix SourceCo logo
-The current SVG is a bare gold cross that's hard to see at small sizes. Replace it with the actual SourceCo wordmark/logo from their website for better legibility. Alternatively, if the cross is the intended icon, increase its rendering size or add the "SourceCo" text.
+```text
+┌──────────────────────────┐
+│ Cody Mauri        [M] ?  │  ← red left border = Captarget
+│ Dillarddoor · Corporate  │
+│ ...                       │
+└──────────────────────────┘
 
-The best approach: fetch the actual SourceCo logo from sourcecodeals.com and save it as a properly sized asset. If the wordmark isn't available in a clean format, create a simple SVG with the gold cross at a more visible size with proper padding.
+┌──────────────────────────┐
+│ John Matthews     [M] ?  │  ← gold left border = SourceCo
+│ Renovus · Private Equity  │
+│ ...                       │
+└──────────────────────────┘
+```
 
-### 3. Fix vertical alignment
-In `LeadsTable.tsx`, ensure the flex container for the name cell has `items-center` (it does) and that the logo image is properly `shrink-0` with consistent dimensions.
+This is:
+- **Scannable** — color stripe is visible at a glance without reading text
+- **Minimal** — no extra elements, just a CSS border
+- **Clean** — doesn't compete with the name/company text
+- **Premium** — follows Linear/Stripe patterns
 
-## Files Changed
+## Where It Applies
+
+| Location | Implementation |
+|----------|---------------|
+| **Pipeline cards** | Add `border-l-2` with brand color to the card div |
+| **Leads table rows** | Add `border-l-2` to the `<tr>` element |
+| **Side panel header** | Small colored dot or subtle accent |
+| **Deal room** | Colored accent on header |
+
+## Additional: Keep Logos for Detail Views Only
+In the **side panel header** and **deal room**, show the small logo next to the brand name as a label — but remove it from dense list views (table rows, pipeline cards, action queue).
+
+## Changes
+
 | File | Change |
 |------|--------|
-| `src/components/BrandLogo.tsx` | Add max-width constraints per size, return null for empty brand |
-| `public/sourceco-logo.svg` | Replace with a more visible version (larger cross or wordmark) |
-| `src/components/Pipeline.tsx` | Minor alignment fix if needed after logo resize |
+| `src/components/Pipeline.tsx` | Remove `<BrandLogo>` from cards, add `border-l-2` with brand color |
+| `src/components/LeadsTable.tsx` | Remove `<BrandLogo>` from table rows, add `border-l-2` to `<tr>`; keep logo in side panel header only |
+| `src/components/Dashboard.tsx` | Remove inline logos from leaderboard rows, use colored dot |
+| `src/components/ActionQueue.tsx` | Remove inline logo, add border accent |
+| `src/components/MeetingsSection.tsx` | Remove inline logo, add border accent |
+| `src/components/FirefliesImport.tsx` | Remove inline logo |
+| `src/pages/DealRoom.tsx` | Keep logo in header (detail view) |
+| `src/components/BrandLogo.tsx` | Keep component but only used in detail/header contexts |
 
