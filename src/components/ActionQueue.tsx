@@ -106,7 +106,7 @@ function buildActionItems(leads: Lead[], ownerFilter: string, meetingHorizon: nu
     if (lead.meetingDate) {
       const meetDate = new Date(lead.meetingDate);
       const daysUntil = Math.floor((meetDate.getTime() - now.getTime()) / 86400000);
-      if (daysUntil >= 0 && daysUntil <= 7) {
+      if (daysUntil >= 0 && daysUntil <= meetingHorizon) {
         actions.push({
           lead, type: "meeting",
           label: daysUntil === 0 ? "TODAY" : `in ${daysUntil}d`,
