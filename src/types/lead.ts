@@ -458,6 +458,9 @@ export interface Lead {
   linkedinTitle: string;
   createdAt: string;
   calendlyBookedAt: string;
+  calendlyEventName: string;
+  calendlyEventType: string;
+  calendlyEventDuration: number | null;
   // Legacy fields (kept for migration)
   firefliesUrl: string;
   firefliesTranscript: string;

@@ -103,6 +103,9 @@ export type Database = {
           brand: string
           buyer_type: string
           calendly_booked_at: string
+          calendly_event_duration: number | null
+          calendly_event_name: string
+          calendly_event_type: string
           close_reason: string
           closed_date: string
           company: string
@@ -181,6 +184,9 @@ export type Database = {
           brand?: string
           buyer_type?: string
           calendly_booked_at?: string
+          calendly_event_duration?: number | null
+          calendly_event_name?: string
+          calendly_event_type?: string
           close_reason?: string
           closed_date?: string
           company?: string
@@ -259,6 +265,9 @@ export type Database = {
           brand?: string
           buyer_type?: string
           calendly_booked_at?: string
+          calendly_event_duration?: number | null
+          calendly_event_name?: string
+          calendly_event_type?: string
           close_reason?: string
           closed_date?: string
           company?: string

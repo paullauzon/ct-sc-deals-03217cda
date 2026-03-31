@@ -176,6 +176,9 @@ export function leadUpdatesToRow(updates: Partial<Lead>): Record<string, any> {
     tier: "tier", tierOverride: "tier_override", enrichmentStatus: "enrichment_status",
     createdAt: "created_at",
     calendlyBookedAt: "calendly_booked_at",
+    calendlyEventName: "calendly_event_name",
+    calendlyEventType: "calendly_event_type",
+    calendlyEventDuration: "calendly_event_duration",
   };
 
   const row: Record<string, any> = {};
