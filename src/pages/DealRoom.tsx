@@ -94,7 +94,7 @@ export default function DealRoom() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
               <h1 className="text-lg font-semibold truncate">{lead.name}</h1>
-              <span className="text-xs font-mono px-1.5 py-0.5 border border-border rounded">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
+              <BrandLogo brand={lead.brand} size="md" />
               <Badge variant="outline" className="text-xs">{lead.stage}</Badge>
               {momentum && (
                 <span className={cn("text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground")}>

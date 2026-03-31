@@ -1024,7 +1024,7 @@ export function Dashboard() {
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded">{l.brand === "Captarget" ? "CT" : "SC"}</span>
+                    <BrandLogo brand={l.brand} size="xs" />
                     <span className="text-sm font-medium">{l.name}</span>
                   </div>
                   <p className="text-xs text-muted-foreground truncate mt-0.5">{l.company}</p>

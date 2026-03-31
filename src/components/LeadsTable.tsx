@@ -1199,7 +1199,7 @@ export function LeadsTable() {
               <tr key={lead.id} onClick={() => { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }} className="cursor-pointer hover:bg-secondary/30 transition-colors">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded shrink-0">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
+                    <BrandLogo brand={lead.brand} size="xs" />
                     <div>
                       <div className="font-medium flex items-center gap-1.5">
                         {lead.name}

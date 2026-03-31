@@ -323,7 +323,7 @@ export function Pipeline() {
                             onClick={(e) => e.stopPropagation()}
                           />
                         )}
-                        <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded shrink-0 mt-0.5">{brandAbbr}</span>
+                        <BrandLogo brand={lead.brand} size="xs" />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium leading-tight flex items-center gap-1.5">
                             {lead.name}

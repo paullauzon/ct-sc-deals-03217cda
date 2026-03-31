@@ -727,9 +727,7 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs shrink-0">{open ? "▾" : "▸"}</span>
               {meeting.sourceBrand && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground shrink-0">
-                  {meeting.sourceBrand === "Captarget" ? "CT" : "SC"}
-                </span>
+                <BrandLogo brand={meeting.sourceBrand} size="xs" />
               )}
               <span className={`text-sm font-medium truncate ${meeting.noRecording ? "text-muted-foreground" : ""}`}>{meeting.title}</span>
               {meeting.noRecording && (
