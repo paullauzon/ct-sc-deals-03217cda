@@ -1,37 +1,72 @@
 
 
-# Show Calendly Meeting Details Inline (Not Hidden in Tooltips)
+# Redesign Action Queue for At-a-Glance Efficiency
 
-## Changes
+## Current Problems
+- Everything in one flat list sorted by urgency — hard to scan
+- Meetings (only 3) buried among 174 items
+- No visual hierarchy between "act now" vs "monitor"
+- No Calendly meeting details shown (event name, duration, time)
+- Repetitive detail lines waste space
 
-### 1. Pipeline Cards (`src/components/Pipeline.tsx`)
-Replace the tooltip-wrapped CalendarCheck with a visible inline label showing the event name and date directly:
-```
-CalendarCheck icon + "SourceCo Intro · 30 min · Mar 15"
-```
-Remove the `<Tooltip>` wrapper — the info is visible by default in the same compact row.
+## New Layout: Grouped Sections with Priority Tiers
 
-### 2. Leads Table Rows (`src/components/LeadsTable.tsx`)
-In the Stage column, replace the tooltip-wrapped CalendarCheck with visible inline text:
+```text
+┌──────────────────────────────────────────────┐
+│ Action Queue                    [Owner ▾] All│
+│ 174 items needing attention                  │
+├──────────────────────────────────────────────┤
+│ ┌──────────────────────────────────────────┐ │
+│ │ TODAY'S MEETINGS (3)           blue dot  │ │
+│ │ ┌─ Card: Name · Company · Meeting TODAY ─│ │
+│ │ │  CalendarCheck "SourceCo Intro · 30m"  │ │
+│ │ │  "2:00 PM"                             │ │
+│ │ └─────────────────────────────────────────│ │
+│ │ (horizontal scroll or 3-col grid)        │ │
+│ └──────────────────────────────────────────┘ │
+│                                              │
+│ ── URGENT (Overdue + Renewals) ────── count ─│
+│  [ collapsed list of items ]                 │
+│                                              │
+│ ── AT RISK (Going Dark + Untouched) ─ count ─│
+│  [ collapsed list of items ]                 │
+│                                              │
+│ ── MONITOR (Stale) ──────────────── count ─  │
+│  [ collapsed list of items ]                 │
+└──────────────────────────────────────────────┘
 ```
-[Meeting Set] CalendarCheck "SourceCo Intro · 30 min"
-```
-Keep it compact — event name and duration shown as `text-[10px]` muted text next to the stage badge.
 
-### 3. Lead Detail Side Panel (`src/components/LeadsTable.tsx`)
-Already shows full meeting info in the Meeting section — no change needed there. The booking card with event name, duration, and scheduled time is already visible.
+## Key Changes
 
-### 4. Deal Room Header (`src/pages/DealRoom.tsx`)
-Add Calendly meeting info under the subtitle line (company/role). Show as a small line:
+### 1. Meetings Section — Top Hero Cards
+- Pull meetings out of the flat list into a dedicated top section
+- Show as compact cards (not list rows) with Calendly event name, duration, and scheduled time
+- "Meeting TODAY" gets a pulsing blue dot; future meetings show day label
+- Cards are clickable to open lead detail
+
+### 2. Grouped Priority Tiers (Collapsible)
+Replace the flat list + filter chips with 3 collapsible sections:
+- **Urgent** (red): Overdue follow-ups + Renewals — requires immediate action
+- **At Risk** (amber): Going Dark + Untouched — needs intervention soon  
+- **Monitor** (gray): Stale deals — awareness items
+
+Each section header shows count and total deal value. Sections default to expanded but can collapse.
+
+### 3. Compact Row Design
+Each row keeps: brand logo, name, owner avatar, action label, deal value. Remove the second detail line — the brand border + logo already conveys brand, and stage info is in the label.
+
+### 4. Filter Chips Remain
+Keep the type filter chips but move them inline as sub-filters within each section, or keep at top for cross-section filtering. Owner dropdown stays.
+
+### 5. Summary Stats Bar
+Add a small stats bar below the header:
 ```
-CalendarCheck "SourceCo Intro · 30 min · Wed, Mar 15 at 2:00 PM"
+75 Overdue · 3 Meetings · 62 Going Dark · 7 Untouched · 27 Stale
 ```
-Only renders when `calendlyBookedAt` exists.
+Clickable to jump/scroll to that section.
 
 ## Files Changed
 | File | Change |
 |------|--------|
-| `src/components/Pipeline.tsx` | Remove Tooltip, show event name + duration inline |
-| `src/components/LeadsTable.tsx` | Remove Tooltip from table rows, show event name inline next to stage |
-| `src/pages/DealRoom.tsx` | Add Calendly meeting line under company/role in header |
+| `src/components/ActionQueue.tsx` | Full restructure: meetings hero section, grouped collapsible tiers, compact rows, summary stats |
 
