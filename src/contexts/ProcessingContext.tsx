@@ -353,15 +353,24 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
   // ─── Bulk Processing: Strictly Sequential, One at a Time ───
 
-  const startBulkProcessing = useCallback((limit?: number) => {
+  const startBulkProcessing = useCallback(async (limit?: number) => {
     if (bulkJobRef.current.phase !== "idle" && bulkJobRef.current.phase !== "done") return;
     cancelledRef.current = false;
     pausedRef.current = false;
 
     const currentLeads = leadsRef.current;
 
-    // Filter to only leads with no meetings (empty array or missing)
-    let leadsToProcess = currentLeads.filter(l => !l.meetings || l.meetings.length === 0);
+    // Fetch already-processed lead IDs to exclude them
+    const { data: processedRows } = await supabase
+      .from("processing_jobs")
+      .select("lead_id")
+      .in("status", ["done", "completed"]);
+    const processedIds = new Set((processedRows || []).map(r => r.lead_id));
+
+    // Filter to only leads with no meetings AND never processed before
+    let leadsToProcess = currentLeads.filter(
+      l => (!l.meetings || l.meetings.length === 0) && !processedIds.has(l.id)
+    );
 
     // Apply limit if provided
     if (limit && limit > 0) {
@@ -371,7 +380,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     const total = leadsToProcess.length;
 
     if (total === 0) {
-      toast.info("No unprocessed leads found (all leads already have meetings).");
+      toast.info("No unprocessed leads found — all leads have been processed already.");
       return;
     }
 

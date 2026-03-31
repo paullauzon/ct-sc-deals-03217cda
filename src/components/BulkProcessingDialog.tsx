@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -6,20 +6,46 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Zap, AlertTriangle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 export function BulkProcessingDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { leads } = useLeads();
   const { startBulkProcessing } = useProcessing();
 
-  const unprocessedCount = useMemo(
+  const [processedLeadIds, setProcessedLeadIds] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+
+  // Fetch already-processed lead IDs when dialog opens
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    supabase
+      .from("processing_jobs")
+      .select("lead_id")
+      .in("status", ["done", "completed"])
+      .then(({ data }) => {
+        const ids = new Set((data || []).map(r => r.lead_id));
+        setProcessedLeadIds(ids);
+        setLoading(false);
+      });
+  }, [open]);
+
+  const noMeetingsCount = useMemo(
     () => leads.filter(l => !l.meetings || l.meetings.length === 0).length,
     [leads]
   );
 
-  const [count, setCount] = useState<number | "">(unprocessedCount);
+  const unprocessedCount = useMemo(
+    () => leads.filter(l => (!l.meetings || l.meetings.length === 0) && !processedLeadIds.has(l.id)).length,
+    [leads, processedLeadIds]
+  );
 
-  // Sync default when dialog opens
-  useMemo(() => {
+  const previouslyProcessedNoResults = noMeetingsCount - unprocessedCount;
+
+  const [count, setCount] = useState<number | "">(0);
+
+  // Sync default when counts change
+  useEffect(() => {
     if (open) setCount(unprocessedCount);
   }, [open, unprocessedCount]);
 
@@ -43,10 +69,17 @@ export function BulkProcessingDialog({ open, onOpenChange }: { open: boolean; on
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2 text-sm text-muted-foreground">
-            <p>
-              <strong>{unprocessedCount}</strong> of {leads.length} leads have no meetings attached.
-              {unprocessedCount === 0 && " All leads already have meetings — nothing to process."}
-            </p>
+            {loading ? (
+              <p>Checking processing history…</p>
+            ) : (
+              <p>
+                <strong>{unprocessedCount}</strong> of {leads.length} leads have never been processed.
+                {previouslyProcessedNoResults > 0 && (
+                  <span className="text-muted-foreground"> ({previouslyProcessedNoResults} additional leads were processed but had no matching transcripts.)</span>
+                )}
+                {unprocessedCount === 0 && " Nothing new to process."}
+              </p>
+            )}
             {unprocessedCount > 0 && (
               <>
                 <div className="flex items-center gap-3 mt-3">
