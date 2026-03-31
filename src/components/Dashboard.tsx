@@ -670,7 +670,8 @@ export function Dashboard() {
                       onClick={() => setSelectedLeadId(lead.id)}
                       className={cn("flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer hover:bg-secondary/30 transition-colors", getBrandBorderClass(lead.brand))}
                     >
-                      <div className="flex items-center gap-2 min-w-0">
+                       <div className="flex items-center gap-2 min-w-0">
+                        <BrandLogo brand={lead.brand} size="xxs" />
                         <span className="font-medium">{lead.name}</span>
                         <span className="text-muted-foreground truncate text-xs">{lead.company}</span>
                       </div>
