@@ -187,7 +187,7 @@ function MeetingCard({ item, onClick }: { item: ActionItem; onClick: () => void 
           </span>
         )}
       </div>
-      <p className="text-[10px] text-muted-foreground mt-1 truncate">
+      <p className="text-[10px] text-muted-foreground mt-1">
         {lead.company}
         {lead.calendlyEventName && ` · ${lead.calendlyEventName}`}
         {lead.calendlyEventDuration && ` · ${lead.calendlyEventDuration}m`}
