@@ -146,6 +146,11 @@ Deno.serve(async (req) => {
     // Detect brand from event name
     const detectedBrand = detectBrand(eventName);
 
+    // Calculate duration in minutes from start/end
+    const eventDuration = (scheduledStart && scheduledEnd)
+      ? Math.round((new Date(scheduledEnd).getTime() - new Date(scheduledStart).getTime()) / 60000)
+      : null;
+
     // Update the lead
     const updatePayload: Record<string, any> = {
       stage: "Meeting Set",
@@ -155,6 +160,9 @@ Deno.serve(async (req) => {
       stage_entered_date: nowDate,
       last_contact_date: nowDate,
       calendly_booked_at: nowISO,
+      calendly_event_name: eventName,
+      calendly_event_type: eventType,
+      calendly_event_duration: eventDuration,
       updated_at: nowISO,
       assigned_to: CALENDLY_DEFAULT_OWNER,
     };

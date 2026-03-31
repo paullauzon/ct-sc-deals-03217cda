@@ -202,6 +202,9 @@ Deno.serve(async (req) => {
             meeting_date: meetingDateFull || undefined,
             meeting_set_date: bookingDate,
             hours_to_meeting_set: hoursToMeetingSet,
+            calendly_event_name: eventName,
+            calendly_event_type: eventType,
+            calendly_event_duration: eventDuration,
             assigned_to: CALENDLY_DEFAULT_OWNER,
             updated_at: nowISO,
           };

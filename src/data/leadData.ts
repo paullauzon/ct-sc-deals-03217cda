@@ -284,6 +284,9 @@ function createLead(r: { date: string; name: string; phone: string; email: strin
     linkedinTitle: "",
     createdAt: "",
     calendlyBookedAt: "",
+    calendlyEventName: "",
+    calendlyEventType: "",
+    calendlyEventDuration: null,
   };
 }
 

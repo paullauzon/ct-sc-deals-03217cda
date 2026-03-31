@@ -99,6 +99,9 @@ function makeSCLead(
     linkedinTitle: "",
     createdAt: "",
     calendlyBookedAt: "",
+    calendlyEventName: "",
+    calendlyEventType: "",
+    calendlyEventDuration: null,
   };
 }
 
