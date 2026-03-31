@@ -53,7 +53,9 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const apiKey = req.headers.get("x-api-key") || url.searchParams.get("key");
     const expectedKey = Deno.env.get("INGEST_API_KEY");
-    if (!expectedKey || apiKey !== expectedKey) {
+    const authHeader = req.headers.get("authorization");
+    const isServiceRole = authHeader?.includes(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "NONE");
+    if (!isServiceRole && (!expectedKey || apiKey !== expectedKey)) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
