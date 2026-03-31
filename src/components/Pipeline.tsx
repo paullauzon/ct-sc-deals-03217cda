@@ -383,7 +383,7 @@ export function Pipeline() {
                           {lead.calendlyBookedAt && lead.meetingDate && (
                             <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium">
                               <CalendarCheck className="h-3 w-3 shrink-0" />
-                              <span className="truncate max-w-[120px]">
+                              <span className="whitespace-nowrap">
                                 {lead.calendlyEventName || "Calendly"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration}m` : ""} · {(() => { try { return format(new Date(lead.meetingDate), "MMM d"); } catch { return ""; } })()}
                               </span>
                             </span>
