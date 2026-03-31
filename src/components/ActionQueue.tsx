@@ -64,7 +64,7 @@ function getEffectiveContactDate(lead: Lead): string {
   return lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate || lead.dateSubmitted || "";
 }
 
-function buildActionItems(leads: Lead[], ownerFilter: string): ActionItem[] {
+function buildActionItems(leads: Lead[], ownerFilter: string, meetingHorizon: number = 14): ActionItem[] {
   const now = new Date();
   const actions: ActionItem[] = [];
   const filteredLeads = ownerFilter === "All"
@@ -106,7 +106,7 @@ function buildActionItems(leads: Lead[], ownerFilter: string): ActionItem[] {
     if (lead.meetingDate) {
       const meetDate = new Date(lead.meetingDate);
       const daysUntil = Math.floor((meetDate.getTime() - now.getTime()) / 86400000);
-      if (daysUntil >= 0 && daysUntil <= 7) {
+      if (daysUntil >= 0 && daysUntil <= meetingHorizon) {
         actions.push({
           lead, type: "meeting",
           label: daysUntil === 0 ? "TODAY" : `in ${daysUntil}d`,
@@ -284,10 +284,32 @@ export function ActionQueue() {
   const { leads } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [ownerFilter, setOwnerFilter] = useState<string>("All");
+  const [meetingHorizon, setMeetingHorizon] = useState<number>(14);
 
-  const items = useMemo(() => buildActionItems(leads, ownerFilter), [leads, ownerFilter]);
+  const items = useMemo(() => buildActionItems(leads, ownerFilter, meetingHorizon), [leads, ownerFilter, meetingHorizon]);
 
   const meetings = useMemo(() => items.filter(i => i.type === "meeting"), [items]);
+
+  const groupedMeetings = useMemo(() => {
+    const now = new Date();
+    const groups: { label: string; items: ActionItem[] }[] = [];
+    const thisWeek = meetings.filter(m => {
+      const d = Math.floor((new Date(m.lead.meetingDate!).getTime() - now.getTime()) / 86400000);
+      return d <= 7;
+    });
+    const nextWeek = meetings.filter(m => {
+      const d = Math.floor((new Date(m.lead.meetingDate!).getTime() - now.getTime()) / 86400000);
+      return d > 7 && d <= 14;
+    });
+    const later = meetings.filter(m => {
+      const d = Math.floor((new Date(m.lead.meetingDate!).getTime() - now.getTime()) / 86400000);
+      return d > 14;
+    });
+    if (thisWeek.length > 0) groups.push({ label: "This Week", items: thisWeek });
+    if (nextWeek.length > 0) groups.push({ label: "Next Week", items: nextWeek });
+    if (later.length > 0) groups.push({ label: "Later", items: later });
+    return groups;
+  }, [meetings]);
   const tierItems = useMemo(() => {
     const nonMeeting = items.filter(i => i.type !== "meeting");
     return {
@@ -345,20 +367,46 @@ export function ActionQueue() {
       {/* Meetings Hero Section */}
       {meetings.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-3">
             <CalendarCheck className="h-3.5 w-3.5 text-blue-500" />
             <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
               Upcoming Meetings
             </span>
             <span className="text-[10px] text-muted-foreground">({meetings.length})</span>
+            <div className="flex items-center gap-0.5 ml-auto border border-border rounded-md overflow-hidden">
+              {([7, 14, 30] as const).map(d => (
+                <button
+                  key={d}
+                  onClick={() => setMeetingHorizon(d)}
+                  className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    meetingHorizon === d
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-secondary"
+                  }`}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-1">
-            {meetings.map((item, i) => (
-              <MeetingCard
-                key={`meeting-${item.lead.id}-${i}`}
-                item={item}
-                onClick={() => setSelectedLeadId(item.lead.id)}
-              />
+          <div className="space-y-3">
+            {groupedMeetings.map(group => (
+              <div key={group.label}>
+                {groupedMeetings.length > 1 && (
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5 px-1">
+                    {group.label}
+                  </p>
+                )}
+                <div className="flex gap-3 overflow-x-auto pb-1">
+                  {group.items.map((item, i) => (
+                    <MeetingCard
+                      key={`meeting-${item.lead.id}-${i}`}
+                      item={item}
+                      onClick={() => setSelectedLeadId(item.lead.id)}
+                    />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </div>
