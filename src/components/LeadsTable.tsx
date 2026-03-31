@@ -1193,10 +1193,9 @@ export function LeadsTable() {
           </thead>
           <tbody className="divide-y divide-border">
             {sorted.map((lead) => (
-              <tr key={lead.id} onClick={() => { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }} className="cursor-pointer hover:bg-secondary/30 transition-colors">
+              <tr key={lead.id} onClick={() => { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }} className={cn("cursor-pointer hover:bg-secondary/30 transition-colors", getBrandBorderClass(lead.brand))}>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1.5">
-                    <BrandLogo brand={lead.brand} size="xs" />
                     <div>
                       <div className="font-medium flex items-center gap-1.5">
                         {lead.name}
