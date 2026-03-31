@@ -235,6 +235,7 @@ export function ActionQueue() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
+                      <BrandLogo brand={item.lead.brand} size="xxs" />
                       <span className="text-sm font-medium">{item.lead.name}</span>
                       {item.lead.assignedTo && (
                         <span className="w-5 h-5 rounded-full bg-foreground text-background flex items-center justify-center text-[10px] font-semibold shrink-0">

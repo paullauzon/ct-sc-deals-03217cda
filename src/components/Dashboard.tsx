@@ -1026,7 +1026,7 @@ export function Dashboard() {
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    {l.brand && <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", getBrandDotClass(l.brand))} />}
+                    <BrandLogo brand={l.brand} size="xxs" />
                     <span className="text-sm font-medium">{l.name}</span>
                   </div>
                   <p className="text-xs text-muted-foreground truncate mt-0.5">{l.company}</p>

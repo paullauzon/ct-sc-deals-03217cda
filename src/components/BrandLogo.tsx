@@ -1,6 +1,6 @@
 interface BrandLogoProps {
   brand: string;
-  size?: "xs" | "sm" | "md";
+  size?: "xxs" | "xs" | "sm" | "md";
 }
 
 const DIMS: Record<string, string> = {

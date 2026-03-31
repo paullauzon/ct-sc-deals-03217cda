@@ -328,6 +328,7 @@ export function Pipeline() {
                         )}
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium leading-tight flex items-center gap-1.5">
+                            <BrandLogo brand={lead.brand} size="xxs" />
                             {lead.name}
                             {isLeadNew(lead.id) && (
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-foreground/10 text-foreground animate-pulse">NEW</span>
