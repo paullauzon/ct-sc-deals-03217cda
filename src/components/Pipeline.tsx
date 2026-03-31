@@ -389,7 +389,8 @@ export function Pipeline() {
                             </span>
                           )}
                           {lead.meetings?.length > 0 && (
-                            <div className="flex items-center gap-0.5">
+                            <div className="flex items-center gap-1">
+                              <BrandLogo brand={lead.brand} size="xxs" />
                               <img src="/fireflies-icon.svg" alt="Meetings" className="w-3.5 h-3.5" />
                               <span className="text-[10px] tabular-nums font-medium">{lead.meetings.length}</span>
                             </div>
