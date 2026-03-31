@@ -255,11 +255,10 @@ function ImportMeetingCard({
   const otherBrandLeads = leads.filter((l) => l.brand !== meeting.sourceBrand);
 
   return (
-    <div className="border border-border rounded-lg p-3 space-y-2">
+    <div className={`border border-border rounded-lg p-3 space-y-2 ${getBrandBorderClass(meeting.sourceBrand)}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
            <div className="flex items-center gap-2">
-             <BrandLogo brand={meeting.sourceBrand} size="xs" />
             <h4 className="text-sm font-medium truncate">{meeting.title}</h4>
             <span className="text-xs text-muted-foreground shrink-0">
               {meeting.date} · {formatDuration(meeting.duration)}
