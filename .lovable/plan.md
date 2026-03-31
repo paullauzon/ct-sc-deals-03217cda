@@ -1,30 +1,34 @@
 
 
-# Only Process Truly Unprocessed Leads
+# Extend Upcoming Meetings to 30 Days with Toggle
 
 ## Problem
-The bulk processing dialog counts 119 leads with no meetings, but 190 leads have already been through the processing pipeline (tracked in `processing_jobs` table). Many of those 119 simply had no matching Fireflies transcripts — they don't need re-processing. Only **19 leads** have never been processed at all.
+Meetings in the Action Queue hero section are capped at 7 days (`daysUntil <= 7` on line 109). User wants to see 14–30 days ahead.
 
-## Fix
-Query the `processing_jobs` table to get all lead IDs that have already been processed (status = `done` or `completed`), then exclude them from the "unprocessed" count.
+## Approach
+Add a small toggle in the "Upcoming Meetings" header: **7d / 14d / 30d** — defaulting to 14d. This controls the meeting horizon without cluttering the view.
 
-### Changes in `src/components/BulkProcessingDialog.tsx`
-- On dialog open, fetch distinct `lead_id` values from `processing_jobs` where status is `done` or `completed`
-- Filter leads to only those with **no meetings AND no completed processing job**
-- Update the count and messaging accordingly ("19 leads have never been processed")
+## Changes in `src/components/ActionQueue.tsx`
 
-### Changes in `src/contexts/ProcessingContext.tsx`
-- In `startBulkProcessing`, apply the same exclusion filter: skip leads that already have a completed job in `processing_jobs`, even if they have no meetings
+### 1. Expand meeting window in `buildActionItems`
+- Add a `meetingHorizon` parameter (default 14)
+- Change line 109: `daysUntil <= 7` → `daysUntil <= meetingHorizon`
 
-## Updated Dialog Copy
-```
-19 of 209 leads have never been processed.
-(90 additional leads were processed but had no matching transcripts.)
-```
+### 2. Add horizon state + toggle in main component
+- Add `const [meetingHorizon, setMeetingHorizon] = useState(14)`
+- Pass it to `buildActionItems`
+- In the "Upcoming Meetings" header row, add 3 small toggle buttons: `7d | 14d | 30d`
+
+### 3. Group meetings by week
+When horizon > 7, group meetings visually:
+- **This Week** — meetings within 7 days
+- **Next Week** — 8–14 days
+- **Later** — 15–30 days (only when 30d selected)
+
+Each group is a horizontal scroll row of MeetingCards, with a subtle date separator label.
 
 ## Files Changed
 | File | Change |
 |------|--------|
-| `src/components/BulkProcessingDialog.tsx` | Fetch processed lead IDs from DB, exclude from count |
-| `src/contexts/ProcessingContext.tsx` | Same exclusion in `startBulkProcessing` filter |
+| `src/components/ActionQueue.tsx` | Add meetingHorizon state, toggle UI, pass to buildActionItems, group meetings by week |
 
