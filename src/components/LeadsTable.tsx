@@ -932,12 +932,7 @@ function SubmissionHistory({ submissions, currentLead }: { submissions: Submissi
                 isLatest ? "border-primary/30 bg-primary/5" : "border-border bg-secondary/20"
               )}>
                 <div className="flex items-center gap-2">
-                  <span className={cn(
-                    "text-[10px] font-mono px-1.5 py-0.5 rounded border",
-                    brandAbbr === "CT" ? "border-border" : "border-primary/30 bg-primary/10"
-                  )}>
-                    {brandAbbr}
-                  </span>
+                  <BrandLogo brand={sub.brand} size="xs" />
                   <span className="text-xs font-medium">{sourceLabel}</span>
                   <span className="text-xs text-muted-foreground">· {sub.dateSubmitted}</span>
                   {isLatest && <Badge variant="outline" className="text-[10px] px-1 py-0 ml-auto">Latest</Badge>}
