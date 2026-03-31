@@ -5,7 +5,7 @@ import { computeDaysInStage } from "@/lib/leadUtils";
 import { LeadDetail } from "@/components/LeadsTable";
 import { Filter } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { BrandLogo } from "@/components/BrandLogo";
+import { getBrandBorderClass } from "@/lib/brandColors";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 const OWNERS = ["All", "Malik", "Valeria", "Tomos", "Unassigned"] as const;
