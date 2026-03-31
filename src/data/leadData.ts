@@ -183,6 +183,9 @@ function parseTargetLeads(): Lead[] {
     linkedinTitle: "",
     createdAt: "",
     calendlyBookedAt: "",
+    calendlyEventName: "",
+    calendlyEventType: "",
+    calendlyEventDuration: null,
   }));
 }
 
