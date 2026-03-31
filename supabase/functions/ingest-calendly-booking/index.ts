@@ -11,6 +11,13 @@ const PRE_MEETING_STAGES = ["New Lead", "Contacted", "Qualifying"];
 // All Calendly bookings are Malik's calendar
 const CALENDLY_DEFAULT_OWNER = "Malik";
 
+function detectBrand(eventName: string): string | null {
+  const lower = eventName.toLowerCase();
+  if (lower.includes("sourceco")) return "SourceCo";
+  if (lower.includes("captarget")) return "Captarget";
+  return null;
+}
+
 /**
  * Calculate hours_to_meeting_set using the best available lead origin time.
  * For seeded/imported leads, created_at may be after the actual booking —
@@ -133,6 +140,9 @@ Deno.serve(async (req) => {
       ? new Date(scheduledStart).toISOString().split("T")[0]
       : "";
 
+    // Detect brand from event name
+    const detectedBrand = detectBrand(eventName);
+
     // Update the lead
     const updatePayload: Record<string, any> = {
       stage: "Meeting Set",
@@ -145,6 +155,7 @@ Deno.serve(async (req) => {
       updated_at: nowISO,
       assigned_to: CALENDLY_DEFAULT_OWNER,
     };
+    if (detectedBrand) updatePayload.brand = detectedBrand;
 
     const { error: updateError } = await supabase
       .from("leads")
