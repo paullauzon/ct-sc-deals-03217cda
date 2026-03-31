@@ -1,34 +1,29 @@
 
 
-# Extend Upcoming Meetings to 30 Days with Toggle
+# Show Calendly Meeting Info in Lead Panel Header
 
 ## Problem
-Meetings in the Action Queue hero section are capped at 7 days (`daysUntil <= 7` on line 109). User wants to see 14–30 days ahead.
+When a lead has a scheduled meeting, the Calendly booking details only appear far down in the "Meeting" section. It should also appear right below the role/company line in the panel header for immediate visibility.
 
-## Approach
-Add a small toggle in the "Upcoming Meetings" header: **7d / 14d / 30d** — defaulting to 14d. This controls the meeting horizon without cluttering the view.
+## Change in `src/components/LeadsTable.tsx`
 
-## Changes in `src/components/ActionQueue.tsx`
+After line 232 (`<p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>`), add a conditional line that shows when `lead.calendlyBookedAt` exists:
 
-### 1. Expand meeting window in `buildActionItems`
-- Add a `meetingHorizon` parameter (default 14)
-- Change line 109: `daysUntil <= 7` → `daysUntil <= meetingHorizon`
+```tsx
+{lead.calendlyBookedAt && (
+  <p className="flex items-center gap-1.5 text-xs text-primary font-medium mt-0.5">
+    <CalendarCheck className="h-3.5 w-3.5 shrink-0" />
+    {lead.calendlyEventName || "Calendly Meeting"}
+    {lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration} min` : ""}
+    {lead.meetingDate ? ` · ${(() => { try { return format(parseISO(lead.meetingDate), "EEE, MMM d 'at' h:mm a"); } catch { return lead.meetingDate; } })()}` : ""}
+  </p>
+)}
+```
 
-### 2. Add horizon state + toggle in main component
-- Add `const [meetingHorizon, setMeetingHorizon] = useState(14)`
-- Pass it to `buildActionItems`
-- In the "Upcoming Meetings" header row, add 3 small toggle buttons: `7d | 14d | 30d`
-
-### 3. Group meetings by week
-When horizon > 7, group meetings visually:
-- **This Week** — meetings within 7 days
-- **Next Week** — 8–14 days
-- **Later** — 15–30 days (only when 30d selected)
-
-Each group is a horizontal scroll row of MeetingCards, with a subtle date separator label.
+This mirrors the same format used in the DealRoom header.
 
 ## Files Changed
 | File | Change |
 |------|--------|
-| `src/components/ActionQueue.tsx` | Add meetingHorizon state, toggle UI, pass to buildActionItems, group meetings by week |
+| `src/components/LeadsTable.tsx` | Add Calendly meeting line after role/company in side panel header |
 
