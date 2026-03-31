@@ -9,7 +9,7 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
-import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -107,6 +107,13 @@ export default function DealRoom() {
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">{lead.company} · {lead.role} · {days}d in stage · ${lead.dealValue.toLocaleString()}</p>
+            {lead.calendlyBookedAt && (
+              <p className="text-xs text-primary flex items-center gap-1 mt-0.5">
+                <CalendarCheck className="h-3 w-3 shrink-0" />
+                {lead.calendlyEventName || "Calendly Meeting"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration} min` : ""}
+                {lead.meetingDate && (() => { try { const d = new Date(lead.meetingDate); return ` · ${d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} at ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`; } catch { return ""; } })()}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {lead.assignedTo && (
