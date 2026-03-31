@@ -1,60 +1,32 @@
 
 
-# Rethink Brand Differentiation: Premium & Minimal
+# Add Brand Logos Back — Smaller & Properly Positioned
 
-## Current Problem
-Logos jammed inline next to names look cluttered — the Captarget wordmark is especially wide and disrupts the clean layout. The SourceCo icon is too small to read. This fights the hyper-minimalist design language.
+## Approach
+Re-add `<BrandLogo>` everywhere, positioned **before the lead name** (left side), using a new smaller `"xxs"` size for dense views. Keep the colored left-border accents as they are — the logos add brand recognition on top.
 
-## Proposed Approach: Colored Left Border Accent
+## BrandLogo Size Update
+Add an `xxs` size: `h-3 max-w-[56px]` — compact enough for table rows and pipeline cards without disrupting layout.
 
-Instead of logos, use a **thin colored left border stripe** on cards and table rows — the same pattern Linear, Notion, and Stripe use for category differentiation:
+## Where Logos Go Back
 
-- **Captarget** → `border-l-2 border-l-red-500` (matches their red brand)
-- **SourceCo** → `border-l-2 border-l-amber-500` (matches their gold #C8A951)
-- **No brand** → no left border (default)
+| Location | Placement | Size |
+|----------|-----------|------|
+| **Leads table rows** | Before name, inside the name cell flex | `xxs` |
+| **Pipeline cards** | Before name in the first row | `xxs` |
+| **Action Queue items** | Before name | `xxs` |
+| **Dashboard stale leads** | Before name | `xxs` |
+| **Meetings section** | Before meeting title | `xxs` |
+| **Side panel header** | Keep as-is (`sm`) | `sm` |
+| **Deal Room header** | Keep as-is (`md`) | `md` |
 
-```text
-┌──────────────────────────┐
-│ Cody Mauri        [M] ?  │  ← red left border = Captarget
-│ Dillarddoor · Corporate  │
-│ ...                       │
-└──────────────────────────┘
-
-┌──────────────────────────┐
-│ John Matthews     [M] ?  │  ← gold left border = SourceCo
-│ Renovus · Private Equity  │
-│ ...                       │
-└──────────────────────────┘
-```
-
-This is:
-- **Scannable** — color stripe is visible at a glance without reading text
-- **Minimal** — no extra elements, just a CSS border
-- **Clean** — doesn't compete with the name/company text
-- **Premium** — follows Linear/Stripe patterns
-
-## Where It Applies
-
-| Location | Implementation |
-|----------|---------------|
-| **Pipeline cards** | Add `border-l-2` with brand color to the card div |
-| **Leads table rows** | Add `border-l-2` to the `<tr>` element |
-| **Side panel header** | Small colored dot or subtle accent |
-| **Deal room** | Colored accent on header |
-
-## Additional: Keep Logos for Detail Views Only
-In the **side panel header** and **deal room**, show the small logo next to the brand name as a label — but remove it from dense list views (table rows, pipeline cards, action queue).
-
-## Changes
-
+## Files Changed
 | File | Change |
 |------|--------|
-| `src/components/Pipeline.tsx` | Remove `<BrandLogo>` from cards, add `border-l-2` with brand color |
-| `src/components/LeadsTable.tsx` | Remove `<BrandLogo>` from table rows, add `border-l-2` to `<tr>`; keep logo in side panel header only |
-| `src/components/Dashboard.tsx` | Remove inline logos from leaderboard rows, use colored dot |
-| `src/components/ActionQueue.tsx` | Remove inline logo, add border accent |
-| `src/components/MeetingsSection.tsx` | Remove inline logo, add border accent |
-| `src/components/FirefliesImport.tsx` | Remove inline logo |
-| `src/pages/DealRoom.tsx` | Keep logo in header (detail view) |
-| `src/components/BrandLogo.tsx` | Keep component but only used in detail/header contexts |
+| `src/components/BrandLogo.tsx` | Add `xxs` size option |
+| `src/components/LeadsTable.tsx` | Add `<BrandLogo size="xxs">` before name in table row |
+| `src/components/Pipeline.tsx` | Add `<BrandLogo size="xxs">` before name in card |
+| `src/components/ActionQueue.tsx` | Add `<BrandLogo size="xxs">` before name |
+| `src/components/Dashboard.tsx` | Add `<BrandLogo size="xxs">` before name in stale leads |
+| `src/components/MeetingsSection.tsx` | Add `<BrandLogo size="xxs">` before meeting title |
 
