@@ -367,20 +367,46 @@ export function ActionQueue() {
       {/* Meetings Hero Section */}
       {meetings.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-3">
             <CalendarCheck className="h-3.5 w-3.5 text-blue-500" />
             <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
               Upcoming Meetings
             </span>
             <span className="text-[10px] text-muted-foreground">({meetings.length})</span>
+            <div className="flex items-center gap-0.5 ml-auto border border-border rounded-md overflow-hidden">
+              {([7, 14, 30] as const).map(d => (
+                <button
+                  key={d}
+                  onClick={() => setMeetingHorizon(d)}
+                  className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    meetingHorizon === d
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-secondary"
+                  }`}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-1">
-            {meetings.map((item, i) => (
-              <MeetingCard
-                key={`meeting-${item.lead.id}-${i}`}
-                item={item}
-                onClick={() => setSelectedLeadId(item.lead.id)}
-              />
+          <div className="space-y-3">
+            {groupedMeetings.map(group => (
+              <div key={group.label}>
+                {groupedMeetings.length > 1 && (
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5 px-1">
+                    {group.label}
+                  </p>
+                )}
+                <div className="flex gap-3 overflow-x-auto pb-1">
+                  {group.items.map((item, i) => (
+                    <MeetingCard
+                      key={`meeting-${item.lead.id}-${i}`}
+                      item={item}
+                      onClick={() => setSelectedLeadId(item.lead.id)}
+                    />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </div>
