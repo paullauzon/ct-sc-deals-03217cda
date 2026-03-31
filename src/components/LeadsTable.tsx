@@ -1225,12 +1225,12 @@ export function LeadsTable() {
                 <td className="px-4 py-3 text-muted-foreground">{lead.company || "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{lead.role}</td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs px-1.5 py-0.5 border border-border rounded w-fit">{lead.stage}</span>
                     {lead.calendlyBookedAt && (
-                      <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium">
+                      <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium whitespace-nowrap">
                         <CalendarCheck className="h-3 w-3 shrink-0" />
-                        <span className="whitespace-nowrap">{lead.calendlyEventName || "Calendly"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration}m` : ""}{lead.meetingDate ? ` · ${(() => { try { return format(parseISO(lead.meetingDate), "MMM d, h:mm a"); } catch { return ""; } })()}` : ""}</span>
+                        {lead.calendlyEventName || "Calendly"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration}m` : ""}{lead.meetingDate ? ` · ${(() => { try { return format(parseISO(lead.meetingDate), "MMM d, h:mm a"); } catch { return ""; } })()}` : ""}
                       </span>
                     )}
                   </div>
