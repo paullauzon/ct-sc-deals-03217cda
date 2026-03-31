@@ -66,6 +66,9 @@ export function leadToRow(lead: Lead): Record<string, any> {
     enrichment_status: lead.enrichmentStatus,
     created_at: lead.createdAt,
     calendly_booked_at: lead.calendlyBookedAt,
+    calendly_event_name: lead.calendlyEventName,
+    calendly_event_type: lead.calendlyEventType,
+    calendly_event_duration: lead.calendlyEventDuration,
   };
 }
 
