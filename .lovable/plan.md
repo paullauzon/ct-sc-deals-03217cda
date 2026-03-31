@@ -1,47 +1,37 @@
 
 
-# Add Calendly Meeting Details Tooltip
+# Show Calendly Meeting Details Inline (Not Hidden in Tooltips)
 
-## Problem
-The CalendarCheck icons on pipeline cards and leads table show basic "Booked via Calendly" info, but no details about **which** meeting was booked (event name, type, duration). This data exists in Calendly but we don't store it.
+## Changes
 
-## Solution
-
-### 1. Add 3 new columns to `leads` table
-- `calendly_event_name` (text, default `''`) — e.g. "SourceCo Intro", "CAPTARGET Intro"
-- `calendly_event_type` (text, default `''`) — e.g. "one_on_one", "group"
-- `calendly_event_duration` (integer, nullable) — duration in minutes
-
-### 2. Update edge functions to store this data
-
-**`ingest-calendly-booking/index.ts`**: Extract `event.name`, `event.type`, and duration (calculated from `start_time`/`end_time`) from the Calendly payload and save to the new columns.
-
-**`backfill-calendly/index.ts`**: Same — extract name, type, duration from each scheduled event and store them. Re-run with `?force=true` to populate existing leads.
-
-### 3. Update data mapping & types
-- Add `calendlyEventName`, `calendlyEventType`, `calendlyEventDuration` to `Lead` type
-- Add mappings in `leadDbMapping.ts`
-
-### 4. Add tooltips on CalendarCheck icons
-
-**`Pipeline.tsx`**: Wrap the CalendarCheck icon+date in a `<Tooltip>` showing:
+### 1. Pipeline Cards (`src/components/Pipeline.tsx`)
+Replace the tooltip-wrapped CalendarCheck with a visible inline label showing the event name and date directly:
 ```
-SourceCo Intro · 30 min
-Mar 15, 2026 at 2:00 PM
+CalendarCheck icon + "SourceCo Intro · 30 min · Mar 15"
 ```
+Remove the `<Tooltip>` wrapper — the info is visible by default in the same compact row.
 
-**`LeadsTable.tsx`**: Same tooltip on the CalendarCheck icon in table rows and in the side panel booking card.
+### 2. Leads Table Rows (`src/components/LeadsTable.tsx`)
+In the Stage column, replace the tooltip-wrapped CalendarCheck with visible inline text:
+```
+[Meeting Set] CalendarCheck "SourceCo Intro · 30 min"
+```
+Keep it compact — event name and duration shown as `text-[10px]` muted text next to the stage badge.
+
+### 3. Lead Detail Side Panel (`src/components/LeadsTable.tsx`)
+Already shows full meeting info in the Meeting section — no change needed there. The booking card with event name, duration, and scheduled time is already visible.
+
+### 4. Deal Room Header (`src/pages/DealRoom.tsx`)
+Add Calendly meeting info under the subtitle line (company/role). Show as a small line:
+```
+CalendarCheck "SourceCo Intro · 30 min · Wed, Mar 15 at 2:00 PM"
+```
+Only renders when `calendlyBookedAt` exists.
 
 ## Files Changed
 | File | Change |
 |------|--------|
-| Migration | Add 3 columns to `leads` |
-| `supabase/functions/ingest-calendly-booking/index.ts` | Store event name, type, duration |
-| `supabase/functions/backfill-calendly/index.ts` | Store event name, type, duration |
-| `src/types/lead.ts` | Add 3 new fields |
-| `src/lib/leadDbMapping.ts` | Add mappings |
-| `src/components/Pipeline.tsx` | Add Tooltip on CalendarCheck |
-| `src/components/LeadsTable.tsx` | Add Tooltip on CalendarCheck (table row + side panel) |
-
-After deployment, run backfill with `?force=true` to populate all existing leads with meeting details.
+| `src/components/Pipeline.tsx` | Remove Tooltip, show event name + duration inline |
+| `src/components/LeadsTable.tsx` | Remove Tooltip from table rows, show event name inline next to stage |
+| `src/pages/DealRoom.tsx` | Add Calendly meeting line under company/role in header |
 
