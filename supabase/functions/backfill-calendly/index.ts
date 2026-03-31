@@ -10,6 +10,13 @@ const PRE_MEETING_STAGES = ["New Lead", "Contacted", "Qualifying"];
 // All Calendly bookings are Malik's calendar
 const CALENDLY_DEFAULT_OWNER = "Malik";
 
+function detectBrand(eventName: string): string | null {
+  const lower = eventName.toLowerCase();
+  if (lower.includes("sourceco")) return "SourceCo";
+  if (lower.includes("captarget")) return "Captarget";
+  return null;
+}
+
 /**
  * Calculate hours_to_meeting_set using the best available lead origin time.
  * For seeded/imported leads, created_at may be after the actual booking —
