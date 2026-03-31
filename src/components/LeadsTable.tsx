@@ -1230,7 +1230,7 @@ export function LeadsTable() {
                     {lead.calendlyBookedAt && (
                       <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium">
                         <CalendarCheck className="h-3 w-3 shrink-0" />
-                        <span className="truncate">{lead.calendlyEventName || "Calendly"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration}m` : ""}</span>
+                        <span className="whitespace-nowrap">{lead.calendlyEventName || "Calendly"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration}m` : ""}{lead.meetingDate ? ` · ${(() => { try { return format(parseISO(lead.meetingDate), "MMM d, h:mm a"); } catch { return ""; } })()}` : ""}</span>
                       </span>
                     )}
                   </div>
