@@ -23,6 +23,7 @@ import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight, Clock, GitCommit, MessageSquare, Calendar, Search as SearchIcon, Linkedin, CalendarCheck } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -440,7 +441,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
               <div className="mb-3 flex items-start gap-3 rounded-md border border-primary/20 bg-primary/5 p-3">
                 <CalendarCheck className="h-5 w-5 text-primary mt-0.5 shrink-0" />
                 <div className="space-y-0.5">
-                  <p className="text-sm font-medium text-foreground">Booked via Calendly</p>
+                  <p className="text-sm font-medium text-foreground">{lead.calendlyEventName || "Booked via Calendly"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration} min` : ""}</p>
                   {lead.meetingDate && (
                     <p className="text-sm text-muted-foreground">
                       {(() => {
@@ -1219,9 +1220,19 @@ export function LeadsTable() {
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs px-1.5 py-0.5 border border-border rounded">{lead.stage}</span>
                     {lead.calendlyBookedAt && (
-                      <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium" title={`Booked via Calendly${lead.meetingDate ? ` for ${lead.meetingDate}` : ""}`}>
-                        <CalendarCheck className="h-3 w-3" />
-                      </span>
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium cursor-default">
+                              <CalendarCheck className="h-3 w-3" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs">
+                            <p className="font-medium">{lead.calendlyEventName || "Calendly Meeting"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration} min` : ""}</p>
+                            {lead.meetingDate && <p className="text-muted-foreground">{(() => { try { return format(parseISO(lead.meetingDate), "EEE, MMM d 'at' h:mm a"); } catch { return lead.meetingDate; } })()}</p>}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     )}
                   </div>
                 </td>

@@ -66,6 +66,9 @@ export function leadToRow(lead: Lead): Record<string, any> {
     enrichment_status: lead.enrichmentStatus,
     created_at: lead.createdAt,
     calendly_booked_at: lead.calendlyBookedAt,
+    calendly_event_name: lead.calendlyEventName,
+    calendly_event_type: lead.calendlyEventType,
+    calendly_event_duration: lead.calendlyEventDuration,
   };
 }
 
@@ -135,6 +138,9 @@ export function rowToLead(row: Record<string, any>): Lead {
     enrichmentStatus: row.enrichment_status || "",
     createdAt: row.created_at || "",
     calendlyBookedAt: row.calendly_booked_at || "",
+    calendlyEventName: row.calendly_event_name || "",
+    calendlyEventType: row.calendly_event_type || "",
+    calendlyEventDuration: row.calendly_event_duration != null ? Number(row.calendly_event_duration) : null,
   };
 }
 
@@ -170,6 +176,9 @@ export function leadUpdatesToRow(updates: Partial<Lead>): Record<string, any> {
     tier: "tier", tierOverride: "tier_override", enrichmentStatus: "enrichment_status",
     createdAt: "created_at",
     calendlyBookedAt: "calendly_booked_at",
+    calendlyEventName: "calendly_event_name",
+    calendlyEventType: "calendly_event_type",
+    calendlyEventDuration: "calendly_event_duration",
   };
 
   const row: Record<string, any> = {};

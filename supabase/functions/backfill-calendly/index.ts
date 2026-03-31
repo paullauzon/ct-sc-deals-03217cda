@@ -110,8 +110,13 @@ Deno.serve(async (req) => {
       const eventUri = event.uri;
       const eventUuid = eventUri.split("/").pop();
       const startTime = event.start_time;
+      const endTime = event.end_time;
       const eventCreatedAt = event.created_at || "";
       const eventName = event.name || "Calendly Meeting";
+      const eventType = event.event_type || "";
+      const eventDuration = (startTime && endTime)
+        ? Math.round((new Date(endTime).getTime() - new Date(startTime).getTime()) / 60000)
+        : null;
 
       // Fetch invitees
       const invRes = await fetch(`https://api.calendly.com/scheduled_events/${eventUuid}/invitees`, {
@@ -173,6 +178,9 @@ Deno.serve(async (req) => {
             stage_entered_date: bookingDate,
             last_contact_date: bookingDate,
             calendly_booked_at: bookingISO,
+            calendly_event_name: eventName,
+            calendly_event_type: eventType,
+            calendly_event_duration: eventDuration,
             assigned_to: CALENDLY_DEFAULT_OWNER,
             updated_at: nowISO,
           };
@@ -194,6 +202,9 @@ Deno.serve(async (req) => {
             meeting_date: meetingDateFull || undefined,
             meeting_set_date: bookingDate,
             hours_to_meeting_set: hoursToMeetingSet,
+            calendly_event_name: eventName,
+            calendly_event_type: eventType,
+            calendly_event_duration: eventDuration,
             assigned_to: CALENDLY_DEFAULT_OWNER,
             updated_at: nowISO,
           };
