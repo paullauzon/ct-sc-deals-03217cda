@@ -64,7 +64,7 @@ function getEffectiveContactDate(lead: Lead): string {
   return lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate || lead.dateSubmitted || "";
 }
 
-function buildActionItems(leads: Lead[], ownerFilter: string): ActionItem[] {
+function buildActionItems(leads: Lead[], ownerFilter: string, meetingHorizon: number = 14): ActionItem[] {
   const now = new Date();
   const actions: ActionItem[] = [];
   const filteredLeads = ownerFilter === "All"
