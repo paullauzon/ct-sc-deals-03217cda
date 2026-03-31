@@ -1197,6 +1197,7 @@ export function LeadsTable() {
                   <div className="flex items-center gap-1.5">
                     <div>
                       <div className="font-medium flex items-center gap-1.5">
+                        <BrandLogo brand={lead.brand} size="xxs" />
                         {lead.name}
                         {lead.linkedinUrl && (
                           <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn Profile"}>

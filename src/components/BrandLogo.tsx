@@ -1,9 +1,10 @@
 interface BrandLogoProps {
   brand: string;
-  size?: "xs" | "sm" | "md";
+  size?: "xxs" | "xs" | "sm" | "md";
 }
 
 const DIMS: Record<string, string> = {
+  xxs: "h-3 max-w-[56px]",
   xs: "h-3.5 max-w-[72px]",
   sm: "h-4 max-w-[80px]",
   md: "h-5 max-w-[96px]",

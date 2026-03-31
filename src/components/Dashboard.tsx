@@ -9,6 +9,7 @@ import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
 import { DashboardTrends } from "@/components/DashboardTrends";
 import { IntelligenceCenter } from "@/components/IntelligenceCenter";
 import { getBrandBorderClass, getBrandDotClass } from "@/lib/brandColors";
+import { BrandLogo } from "@/components/BrandLogo";
 import { cn } from "@/lib/utils";
 
 import { PipelineSnapshots } from "@/components/PipelineSnapshots";
@@ -670,7 +671,8 @@ export function Dashboard() {
                       onClick={() => setSelectedLeadId(lead.id)}
                       className={cn("flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer hover:bg-secondary/30 transition-colors", getBrandBorderClass(lead.brand))}
                     >
-                      <div className="flex items-center gap-2 min-w-0">
+                       <div className="flex items-center gap-2 min-w-0">
+                        <BrandLogo brand={lead.brand} size="xxs" />
                         <span className="font-medium">{lead.name}</span>
                         <span className="text-muted-foreground truncate text-xs">{lead.company}</span>
                       </div>
@@ -1025,7 +1027,7 @@ export function Dashboard() {
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    {l.brand && <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", getBrandDotClass(l.brand))} />}
+                    <BrandLogo brand={l.brand} size="xxs" />
                     <span className="text-sm font-medium">{l.name}</span>
                   </div>
                   <p className="text-xs text-muted-foreground truncate mt-0.5">{l.company}</p>
