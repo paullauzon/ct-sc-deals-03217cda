@@ -353,7 +353,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
   // ─── Bulk Processing: Strictly Sequential, One at a Time ───
 
-  const startBulkProcessing = useCallback((limit?: number) => {
+  const startBulkProcessing = useCallback(async (limit?: number) => {
     if (bulkJobRef.current.phase !== "idle" && bulkJobRef.current.phase !== "done") return;
     cancelledRef.current = false;
     pausedRef.current = false;
