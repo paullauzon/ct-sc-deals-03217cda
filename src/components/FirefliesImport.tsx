@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { BrandLogo } from "@/components/BrandLogo";
 
 interface FirefliesMeeting {
   firefliesId: string;
@@ -257,10 +258,8 @@ function ImportMeetingCard({
     <div className="border border-border rounded-lg p-3 space-y-2">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground shrink-0">
-              {brandLabel}
-            </span>
+           <div className="flex items-center gap-2">
+             <BrandLogo brand={meeting.sourceBrand} size="xs" />
             <h4 className="text-sm font-medium truncate">{meeting.title}</h4>
             <span className="text-xs text-muted-foreground shrink-0">
               {meeting.date} · {formatDuration(meeting.duration)}

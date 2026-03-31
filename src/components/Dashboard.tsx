@@ -8,6 +8,7 @@ import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics"
 import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
 import { DashboardTrends } from "@/components/DashboardTrends";
 import { IntelligenceCenter } from "@/components/IntelligenceCenter";
+import { BrandLogo } from "@/components/BrandLogo";
 
 import { PipelineSnapshots } from "@/components/PipelineSnapshots";
 import { DashboardFilterBar, DEFAULT_FILTERS, useDashboardFilters, type DashboardFilters } from "@/components/DashboardFilters";
@@ -669,7 +670,7 @@ export function Dashboard() {
                       className="flex items-center justify-between px-4 py-2.5 text-sm cursor-pointer hover:bg-secondary/30 transition-colors"
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded">{lead.brand === "Captarget" ? "CT" : "SC"}</span>
+                        <BrandLogo brand={lead.brand} size="xs" />
                         <span className="font-medium">{lead.name}</span>
                         <span className="text-muted-foreground truncate text-xs">{lead.company}</span>
                       </div>
@@ -1024,7 +1025,7 @@ export function Dashboard() {
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono px-1 py-0.5 border border-border rounded">{l.brand === "Captarget" ? "CT" : "SC"}</span>
+                    <BrandLogo brand={l.brand} size="xs" />
                     <span className="text-sm font-medium">{l.name}</span>
                   </div>
                   <p className="text-xs text-muted-foreground truncate mt-0.5">{l.company}</p>

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { BrandLogo } from "@/components/BrandLogo";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -727,9 +728,7 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs shrink-0">{open ? "▾" : "▸"}</span>
               {meeting.sourceBrand && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground shrink-0">
-                  {meeting.sourceBrand === "Captarget" ? "CT" : "SC"}
-                </span>
+                <BrandLogo brand={meeting.sourceBrand} size="xs" />
               )}
               <span className={`text-sm font-medium truncate ${meeting.noRecording ? "text-muted-foreground" : ""}`}>{meeting.title}</span>
               {meeting.noRecording && (
