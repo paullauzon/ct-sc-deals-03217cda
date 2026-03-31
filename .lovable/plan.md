@@ -1,26 +1,30 @@
 
 
-# Add Brand Logos to Fireflies Meeting Cards & Pipeline Meeting Indicators
+# Only Process Truly Unprocessed Leads
 
 ## Problem
-Meeting cards in the MeetingsSection and the Fireflies meeting count on pipeline cards don't show which brand (Captarget vs SourceCo) the meetings belong to. The colored left border exists on meeting cards but isn't enough for at-a-glance recognition.
+The bulk processing dialog counts 119 leads with no meetings, but 190 leads have already been through the processing pipeline (tracked in `processing_jobs` table). Many of those 119 simply had no matching Fireflies transcripts — they don't need re-processing. Only **19 leads** have never been processed at all.
 
-## Changes
+## Fix
+Query the `processing_jobs` table to get all lead IDs that have already been processed (status = `done` or `completed`), then exclude them from the "unprocessed" count.
 
-### 1. `src/components/MeetingsSection.tsx` — MeetingCard
-Add `<BrandLogo size="xxs">` before the meeting title (line 731), using `meeting.sourceBrand`. This puts the brand logo inline next to the expand arrow and title, matching the pattern used everywhere else.
+### Changes in `src/components/BulkProcessingDialog.tsx`
+- On dialog open, fetch distinct `lead_id` values from `processing_jobs` where status is `done` or `completed`
+- Filter leads to only those with **no meetings AND no completed processing job**
+- Update the count and messaging accordingly ("19 leads have never been processed")
 
-### 2. `src/components/Pipeline.tsx` — Fireflies meeting count
-Currently shows just the Fireflies icon + count (lines 391-396). Enhance to show brand logos for the meetings. Since a lead can have meetings from both brands, show the count per brand or just the lead's own brand logo next to the Fireflies icon.
+### Changes in `src/contexts/ProcessingContext.tsx`
+- In `startBulkProcessing`, apply the same exclusion filter: skip leads that already have a completed job in `processing_jobs`, even if they have no meetings
 
-Simpler approach: Add the lead's `BrandLogo` before the Fireflies icon in the meetings indicator row, so you can see at a glance which brand's meetings those are. Since meetings already carry `sourceBrand`, if a lead has meetings from mixed brands, show both logos with individual counts.
-
-### 3. `src/components/LeadsTable.tsx` — Side panel meetings
-Verify meeting cards already show brand (they use MeetingsSection which has the border). Add BrandLogo to the meeting card title area if not already present.
+## Updated Dialog Copy
+```
+19 of 209 leads have never been processed.
+(90 additional leads were processed but had no matching transcripts.)
+```
 
 ## Files Changed
 | File | Change |
 |------|--------|
-| `src/components/MeetingsSection.tsx` | Add `<BrandLogo size="xxs">` before meeting title in MeetingCard |
-| `src/components/Pipeline.tsx` | Add brand-aware meeting indicators next to Fireflies icon |
+| `src/components/BulkProcessingDialog.tsx` | Fetch processed lead IDs from DB, exclude from count |
+| `src/contexts/ProcessingContext.tsx` | Same exclusion in `startBulkProcessing` filter |
 
