@@ -1,72 +1,17 @@
 
 
-# Redesign Action Queue for At-a-Glance Efficiency
+# Fix Truncated Calendly Meeting Details on Pipeline Cards
 
-## Current Problems
-- Everything in one flat list sorted by urgency — hard to scan
-- Meetings (only 3) buried among 174 items
-- No visual hierarchy between "act now" vs "monitor"
-- No Calendly meeting details shown (event name, duration, time)
-- Repetitive detail lines waste space
+## Problem
+The meeting detail text (e.g., "Introductory Call · 25...") is truncated because the `<span>` has `max-w-[120px]` and `truncate` applied.
 
-## New Layout: Grouped Sections with Priority Tiers
+## Fix
+In `src/components/Pipeline.tsx` line 386, remove the `truncate max-w-[120px]` constraint so the full event name, duration, and date are visible. Also left-align the calendly info row by ensuring it's not pushed to the right by `ml-auto` or `justify-end` from its parent flex container.
 
-```text
-┌──────────────────────────────────────────────┐
-│ Action Queue                    [Owner ▾] All│
-│ 174 items needing attention                  │
-├──────────────────────────────────────────────┤
-│ ┌──────────────────────────────────────────┐ │
-│ │ TODAY'S MEETINGS (3)           blue dot  │ │
-│ │ ┌─ Card: Name · Company · Meeting TODAY ─│ │
-│ │ │  CalendarCheck "SourceCo Intro · 30m"  │ │
-│ │ │  "2:00 PM"                             │ │
-│ │ └─────────────────────────────────────────│ │
-│ │ (horizontal scroll or 3-col grid)        │ │
-│ └──────────────────────────────────────────┘ │
-│                                              │
-│ ── URGENT (Overdue + Renewals) ────── count ─│
-│  [ collapsed list of items ]                 │
-│                                              │
-│ ── AT RISK (Going Dark + Untouched) ─ count ─│
-│  [ collapsed list of items ]                 │
-│                                              │
-│ ── MONITOR (Stale) ──────────────── count ─  │
-│  [ collapsed list of items ]                 │
-└──────────────────────────────────────────────┘
-```
+### Change in `src/components/Pipeline.tsx`
+**Line 386**: Change `<span className="truncate max-w-[120px]">` to `<span className="whitespace-nowrap">` — this removes the width cap and truncation while keeping the text on one line.
 
-## Key Changes
-
-### 1. Meetings Section — Top Hero Cards
-- Pull meetings out of the flat list into a dedicated top section
-- Show as compact cards (not list rows) with Calendly event name, duration, and scheduled time
-- "Meeting TODAY" gets a pulsing blue dot; future meetings show day label
-- Cards are clickable to open lead detail
-
-### 2. Grouped Priority Tiers (Collapsible)
-Replace the flat list + filter chips with 3 collapsible sections:
-- **Urgent** (red): Overdue follow-ups + Renewals — requires immediate action
-- **At Risk** (amber): Going Dark + Untouched — needs intervention soon  
-- **Monitor** (gray): Stale deals — awareness items
-
-Each section header shows count and total deal value. Sections default to expanded but can collapse.
-
-### 3. Compact Row Design
-Each row keeps: brand logo, name, owner avatar, action label, deal value. Remove the second detail line — the brand border + logo already conveys brand, and stage info is in the label.
-
-### 4. Filter Chips Remain
-Keep the type filter chips but move them inline as sub-filters within each section, or keep at top for cross-section filtering. Owner dropdown stays.
-
-### 5. Summary Stats Bar
-Add a small stats bar below the header:
-```
-75 Overdue · 3 Meetings · 62 Going Dark · 7 Untouched · 27 Stale
-```
-Clickable to jump/scroll to that section.
-
-## Files Changed
 | File | Change |
 |------|--------|
-| `src/components/ActionQueue.tsx` | Full restructure: meetings hero section, grouped collapsible tiers, compact rows, summary stats |
+| `src/components/Pipeline.tsx` | Remove `truncate max-w-[120px]`, use `whitespace-nowrap` instead |
 
