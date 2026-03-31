@@ -138,6 +138,9 @@ export function rowToLead(row: Record<string, any>): Lead {
     enrichmentStatus: row.enrichment_status || "",
     createdAt: row.created_at || "",
     calendlyBookedAt: row.calendly_booked_at || "",
+    calendlyEventName: row.calendly_event_name || "",
+    calendlyEventType: row.calendly_event_type || "",
+    calendlyEventDuration: row.calendly_event_duration != null ? Number(row.calendly_event_duration) : null,
   };
 }
 
