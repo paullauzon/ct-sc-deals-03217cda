@@ -4,14 +4,16 @@ interface BrandLogoProps {
 }
 
 const DIMS: Record<string, string> = {
-  xs: "h-3",
-  sm: "h-3.5",
-  md: "h-4",
+  xs: "h-3.5 max-w-[72px]",
+  sm: "h-4 max-w-[80px]",
+  md: "h-5 max-w-[96px]",
 };
 
 export function BrandLogo({ brand, size = "sm" }: BrandLogoProps) {
+  if (!brand) return null;
+
   const isCaptarget = brand === "Captarget";
-  const src = isCaptarget ? "/captarget-logo.png" : "/sourceco-logo.svg";
+  const src = isCaptarget ? "/captarget-logo.png" : "/sourceco-logo.png";
   const alt = isCaptarget ? "Captarget" : "SourceCo";
 
   return (
