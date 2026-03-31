@@ -69,10 +69,17 @@ export function BulkProcessingDialog({ open, onOpenChange }: { open: boolean; on
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2 text-sm text-muted-foreground">
-            <p>
-              <strong>{unprocessedCount}</strong> of {leads.length} leads have no meetings attached.
-              {unprocessedCount === 0 && " All leads already have meetings — nothing to process."}
-            </p>
+            {loading ? (
+              <p>Checking processing history…</p>
+            ) : (
+              <p>
+                <strong>{unprocessedCount}</strong> of {leads.length} leads have never been processed.
+                {previouslyProcessedNoResults > 0 && (
+                  <span className="text-muted-foreground"> ({previouslyProcessedNoResults} additional leads were processed but had no matching transcripts.)</span>
+                )}
+                {unprocessedCount === 0 && " Nothing new to process."}
+              </p>
+            )}
             {unprocessedCount > 0 && (
               <>
                 <div className="flex items-center gap-3 mt-3">
