@@ -18,6 +18,7 @@ import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, Aler
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
+import { BrandLogo } from "@/components/BrandLogo";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
