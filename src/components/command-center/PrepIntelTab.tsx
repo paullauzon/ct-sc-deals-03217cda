@@ -198,6 +198,9 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
   const now = new Date();
   const [emailCounts, setEmailCounts] = useState<Map<string, number>>(new Map());
   const [briefData, setBriefData] = useState<{ leadId: string; leadName: string; brief: PrepBrief } | null>(null);
+  const [draftLead, setDraftLead] = useState<Lead | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftContent, setDraftContent] = useState("");
 
   const upcomingMeetings = useMemo(() => {
     const filtered = ownerFilter === "All" ? leads
@@ -209,7 +212,6 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
       .sort((a, b) => new Date(a.meetingDate).getTime() - new Date(b.meetingDate).getTime());
   }, [leads, ownerFilter, now, meetingHorizon]);
 
-  // Fetch email counts for upcoming meeting leads
   useEffect(() => {
     const ids = upcomingMeetings.map(l => l.id);
     if (ids.length === 0) { setEmailCounts(new Map()); return; }
@@ -225,6 +227,31 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
     setBriefData({ leadId, leadName, brief });
   };
 
+  const handleDraftEmail = async (lead: Lead) => {
+    setDraftLead(lead);
+    setDraftContent("");
+    setDraftLoading(true);
+    try {
+      const meetingCount = lead.meetings?.length || 0;
+      const actionType = meetingCount > 0 ? "post-meeting" : "initial-outreach";
+      const recentMeeting = meetingCount > 0 ? lead.meetings[lead.meetings.length - 1] : null;
+      const { data, error } = await supabase.functions.invoke("generate-follow-up-action", {
+        body: {
+          actionType,
+          lead: { name: lead.name, company: lead.company, role: lead.role, brand: lead.brand, stage: lead.stage, dealValue: lead.dealValue, serviceInterest: lead.serviceInterest, enrichment: lead.enrichment, dealIntelligence: lead.dealIntelligence },
+          meetingContext: recentMeeting ? { title: recentMeeting.title, date: recentMeeting.date, summary: recentMeeting.summary || recentMeeting.intelligence?.summary, nextSteps: recentMeeting.nextSteps, intelligence: recentMeeting.intelligence } : undefined,
+        },
+      });
+      if (error) throw error;
+      setDraftContent(data.content || "");
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Failed to generate draft", description: "Try again later.", variant: "destructive" });
+    } finally {
+      setDraftLoading(false);
+    }
+  };
+
   if (upcomingMeetings.length === 0) {
     return (
       <div className="px-6 py-12 text-center">
@@ -238,7 +265,7 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
       <p className="text-xs text-muted-foreground">{upcomingMeetings.length} meeting{upcomingMeetings.length !== 1 ? "s" : ""} in the next {meetingHorizon} days</p>
 
       {upcomingMeetings.map(lead => (
-        <IntelCard key={lead.id} lead={lead} onSelect={() => onSelectLead(lead.id)} emailCount={emailCounts.get(lead.id) || 0} onBriefGenerated={handleBriefGenerated} />
+        <IntelCard key={lead.id} lead={lead} onSelect={() => onSelectLead(lead.id)} emailCount={emailCounts.get(lead.id) || 0} onBriefGenerated={handleBriefGenerated} onDraftEmail={handleDraftEmail} />
       ))}
 
       <PrepBriefSheet
@@ -247,6 +274,47 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
         brief={briefData?.brief || null}
         leadName={briefData?.leadName || ""}
       />
+
+      {/* Draft Email Sheet */}
+      <Sheet open={!!draftLead} onOpenChange={(o) => { if (!o) setDraftLead(null); }}>
+        <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="text-sm">{draftLead?.meetings?.length ? "Draft Follow-Up" : "Draft Pre-Meeting Email"} — {draftLead?.name}</SheetTitle>
+            <SheetDescription className="sr-only">AI-generated email draft for {draftLead?.name}</SheetDescription>
+          </SheetHeader>
+          <div className="mt-4 space-y-3">
+            {draftLoading ? (
+              <div className="flex items-center justify-center py-12 border border-border rounded-md">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-xs text-muted-foreground">Generating AI draft...</span>
+              </div>
+            ) : (
+              <textarea
+                value={draftContent}
+                onChange={e => setDraftContent(e.target.value)}
+                className="w-full min-h-[280px] text-sm font-mono leading-relaxed p-3 border border-border rounded-md bg-background resize-y"
+                placeholder="AI draft will appear here..."
+              />
+            )}
+            {draftContent && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { navigator.clipboard.writeText(draftContent); toast({ title: "Copied to clipboard" }); }}
+                  className="flex-1 text-xs py-2.5 rounded-md bg-foreground text-background font-medium hover:bg-foreground/90 transition-colors"
+                >
+                  Copy to Clipboard
+                </button>
+                <button
+                  onClick={() => { setDraftContent(""); setDraftLoading(true); handleDraftEmail(draftLead!).finally(() => setDraftLoading(false)); }}
+                  className="text-xs px-3 py-2.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Regenerate
+                </button>
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

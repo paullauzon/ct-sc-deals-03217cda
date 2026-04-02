@@ -100,7 +100,7 @@ export function ActionQueue() {
 
     return {
       schedule: meetingsToday,
-      followups: overdue + untouched + goingDark,
+      followups: overdue,
       pulse: stalled,
       intel: prepMeetings,
     };

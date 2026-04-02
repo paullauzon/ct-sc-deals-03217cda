@@ -186,12 +186,12 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
               <span className="text-right">Last Contact</span>
             </div>
             <div className="divide-y divide-border max-h-[400px] overflow-y-auto min-w-[600px]">
-              {sortedDeals.length === 0 && (
+              {(showIntelOnly ? sortedDeals.filter(d => !!d.lead.dealIntelligence) : sortedDeals).length === 0 && (
                 <div className="px-6 py-8 text-center">
-                  <p className="text-sm text-muted-foreground">No active deals match the current filter</p>
+                  <p className="text-sm text-muted-foreground">{showIntelOnly ? "No deals with intelligence data — run Deal Intelligence processing first" : "No active deals match the current filter"}</p>
                 </div>
               )}
-              {sortedDeals.map(({ lead, days, momentum, dealTemp, closingWindow }) => {
+              {(showIntelOnly ? sortedDeals.filter(d => !!d.lead.dealIntelligence) : sortedDeals).map(({ lead, days, momentum, dealTemp, closingWindow }) => {
                 const isStalled = days > 14;
                 const lastDate = lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate;
                 return (
