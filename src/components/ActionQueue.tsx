@@ -10,6 +10,7 @@ import { PrepIntelTab } from "@/components/command-center/PrepIntelTab";
 import { isBefore, parseISO, differenceInDays } from "date-fns";
 
 const OWNERS = ["All", "Malik", "Valeria", "Tomos", "Unassigned"] as const;
+const HORIZONS = [7, 14, 30] as const;
 type CommandTab = "schedule" | "followups" | "pulse" | "intel";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
