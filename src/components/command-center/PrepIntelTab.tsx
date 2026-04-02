@@ -272,21 +272,28 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
     e.stopPropagation();
     setGeneratingPrep(true);
     try {
-      const { data, error } = await supabase.functions.invoke("generate-meeting-prep", {
-        body: {
-          meetings: lead.meetings || [],
-          leadFields: {
-            name: lead.name,
-            company: lead.company,
-            role: lead.role,
-            stage: lead.stage,
-            priority: lead.priority,
-            dealValue: lead.dealValue,
-            serviceInterest: lead.serviceInterest,
-          },
-          dealIntelligence: lead.dealIntelligence || null,
-        },
-      });
+      // If no meetings, use enrich-lead instead for prospect research
+      const hasMeetings = lead.meetings && lead.meetings.length > 0;
+      const fnName = hasMeetings ? "generate-meeting-prep" : "enrich-lead";
+      const body = hasMeetings
+        ? {
+            meetings: lead.meetings,
+            leadFields: {
+              name: lead.name, company: lead.company, role: lead.role,
+              stage: lead.stage, priority: lead.priority,
+              dealValue: lead.dealValue, serviceInterest: lead.serviceInterest,
+            },
+            dealIntelligence: lead.dealIntelligence || null,
+          }
+        : {
+            record: {
+              id: lead.id, name: lead.name, email: lead.email,
+              company: lead.company, company_url: lead.companyUrl,
+              role: lead.role, buyer_type: lead.buyerType,
+              message: lead.message, source: lead.source,
+            },
+          };
+      const { data, error } = await supabase.functions.invoke(fnName, { body });
       if (error) throw error;
       if (data?.brief) {
         onBriefGenerated(lead.id, lead.name, data.brief);
