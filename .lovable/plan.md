@@ -1,81 +1,36 @@
 
 
-# Prep Intel Upgrade — Sources as Links + Surface Hidden Intelligence
+# Inline Source Hyperlinks on Claims
 
-## Two Problems
+## Problem
 
-### 1. Sources display is wrong
-Currently sources are in a collapsible numbered list. User wants: URLs as inline hyperlinks throughout the content, and non-URL sources (like "form submission", "website content") in a small dropdown.
+The AI already embeds inline citations like `(web search: https://example.com)` and `(website)` within the text of every field (opening hook, value angle, key insights, watch outs, discovery questions, etc.). But the UI renders these as raw text. The user wants the actual claim text to be clickable — e.g., "partnership with Shore Capital Partners" should link to the source.
 
-### 2. The AI generates 15+ fields but the UI only shows 5
-The `enrich-lead` function returns all of these that are **never displayed**:
-- `companyDossier` — full company intelligence briefing
-- `prospectProfile` — career trajectory, communication style, what motivates them
-- `preMeetingAmmo` — 3-5 specific talking points with "why it matters"
-- `competitivePositioning` — competitive landscape analysis
-- `keyInsights` — 5-7 "read nothing else but this" bullet points
-- `decisionMakers` — key people and roles
-- `competitorTools` — other services they may use
-- `acquisitionCriteria` — target sectors/deal size/geo
-- `suggestedUpdates` — AI-recommended CRM field changes (stage, priority, ICP fit)
+The AI citation format from `enrich-lead` is: `(web search: https://...)`, `(website)`, `(form submission)`, `(notes)`. URLs appear inside parenthetical markers.
 
-The current battle card shows only: `openingHook`, `valueAngle`, `watchOuts`, `discoveryQuestions`, and `dataSources`. That's a fraction of the intelligence.
+## Approach
 
-Also: double-quote wrapping bug (AI returns quotes, UI adds more quotes = `""text""`).
+Create a `CitedText` helper component that:
+1. Parses any string for patterns like `(web search: URL)`, `(website: URL)`, or just `(URL)`
+2. Turns the preceding text segment into a hyperlink pointing to that URL
+3. Non-URL citations like `(website)`, `(form submission)`, `(notes)` render as small muted superscript labels (not clickable, but visible as source indicators)
+4. Text without any citation renders normally
 
-## Changes
+Apply `CitedText` to every rendered enrichment text field: `openingHook`, `valueAngle`, `keyInsights`, `watchOuts`, `discoveryQuestions`, `companyDossier`, `prospectProfile`, `competitivePositioning`, `decisionMakers`, `acquisitionCriteria`, `preMeetingAmmo`.
 
-### 1. Inline source citations (SourcesCitation redesign)
+Keep the bottom source pills as-is — they serve as a summary of all sources used.
 
-- Parse `dataSources` string: extract items with URLs vs items without
-- Items WITH URLs → render as small hyperlink pills inline below the battle card (e.g., `🔗 dillarddoor.com`, `🔗 bloomberg.com/article...`)
-- Items WITHOUT URLs (e.g., "Form submission", "LinkedIn title") → show in a small "(+2 more)" dropdown
-- Remove the current collapsible list approach
+## Example Rendering
 
-### 2. Surface hidden enrichment fields in the battle card
+Before: `Our M&A service can position you to discover unique off-market opportunities (web search: https://bloomberg.com/article/123)`
 
-Restructure the card into a tighter, more complete layout:
+After: "Our M&A service can position you to discover unique off-market opportunities" ← this text is a clickable blue link to bloomberg.com/article/123
 
-```text
-┌──────────────────────────────────────────────────────┐
-│ HEADER (name, company, meeting, signals)             │
-├──────────────────────────────────────────────────────┤
-│ 🎯 OPENING HOOK                   │ ACTIONS          │
-│ "I saw Dillard Door..."           │ [Research/Brief]  │
-│                                    │ [Draft Email]    │
-│ 💡 VALUE ANGLE                     │ [Deal Room →]    │
-│ Our M&A service can...             │                  │
-│                                    │                  │
-│ 🔑 KEY INSIGHTS (new!)             │                  │
-│ • Most critical signal...          │                  │
-│ • Second insight...                │                  │
-│                                    │                  │
-│ ⚠ WATCH OUTS                      │                  │
-│ • Don't assume...                  │                  │
-│                                    │                  │
-│ 🧠 ASK                             │                  │
-│ 1. "How does..."                   │                  │
-│                                    │                  │
-│ 🔗 dillarddoor.com · bloomberg.com │                  │
-│    (+2 non-link sources)           │                  │
-├──────────────────────────────────────────────────────┤
-│ ▸ Prospect Profile (career, style, motivations)      │
-│ ▸ Company Intel (dossier, decision makers, criteria)  │
-│ ▸ Competitive Landscape (positioning, competitor tools)│
-│ ▸ Suggested CRM Updates (stage→X, priority→Y) [Apply]│
-│ ▸ Deep Intel (win strategy, psychology — if meetings) │
-└──────────────────────────────────────────────────────┘
-```
-
-### 3. Fix double-quote bug
-Strip leading/trailing `"` from `openingHook` and `discoveryQuestions` before rendering, since the UI already wraps in quotes.
-
-### 4. Add "Apply" buttons for suggested CRM updates
-When `enrichment.suggestedUpdates` exists with recommendations (e.g., `{ stage: { value: "Qualified", reason: "..." } }`), show them in a collapsed section with one-click "Apply" buttons that call `updateLead`.
+For non-URL sources like `(website)`: render as a small superscript tag `[website]` in muted color.
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/command-center/PrepIntelTab.tsx` | Redesign SourcesCitation to hyperlink pills + dropdown; add Key Insights section; add collapsed Prospect Profile, Company Intel, Competitive Landscape, Suggested Updates sections; fix double-quote stripping; add Apply buttons for CRM suggestions |
+| `src/components/command-center/PrepIntelTab.tsx` | Add `CitedText` component that parses inline `(source: URL)` patterns into hyperlinks and `(source)` patterns into superscript labels; replace all raw text renders of enrichment fields with `<CitedText text={...} />` |
 
