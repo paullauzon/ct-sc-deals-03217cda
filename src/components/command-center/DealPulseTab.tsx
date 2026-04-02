@@ -51,7 +51,7 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
     return leads.filter(l => l.assignedTo === ownerFilter);
   }, [leads, ownerFilter]);
 
-  const activeDeals = useMemo(() => filtered.filter(l => ACTIVE_STAGES.has(l.stage) || l.stage === "New Lead"), [filtered]);
+  const activeDeals = useMemo(() => filtered.filter(l => ACTIVE_STAGES.has(l.stage)), [filtered]);
 
   // Forecast KPIs
   const forecast = useMemo(() => {
