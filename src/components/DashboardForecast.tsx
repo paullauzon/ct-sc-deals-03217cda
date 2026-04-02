@@ -316,3 +316,106 @@ export function DashboardForecast({ leads, onDrillDown }: Props) {
     </div>
   );
 }
+
+// ── Win/Loss Analysis ──
+function WinLossAnalysis({ leads }: { leads: Lead[] }) {
+  const analysis = useMemo(() => {
+    const won = leads.filter(l => l.stage === "Closed Won" && l.wonReason);
+    const lost = leads.filter(l => l.stage === "Closed Lost" && l.lostReason);
+
+    const countReasons = (items: Lead[], field: "wonReason" | "lostReason") => {
+      const map: Record<string, number> = {};
+      for (const l of items) {
+        const reason = l[field] || "Unknown";
+        map[reason] = (map[reason] || 0) + 1;
+      }
+      return Object.entries(map)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([reason, count]) => ({ reason, count }));
+    };
+
+    return {
+      wonReasons: countReasons(won, "wonReason"),
+      lostReasons: countReasons(lost, "lostReason"),
+      wonCount: leads.filter(l => l.stage === "Closed Won").length,
+      lostCount: leads.filter(l => l.stage === "Closed Lost").length,
+    };
+  }, [leads]);
+
+  if (analysis.wonCount === 0 && analysis.lostCount === 0) return null;
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Won Reasons */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-emerald-500" />
+            <CardTitle className="text-sm font-medium">Why We Win ({analysis.wonCount})</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {analysis.wonReasons.length > 0 ? (
+            <div className="space-y-2">
+              {analysis.wonReasons.map((r, i) => (
+                <div key={r.reason} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-4">{i + 1}.</span>
+                  <div className="flex-1">
+                    <div className="flex justify-between text-xs">
+                      <span>{r.reason}</span>
+                      <span className="font-medium tabular-nums">{r.count}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-secondary mt-1 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-emerald-500/60"
+                        style={{ width: `${(r.count / analysis.wonCount) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground py-4 text-center">No won reasons recorded yet</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Lost Reasons */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <CardTitle className="text-sm font-medium">Why We Lose ({analysis.lostCount})</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {analysis.lostReasons.length > 0 ? (
+            <div className="space-y-2">
+              {analysis.lostReasons.map((r, i) => (
+                <div key={r.reason} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-4">{i + 1}.</span>
+                  <div className="flex-1">
+                    <div className="flex justify-between text-xs">
+                      <span>{r.reason}</span>
+                      <span className="font-medium tabular-nums">{r.count}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-secondary mt-1 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-destructive/60"
+                        style={{ width: `${(r.count / analysis.lostCount) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground py-4 text-center">No lost reasons recorded yet</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
