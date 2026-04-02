@@ -83,6 +83,11 @@ export default function DealRoom() {
   const dealHealth = computeDealHealthScore(lead);
   const winLose = getWinLoseCard(lead);
   const coverage = getStakeholderCoverage(lead);
+  const isClosed = lead.stage === "Closed Won" || lead.stage === "Closed Lost";
+  const similarWon = isClosed ? [] : findSimilarWonDeals(lead, leads);
+  const droppedPromises = getDroppedPromises(lead);
+  const winLose = getWinLoseCard(lead);
+  const coverage = getStakeholderCoverage(lead);
 
   // Prev/Next navigation
   const currentIdx = leads.findIndex(l => l.id === id);
