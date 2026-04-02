@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Lead } from "@/types/lead";
 import { BrandLogo } from "@/components/BrandLogo";
-import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight, Send, CheckCircle2, SkipForward, ListChecks, ExternalLink, Link2 } from "lucide-react";
+import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight, Send, CheckCircle2, SkipForward, ListChecks, ExternalLink, Link2, Key, Building2, Swords, Settings2, BookOpen } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format, parseISO, differenceInDays, isBefore } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useLeads } from "@/contexts/LeadContext";
@@ -27,48 +28,71 @@ function DealTempBadge({ temp }: { temp?: string }) {
   );
 }
 
-// ─── Source Citations Component ───
+// ─── Helper: strip wrapping double quotes ───
+function stripQuotes(s: string): string {
+  if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1);
+  return s;
+}
+
+// ─── Source Citations Component (hyperlink pills + dropdown) ───
 function SourcesCitation({ dataSources }: { dataSources: string }) {
-  const [open, setOpen] = useState(false);
-  // Parse dataSources string into individual lines, extract URLs
-  const sources = dataSources.split("\n").map(s => s.replace(/^[-•]\s*/, "").trim()).filter(Boolean);
+  const sources = dataSources.split("\n").map(s => s.replace(/^[-•\d.]\s*/, "").trim()).filter(Boolean);
   if (sources.length === 0) return null;
 
+  const urlRegex = /(https?:\/\/[^\s,)]+)/;
+  const withUrls: { label: string; url: string }[] = [];
+  const withoutUrls: string[] = [];
+
+  for (const src of sources) {
+    const match = src.match(urlRegex);
+    if (match) {
+      let label = src.replace(match[1], "").replace(/[:()\s]+$/, "").replace(/^[:()\s]+/, "").trim();
+      if (!label) {
+        try { label = new URL(match[1]).hostname.replace(/^www\./, ""); } catch { label = match[1].slice(0, 30); }
+      }
+      withUrls.push({ label, url: match[1] });
+    } else {
+      withoutUrls.push(src);
+    }
+  }
+
+  if (withUrls.length === 0 && withoutUrls.length === 0) return null;
+
   return (
-    <div className="mt-2 pt-2 border-t border-border/50">
-      <button
-        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <Link2 className="h-3 w-3" />
-        <span className="font-medium">{sources.length} Source{sources.length !== 1 ? "s" : ""}</span>
-        {open ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
-      </button>
-      {open && (
-        <ul className="mt-1.5 space-y-1">
-          {sources.map((src, i) => {
-            const urlMatch = src.match(/(https?:\/\/[^\s,)]+)/);
-            return (
-              <li key={i} className="text-[10px] text-muted-foreground flex items-start gap-1.5">
-                <span className="text-muted-foreground/50 shrink-0 mt-px">•</span>
-                {urlMatch ? (
-                  <a
-                    href={urlMatch[1]}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 break-all"
-                  >
-                    {src.replace(urlMatch[1], "").trim() || new URL(urlMatch[1]).hostname}
-                    <ExternalLink className="h-2.5 w-2.5 shrink-0" />
-                  </a>
-                ) : (
-                  <span>{src}</span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+    <div className="mt-2 pt-2 border-t border-border/50 flex items-center gap-1.5 flex-wrap">
+      <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />
+      {withUrls.map((s, i) => (
+        <a
+          key={i}
+          href={s.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] font-medium hover:bg-blue-500/20 transition-colors"
+        >
+          {s.label}
+          <ExternalLink className="h-2.5 w-2.5" />
+        </a>
+      ))}
+      {withoutUrls.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              onClick={e => e.stopPropagation()}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground text-[10px] font-medium hover:text-foreground transition-colors"
+            >
+              +{withoutUrls.length} more
+              <ChevronDown className="h-2.5 w-2.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-[160px]">
+            {withoutUrls.map((s, i) => (
+              <DropdownMenuItem key={i} className="text-[11px] text-muted-foreground cursor-default">
+                {s}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </div>
   );
@@ -423,6 +447,137 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
   );
 }
 
+// ─── Collapsible Enrichment Section ───
+function EnrichmentCollapsible({ title, icon: Icon, iconColor, children }: { title: string; icon: typeof Target; iconColor: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-border">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        className="w-full px-4 py-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-secondary/20 transition-colors"
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <Icon className={`h-3 w-3 ${iconColor}`} />
+        {title}
+      </button>
+      {open && <div className="px-4 pb-3 space-y-1.5">{children}</div>}
+    </div>
+  );
+}
+
+// ─── Enrichment Deep Sections ───
+function EnrichmentSections({ enrichment, lead, onUpdateLead }: { enrichment: any; lead: Lead; onUpdateLead: (id: string, updates: Partial<Lead>) => void }) {
+  const hasProspectProfile = !!enrichment.prospectProfile;
+  const hasCompanyDossier = !!enrichment.companyDossier;
+  const hasCompetitive = !!enrichment.competitivePositioning;
+  const hasSuggested = enrichment.suggestedUpdates && typeof enrichment.suggestedUpdates === "object" && Object.keys(enrichment.suggestedUpdates).length > 0;
+  const hasPreMeetingAmmo = enrichment.preMeetingAmmo && Array.isArray(enrichment.preMeetingAmmo) && enrichment.preMeetingAmmo.length > 0;
+  const hasDecisionMakers = !!enrichment.decisionMakers;
+  const hasAcquisitionCriteria = !!enrichment.acquisitionCriteria;
+
+  const hasAnything = hasProspectProfile || hasCompanyDossier || hasCompetitive || hasSuggested || hasPreMeetingAmmo || hasDecisionMakers || hasAcquisitionCriteria;
+  if (!hasAnything) return null;
+
+  const handleApplySuggestion = (field: string, value: string) => {
+    const updates: Partial<Lead> = {};
+    if (field === "stage") updates.stage = value as Lead["stage"];
+    else if (field === "priority") updates.priority = value as Lead["priority"];
+    else if (field === "icp_fit" || field === "icpFit") updates.icpFit = value as Lead["icpFit"];
+    else if (field === "buyer_type" || field === "buyerType") updates.buyerType = value as Lead["buyerType"];
+    else if (field === "service_interest" || field === "serviceInterest") updates.serviceInterest = value as Lead["serviceInterest"];
+    else return;
+    onUpdateLead(lead.id, updates);
+    toast({ title: `Updated ${field}`, description: `Set to "${value}"` });
+  };
+
+  return (
+    <>
+      {/* Prospect Profile */}
+      {hasProspectProfile && (
+        <EnrichmentCollapsible title="Prospect Profile" icon={Users} iconColor="text-purple-500">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">{enrichment.prospectProfile}</p>
+        </EnrichmentCollapsible>
+      )}
+
+      {/* Company Intel */}
+      {(hasCompanyDossier || hasDecisionMakers || hasAcquisitionCriteria) && (
+        <EnrichmentCollapsible title="Company Intel" icon={Building2} iconColor="text-blue-500">
+          {hasCompanyDossier && <p className="text-[11px] text-muted-foreground leading-relaxed">{enrichment.companyDossier}</p>}
+          {hasDecisionMakers && (
+            <div className="mt-1.5">
+              <span className="text-[10px] font-semibold text-foreground">Decision Makers: </span>
+              <span className="text-[11px] text-muted-foreground">{enrichment.decisionMakers}</span>
+            </div>
+          )}
+          {hasAcquisitionCriteria && (
+            <div className="mt-1.5">
+              <span className="text-[10px] font-semibold text-foreground">Acquisition Criteria: </span>
+              <span className="text-[11px] text-muted-foreground">{enrichment.acquisitionCriteria}</span>
+            </div>
+          )}
+        </EnrichmentCollapsible>
+      )}
+
+      {/* Pre-Meeting Ammo */}
+      {hasPreMeetingAmmo && (
+        <EnrichmentCollapsible title="Talking Points" icon={Zap} iconColor="text-amber-500">
+          <ul className="space-y-1">
+            {(enrichment.preMeetingAmmo as any[]).map((item: any, i: number) => (
+              <li key={i} className="text-[11px] text-muted-foreground">
+                <span className="font-medium text-foreground">{typeof item === "string" ? item : item.point || item.topic}</span>
+                {typeof item !== "string" && item.whyItMatters && (
+                  <span className="text-muted-foreground"> — {item.whyItMatters}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </EnrichmentCollapsible>
+      )}
+
+      {/* Competitive Landscape */}
+      {hasCompetitive && (
+        <EnrichmentCollapsible title="Competitive Landscape" icon={Swords} iconColor="text-red-500">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">{enrichment.competitivePositioning}</p>
+          {enrichment.competitorTools && (
+            <div className="mt-1.5">
+              <span className="text-[10px] font-semibold text-foreground">Competitor Tools: </span>
+              <span className="text-[11px] text-muted-foreground">{enrichment.competitorTools}</span>
+            </div>
+          )}
+        </EnrichmentCollapsible>
+      )}
+
+      {/* Suggested CRM Updates */}
+      {hasSuggested && (
+        <EnrichmentCollapsible title="Suggested CRM Updates" icon={Settings2} iconColor="text-emerald-500">
+          <div className="space-y-1.5">
+            {Object.entries(enrichment.suggestedUpdates as Record<string, any>).map(([field, suggestion]: [string, any]) => {
+              const value = typeof suggestion === "string" ? suggestion : suggestion?.value;
+              const reason = typeof suggestion === "object" ? suggestion?.reason : "";
+              if (!value) return null;
+              return (
+                <div key={field} className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[11px] font-medium text-foreground">{field}: </span>
+                    <span className="text-[11px] text-muted-foreground">{value}</span>
+                    {reason && <span className="text-[10px] text-muted-foreground/70 block">{reason}</span>}
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleApplySuggestion(field, value); }}
+                    className="shrink-0 text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary font-medium hover:bg-primary/20 transition-colors"
+                  >
+                    Apply
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </EnrichmentCollapsible>
+      )}
+    </>
+  );
+}
+
 function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail, onUpdateLead }: { lead: Lead; onSelect: () => void; emailCount: number; onBriefGenerated: (leadId: string, leadName: string, brief: PrepBrief) => void; onDraftEmail: (lead: Lead) => void; onUpdateLead: (id: string, updates: Partial<Lead>) => void }) {
   const [generatingPrep, setGeneratingPrep] = useState(false);
   const [enrichmentUpdated, setEnrichmentUpdated] = useState(false);
@@ -594,7 +749,7 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                     <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Opening</span>
                   </div>
                   <p className="text-[11px] text-foreground italic leading-relaxed">
-                    "{(briefBattleCard.openingHook || enrichment?.openingHook) as string}"
+                    "{stripQuotes((briefBattleCard.openingHook || enrichment?.openingHook) as string)}"
                   </p>
                 </div>
 
@@ -609,6 +764,23 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
                       {(briefBattleCard.theOneInsight || enrichment?.valueAngle) as string}
                     </p>
+                  </div>
+                )}
+
+                {/* KEY INSIGHTS */}
+                {enrichment?.keyInsights && Array.isArray(enrichment.keyInsights) && (enrichment.keyInsights as string[]).length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <Key className="h-3 w-3 text-primary" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Key Insights</span>
+                    </div>
+                    <ul className="space-y-0.5">
+                      {(enrichment.keyInsights as string[]).slice(0, 5).map((insight: string, i: number) => (
+                        <li key={i} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+                          <span className="text-primary shrink-0">•</span>{insight}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
@@ -648,7 +820,7 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                       {(briefBattleCard.keyQuestions || (enrichment?.discoveryQuestions as string[]) || []).slice(0, 5).map((q: string, i: number) => (
                         <li key={i} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
                           <span className="text-purple-500 font-semibold shrink-0">{i + 1}.</span>
-                          <span>"{q}"</span>
+                          <span>"{stripQuotes(q)}"</span>
                         </li>
                       ))}
                     </ol>
@@ -762,7 +934,11 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
         </div>
       )}
 
-      {/* ─── ZONE 3: DEEP INTEL (collapsed) ─── */}
+      {/* ─── ZONE 2B: ENRICHMENT DEEP SECTIONS (collapsed) ─── */}
+      {enrichment && (
+        <EnrichmentSections enrichment={enrichment} lead={lead} onUpdateLead={onUpdateLead} />
+      )}
+
       {hasDeepIntel && (
         <div className="border-t border-border">
           <button
