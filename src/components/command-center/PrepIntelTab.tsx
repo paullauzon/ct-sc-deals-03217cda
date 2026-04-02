@@ -851,7 +851,7 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                     <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Opening</span>
                   </div>
                   <p className="text-[11px] text-foreground italic leading-relaxed">
-                    "{stripQuotes((briefBattleCard.openingHook || enrichment?.openingHook) as string)}"
+                    "<CitedText text={stripQuotes((briefBattleCard.openingHook || enrichment?.openingHook) as string)} />"
                   </p>
                 </div>
 
@@ -864,7 +864,7 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                       </span>
                     </div>
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      {(briefBattleCard.theOneInsight || enrichment?.valueAngle) as string}
+                      <CitedText text={(briefBattleCard.theOneInsight || enrichment?.valueAngle) as string} />
                     </p>
                   </div>
                 )}
@@ -879,7 +879,7 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                     <ul className="space-y-0.5">
                       {(enrichment.keyInsights as string[]).slice(0, 5).map((insight: string, i: number) => (
                         <li key={i} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
-                          <span className="text-primary shrink-0">•</span>{insight}
+                          <span className="text-primary shrink-0">•</span><CitedText text={insight} />
                         </li>
                       ))}
                     </ul>
@@ -905,7 +905,7 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                     <ul className="space-y-0.5">
                       {(briefBattleCard.landmines || (enrichment?.watchOuts as string[]) || []).map((item: string, i: number) => (
                         <li key={i} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
-                          <span className="text-red-500 shrink-0">⚠</span>{item}
+                          <span className="text-red-500 shrink-0">⚠</span><CitedText text={item} />
                         </li>
                       ))}
                     </ul>
@@ -922,7 +922,7 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                       {(briefBattleCard.keyQuestions || (enrichment?.discoveryQuestions as string[]) || []).slice(0, 5).map((q: string, i: number) => (
                         <li key={i} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
                           <span className="text-purple-500 font-semibold shrink-0">{i + 1}.</span>
-                          <span>"{stripQuotes(q)}"</span>
+                          <span>"<CitedText text={stripQuotes(q)} />"</span>
                         </li>
                       ))}
                     </ol>
