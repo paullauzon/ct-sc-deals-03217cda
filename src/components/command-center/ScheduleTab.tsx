@@ -243,8 +243,7 @@ function TierSection({ tier, items, onSelect }: { tier: PriorityTier; items: Act
 }
 
 /* ─── Schedule Tab ─── */
-export function ScheduleTab({ leads, ownerFilter, onSelectLead }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void }) {
-  const [meetingHorizon, setMeetingHorizon] = useState<number>(14);
+export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void; meetingHorizon: number }) {
   const items = useMemo(() => buildActionItems(leads, ownerFilter, meetingHorizon), [leads, ownerFilter, meetingHorizon]);
   const meetings = useMemo(() => items.filter(i => i.type === "meeting"), [items]);
 
