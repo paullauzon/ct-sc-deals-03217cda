@@ -229,10 +229,23 @@ export function LeadProvider({ children }: { children: ReactNode }) {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const updateLead = useCallback((id: string, updates: Partial<Lead>) => {
+  const updateLead = useCallback((id: string, updates: Partial<Lead>, _isUndo?: boolean) => {
     setLeads((prev) => {
       const next = prev.map((l) => {
         if (l.id !== id) return l;
+
+        // Snapshot for undo if this is a stage change (and not itself an undo)
+        const isStageChange = updates.stage && updates.stage !== l.stage && !_isUndo;
+        const snapshot = isStageChange ? {
+          stage: l.stage,
+          stageEnteredDate: l.stageEnteredDate,
+          daysInCurrentStage: l.daysInCurrentStage,
+          lastContactDate: l.lastContactDate,
+          closedDate: l.closedDate,
+          hoursToMeetingSet: l.hoursToMeetingSet,
+          meetingSetDate: l.meetingSetDate,
+        } : null;
+
         // Log field changes before applying
         detectFieldChanges(id, l, updates);
         const updated = { ...l, ...updates };
@@ -270,7 +283,6 @@ export function LeadProvider({ children }: { children: ReactNode }) {
           // Archive stale playbook tasks then generate new ones
           const playbook = getPlaybookForStage(updates.stage);
           if (playbook) {
-            // First archive any pending tasks from previous playbooks
             supabase.from("lead_tasks")
               .update({ status: "superseded" } as any)
               .eq("lead_id", id)
@@ -283,7 +295,6 @@ export function LeadProvider({ children }: { children: ReactNode }) {
                 });
               });
           } else {
-            // No playbook for this stage — still archive old pending tasks
             supabase.from("lead_tasks")
               .update({ status: "superseded" } as any)
               .eq("lead_id", id)
@@ -299,8 +310,30 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         }
         // Persist only changed fields to DB with error surfacing
         updateLeadInDb(id, dbPayload).then(ok => {
-          if (!ok) toast.error("Failed to save changes — please retry");
+          if (!ok) toast.error("Failed to save changes. Please retry.");
         });
+
+        // Show undo toast for stage changes
+        if (isStageChange && snapshot) {
+          toast(`Stage changed to ${updates.stage}`, {
+            duration: 5000,
+            action: {
+              label: "Undo",
+              onClick: () => {
+                // Restore snapshot fields
+                updateLead(id, snapshot as Partial<Lead>, true);
+                // Restore superseded tasks back to pending
+                supabase.from("lead_tasks")
+                  .update({ status: "pending" } as any)
+                  .eq("lead_id", id)
+                  .eq("status", "superseded")
+                  .then(() => {});
+                toast(`Stage reverted to ${snapshot.stage}`);
+              },
+            },
+          });
+        }
+
         return updated;
       });
       return next;
