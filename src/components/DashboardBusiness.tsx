@@ -52,9 +52,9 @@ function computeBrandMetrics(leads: Lead[], brand: Brand): BrandMetrics {
     ? Math.round(wonWithCycle.reduce((s, l) => s + Math.max(1, Math.floor((new Date(l.closedDate).getTime() - new Date(l.dateSubmitted).getTime()) / 86400000)), 0) / wonWithCycle.length)
     : 0;
 
-  const activeWithValue = active.filter(l => l.dealValue > 0);
-  const avgDealSize = activeWithValue.length > 0
-    ? Math.round(activeWithValue.reduce((s, l) => s + l.dealValue, 0) / activeWithValue.length)
+  const wonWithValue = won.filter(l => l.dealValue > 0);
+  const avgDealSize = wonWithValue.length > 0
+    ? Math.round(wonWithValue.reduce((s, l) => s + l.dealValue, 0) / wonWithValue.length)
     : 0;
 
   // Leads per rep
