@@ -803,7 +803,11 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
         </div>
       )}
 
-      {/* ─── ZONE 3: DEEP INTEL (collapsed) ─── */}
+      {/* ─── ZONE 2B: ENRICHMENT DEEP SECTIONS (collapsed) ─── */}
+      {enrichment && (
+        <EnrichmentSections enrichment={enrichment} lead={lead} onUpdateLead={onUpdateLead} />
+      )}
+
       {hasDeepIntel && (
         <div className="border-t border-border">
           <button
