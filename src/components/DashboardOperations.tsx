@@ -3,7 +3,7 @@ import { Lead, LeadStage } from "@/types/lead";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertTriangle, Clock, Users, Shield } from "lucide-react";
+import { AlertTriangle, Clock, Users, Shield, TrendingUp } from "lucide-react";
 import { differenceInDays, parseISO } from "date-fns";
 
 const STAGE_WEIGHTS: Record<string, number> = {
@@ -125,8 +125,65 @@ export function DashboardOperations({ leads, onDrillDown }: Props) {
 
   const fmt = (n: number) => `$${(n / 1000).toFixed(0)}K`;
 
+  // --- Pipeline Momentum ---
+  const momentum = useMemo(() => {
+    const now = new Date();
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    // New deals added this month
+    const newDeals = leads.filter(l => l.dateSubmitted?.startsWith(thisMonth));
+    const addedValue = newDeals.reduce((s, l) => s + l.dealValue, 0);
+
+    // Deals lost/closed this month
+    const closedOut = leads.filter(l =>
+      ["Closed Lost", "Went Dark", "Disqualified"].includes(l.stage) &&
+      l.closedDate?.startsWith(thisMonth)
+    );
+    const lostValue = closedOut.reduce((s, l) => s + l.dealValue, 0);
+
+    // Won this month
+    const closedWon = leads.filter(l =>
+      l.stage === "Closed Won" && l.closedDate?.startsWith(thisMonth)
+    );
+    const wonValue = closedWon.reduce((s, l) => s + l.dealValue, 0);
+
+    const net = addedValue - lostValue - wonValue;
+    return { addedValue, lostValue, wonValue, net, newCount: newDeals.length, lostCount: closedOut.length, wonCount: closedWon.length };
+  }, [leads]);
+
   return (
     <div className="space-y-6">
+      {/* Pipeline Momentum */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" /> Pipeline Momentum (This Month)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-4 gap-3 text-center">
+            <div>
+              <p className="text-lg font-semibold text-emerald-500 tabular-nums">+{fmt(momentum.addedValue)}</p>
+              <p className="text-[10px] text-muted-foreground">{momentum.newCount} new deals</p>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-destructive tabular-nums">-{fmt(momentum.lostValue)}</p>
+              <p className="text-[10px] text-muted-foreground">{momentum.lostCount} lost</p>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-blue-500 tabular-nums">-{fmt(momentum.wonValue)}</p>
+              <p className="text-[10px] text-muted-foreground">{momentum.wonCount} won</p>
+            </div>
+            <div className="border-l border-border pl-3">
+              <p className={`text-lg font-bold tabular-nums ${momentum.net >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                {momentum.net >= 0 ? "+" : ""}{fmt(momentum.net)}
+              </p>
+              <p className="text-[10px] text-muted-foreground">Net Change</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Rep Capacity */}
       <Card>
         <CardHeader className="pb-3">

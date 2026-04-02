@@ -410,6 +410,27 @@ export function DashboardEconomics({ leads }: Props) {
                     </span>
                   </div>
                 )}
+
+                {/* Payback Period */}
+                {m.cac != null && m.avgSubscription > 0 && (
+                  <div className="border-t border-border pt-3 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">CAC Payback Period</span>
+                    {(() => {
+                      const months = m.cac / m.avgSubscription;
+                      const color = months <= 3 ? "text-emerald-500" : months <= 12 ? "text-amber-500" : "text-red-500";
+                      return (
+                        <div className="text-right">
+                          <span className={`text-lg font-bold ${color}`}>
+                            {months < 1 ? `${(months * 30).toFixed(0)} days` : `${months.toFixed(1)} mo`}
+                          </span>
+                          {months < 3 && (
+                            <p className="text-[10px] text-emerald-500">Excellent</p>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </CardContent>
             </Card>
           );
