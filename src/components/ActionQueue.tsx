@@ -117,15 +117,30 @@ export function ActionQueue() {
             <p className="text-xs text-muted-foreground mt-0.5">Your daily sales cockpit</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-          <select
-            value={ownerFilter}
-            onChange={e => setOwnerFilter(e.target.value)}
-            className="text-sm border border-border rounded-md px-2 py-1 bg-background"
-          >
-            {OWNERS.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+            <select
+              value={ownerFilter}
+              onChange={e => setOwnerFilter(e.target.value)}
+              className="text-sm border border-border rounded-md px-2 py-1 bg-background"
+            >
+              {OWNERS.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          {(commandTab === "schedule" || commandTab === "intel") && (
+            <div className="flex items-center gap-1">
+              {HORIZONS.map(h => (
+                <button
+                  key={h}
+                  onClick={() => setMeetingHorizon(h)}
+                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${meetingHorizon === h ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground hover:text-foreground"}`}
+                >
+                  {h}d
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
