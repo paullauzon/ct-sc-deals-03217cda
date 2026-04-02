@@ -378,6 +378,7 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
   const [generatingPrep, setGeneratingPrep] = useState(false);
   const [enrichmentUpdated, setEnrichmentUpdated] = useState(false);
   const [deepIntelOpen, setDeepIntelOpen] = useState(false);
+  const [briefBattleCard, setBriefBattleCard] = useState<Partial<PrepBrief>>({});
   const enrichment = lead.enrichment;
   const di = lead.dealIntelligence;
   const latestMeeting = lead.meetings?.length > 0 ? lead.meetings[lead.meetings.length - 1] : null;
