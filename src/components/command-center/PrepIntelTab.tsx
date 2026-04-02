@@ -174,6 +174,13 @@ function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () =>
         );
       })()}
 
+      {/* Lead message as prep context */}
+      {lead.message && lead.message.length > 0 && (
+        <div className="text-[10px] text-muted-foreground bg-secondary/30 rounded px-2.5 py-1.5 line-clamp-3">
+          <span className="font-medium text-foreground">Prospect said: </span>"{lead.message.slice(0, 200)}{lead.message.length > 200 ? "…" : ""}"
+        </div>
+      )}
+
       {/* Context Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5 text-[11px]">
         {lead.serviceInterest && lead.serviceInterest !== "TBD" && (

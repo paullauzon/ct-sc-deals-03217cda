@@ -494,6 +494,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
       .from("lead_emails")
       .select("lead_id")
       .in("lead_id", ids)
+      .limit(5000)
       .then(({ data }) => {
         if (!data) return;
         const counts = new Map<string, number>();

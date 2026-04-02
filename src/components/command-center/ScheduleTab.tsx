@@ -286,11 +286,11 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
     };
   }, [items]);
 
-  const typeCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const item of items) counts[item.type] = (counts[item.type] || 0) + 1;
-    return counts;
-  }, [items]);
+  const filteredCounts = useMemo(() => ({
+    dueToday: tierItems.urgent.length,
+    meetings: meetings.length,
+    renewals: tierItems.monitor.filter(i => i.type === "renewal").length,
+  }), [tierItems, meetings]);
 
   return (
     <div className="space-y-5">
@@ -299,12 +299,9 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
 
       {/* Summary Stats */}
       <div className="flex gap-3 flex-wrap text-[11px] text-muted-foreground">
-        {(["overdue", "meeting", "renewal"] as const).map(type => {
-          const count = typeCounts[type] || 0;
-          if (count === 0) return null;
-          const labels: Record<string, string> = { overdue: "Overdue", meeting: "Meetings", dark: "Going Dark", untouched: "Untouched", renewal: "Renewals", stale: "Stale" };
-          return <span key={type} className="tabular-nums"><span className="font-medium text-foreground">{count}</span> {labels[type]}</span>;
-        })}
+        {filteredCounts.dueToday > 0 && <span className="tabular-nums"><span className="font-medium text-foreground">{filteredCounts.dueToday}</span> Due Today</span>}
+        {filteredCounts.meetings > 0 && <span className="tabular-nums"><span className="font-medium text-foreground">{filteredCounts.meetings}</span> Meetings</span>}
+        {filteredCounts.renewals > 0 && <span className="tabular-nums"><span className="font-medium text-foreground">{filteredCounts.renewals}</span> Renewals</span>}
       </div>
 
       {/* Meetings Hero */}
