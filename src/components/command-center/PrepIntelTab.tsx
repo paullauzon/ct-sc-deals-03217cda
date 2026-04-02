@@ -28,48 +28,71 @@ function DealTempBadge({ temp }: { temp?: string }) {
   );
 }
 
-// ─── Source Citations Component ───
+// ─── Helper: strip wrapping double quotes ───
+function stripQuotes(s: string): string {
+  if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1);
+  return s;
+}
+
+// ─── Source Citations Component (hyperlink pills + dropdown) ───
 function SourcesCitation({ dataSources }: { dataSources: string }) {
-  const [open, setOpen] = useState(false);
-  // Parse dataSources string into individual lines, extract URLs
-  const sources = dataSources.split("\n").map(s => s.replace(/^[-•]\s*/, "").trim()).filter(Boolean);
+  const sources = dataSources.split("\n").map(s => s.replace(/^[-•\d.]\s*/, "").trim()).filter(Boolean);
   if (sources.length === 0) return null;
 
+  const urlRegex = /(https?:\/\/[^\s,)]+)/;
+  const withUrls: { label: string; url: string }[] = [];
+  const withoutUrls: string[] = [];
+
+  for (const src of sources) {
+    const match = src.match(urlRegex);
+    if (match) {
+      let label = src.replace(match[1], "").replace(/[:()\s]+$/, "").replace(/^[:()\s]+/, "").trim();
+      if (!label) {
+        try { label = new URL(match[1]).hostname.replace(/^www\./, ""); } catch { label = match[1].slice(0, 30); }
+      }
+      withUrls.push({ label, url: match[1] });
+    } else {
+      withoutUrls.push(src);
+    }
+  }
+
+  if (withUrls.length === 0 && withoutUrls.length === 0) return null;
+
   return (
-    <div className="mt-2 pt-2 border-t border-border/50">
-      <button
-        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <Link2 className="h-3 w-3" />
-        <span className="font-medium">{sources.length} Source{sources.length !== 1 ? "s" : ""}</span>
-        {open ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
-      </button>
-      {open && (
-        <ul className="mt-1.5 space-y-1">
-          {sources.map((src, i) => {
-            const urlMatch = src.match(/(https?:\/\/[^\s,)]+)/);
-            return (
-              <li key={i} className="text-[10px] text-muted-foreground flex items-start gap-1.5">
-                <span className="text-muted-foreground/50 shrink-0 mt-px">•</span>
-                {urlMatch ? (
-                  <a
-                    href={urlMatch[1]}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 break-all"
-                  >
-                    {src.replace(urlMatch[1], "").trim() || new URL(urlMatch[1]).hostname}
-                    <ExternalLink className="h-2.5 w-2.5 shrink-0" />
-                  </a>
-                ) : (
-                  <span>{src}</span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+    <div className="mt-2 pt-2 border-t border-border/50 flex items-center gap-1.5 flex-wrap">
+      <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />
+      {withUrls.map((s, i) => (
+        <a
+          key={i}
+          href={s.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] font-medium hover:bg-blue-500/20 transition-colors"
+        >
+          {s.label}
+          <ExternalLink className="h-2.5 w-2.5" />
+        </a>
+      ))}
+      {withoutUrls.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              onClick={e => e.stopPropagation()}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground text-[10px] font-medium hover:text-foreground transition-colors"
+            >
+              +{withoutUrls.length} more
+              <ChevronDown className="h-2.5 w-2.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-[160px]">
+            {withoutUrls.map((s, i) => (
+              <DropdownMenuItem key={i} className="text-[11px] text-muted-foreground cursor-default">
+                {s}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </div>
   );
