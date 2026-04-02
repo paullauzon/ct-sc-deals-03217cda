@@ -1,29 +1,49 @@
 
 
-# Fix: Research Enrichment Data Not Reflected in UI
+# Prep Intel: Source Citations + LinkedIn Data Gap
 
-## Root Cause
+## Two Issues Found
 
-When "Research" completes, the code saves enrichment to the database via a direct Supabase update (line 461-464) but never updates the local React state. The realtime subscription in LeadContext only listens for scoring/linkedin/calendly fields — not `enrichment`. So:
+### Issue 1: Claims have no visible source citations
 
-1. DB write succeeds (data IS saved)
-2. Toast fires ("Battle card saved")
-3. The card still shows "No intel yet" because the lead object in React state has no enrichment
-4. On full page refresh, the enrichment would appear (since it loads from DB)
+The `enrich-lead` edge function already instructs the AI to cite sources inline (e.g., "(web search: URL)", "(website)", "(form submission)"). The `dataSources` field is returned listing all URLs used. However, **the UI never displays these citations**. The opening hook, value angle, watch outs, and discovery questions show raw text with no indication of where claims originated. This is why "partnership with Shore Capital Partners" appears without verification.
 
-## Fix
+**Fix**: Display the `dataSources` field from enrichment as a collapsible "Sources" section at the bottom of the battle card. Additionally, ensure inline source markers (already in the AI output like "(web search: URL)") are rendered as clickable links rather than stripped.
 
-Two changes in `PrepIntelTab.tsx`:
+### Issue 2: LinkedIn data is NOT passed to the enrichment function
 
-### 1. After DB save, call `updateLead()` from LeadContext
-Import and use `updateLead` to push the enrichment into local state immediately. This makes the card re-render with the battle card data (opening hook, discovery questions, value angle, watch outs) right after research completes — no refresh needed.
+The lead object has `linkedinUrl` and `linkedinTitle` fields (populated by the LinkedIn backfill agent). But `PrepIntelTab.tsx` never sends these to `enrich-lead`. The enrichment function does a separate web search for the prospect, but it doesn't have the LinkedIn profile data we already collected. This means:
 
-### 2. Check for errors on the DB update
-The current `await supabase.from("leads").update(...)` ignores the response. Add error checking so failures surface properly.
+- The AI is working without the prospect's LinkedIn title, company confirmation, or career context
+- We're doing redundant searches when we already have a LinkedIn URL
+- The prospect profile and opening hook could be much more specific with LinkedIn data
 
-## Files Changed
+**Fix**: Pass `leadLinkedinUrl` and `leadLinkedinTitle` to `enrich-lead`. Update the edge function to scrape the LinkedIn profile URL (via Firecrawl) if available, adding it as a high-priority data source for the prospect profile, opening hook, and discovery questions.
+
+## Plan
+
+### 1. Pass LinkedIn data to enrich-lead (PrepIntelTab.tsx)
+
+Add `leadLinkedinUrl: lead.linkedinUrl` and `leadLinkedinTitle: lead.linkedinTitle` to the enrichment payload body (the else branch at line 431).
+
+### 2. Use LinkedIn in the edge function (enrich-lead/index.ts)
+
+- Accept `leadLinkedinUrl` and `leadLinkedinTitle` from the request body
+- If `leadLinkedinUrl` exists, scrape it via Firecrawl as a priority data source
+- Add it to the source inventory and context: `LINKEDIN PROFILE CONTENT: ...`
+- Update the source inventory line: `- LinkedIn profile: YES/NO`
+
+### 3. Show source citations in the UI (PrepIntelTab.tsx)
+
+- After the battle card content (below the ASK section), add a small "Sources" toggle
+- When expanded, show `enrichment.dataSources` as a bulleted list of clickable links
+- Parse inline citations like `(web search: https://...)` into clickable `<a>` tags throughout the displayed text
+- Style sources with muted text and external link icons
+
+### Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/command-center/PrepIntelTab.tsx` | Import `useLeads` context; call `updateLead(lead.id, { enrichment, enrichmentStatus })` after successful DB save; add error check on DB update result |
+| `src/components/command-center/PrepIntelTab.tsx` | Pass `leadLinkedinUrl` and `leadLinkedinTitle` to enrich-lead body; add Sources section below battle card showing `enrichment.dataSources`; parse inline citation URLs into clickable links |
+| `supabase/functions/enrich-lead/index.ts` | Accept `leadLinkedinUrl`/`leadLinkedinTitle`; scrape LinkedIn profile via Firecrawl if URL available; add to source inventory and AI context |
 
