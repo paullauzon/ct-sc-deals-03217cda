@@ -501,7 +501,153 @@ export function DashboardEconomics({ leads }: Props) {
           )}
         </CardContent>
       </Card>
+      {/* Pricing Intelligence */}
+      <PricingIntelligence leads={leads} />
     </div>
+  );
+}
+
+// ── Pricing Intelligence ──
+function PricingIntelligence({ leads }: { leads: Lead[] }) {
+  const data = useMemo(() => {
+    const brandPricing: Record<string, { mentioned: string[]; budgets: string[]; wonPrices: number[]; lostPrices: number[] }> = {
+      Captarget: { mentioned: [], budgets: [], wonPrices: [], lostPrices: [] },
+      SourceCo: { mentioned: [], budgets: [], wonPrices: [], lostPrices: [] },
+    };
+
+    let meetingsWithPricing = 0;
+    let meetingsWithBudget = 0;
+    const budgetLeads: Lead[] = [];
+    const noBudgetLeads: Lead[] = [];
+    const seenBudget = new Set<string>();
+    const seenNoBudget = new Set<string>();
+
+    for (const lead of leads) {
+      let hasBudget = false;
+      for (const m of lead.meetings || []) {
+        if (!m.intelligence) continue;
+        const intel = m.intelligence;
+        const brand = lead.brand;
+
+        if (intel.pricingDiscussion && intel.pricingDiscussion.length > 5 && intel.pricingDiscussion !== "No pricing discussed") {
+          meetingsWithPricing++;
+          if (brandPricing[brand]) brandPricing[brand].mentioned.push(intel.pricingDiscussion);
+        }
+
+        const budget = intel.dealSignals?.budgetMentioned;
+        if (budget && budget.length > 3 && budget !== "Not mentioned" && budget !== "No budget mentioned" && budget !== "Not discussed") {
+          meetingsWithBudget++;
+          hasBudget = true;
+          if (brandPricing[brand]) brandPricing[brand].budgets.push(budget);
+        }
+
+        // Extract numbers from pricing
+        const priceMatches = (intel.pricingDiscussion || "").match(/\$[\d,]+/g);
+        if (priceMatches) {
+          for (const p of priceMatches) {
+            const val = parseInt(p.replace(/[$,]/g, ""), 10);
+            if (val > 500 && val < 100000) {
+              if (lead.stage === "Closed Won" && brandPricing[brand]) brandPricing[brand].wonPrices.push(val);
+              if (["Closed Lost", "Went Dark"].includes(lead.stage) && brandPricing[brand]) brandPricing[brand].lostPrices.push(val);
+            }
+          }
+        }
+      }
+
+      if (hasBudget && !seenBudget.has(lead.id)) { budgetLeads.push(lead); seenBudget.add(lead.id); }
+      else if ((lead.meetings || []).some(m => m.intelligence) && !hasBudget && !seenNoBudget.has(lead.id)) { noBudgetLeads.push(lead); seenNoBudget.add(lead.id); }
+    }
+
+    // Budget-to-close correlation
+    const budgetWon = budgetLeads.filter(l => l.stage === "Closed Won").length;
+    const budgetClosed = budgetLeads.filter(l => ["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)).length;
+    const noBudgetWon = noBudgetLeads.filter(l => l.stage === "Closed Won").length;
+    const noBudgetClosed = noBudgetLeads.filter(l => ["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)).length;
+
+    return {
+      brandPricing,
+      meetingsWithPricing,
+      meetingsWithBudget,
+      budgetConv: budgetClosed > 0 ? Math.round((budgetWon / budgetClosed) * 100) : null,
+      noBudgetConv: noBudgetClosed > 0 ? Math.round((noBudgetWon / noBudgetClosed) * 100) : null,
+      budgetLeadCount: budgetLeads.length,
+      noBudgetLeadCount: noBudgetLeads.length,
+    };
+  }, [leads]);
+
+  if (data.meetingsWithPricing === 0) return null;
+
+  const fmt = (n: number) => `$${n.toLocaleString()}`;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <DollarSign className="h-4 w-4" /> Pricing Intelligence ({data.meetingsWithPricing} meetings with pricing data)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Price ranges by brand */}
+        <div className="grid grid-cols-2 gap-4">
+          {(["Captarget", "SourceCo"] as const).map(brand => {
+            const bp = data.brandPricing[brand];
+            const wonRange = bp.wonPrices.length > 0
+              ? { min: Math.min(...bp.wonPrices), max: Math.max(...bp.wonPrices), avg: Math.round(bp.wonPrices.reduce((a, b) => a + b, 0) / bp.wonPrices.length) }
+              : null;
+            const lostRange = bp.lostPrices.length > 0
+              ? { min: Math.min(...bp.lostPrices), max: Math.max(...bp.lostPrices) }
+              : null;
+
+            return (
+              <div key={brand} className="space-y-2">
+                <p className="text-xs font-semibold">{brand}</p>
+                <div className="text-[10px] space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Pricing discussions</span>
+                    <span className="tabular-nums">{bp.mentioned.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Budgets stated</span>
+                    <span className="tabular-nums">{bp.budgets.length}</span>
+                  </div>
+                  {wonRange && (
+                    <div className="flex justify-between text-emerald-500">
+                      <span>Won price range</span>
+                      <span className="tabular-nums">{fmt(wonRange.min)} – {fmt(wonRange.max)}/mo</span>
+                    </div>
+                  )}
+                  {lostRange && (
+                    <div className="flex justify-between text-destructive">
+                      <span>Lost price range</span>
+                      <span className="tabular-nums">{fmt(lostRange.min)} – {fmt(lostRange.max)}/mo</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Budget-to-close correlation */}
+        <div className="border-t border-border pt-3">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Budget-to-Close Correlation</p>
+          <div className="grid grid-cols-2 gap-4 text-center">
+            <div>
+              <p className={`text-lg font-bold ${data.budgetConv !== null && data.budgetConv > 0 ? "text-emerald-500" : "text-muted-foreground"}`}>
+                {data.budgetConv !== null ? `${data.budgetConv}%` : "N/A"}
+              </p>
+              <p className="text-[10px] text-muted-foreground">Stated budget ({data.budgetLeadCount} leads)</p>
+            </div>
+            <div>
+              <p className={`text-lg font-bold ${data.noBudgetConv !== null ? "text-orange-500" : "text-muted-foreground"}`}>
+                {data.noBudgetConv !== null ? `${data.noBudgetConv}%` : "N/A"}
+              </p>
+              <p className="text-[10px] text-muted-foreground">No budget ({data.noBudgetLeadCount} leads)</p>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

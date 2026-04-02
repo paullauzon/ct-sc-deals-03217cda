@@ -343,6 +343,15 @@ export function DashboardBusiness({ leads, onDrillDown }: Props) {
       <StageWaterfall leads={leads} />
 
 
+      {/* ── Urgency Driver Taxonomy ── */}
+      <UrgencyDriverTaxonomy leads={leads} />
+
+      {/* ── Value Prop Effectiveness ── */}
+      <ValuePropEffectiveness leads={leads} />
+
+      {/* ── Competitive Displacement Playbook ── */}
+      <CompetitiveDisplacementPlaybook leads={leads} />
+
       {/* ── Signal-to-Close Conversion Matrix ── */}
       <SignalToCloseMatrix leads={leads} onDrillDown={onDrillDown} />
 
@@ -678,3 +687,259 @@ function StageWaterfall({ leads }: { leads: Lead[] }) {
   );
 }
 
+// ── Urgency Driver Taxonomy ──
+function UrgencyDriverTaxonomy({ leads }: { leads: Lead[] }) {
+  const data = useMemo(() => {
+    const categories: Record<string, { drivers: string[]; count: number; wonCount: number; lostCount: number }> = {
+      "Competitive Pressure": { drivers: [], count: 0, wonCount: 0, lostCount: 0 },
+      "Resource Constraints": { drivers: [], count: 0, wonCount: 0, lostCount: 0 },
+      "Market Timing": { drivers: [], count: 0, wonCount: 0, lostCount: 0 },
+      "Incumbent Failure": { drivers: [], count: 0, wonCount: 0, lostCount: 0 },
+      "Growth Mandate": { drivers: [], count: 0, wonCount: 0, lostCount: 0 },
+      "Process Need": { drivers: [], count: 0, wonCount: 0, lostCount: 0 },
+      "Other": { drivers: [], count: 0, wonCount: 0, lostCount: 0 },
+    };
+
+    for (const lead of leads) {
+      for (const m of lead.meetings || []) {
+        if (!m.intelligence?.dealSignals?.urgencyDrivers?.length) continue;
+        for (const driver of m.intelligence.dealSignals.urgencyDrivers) {
+          if (!driver || driver.length < 5) continue;
+          const d = driver.toLowerCase();
+          let cat = "Other";
+          if (d.includes("competitor") || d.includes("competitive") || d.includes("market share")) cat = "Competitive Pressure";
+          else if (d.includes("bandwidth") || d.includes("resource") || d.includes("capacity") || d.includes("team") || d.includes("headcount")) cat = "Resource Constraints";
+          else if (d.includes("timing") || d.includes("window") || d.includes("quarter") || d.includes("deadline") || d.includes("year-end")) cat = "Market Timing";
+          else if (d.includes("underperform") || d.includes("current") || d.includes("incumbent") || d.includes("existing") || d.includes("not working") || d.includes("dissatisfied")) cat = "Incumbent Failure";
+          else if (d.includes("growth") || d.includes("scale") || d.includes("expand") || d.includes("increase") || d.includes("more deals") || d.includes("deal flow")) cat = "Growth Mandate";
+          else if (d.includes("process") || d.includes("systematic") || d.includes("structure") || d.includes("pipeline")) cat = "Process Need";
+
+          categories[cat].count++;
+          categories[cat].drivers.push(driver.length > 80 ? driver.slice(0, 80) + "…" : driver);
+          if (lead.stage === "Closed Won") categories[cat].wonCount++;
+          if (["Closed Lost", "Went Dark"].includes(lead.stage)) categories[cat].lostCount++;
+        }
+      }
+    }
+
+    return Object.entries(categories)
+      .filter(([, v]) => v.count > 0)
+      .sort((a, b) => b[1].count - a[1].count);
+  }, [leads]);
+
+  if (data.length === 0) return null;
+
+  const total = data.reduce((s, [, v]) => s + v.count, 0);
+
+  return (
+    <div>
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+        Urgency Driver Taxonomy ({total} drivers extracted)
+      </h2>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {data.map(([cat, v]) => {
+          const closed = v.wonCount + v.lostCount;
+          const winRate = closed > 0 ? Math.round((v.wonCount / closed) * 100) : null;
+          return (
+            <div key={cat} className="border border-border rounded-lg p-3 space-y-2">
+              <div className="flex justify-between items-start">
+                <p className="text-xs font-semibold">{cat}</p>
+                <span className="text-lg font-bold tabular-nums">{v.count}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                <div className="h-full rounded-full bg-primary/60" style={{ width: `${(v.count / total) * 100}%` }} />
+              </div>
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>{Math.round((v.count / total) * 100)}% of total</span>
+                {winRate !== null && <span className="text-emerald-500">{winRate}% win rate</span>}
+              </div>
+              {v.drivers.length > 0 && (
+                <p className="text-[10px] text-muted-foreground italic truncate" title={v.drivers[0]}>
+                  e.g., "{v.drivers[0]}"
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Value Prop Effectiveness ──
+function ValuePropEffectiveness({ leads }: { leads: Lead[] }) {
+  const data = useMemo(() => {
+    const propMap: Record<string, { prop: string; won: number; lost: number; active: number; total: number }> = {};
+
+    for (const lead of leads) {
+      for (const m of lead.meetings || []) {
+        if (!m.intelligence?.valueProposition) continue;
+        const vp = m.intelligence.valueProposition;
+        if (!vp || vp.length < 10) continue;
+
+        // Normalize to shorter labels
+        const normalized = vp.length > 70 ? vp.slice(0, 70) + "…" : vp;
+        if (!propMap[normalized]) propMap[normalized] = { prop: normalized, won: 0, lost: 0, active: 0, total: 0 };
+        propMap[normalized].total++;
+
+        if (lead.stage === "Closed Won") propMap[normalized].won++;
+        else if (["Closed Lost", "Went Dark"].includes(lead.stage)) propMap[normalized].lost++;
+        else propMap[normalized].active++;
+      }
+    }
+
+    // Deduplicate leads (only count each lead once per prop)
+    return Object.values(propMap)
+      .filter(p => p.total >= 2) // Only show props mentioned 2+ times
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+  }, [leads]);
+
+  if (data.length === 0) return null;
+
+  return (
+    <div>
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+        Value Proposition Effectiveness
+      </h2>
+      <div className="border border-border rounded-lg overflow-hidden">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border bg-secondary/30">
+              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Value Prop Resonated</th>
+              <th className="text-right px-3 py-2.5 font-medium text-muted-foreground">Mentions</th>
+              <th className="text-right px-3 py-2.5 font-medium text-muted-foreground">Won</th>
+              <th className="text-right px-3 py-2.5 font-medium text-muted-foreground">Lost</th>
+              <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Win%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((p, i) => {
+              const closed = p.won + p.lost;
+              const winPct = closed > 0 ? Math.round((p.won / closed) * 100) : null;
+              return (
+                <tr key={i} className={`border-b border-border last:border-0 ${i % 2 ? "bg-secondary/10" : ""}`}>
+                  <td className="px-4 py-2.5 max-w-[300px] truncate" title={p.prop}>{p.prop}</td>
+                  <td className="text-right px-3 py-2.5 tabular-nums">{p.total}</td>
+                  <td className="text-right px-3 py-2.5 tabular-nums text-emerald-500 font-medium">{p.won}</td>
+                  <td className="text-right px-3 py-2.5 tabular-nums text-destructive">{p.lost}</td>
+                  <td className={`text-right px-4 py-2.5 tabular-nums font-semibold ${winPct !== null && winPct >= 50 ? "text-emerald-500" : "text-muted-foreground"}`}>
+                    {winPct !== null ? `${winPct}%` : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Competitive Displacement Playbook ──
+function CompetitiveDisplacementPlaybook({ leads }: { leads: Lead[] }) {
+  const data = useMemo(() => {
+    const competitors: Record<string, {
+      name: string;
+      mentions: number;
+      sentiment: Record<string, number>;
+      strengths: string[];
+      weaknesses: string[];
+      barriers: string[];
+      wonAgainst: number;
+      lostTo: number;
+    }> = {};
+
+    for (const lead of leads) {
+      for (const m of lead.meetings || []) {
+        if (!m.intelligence?.dealSignals) continue;
+        const ds = m.intelligence.dealSignals;
+
+        // Process structured competitor details
+        for (const cd of ds.competitorDetails || []) {
+          if (!cd.name || cd.name.length < 2) continue;
+          if (!competitors[cd.name]) competitors[cd.name] = { name: cd.name, mentions: 0, sentiment: {}, strengths: [], weaknesses: [], barriers: [], wonAgainst: 0, lostTo: 0 };
+          competitors[cd.name].mentions++;
+          if (cd.prospectSentiment) competitors[cd.name].sentiment[cd.prospectSentiment] = (competitors[cd.name].sentiment[cd.prospectSentiment] || 0) + 1;
+          for (const s of cd.strengthsMentioned || []) { if (s && !competitors[cd.name].strengths.includes(s)) competitors[cd.name].strengths.push(s); }
+          for (const w of cd.weaknessesMentioned || []) { if (w && !competitors[cd.name].weaknesses.includes(w)) competitors[cd.name].weaknesses.push(w); }
+
+          if (lead.stage === "Closed Won") competitors[cd.name].wonAgainst++;
+          if (["Closed Lost", "Went Dark"].includes(lead.stage)) competitors[cd.name].lostTo++;
+        }
+
+        // Process current solution mentions
+        if (ds.currentSolution && ds.currentSolution.length > 2 && ds.currentSolution !== "None mentioned") {
+          const name = ds.currentSolution;
+          if (!competitors[name]) competitors[name] = { name, mentions: 0, sentiment: {}, strengths: [], weaknesses: [], barriers: [], wonAgainst: 0, lostTo: 0 };
+          competitors[name].mentions++;
+        }
+
+        // Switching barriers
+        for (const b of ds.switchingBarriers || []) {
+          // Associate barriers with the first mentioned competitor
+          const firstComp = Object.keys(competitors)[0];
+          if (firstComp && b && !competitors[firstComp].barriers.includes(b)) {
+            competitors[firstComp].barriers.push(b);
+          }
+        }
+      }
+    }
+
+    return Object.values(competitors)
+      .filter(c => c.mentions >= 1)
+      .sort((a, b) => b.mentions - a.mentions)
+      .slice(0, 8);
+  }, [leads]);
+
+  if (data.length === 0) return null;
+
+  return (
+    <div>
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+        Competitive Displacement Playbook
+      </h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {data.map(c => (
+          <div key={c.name} className="border border-border rounded-lg p-3 space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-semibold">{c.name}</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{c.mentions} mentions</span>
+            </div>
+
+            {Object.keys(c.sentiment).length > 0 && (
+              <div className="flex gap-2">
+                {Object.entries(c.sentiment).map(([s, count]) => (
+                  <span key={s} className={`text-[10px] px-1.5 py-0.5 rounded ${s === "Unfavorable" ? "bg-emerald-500/10 text-emerald-600" : s === "Favorable" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>
+                    {s} ({count})
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {(c.wonAgainst > 0 || c.lostTo > 0) && (
+              <div className="flex gap-3 text-[10px]">
+                {c.wonAgainst > 0 && <span className="text-emerald-500">Won vs: {c.wonAgainst}</span>}
+                {c.lostTo > 0 && <span className="text-destructive">Lost to: {c.lostTo}</span>}
+              </div>
+            )}
+
+            {c.weaknesses.length > 0 && (
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase">Their Weaknesses (our leverage)</p>
+                <p className="text-[10px] truncate">{c.weaknesses.slice(0, 3).join(" · ")}</p>
+              </div>
+            )}
+
+            {c.strengths.length > 0 && (
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase">Their Strengths (counter needed)</p>
+                <p className="text-[10px] truncate">{c.strengths.slice(0, 3).join(" · ")}</p>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

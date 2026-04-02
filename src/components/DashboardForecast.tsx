@@ -254,6 +254,15 @@ export function DashboardForecast({ leads, onDrillDown }: Props) {
       {/* Objection & Competitor Heatmap */}
       <ObjectionCompetitorHeatmap leads={leads} />
 
+      {/* Stakeholder Risk Heatmap */}
+      <StakeholderRiskHeatmap leads={leads} onDrillDown={onDrillDown} />
+
+      {/* Decision Process Complexity */}
+      <DecisionProcessComplexity leads={leads} />
+
+      {/* Risk Portfolio View */}
+      <RiskPortfolioView leads={leads} onDrillDown={onDrillDown} />
+
       {/* Revenue Concentration Risk */}
       <Card>
         <CardHeader className="pb-2">
@@ -526,5 +535,318 @@ function WinLossAnalysis({ leads }: { leads: Lead[] }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// ── Stakeholder Risk Heatmap ──
+function StakeholderRiskHeatmap({ leads, onDrillDown }: { leads: Lead[]; onDrillDown: (title: string, leads: Lead[]) => void }) {
+  const data = useMemo(() => {
+    const TERMINAL_SET = new Set(["Closed Won", "Closed Lost", "Went Dark", "Duplicate", "Disqualified"]);
+    const atRisk: { lead: Lead; issue: string; value: number }[] = [];
+    let totalStakeholders = 0;
+    const stanceCounts: Record<string, number> = {};
+    const influenceCounts: Record<string, number> = {};
+
+    for (const lead of leads) {
+      if (TERMINAL_SET.has(lead.stage)) continue;
+      const di = lead.dealIntelligence as any;
+      if (!di?.stakeholderMap?.length) continue;
+
+      for (const s of di.stakeholderMap) {
+        totalStakeholders++;
+        stanceCounts[s.stance] = (stanceCounts[s.stance] || 0) + 1;
+        influenceCounts[s.influence] = (influenceCounts[s.influence] || 0) + 1;
+      }
+
+      // Flag deals where decision maker is neutral/skeptic and no champion
+      const hasChampion = di.stakeholderMap.some((s: any) => s.stance === "Champion");
+      const neutralDM = di.stakeholderMap.some((s: any) =>
+        (s.influence === "Decision Maker" || s.influence === "High") &&
+        (s.stance === "Neutral" || s.stance === "Skeptic" || s.stance === "Unknown")
+      );
+      if (neutralDM && !hasChampion) {
+        atRisk.push({ lead, issue: "No champion + neutral/skeptic DM", value: lead.dealValue });
+      }
+    }
+
+    return {
+      atRisk: atRisk.sort((a, b) => b.value - a.value),
+      totalStakeholders,
+      stanceCounts,
+      influenceCounts,
+      totalValue: atRisk.reduce((s, r) => s + r.value, 0),
+    };
+  }, [leads]);
+
+  if (data.totalStakeholders === 0) return null;
+
+  const stances = ["Champion", "Supporter", "Neutral", "Skeptic", "Blocker", "Unknown"];
+  const stanceColor = (s: string) => {
+    if (s === "Champion") return "text-emerald-500";
+    if (s === "Supporter") return "text-blue-500";
+    if (s === "Neutral") return "text-yellow-600";
+    if (s === "Skeptic") return "text-orange-500";
+    if (s === "Blocker") return "text-destructive";
+    return "text-muted-foreground";
+  };
+
+  return (
+    <Card className={data.atRisk.length > 0 ? "border-orange-500/30" : ""}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Users className="h-4 w-4" /> Stakeholder Risk Heatmap ({data.totalStakeholders} mapped)
+          </CardTitle>
+          {data.atRisk.length > 0 && (
+            <Badge variant="destructive" className="text-[10px]">
+              {data.atRisk.length} deals at risk · ${data.totalValue.toLocaleString()}
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Stance distribution */}
+        <div className="flex flex-wrap gap-3">
+          {stances.map(s => {
+            const count = data.stanceCounts[s] || 0;
+            if (count === 0) return null;
+            return (
+              <div key={s} className="text-center">
+                <p className={`text-lg font-bold tabular-nums ${stanceColor(s)}`}>{count}</p>
+                <p className="text-[10px] text-muted-foreground">{s}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* At-risk deals */}
+        {data.atRisk.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-destructive mb-2">⚠ Deals without a champion (neutral/skeptic decision makers)</p>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Deal</TableHead>
+                  <TableHead className="text-xs">Company</TableHead>
+                  <TableHead className="text-xs text-right">Value</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.atRisk.slice(0, 8).map(r => (
+                  <TableRow key={r.lead.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onDrillDown(r.lead.name, [r.lead])}>
+                    <TableCell className="text-xs font-medium">{r.lead.name}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{r.lead.company}</TableCell>
+                    <TableCell className="text-xs text-right tabular-nums font-medium">${r.value.toLocaleString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {data.atRisk.length > 8 && (
+              <button className="text-xs text-primary hover:underline mt-2" onClick={() => onDrillDown("All At-Risk (No Champion)", data.atRisk.map(r => r.lead))}>
+                View all {data.atRisk.length} →
+              </button>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Decision Process Complexity ──
+function DecisionProcessComplexity({ leads }: { leads: Lead[] }) {
+  const data = useMemo(() => {
+    const categories: Record<string, { label: string; count: number; won: number; lost: number; avgCycle: number; cycleDays: number[] }> = {
+      solo: { label: "Solo Decision Maker", count: 0, won: 0, lost: 0, avgCycle: 0, cycleDays: [] },
+      partner: { label: "Partner Discussion", count: 0, won: 0, lost: 0, avgCycle: 0, cycleDays: [] },
+      committee: { label: "Committee/Board", count: 0, won: 0, lost: 0, avgCycle: 0, cycleDays: [] },
+      other: { label: "Other/Unknown", count: 0, won: 0, lost: 0, avgCycle: 0, cycleDays: [] },
+    };
+
+    const seen = new Set<string>();
+    for (const lead of leads) {
+      for (const m of lead.meetings || []) {
+        if (!m.intelligence?.dealSignals?.decisionProcess) continue;
+        if (seen.has(lead.id)) continue;
+        seen.add(lead.id);
+
+        const dp = m.intelligence.dealSignals.decisionProcess.toLowerCase();
+        let cat = "other";
+        if (dp.includes("sole") || dp.includes("solo") || dp.includes("single") || dp.includes("himself") || dp.includes("herself")) cat = "solo";
+        else if (dp.includes("partner") || dp.includes("wife") || dp.includes("husband") || dp.includes("co-founder")) cat = "partner";
+        else if (dp.includes("committee") || dp.includes("board") || dp.includes("team") || dp.includes("internal review") || dp.includes("leadership")) cat = "committee";
+
+        categories[cat].count++;
+        if (lead.stage === "Closed Won") categories[cat].won++;
+        if (["Closed Lost", "Went Dark"].includes(lead.stage)) categories[cat].lost++;
+
+        if (lead.dateSubmitted && lead.closedDate) {
+          const days = differenceInDays(parseISO(lead.closedDate), parseISO(lead.dateSubmitted));
+          if (days > 0) categories[cat].cycleDays.push(days);
+        }
+      }
+    }
+
+    for (const cat of Object.values(categories)) {
+      cat.avgCycle = cat.cycleDays.length > 0 ? Math.round(cat.cycleDays.reduce((a, b) => a + b, 0) / cat.cycleDays.length) : 0;
+    }
+
+    return Object.values(categories).filter(c => c.count > 0);
+  }, [leads]);
+
+  if (data.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Users className="h-4 w-4" /> Decision Process Complexity
+        </CardTitle>
+        <p className="text-[10px] text-muted-foreground">How decision-making structure affects cycle time and win rate</p>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-xs">Decision Type</TableHead>
+              <TableHead className="text-xs text-right">Deals</TableHead>
+              <TableHead className="text-xs text-right">Won</TableHead>
+              <TableHead className="text-xs text-right">Lost</TableHead>
+              <TableHead className="text-xs text-right">Win Rate</TableHead>
+              <TableHead className="text-xs text-right">Avg Cycle</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.map(d => {
+              const closed = d.won + d.lost;
+              const winRate = closed > 0 ? Math.round((d.won / closed) * 100) : null;
+              return (
+                <TableRow key={d.label}>
+                  <TableCell className="text-xs font-medium">{d.label}</TableCell>
+                  <TableCell className="text-xs text-right tabular-nums">{d.count}</TableCell>
+                  <TableCell className="text-xs text-right tabular-nums text-emerald-500">{d.won}</TableCell>
+                  <TableCell className="text-xs text-right tabular-nums text-destructive">{d.lost}</TableCell>
+                  <TableCell className={`text-xs text-right tabular-nums font-semibold ${winRate !== null && winRate >= 50 ? "text-emerald-500" : "text-muted-foreground"}`}>
+                    {winRate !== null ? `${winRate}%` : "—"}
+                  </TableCell>
+                  <TableCell className="text-xs text-right tabular-nums">
+                    {d.avgCycle > 0 ? `${d.avgCycle}d` : "—"}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Risk Portfolio View ──
+function RiskPortfolioView({ leads, onDrillDown }: { leads: Lead[]; onDrillDown: (title: string, leads: Lead[]) => void }) {
+  const data = useMemo(() => {
+    const TERMINAL_SET = new Set(["Closed Won", "Closed Lost", "Went Dark", "Duplicate", "Disqualified"]);
+    const severityCounts: Record<string, number> = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+    const mitigationCounts: Record<string, number> = { Unmitigated: 0, "Partially Mitigated": 0, Mitigated: 0 };
+    const riskPatterns: Record<string, number> = {};
+    let totalRisks = 0;
+    const unmitCriticalLeads: Lead[] = [];
+
+    for (const lead of leads) {
+      if (TERMINAL_SET.has(lead.stage)) continue;
+      const di = lead.dealIntelligence as any;
+      if (!di?.riskRegister?.length) continue;
+
+      let hasUnmitCrit = false;
+      for (const risk of di.riskRegister) {
+        totalRisks++;
+        if (risk.severity) severityCounts[risk.severity] = (severityCounts[risk.severity] || 0) + 1;
+        if (risk.mitigationStatus) mitigationCounts[risk.mitigationStatus] = (mitigationCounts[risk.mitigationStatus] || 0) + 1;
+        
+        // Categorize risk
+        const r = (risk.risk || "").toLowerCase();
+        let pattern = "Other";
+        if (r.includes("budget") || r.includes("cost") || r.includes("price")) pattern = "Budget/Pricing";
+        else if (r.includes("competitor") || r.includes("alternative")) pattern = "Competitive";
+        else if (r.includes("timeline") || r.includes("delay") || r.includes("timing")) pattern = "Timeline";
+        else if (r.includes("decision") || r.includes("approval") || r.includes("committee")) pattern = "Decision Process";
+        else if (r.includes("champion") || r.includes("internal")) pattern = "Internal Advocacy";
+        else if (r.includes("capacity") || r.includes("resource")) pattern = "Resource Constraints";
+        riskPatterns[pattern] = (riskPatterns[pattern] || 0) + 1;
+
+        if (risk.severity === "Critical" && risk.mitigationStatus === "Unmitigated") hasUnmitCrit = true;
+      }
+      if (hasUnmitCrit) unmitCriticalLeads.push(lead);
+    }
+
+    const patterns = Object.entries(riskPatterns).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    return { severityCounts, mitigationCounts, totalRisks, patterns, unmitCriticalLeads };
+  }, [leads]);
+
+  if (data.totalRisks === 0) return null;
+
+  const sevColor = (s: string) => {
+    if (s === "Critical") return "text-destructive font-bold";
+    if (s === "High") return "text-orange-500 font-semibold";
+    if (s === "Medium") return "text-yellow-600";
+    return "text-muted-foreground";
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Shield className="h-4 w-4" /> Pipeline Risk Portfolio ({data.totalRisks} risks)
+          </CardTitle>
+          {data.unmitCriticalLeads.length > 0 && (
+            <Badge variant="destructive" className="text-[10px] cursor-pointer" onClick={() => onDrillDown("Unmitigated Critical Risks", data.unmitCriticalLeads)}>
+              {data.unmitCriticalLeads.length} critical unmitigated
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          {/* Severity */}
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">By Severity</p>
+            <div className="space-y-1">
+              {["Critical", "High", "Medium", "Low"].map(s => (
+                <div key={s} className="flex justify-between text-xs">
+                  <span className={sevColor(s)}>{s}</span>
+                  <span className="tabular-nums">{data.severityCounts[s] || 0}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Mitigation */}
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">By Mitigation</p>
+            <div className="space-y-1">
+              {["Unmitigated", "Partially Mitigated", "Mitigated"].map(s => (
+                <div key={s} className="flex justify-between text-xs">
+                  <span className={s === "Unmitigated" ? "text-destructive" : s === "Mitigated" ? "text-emerald-500" : "text-yellow-600"}>{s}</span>
+                  <span className="tabular-nums">{data.mitigationCounts[s] || 0}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Risk patterns */}
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Common Risk Patterns</p>
+          <div className="flex flex-wrap gap-2">
+            {data.patterns.map(([pattern, count]) => (
+              <Badge key={pattern} variant="secondary" className="text-xs gap-1.5">
+                {pattern}
+                <span className="text-[10px] font-semibold tabular-nums opacity-70">{count}</span>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

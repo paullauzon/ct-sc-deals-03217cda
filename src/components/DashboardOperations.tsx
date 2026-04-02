@@ -447,6 +447,15 @@ export function DashboardOperations({ leads, onDrillDown }: Props) {
       {/* Stuck Pipeline Alert */}
       <StuckPipelineAlert leads={leads} onDrillDown={onDrillDown} />
 
+      {/* Action Item Completion Tracker */}
+      <ActionItemTracker leads={leads} onDrillDown={onDrillDown} />
+
+      {/* Deal Temperature & Momentum Grid */}
+      <DealTemperatureMomentum leads={leads} onDrillDown={onDrillDown} />
+
+      {/* Meeting Count vs Outcome */}
+      <MeetingCountOutcome leads={leads} />
+
       {/* At-Risk Pipeline */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card
@@ -712,6 +721,245 @@ function StuckPipelineAlert({ leads, onDrillDown }: { leads: Lead[]; onDrillDown
             View all {stuckDeals.length} deals →
           </button>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Action Item Completion Tracker ──
+function ActionItemTracker({ leads, onDrillDown }: { leads: Lead[]; onDrillDown: (title: string, leads: Lead[]) => void }) {
+  const data = useMemo(() => {
+    const repItems: Record<string, { rep: string; open: number; completed: number; overdue: number; dropped: number; total: number; leads: Lead[] }> = {};
+    let totalOpen = 0, totalCompleted = 0, totalDropped = 0, totalItems = 0;
+
+    for (const lead of leads) {
+      const di = lead.dealIntelligence as any;
+      if (!di?.actionItemTracker?.length) continue;
+      const rep = lead.assignedTo || "Unassigned";
+      if (!repItems[rep]) repItems[rep] = { rep, open: 0, completed: 0, overdue: 0, dropped: 0, total: 0, leads: [] };
+      repItems[rep].leads.push(lead);
+
+      for (const item of di.actionItemTracker) {
+        repItems[rep].total++;
+        totalItems++;
+        if (item.status === "Completed") { repItems[rep].completed++; totalCompleted++; }
+        else if (item.status === "Dropped") { repItems[rep].dropped++; totalDropped++; }
+        else { repItems[rep].open++; totalOpen++; if (item.status === "Overdue") repItems[rep].overdue++; }
+      }
+    }
+
+    const reps = Object.values(repItems).sort((a, b) => b.total - a.total);
+    const completionRate = totalItems > 0 ? Math.round((totalCompleted / totalItems) * 100) : 0;
+    return { reps, totalOpen, totalCompleted, totalDropped, totalItems, completionRate };
+  }, [leads]);
+
+  if (data.totalItems === 0) return null;
+
+  return (
+    <Card className={data.completionRate < 20 ? "border-destructive/30" : ""}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-destructive" /> Action Item Completion Tracker
+          </CardTitle>
+          <div className="text-right">
+            <span className={`text-lg font-bold ${data.completionRate < 20 ? "text-destructive" : data.completionRate < 50 ? "text-orange-500" : "text-emerald-500"}`}>
+              {data.completionRate}%
+            </span>
+            <p className="text-[10px] text-muted-foreground">{data.totalCompleted}/{data.totalItems} completed</p>
+          </div>
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          {data.totalOpen} open · {data.totalDropped} dropped — promises from meetings not followed through
+        </p>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-xs">Rep</TableHead>
+              <TableHead className="text-xs text-right">Total</TableHead>
+              <TableHead className="text-xs text-right">Open</TableHead>
+              <TableHead className="text-xs text-right">Done</TableHead>
+              <TableHead className="text-xs text-right">Dropped</TableHead>
+              <TableHead className="text-xs text-right">Rate</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.reps.map(r => {
+              const rate = r.total > 0 ? Math.round((r.completed / r.total) * 100) : 0;
+              return (
+                <TableRow key={r.rep} className="cursor-pointer hover:bg-muted/50" onClick={() => onDrillDown(`${r.rep} Action Items`, r.leads)}>
+                  <TableCell className="text-xs font-medium">{r.rep}</TableCell>
+                  <TableCell className="text-xs text-right tabular-nums">{r.total}</TableCell>
+                  <TableCell className="text-xs text-right tabular-nums text-orange-500 font-medium">{r.open}</TableCell>
+                  <TableCell className="text-xs text-right tabular-nums text-emerald-500">{r.completed}</TableCell>
+                  <TableCell className="text-xs text-right tabular-nums text-muted-foreground">{r.dropped}</TableCell>
+                  <TableCell className={`text-xs text-right tabular-nums font-semibold ${rate < 20 ? "text-destructive" : rate < 50 ? "text-orange-500" : "text-emerald-500"}`}>
+                    {rate}%
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Deal Temperature & Momentum Grid ──
+function DealTemperatureMomentum({ leads, onDrillDown }: { leads: Lead[]; onDrillDown: (title: string, leads: Lead[]) => void }) {
+  const grid = useMemo(() => {
+    const temps = ["On Fire", "Warm", "Lukewarm", "Cold", "Ice Cold"] as const;
+    const moms = ["Accelerating", "Steady", "Stalling", "Stalled"] as const;
+    const cells: Record<string, { leads: Lead[]; value: number }> = {};
+
+    for (const t of temps) for (const m of moms) cells[`${t}|${m}`] = { leads: [], value: 0 };
+
+    const activeWithDI = leads.filter(l => {
+      if (TERMINAL_STAGES.includes(l.stage)) return false;
+      const di = l.dealIntelligence as any;
+      return di?.winStrategy?.dealTemperature && di?.momentumSignals?.momentum;
+    });
+
+    for (const l of activeWithDI) {
+      const di = l.dealIntelligence as any;
+      const key = `${di.winStrategy.dealTemperature}|${di.momentumSignals.momentum}`;
+      if (cells[key]) {
+        cells[key].leads.push(l);
+        cells[key].value += l.dealValue;
+      }
+    }
+
+    return { cells, temps, moms, total: activeWithDI.length };
+  }, [leads]);
+
+  if (grid.total === 0) return null;
+
+  const tempColor = (t: string) => {
+    if (t === "On Fire") return "text-red-500 font-bold";
+    if (t === "Warm") return "text-orange-500";
+    if (t === "Lukewarm") return "text-yellow-600";
+    return "text-blue-500";
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <TrendingUp className="h-4 w-4" /> Deal Temperature × Momentum ({grid.total} deals)
+        </CardTitle>
+        <p className="text-[10px] text-muted-foreground">Click cells to drill into specific deal clusters</p>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-xs">Temp \ Momentum</TableHead>
+              {grid.moms.map(m => <TableHead key={m} className="text-xs text-center">{m}</TableHead>)}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {grid.temps.map(t => {
+              const hasAny = grid.moms.some(m => grid.cells[`${t}|${m}`].leads.length > 0);
+              if (!hasAny) return null;
+              return (
+                <TableRow key={t}>
+                  <TableCell className={`text-xs font-medium ${tempColor(t)}`}>{t}</TableCell>
+                  {grid.moms.map(m => {
+                    const cell = grid.cells[`${t}|${m}`];
+                    return (
+                      <TableCell
+                        key={m}
+                        className={`text-xs text-center ${cell.leads.length > 0 ? "cursor-pointer hover:bg-muted/50" : ""}`}
+                        onClick={() => cell.leads.length > 0 && onDrillDown(`${t} + ${m}`, cell.leads)}
+                      >
+                        {cell.leads.length > 0 ? (
+                          <div>
+                            <span className="font-semibold tabular-nums">{cell.leads.length}</span>
+                            <p className="text-[9px] text-muted-foreground">${(cell.value / 1000).toFixed(0)}K</p>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/30">—</span>
+                        )}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Meeting Count vs Outcome ──
+function MeetingCountOutcome({ leads }: { leads: Lead[] }) {
+  const data = useMemo(() => {
+    const buckets: Record<string, { label: string; won: number; lost: number; active: number; total: number }> = {
+      "1": { label: "1 meeting", won: 0, lost: 0, active: 0, total: 0 },
+      "2": { label: "2 meetings", won: 0, lost: 0, active: 0, total: 0 },
+      "3": { label: "3 meetings", won: 0, lost: 0, active: 0, total: 0 },
+      "4+": { label: "4+ meetings", won: 0, lost: 0, active: 0, total: 0 },
+    };
+
+    const leadsWithMeetings = leads.filter(l => (l.meetings || []).length > 0);
+    for (const l of leadsWithMeetings) {
+      const count = l.meetings.length;
+      const key = count >= 4 ? "4+" : String(count);
+      buckets[key].total++;
+      if (l.stage === "Closed Won") buckets[key].won++;
+      else if (["Closed Lost", "Went Dark"].includes(l.stage)) buckets[key].lost++;
+      else buckets[key].active++;
+    }
+
+    return Object.values(buckets).filter(b => b.total > 0);
+  }, [leads]);
+
+  if (data.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Clock className="h-4 w-4" /> Meeting Count vs Outcome
+        </CardTitle>
+        <p className="text-[10px] text-muted-foreground">Optimal meeting cadence — what's the "sweet spot"?</p>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-xs">Meetings</TableHead>
+              <TableHead className="text-xs text-right">Total</TableHead>
+              <TableHead className="text-xs text-right">Won</TableHead>
+              <TableHead className="text-xs text-right">Lost</TableHead>
+              <TableHead className="text-xs text-right">Active</TableHead>
+              <TableHead className="text-xs text-right">Win Rate</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.map(b => {
+              const closed = b.won + b.lost;
+              const winRate = closed > 0 ? Math.round((b.won / closed) * 100) : null;
+              return (
+                <TableRow key={b.label}>
+                  <TableCell className="text-xs font-medium">{b.label}</TableCell>
+                  <TableCell className="text-xs text-right tabular-nums">{b.total}</TableCell>
+                  <TableCell className="text-xs text-right tabular-nums text-emerald-500 font-medium">{b.won}</TableCell>
+                  <TableCell className="text-xs text-right tabular-nums text-destructive">{b.lost}</TableCell>
+                  <TableCell className="text-xs text-right tabular-nums text-muted-foreground">{b.active}</TableCell>
+                  <TableCell className={`text-xs text-right tabular-nums font-semibold ${winRate !== null && winRate >= 50 ? "text-emerald-500" : winRate !== null ? "text-orange-500" : "text-muted-foreground"}`}>
+                    {winRate !== null ? `${winRate}%` : "—"}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
       </CardContent>
     </Card>
   );
