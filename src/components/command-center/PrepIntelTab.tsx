@@ -38,6 +38,11 @@ interface PrepBrief {
   questionsToAsk?: string[];
   risksToWatch?: string[];
   desiredOutcomes?: string[];
+  openingHook?: string;
+  theOneInsight?: string;
+  landmines?: string[];
+  keyQuestions?: string[];
+  meetingGoal?: string;
 }
 
 function BriefSection({ title, icon: Icon, iconColor, children, defaultOpen = true }: { title: string; icon: typeof Target; iconColor: string; children: React.ReactNode; defaultOpen?: boolean }) {
