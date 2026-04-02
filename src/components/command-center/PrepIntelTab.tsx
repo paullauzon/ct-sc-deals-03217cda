@@ -144,9 +144,7 @@ function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () =>
             <Mail className="h-2.5 w-2.5" />{emailCount} email{emailCount !== 1 ? "s" : ""}
           </span>
         )}
-        {lead.dealValue > 0 && (
-          <span className="tabular-nums font-medium">${lead.dealValue.toLocaleString()}</span>
-        )}
+        <span className={cn("tabular-nums font-medium", lead.dealValue === 0 && "text-muted-foreground")}>${lead.dealValue.toLocaleString()}</span>
         {lead.stage && (
           <span className="px-1.5 py-0.5 rounded bg-secondary">{lead.stage}</span>
         )}
