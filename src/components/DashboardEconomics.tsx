@@ -339,7 +339,7 @@ export function DashboardEconomics({ leads }: Props) {
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <BrandLogo brand={brand} size="sm" />
                   {brand} Unit Economics
-                  <span className="text-[10px] text-muted-foreground ml-auto">{month}</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">{format(parse(month, "yyyy-MM", new Date()), "MMM yyyy")}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
