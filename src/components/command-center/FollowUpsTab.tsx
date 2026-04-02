@@ -176,6 +176,7 @@ function FollowUpRow({
               onClick={() => {
                 const newDate = format(addDays(new Date(), d), "yyyy-MM-dd");
                 onUpdate(lead.id, { nextFollowUp: newDate });
+                toast({ title: `Snoozed ${lead.name} for ${d} days`, description: `Next follow-up: ${format(addDays(new Date(), d), "EEE, MMM d")}` });
               }}
               className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors opacity-0 group-hover:opacity-100"
               title={`Snooze ${d} days`}
