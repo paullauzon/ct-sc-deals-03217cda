@@ -34,6 +34,108 @@ function stripQuotes(s: string): string {
   return s;
 }
 
+// ─── CitedText: parses inline citations into hyperlinks / superscript labels ───
+// Patterns: (web search: URL), (website: URL), (URL), (website), (form submission), (notes)
+function CitedText({ text, className }: { text: string; className?: string }) {
+  // Regex to find citation patterns like (web search: https://...) or (website) or (https://...)
+  const citationRegex = /\((?:(web search|website|form submission|notes|linkedin|LinkedIn profile|company website|firecrawl)[:\s]*)?((https?:\/\/[^\s)]+))?\)/gi;
+
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  // Reset regex
+  citationRegex.lastIndex = 0;
+
+  while ((match = citationRegex.exec(text)) !== null) {
+    const fullMatch = match[0];
+    const sourceLabel = match[1]; // e.g. "web search", "website", "notes"
+    const url = match[2]; // e.g. "https://..."
+    const matchStart = match.index;
+
+    // Text before this citation
+    const beforeText = text.slice(lastIndex, matchStart);
+
+    if (url) {
+      // Make the preceding text segment a clickable link
+      // Find the last sentence/clause boundary to determine what text to link
+      const sentenceBreaks = /[.!?;•\n]/g;
+      let linkStart = 0;
+      let breakMatch: RegExpExecArray | null;
+      sentenceBreaks.lastIndex = 0;
+      // Search within beforeText for the last sentence break
+      const searchIn = beforeText;
+      let lastBreak = -1;
+      while ((breakMatch = sentenceBreaks.exec(searchIn)) !== null) {
+        lastBreak = breakMatch.index;
+      }
+
+      if (lastBreak >= 0) {
+        // Add plain text up to and including the break
+        const plainPart = beforeText.slice(0, lastBreak + 1);
+        if (plainPart) parts.push(<span key={`p-${lastIndex}`}>{plainPart}</span>);
+        // The linkable part is after the break
+        const linkableText = beforeText.slice(lastBreak + 1).trimStart();
+        if (linkableText) {
+          parts.push(
+            <a
+              key={`a-${matchStart}`}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="text-blue-600 dark:text-blue-400 underline decoration-blue-400/40 hover:decoration-blue-500 transition-colors"
+            >
+              {linkableText}
+            </a>
+          );
+        }
+      } else {
+        // No sentence break — link the entire preceding text
+        if (beforeText.trim()) {
+          parts.push(
+            <a
+              key={`a-${matchStart}`}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="text-blue-600 dark:text-blue-400 underline decoration-blue-400/40 hover:decoration-blue-500 transition-colors"
+            >
+              {beforeText}
+            </a>
+          );
+        }
+      }
+    } else if (sourceLabel) {
+      // Non-URL citation — render preceding text normally, add superscript label
+      if (beforeText) parts.push(<span key={`t-${lastIndex}`}>{beforeText}</span>);
+      parts.push(
+        <sup
+          key={`s-${matchStart}`}
+          className="text-[8px] text-muted-foreground/60 font-medium ml-0.5"
+        >
+          [{sourceLabel}]
+        </sup>
+      );
+    } else {
+      // Fallback: just plain text
+      if (beforeText) parts.push(<span key={`t-${lastIndex}`}>{beforeText}</span>);
+    }
+
+    lastIndex = matchStart + fullMatch.length;
+  }
+
+  // Remaining text after last citation
+  const remaining = text.slice(lastIndex);
+  if (remaining) parts.push(<span key={`r-${lastIndex}`}>{remaining}</span>);
+
+  // If no citations found, just return plain text
+  if (parts.length === 0) return <span className={className}>{text}</span>;
+
+  return <span className={className}>{parts}</span>;
+}
+
 // ─── Source Citations Component (hyperlink pills + dropdown) ───
 function SourcesCitation({ dataSources }: { dataSources: string }) {
   const sources = dataSources.split("\n").map(s => s.replace(/^[-•\d.]\s*/, "").trim()).filter(Boolean);
