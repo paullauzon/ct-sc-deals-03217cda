@@ -321,17 +321,22 @@ function ActionSheet({
               <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
                 Suggested Next Follow-Up
               </label>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">
-                  {(() => { try { return format(parseISO(suggestedFollowUp), "EEE, MMM d"); } catch { return suggestedFollowUp; } })()}
-                </span>
-                <Calendar
-                  mode="single"
-                  selected={suggestedFollowUp ? parseISO(suggestedFollowUp) : undefined}
-                  onSelect={(date) => { if (date) setSuggestedFollowUp(format(date, "yyyy-MM-dd")); }}
-                  className="border border-border rounded-md p-2"
-                />
-              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-md border border-border hover:bg-secondary/50 transition-colors">
+                    <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                    {(() => { try { return format(parseISO(suggestedFollowUp), "EEE, MMM d"); } catch { return suggestedFollowUp; } })()}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={suggestedFollowUp ? parseISO(suggestedFollowUp) : undefined}
+                    onSelect={(date) => { if (date) setSuggestedFollowUp(format(date, "yyyy-MM-dd")); }}
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           )}
 
