@@ -97,14 +97,22 @@ RULES:
 - If brand is SourceCo: direct, research-heavy, executive search vernacular.
 - If brand is Captarget: market-intelligence-forward, deal-flow focused.
 - Match seniority: Managing Partners/CEOs get fewer words. VPs/Directors can get slightly more context.
+- NEVER explain to the prospect what their own situation means. They know. State what YOU will deliver.
+- NEVER use "our pipeline", "our team", "our services", "our platform" — vendor phrases. Say what you HAVE.
+- Every noun must be specific. Not "security firms" but "$8-12M commercial security companies in TX."
+- The CTA must name a specific deliverable. Not "discuss next steps" but "send profiles by Friday."
 
-BANNED PHRASES (never use any of these):
+BANNED PHRASES (never use any of these — rewrite if you catch yourself):
 "I hope this finds you well", "I wanted to reach out", "I'd love to", "Just checking in",
 "Following up", "Circling back", "Touching base", "Per our conversation", "As discussed",
 "At your earliest convenience", "Please don't hesitate", "I look forward to hearing from you",
 "Let me know if you have any questions", "Happy to discuss further", "Quick question",
 "I noticed that", "It was great to", "Thank you for your time", "Best regards",
-"Kind regards", "Warm regards", "Looking forward to hearing from you"
+"Kind regards", "Warm regards", "Looking forward to hearing from you",
+"leveraging", "synergies", "alignment", "opportunities", "solutions", "offerings",
+"capabilities", "value proposition", "strategic fit", "growth trajectory",
+"aggressive acquisitions", "our pipeline includes", "our team can", "our services",
+"discuss how we can", "explore ways", "mutually beneficial"
 
 BAD: "Hi John, thank you for taking the time to meet with us today. It was great to learn about your acquisition strategy. As discussed, we'll follow up with some target recommendations. Please let me know if you have any questions. Best regards, The Team"
 
