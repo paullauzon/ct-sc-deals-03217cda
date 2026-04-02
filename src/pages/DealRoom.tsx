@@ -9,12 +9,12 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
-import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Textarea } from "@/components/ui/textarea";
-import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage } from "@/lib/dealHealthUtils";
+import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals } from "@/lib/dealHealthUtils";
 
 const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 
@@ -247,9 +247,10 @@ export default function DealRoom() {
 
         {/* Center: Tabbed Workspace */}
         <div className="flex-1 min-w-0 overflow-y-auto">
-          <Tabs defaultValue="timeline" className="h-full">
+          <Tabs defaultValue={isClosed ? "debrief" : "timeline"} className="h-full">
             <div className="border-b border-border px-4">
               <TabsList className="bg-transparent h-10">
+                {isClosed && <TabsTrigger value="debrief" className="text-xs">Debrief</TabsTrigger>}
                 <TabsTrigger value="timeline" className="text-xs">Timeline</TabsTrigger>
                 <TabsTrigger value="meetings" className="text-xs">Meetings ({lead.meetings?.length || 0})</TabsTrigger>
                 <TabsTrigger value="intelligence" className="text-xs">Intelligence</TabsTrigger>
