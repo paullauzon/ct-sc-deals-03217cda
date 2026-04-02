@@ -31,7 +31,7 @@ const NAV_ITEMS: { key: View; label: string; desc: string; icon: typeof BarChart
   { key: "dashboard", label: "Dashboard", desc: "Executive Summary", icon: BarChart3 },
   { key: "pipeline", label: "Pipeline", desc: "Deal Flow", icon: Kanban },
   { key: "leads", label: "Leads", desc: "All Contacts", icon: Users },
-  { key: "today", label: "Today", desc: "Action Queue", icon: CalendarCheck },
+  { key: "today", label: "Command", desc: "Sales Cockpit", icon: CalendarCheck },
 ];
 
 function AppContent() {
