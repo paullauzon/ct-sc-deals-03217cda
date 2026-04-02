@@ -61,7 +61,7 @@ export function BusinessSystem() {
       </div>
 
       {/* Filters */}
-      <DashboardFilterBar filters={filters} onChange={setFilters} />
+      <DashboardFilterBar leads={filteredLeads} filters={filters} onFiltersChange={setFilters} />
 
       {/* Content */}
       {tab === "overview" && (
