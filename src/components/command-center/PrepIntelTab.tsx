@@ -374,7 +374,7 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
   );
 }
 
-function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail }: { lead: Lead; onSelect: () => void; emailCount: number; onBriefGenerated: (leadId: string, leadName: string, brief: PrepBrief) => void; onDraftEmail: (lead: Lead) => void }) {
+function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail, onUpdateLead }: { lead: Lead; onSelect: () => void; emailCount: number; onBriefGenerated: (leadId: string, leadName: string, brief: PrepBrief) => void; onDraftEmail: (lead: Lead) => void; onUpdateLead: (id: string, updates: Partial<Lead>) => void }) {
   const [generatingPrep, setGeneratingPrep] = useState(false);
   const [enrichmentUpdated, setEnrichmentUpdated] = useState(false);
   const [deepIntelOpen, setDeepIntelOpen] = useState(false);
