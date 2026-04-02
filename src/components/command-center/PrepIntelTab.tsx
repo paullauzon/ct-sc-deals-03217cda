@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Lead } from "@/types/lead";
 import { BrandLogo } from "@/components/BrandLogo";
-import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight, Send, CheckCircle2, SkipForward, ListChecks } from "lucide-react";
+import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight, Send, CheckCircle2, SkipForward, ListChecks, ExternalLink, Link2 } from "lucide-react";
 import { format, parseISO, differenceInDays, isBefore } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useLeads } from "@/contexts/LeadContext";
@@ -444,6 +444,8 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
             leadGeography: lead.geography,
             leadAcquisitionStrategy: lead.acquisitionStrategy,
             leadNotes: lead.notes,
+            leadLinkedinUrl: lead.linkedinUrl || "",
+            leadLinkedinTitle: lead.linkedinTitle || "",
             meetings: lead.meetings || [],
             dealIntelligence: lead.dealIntelligence || null,
           };
