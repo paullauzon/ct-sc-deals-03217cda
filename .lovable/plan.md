@@ -1,60 +1,26 @@
 
 
-# Auto-Sync Fireflies Meetings After Calendly Bookings
+# Build Business Operations Dashboard
 
-## Problem
+## Scope Estimate: 4 responses
 
-When a Calendly meeting finishes, the Fireflies recording takes ~5-10 minutes to process. Currently, Fireflies meetings only appear when a user manually clicks "Auto-Find" or imports from Fireflies. There's no automatic link between "Calendly meeting ended" and "go fetch the Fireflies transcript."
+| Response | What gets built |
+|----------|----------------|
+| **1** | New `DashboardBusiness.tsx` component with Brand Scorecards (side-by-side CT vs SC cards showing Total Leads, Active Pipeline, MRR, Win Rate, Avg Deal Size, Avg Cycle Days, Leads per Rep) + Source-level conversion funnel. Wire as 6th tab in `Dashboard.tsx`. |
+| **2** | Unit Economics section: new `business_cost_inputs` DB table for monthly cost/margin assumptions per brand. UI for configuring costs. CAC, LTV, LTV:CAC ratio calculations (LTV will show "needs contract data" until you populate the 4 won deals). Gross margin by service line with configurable cost-to-deliver assumptions. |
+| **3** | Operational Health section: Rep capacity utilization gauges (active deals vs healthy threshold), pipeline coverage ratio with quarterly target input, pipeline aging by brand (avg days in stage), stale pipeline value (deals with no contact >30 days), time-to-value speed metrics derived from activity log stage transitions. |
+| **4** | Revenue forecasting: bottoms-up 3-month projection (deal value x stage probability x expected close), monthly bookings vs target line chart, net revenue retention placeholder (activates when contract dates populated). Polish, drill-downs on all metrics, PNG export support. |
 
-## Solution
+## Architecture
 
-Create a scheduled cron job that runs every 15 minutes, finds leads with Calendly meetings that ended in the last 2 hours, and automatically fetches their Fireflies recordings.
+- One new file: `src/components/DashboardBusiness.tsx` (all 4 responses build into this file incrementally)
+- One new DB table: `business_cost_inputs` (brand, month, sales_cost, tool_cost, ad_spend, margin assumptions per service line)
+- Dashboard.tsx: add "Business" as 6th tab in the `TABS` array and `DashboardTab` type
+- Reuses existing filter bar, drill-down sheet, and brand color patterns
+- All metrics computed client-side from the `leads` array (same pattern as existing dashboard tabs)
+- Cost inputs stored in DB so they persist across sessions
 
-## How It Works
+## What you need to do
 
-```text
-Every 15 min:
-  1. Query leads where meeting_date is between 10 min ago and 2 hours ago
-     AND meetings JSONB doesn't already contain a Fireflies entry for that time window
-  2. For each such lead, call fetch-fireflies with the lead's email/name/company
-  3. If a matching transcript is found, attach it to the lead's meetings JSONB
-  4. Process through AI (summary, next steps, intelligence) via process-meeting
-  5. Update the lead record and log activity
-```
-
-The 10-minute buffer gives Fireflies time to process the recording. The 2-hour window ensures we catch meetings even if the cron misses a cycle. Already-attached meetings are skipped via firefliesId dedup.
-
-## Technical Details
-
-### New Edge Function: `sync-fireflies-post-meeting`
-
-- Accepts optional `x-api-key` for auth (uses `INGEST_API_KEY`)
-- Queries `leads` table: `meeting_date` is a full ISO timestamp from Calendly
-- Filter: `meeting_date` between `now() - 2 hours` and `now() - 10 minutes`
-- For each matching lead:
-  - Check if `meetings` JSONB already has a firefliesId-bearing entry dated near the Calendly meeting
-  - If not, call `fetch-fireflies` with the lead's search criteria (email, name, company, domain)
-  - Match the returned meeting by date proximity (within 30 min of the Calendly start time)
-  - If found, call `process-meeting` for AI analysis
-  - Append the new meeting to the lead's `meetings` JSONB array
-  - Advance stage to "Meeting Held" if currently "Meeting Set"
-  - Log activity
-
-### pg_cron Schedule
-
-- Enable `pg_cron` and `pg_net` extensions
-- Schedule: every 15 minutes
-- Calls the edge function with the anon key
-
-### Config
-
-- Add `[functions.sync-fireflies-post-meeting]` with `verify_jwt = false` to `supabase/config.toml`
-
-## Files Changed
-
-| File | Changes |
-|------|---------|
-| `supabase/functions/sync-fireflies-post-meeting/index.ts` | New edge function: queries leads with recently-ended Calendly meetings, fetches Fireflies transcripts, processes through AI, attaches to lead |
-| `supabase/config.toml` | Add `[functions.sync-fireflies-post-meeting]` block |
-| Migration | Enable `pg_cron` and `pg_net` extensions; create cron schedule to invoke the function every 15 minutes |
+Populate `contract_start`, `contract_end`, and `billing_frequency` on your 4 Closed Won deals. Without these, LTV and retention metrics will show placeholder states. Everything else works from existing data.
 
