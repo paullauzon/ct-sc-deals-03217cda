@@ -368,8 +368,8 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
         onBriefGenerated(lead.id, lead.name, data.brief);
         toast({ title: "Prep brief ready", description: `Intelligence generated for ${lead.name}` });
       } else if (!hasMeetings && data) {
-        // Enrichment succeeded — show confirmation
-        toast({ title: "Prospect researched", description: `Enrichment data updated for ${lead.name}` });
+        setEnrichmentUpdated(true);
+        toast({ title: "Prospect researched", description: `Enrichment data updated for ${lead.name}. Refresh to see full details.` });
       } else if (data?.error) {
         toast({ title: "Could not generate brief", description: data.error, variant: "destructive" });
       }
