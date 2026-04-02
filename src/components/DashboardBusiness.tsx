@@ -5,7 +5,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { differenceInDays, parseISO, format, subMonths } from "date-fns";
-import { DollarSign, TrendingUp, TrendingDown, Clock } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
