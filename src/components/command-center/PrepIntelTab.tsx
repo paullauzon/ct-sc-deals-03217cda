@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Lead } from "@/types/lead";
 import { BrandLogo } from "@/components/BrandLogo";
-import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight, Send, CheckCircle2, SkipForward, ListChecks, ExternalLink, Link2, Key, Building2, Swords, Settings2, BookOpen } from "lucide-react";
+import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight, Send, CheckCircle2, SkipForward, ListChecks, ExternalLink, Link2, Key, Building2, Swords, Settings2, BookOpen, DollarSign, Trophy, Scale } from "lucide-react";
+import { getPricingGuidance, findSimilarWonDeals, getObjectionPlaybook, getStakeholderCoverage } from "@/lib/dealHealthUtils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format, parseISO, differenceInDays, isBefore } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -680,7 +681,7 @@ function EnrichmentSections({ enrichment, lead, onUpdateLead }: { enrichment: an
   );
 }
 
-function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail, onUpdateLead }: { lead: Lead; onSelect: () => void; emailCount: number; onBriefGenerated: (leadId: string, leadName: string, brief: PrepBrief) => void; onDraftEmail: (lead: Lead) => void; onUpdateLead: (id: string, updates: Partial<Lead>) => void }) {
+function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail, onUpdateLead, allLeads }: { lead: Lead; onSelect: () => void; emailCount: number; onBriefGenerated: (leadId: string, leadName: string, brief: PrepBrief) => void; onDraftEmail: (lead: Lead) => void; onUpdateLead: (id: string, updates: Partial<Lead>) => void; allLeads: Lead[] }) {
   const [generatingPrep, setGeneratingPrep] = useState(false);
   const [enrichmentUpdated, setEnrichmentUpdated] = useState(false);
   const [deepIntelOpen, setDeepIntelOpen] = useState(false);
