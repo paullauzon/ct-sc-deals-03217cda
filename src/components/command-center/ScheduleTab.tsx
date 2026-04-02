@@ -200,7 +200,7 @@ function MeetingCard({ item, onClick }: { item: ActionItem; onClick: () => void 
 /* ─── Action Row ─── */
 function ActionRow({ item, onClick }: { item: ActionItem; onClick: () => void }) {
   return (
-    <div onClick={onClick} className={`flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-secondary/30 transition-colors border-l-[3px] ${TYPE_BORDER_COLORS[item.type]}`}>
+    <div onClick={onClick} className={`flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-secondary/30 transition-colors border-l-[3px] ${item.label === "Due today" ? "border-l-blue-500 dark:border-l-blue-400" : TYPE_BORDER_COLORS[item.type]}`}>
       <BrandLogo brand={item.lead.brand} size="xxs" />
       <span className="text-sm font-medium truncate min-w-0">{item.lead.name}</span>
       <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">{item.lead.company}</span>
@@ -209,7 +209,7 @@ function ActionRow({ item, onClick }: { item: ActionItem; onClick: () => void })
           {item.lead.assignedTo[0]}
         </span>
       )}
-      <span className={`text-xs font-medium ml-auto whitespace-nowrap ${TYPE_TEXT_COLORS[item.type]}`}>{item.label}</span>
+      <span className={`text-xs font-medium ml-auto whitespace-nowrap ${item.label === "Due today" ? "text-blue-600 dark:text-blue-400" : TYPE_TEXT_COLORS[item.type]}`}>{item.label}</span>
       {item.lead.dealValue > 0 && (
         <span className="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">${item.lead.dealValue.toLocaleString()}</span>
       )}

@@ -97,7 +97,8 @@ function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () =>
       toast({ title: "Prep brief queued", description: `Generating intelligence for ${lead.name}...` });
     } catch (err) {
       console.error(err);
-      toast({ title: "Failed to generate prep", variant: "destructive" });
+      const msg = err instanceof Error ? err.message : "Try again later";
+      toast({ title: "Failed to generate prep", description: msg, variant: "destructive" });
     } finally {
       setGeneratingPrep(false);
     }
@@ -173,6 +174,13 @@ function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () =>
           </div>
         );
       })()}
+
+      {/* Company description from enrichment */}
+      {enrichment?.companyDescription && (
+        <div className="text-[10px] text-muted-foreground bg-secondary/30 rounded px-2.5 py-1.5 line-clamp-2">
+          <span className="font-medium text-foreground">Company: </span>{(enrichment.companyDescription as string).slice(0, 150)}{(enrichment.companyDescription as string).length > 150 ? "…" : ""}
+        </div>
+      )}
 
       {/* Lead message as prep context */}
       {lead.message && lead.message.length > 0 && (

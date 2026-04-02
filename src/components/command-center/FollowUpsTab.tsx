@@ -7,7 +7,7 @@ import {
   Mail, Mic, CalendarCheck, ArrowUpDown, Zap, Send, Phone, RotateCcw,
   Reply, FileText, Loader2
 } from "lucide-react";
-import { format, parseISO, differenceInDays, isToday, addDays, isBefore } from "date-fns";
+import { format, parseISO, differenceInDays, isToday, addDays, isBefore, startOfDay } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -176,6 +176,7 @@ function FollowUpRow({
               onClick={() => {
                 const newDate = format(addDays(new Date(), d), "yyyy-MM-dd");
                 onUpdate(lead.id, { nextFollowUp: newDate });
+                toast({ title: `Snoozed ${lead.name} for ${d} days`, description: `Next follow-up: ${format(addDays(new Date(), d), "EEE, MMM d")}` });
               }}
               className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors opacity-0 group-hover:opacity-100"
               title={`Snooze ${d} days`}
@@ -279,15 +280,21 @@ function ActionSheet({
 
   const handleApply = () => {
     if (!lead) return;
-    const updates: Partial<Lead> = { lastContactDate: format(new Date(), "yyyy-MM-dd") };
-    if (suggestedFollowUp) updates.nextFollowUp = suggestedFollowUp;
-    if (selectedStage) {
-      updates.stage = selectedStage as Lead["stage"];
-      updates.stageEnteredDate = format(new Date(), "yyyy-MM-dd");
+    try {
+      const updates: Partial<Lead> = { lastContactDate: format(new Date(), "yyyy-MM-dd") };
+      if (suggestedFollowUp) updates.nextFollowUp = suggestedFollowUp;
+      if (selectedStage) {
+        updates.stage = selectedStage as Lead["stage"];
+        updates.stageEnteredDate = format(new Date(), "yyyy-MM-dd");
+      }
+      if (content) navigator.clipboard.writeText(content);
+      onUpdate(lead.id, updates);
+      toast({ title: content ? "Copied & lead updated" : "Lead updated", description: `${lead.name} marked as contacted.` });
+      onClose();
+    } catch (err) {
+      console.error("Failed to update lead:", err);
+      toast({ title: "Update failed", description: "Please try again.", variant: "destructive" });
     }
-    onUpdate(lead.id, updates);
-    toast({ title: "Lead updated", description: `${lead.name} marked as contacted.` });
-    onClose();
   };
 
   const actionLabels: Record<string, string> = {
@@ -377,10 +384,7 @@ function ActionSheet({
           {/* Actions */}
           <div className="flex items-center gap-2 pt-2 border-t border-border">
             <button
-              onClick={() => {
-                if (content) navigator.clipboard.writeText(content);
-                handleApply();
-              }}
+              onClick={handleApply}
               className="flex-1 text-xs py-2.5 rounded-md bg-foreground text-background font-medium hover:bg-foreground/90 transition-colors"
             >
               {content ? "Copy & Mark Done" : "Mark Contacted & Update"}
@@ -549,8 +553,9 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
 
   // Build sections — dedup: overdue takes priority over goingDark
   const overdue = useMemo(() => {
+    const todayStart = startOfDay(now);
     const items = active
-      .filter(l => l.nextFollowUp && isBefore(parseISO(l.nextFollowUp), now))
+      .filter(l => l.nextFollowUp && isBefore(parseISO(l.nextFollowUp), todayStart))
       .map(l => ({ lead: l, daysOverdue: differenceInDays(now, parseISO(l.nextFollowUp)) }))
       .sort((a, b) => b.daysOverdue - a.daysOverdue);
     return applySortToLeads(items, sortField, sortDir, (a, b) => b.daysOverdue - a.daysOverdue);
