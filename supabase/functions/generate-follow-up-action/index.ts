@@ -101,9 +101,11 @@ serve(async (req) => {
     // Enrichment data
     if (lead.enrichment) {
       const e = lead.enrichment;
-      if (e.companyProfile?.summary) contextParts.push(`\nCompany Profile: ${e.companyProfile.summary}`);
-      if (e.suggestedUpdates?.motivation) contextParts.push(`Motivation: ${e.suggestedUpdates.motivation.value}`);
-      if (e.suggestedUpdates?.urgency) contextParts.push(`Urgency: ${e.suggestedUpdates.urgency.value}`);
+      if (e.companyDescription) contextParts.push(`\nCompany Profile: ${e.companyDescription}`);
+      if (e.buyerMotivation) contextParts.push(`Motivation: ${e.buyerMotivation}`);
+      if (e.urgency) contextParts.push(`Urgency: ${e.urgency}`);
+      if (e.acquisitionCriteria) contextParts.push(`Acquisition Criteria: ${e.acquisitionCriteria}`);
+      if (e.keyInsights) contextParts.push(`Key Insights: ${e.keyInsights}`);
     }
 
     // Meeting intelligence

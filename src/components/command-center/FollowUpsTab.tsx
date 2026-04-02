@@ -544,7 +544,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   }, [active, now, sortField, sortDir]);
 
   const goingDark = useMemo(() => {
-    return active
+    const items = active
       .filter(l => {
         if (overdueSet.has(l.id)) return false;
         if (l.stage === "New Lead") return false;
@@ -555,8 +555,8 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
       .map(l => {
         const lastDate = l.lastContactDate || l.meetingDate || l.stageEnteredDate || l.dateSubmitted;
         return { lead: l, daysSilent: differenceInDays(now, parseISO(lastDate!)) };
-      })
-      .sort((a, b) => b.daysSilent - a.daysSilent);
+      });
+    return applySortToLeads(items, sortField, sortDir, (a, b) => b.daysSilent - a.daysSilent);
   }, [active, now, overdueSet, sortField, sortDir]);
 
   const totalItems = overdue.length + dueThisWeek.length + unansweredLeads.length + untouched.length + goingDark.length;

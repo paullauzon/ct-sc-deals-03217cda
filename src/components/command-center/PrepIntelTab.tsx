@@ -22,7 +22,7 @@ function DealTempBadge({ temp }: { temp?: string }) {
   );
 }
 
-export function PrepIntelTab({ leads, ownerFilter, onSelectLead }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void }) {
+export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon = 7 }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void; meetingHorizon?: number }) {
   const now = new Date();
 
   const upcomingMeetings = useMemo(() => {
@@ -31,21 +31,21 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
       : leads.filter(l => l.assignedTo === ownerFilter);
 
     return filtered
-      .filter(l => l.meetingDate && !isBefore(parseISO(l.meetingDate), now) && differenceInDays(parseISO(l.meetingDate), now) <= 7)
+      .filter(l => l.meetingDate && !isBefore(parseISO(l.meetingDate), now) && differenceInDays(parseISO(l.meetingDate), now) <= meetingHorizon)
       .sort((a, b) => new Date(a.meetingDate).getTime() - new Date(b.meetingDate).getTime());
-  }, [leads, ownerFilter, now]);
+  }, [leads, ownerFilter, now, meetingHorizon]);
 
   if (upcomingMeetings.length === 0) {
     return (
       <div className="px-6 py-12 text-center">
-        <p className="text-sm text-muted-foreground">No meetings in the next 7 days — prep intel will appear here when meetings are scheduled</p>
+        <p className="text-sm text-muted-foreground">No meetings in the next {meetingHorizon} days — prep intel will appear here when meetings are scheduled</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">{upcomingMeetings.length} meeting{upcomingMeetings.length !== 1 ? "s" : ""} in the next 7 days</p>
+      <p className="text-xs text-muted-foreground">{upcomingMeetings.length} meeting{upcomingMeetings.length !== 1 ? "s" : ""} in the next {meetingHorizon} days</p>
 
       {upcomingMeetings.map(lead => (
         <IntelCard key={lead.id} lead={lead} onSelect={() => onSelectLead(lead.id)} />

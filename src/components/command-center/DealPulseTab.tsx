@@ -151,7 +151,7 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
               <span className="text-center">Mom.</span>
               <span className="text-right">Last Contact</span>
             </div>
-            <div className="divide-y divide-border max-h-[400px] overflow-y-auto">
+            <div className="divide-y divide-border max-h-[400px] overflow-y-auto min-w-[600px]">
               {sortedDeals.map(({ lead, days, momentum, dealTemp, closingWindow }) => {
                 const isStalled = days > 14;
                 const lastDate = lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate;

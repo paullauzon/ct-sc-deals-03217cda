@@ -163,7 +163,7 @@ export function ActionQueue() {
           <DealPulseTab leads={leads} ownerFilter={ownerFilter} onSelectLead={setSelectedLeadId} />
         </TabsContent>
         <TabsContent value="intel">
-          <PrepIntelTab leads={leads} ownerFilter={ownerFilter} onSelectLead={setSelectedLeadId} />
+          <PrepIntelTab leads={leads} ownerFilter={ownerFilter} onSelectLead={setSelectedLeadId} meetingHorizon={meetingHorizon} />
         </TabsContent>
       </Tabs>
 
