@@ -1,76 +1,76 @@
 
 
-# Command Center — Final Comprehensive Audit
+# Command Center — Final Remaining Issues
 
-## What's Working Well
-All 4 tabs render cleanly with zero runtime errors. Schedule has morning briefing, today-only priority tiers, horizon toggle synced from parent. Follow-Ups has rich rows with context signals, AI action chips with context-aware labels (Send Proposal, Follow Up, Pre-Meeting Email), sort controls, summary strip, snooze buttons, collapsible sections, AI Action Sheet with "Copy & Mark Done". Deal Pulse has KPIs with benchmark label, forecast strip, momentum board with sort, velocity cards with benchmarks. Prep Intel shows Calendly details, prospect messages, enrichment fields, meeting summaries, "Generate Prep Brief" button, deal value always shown. Edge function registered in config.toml.
+## Critical Bugs
 
-## What's Still Remaining
+### 1. "Generate Prep Brief" is broken (PrepIntelTab.tsx)
+**Root cause**: The button calls `supabase.functions.invoke("generate-meeting-prep", { body: { leadId: lead.id } })` but the edge function expects `{ meetings, leadFields, dealIntelligence }`. It receives no `meetings` array, so it returns `400: "No meetings to prepare from"`.
 
-### 1. Follow-Ups: Snooze Buttons Don't Show Toast Feedback
-When clicking a snooze button (3d/7d/14d), the lead's `nextFollowUp` updates silently — no toast confirmation. The user has no feedback that the snooze worked, and the row doesn't visually move out of the overdue section until a re-render.
+**Fix**: Rewrite `handleGeneratePrep` to pass the full lead data:
+```
+body: {
+  meetings: lead.meetings,
+  leadFields: { name, company, role, stage, priority, dealValue, serviceInterest },
+  dealIntelligence: lead.dealIntelligence
+}
+```
+Also: the function returns `{ brief }` but the UI doesn't do anything with it — it just shows a toast "Prep brief queued". The brief should be displayed in a dialog or inline on the card.
 
-**Fix**: Add a toast after snooze (`"Snoozed {name} for {d} days"`) and trigger the list to refresh so the lead moves to "Due This Week" or disappears.
+### 2. Follow-Up AI drafts are generic — edge function uses gpt-4o-mini
+The `generate-follow-up-action` edge function uses `gpt-4o-mini` which produces bland, template-like output. With the rich context already being sent (enrichment, deal intelligence, psychological profile, meeting context), upgrading to `gpt-4o` would produce significantly more personalized drafts.
 
-### 2. Follow-Ups: "Due today" Label in Overdue Section is Confusing
-Peter Wylie shows as "Due today" inside the **Overdue** section header. But "Due today" isn't overdue — it's current. Items due today should appear in the "Due This Week" section instead, not under "Overdue".
+**Fix**: Change model from `gpt-4o-mini` to `gpt-4o` in `generate-follow-up-action/index.ts` line 158.
 
-**Fix**: In the `overdue` memo, change `isBefore(parseISO(l.nextFollowUp), now)` to use `startOfDay(now)` so items due today are excluded from overdue and correctly appear in "Due This Week".
+### 3. Draft Follow-Up edge function also uses gpt-4o-mini
+Same issue in `draft-followup/index.ts` — uses `gpt-4o-mini`.
 
-### 3. Schedule Tab: "Due today" Label Shows in Red Styling
-Peter Wylie shows "Due today" but the text uses `TYPE_TEXT_COLORS.overdue` (red) because the item type is still "overdue". Due-today items should use blue styling to match the Follow-Ups tab convention.
-
-**Fix**: In `buildActionItems()`, when `daysOverdue === 0`, set type to `"meeting"` (blue) or add a new type "due-today" — or simply override the color in `ActionRow` when label is "Due today".
-
-### 4. Deal Pulse: Momentum Board Has No Empty State
-If no active deals exist in the filter, the momentum board shows an empty bordered table with just headers. No "no deals" message.
-
-**Fix**: Add an empty state message below the momentum board header when `sortedDeals.length === 0`.
-
-### 5. Deal Pulse: Many Deals Show "—" for Value, Temp, and Momentum
-Most deals in the momentum board have no deal intelligence, so Temp and Momentum columns show "—" for the majority. This makes the columns feel wasted for datasets without deep intelligence.
-
-**Status**: Not a bug — these populate as meetings are processed and intelligence is synthesized. The "—" is the correct default. No action needed.
-
-### 6. Prep Intel: "Generate Prep Brief" Error Handling
-The button calls `generate-meeting-prep` which may not handle leads without meetings gracefully. If it fails, the toast says "Failed to generate prep" with no actionable detail.
-
-**Fix**: Catch the specific error message from the edge function and surface it (e.g., "No meeting data available yet — schedule a meeting first").
-
-### 7. Follow-Ups: Action Sheet Has No Loading State for "Copy & Mark Done"
-When clicking "Copy & Mark Done", it copies and updates instantly — but if the `updateLead` call fails (network error), there's no error handling. The clipboard copy succeeds but the lead update silently fails.
-
-**Fix**: Wrap `handleApply` in try/catch and show error toast on failure.
-
-### 8. Prep Intel: Enrichment Company Description Not Shown
-The plan called for showing `enrichment.companyDescription` on Prep Intel cards. The context grid shows `acquisitionStrategy`, `buyerType`, `geography`, `targetCriteria` — but not the company description, which is often the most useful enrichment field for meeting prep.
-
-**Fix**: Add `enrichment.companyDescription` (truncated to 150 chars) as a line above the context grid, similar to how "Prospect said:" is shown.
-
-### 9. Schedule Tab: Peter Wylie "Due today" is Still Red-Styled
-Looking at the screenshot, Peter Wylie shows "Due today" in red text (from the `overdue` type text color). The "Due today" label was fixed but the color still uses the overdue red instead of blue.
-
-**Fix**: In `ActionRow`, check if `item.label === "Due today"` and override color to blue.
+**Fix**: Upgrade to `gpt-4o`.
 
 ---
 
-## Priority Implementation Plan
+## UX Issues
 
-| # | Fix | File | Impact |
-|---|-----|------|--------|
-| 1 | Move "Due today" items from Overdue to Due This Week in Follow-Ups | `FollowUpsTab.tsx` | UX logic bug |
-| 2 | Fix "Due today" color in Schedule tab (red → blue) | `ScheduleTab.tsx` | Visual consistency |
-| 3 | Add toast feedback after snooze | `FollowUpsTab.tsx` | UX feedback |
-| 4 | Show enrichment.companyDescription on Prep Intel cards | `PrepIntelTab.tsx` | Intel completeness |
-| 5 | Add empty state to momentum board | `DealPulseTab.tsx` | Edge case |
-| 6 | Better error handling in Prep Brief generation | `PrepIntelTab.tsx` | Error UX |
+### 4. Prep Intel: "Generate Prep Brief" result not displayed
+Even if the API call succeeds, the generated brief (executive summary, action items, objections, talking points, questions, risks, desired outcomes) is never shown to the user. The toast just says "Prep brief queued".
+
+**Fix**: After successful generation, display the brief inline on the card or in a slide-out Sheet — showing all structured sections: Executive Summary, Our Open Items, Their Open Items, Objections, Stakeholders, Competitive Threats, Talking Points, Questions to Ask, Risks, Desired Outcomes.
+
+### 5. Follow-Ups: "Due This Week" section includes items due today that overlap
+The `dueThisWeek` filter uses `!isBefore(d, now)` which includes today. But `startOfDay` was used for overdue, meaning items due today at a specific time could appear in BOTH sections or neither depending on parse timing.
+
+**Fix**: Use `startOfDay(now)` consistently in `dueThisWeek` filter too: `!isBefore(d, startOfDay(now))` to include today in "Due This Week".
+
+### 6. Schedule tab badge count says "2" but "Due Today" label shows blue correctly
+This is working well now — no fix needed. Confirmed visually.
+
+---
+
+## Missing Features from Original Vision
+
+### 7. No "Draft Follow-Up Email" button on Prep Intel cards
+The original plan called for AI-powered follow-up drafting accessible from Prep Intel. Currently only "Generate Prep Brief" exists. For leads with past meetings, a "Draft Follow-Up" button would leverage the `draft-followup` edge function.
+
+**Fix**: Add a secondary action button "Draft Follow-Up" on Prep Intel cards for leads with `meetingCount > 0`, opening the same ActionSheet from FollowUpsTab.
+
+---
+
+## Summary of Changes
+
+| # | Fix | File | Severity |
+|---|-----|------|----------|
+| 1 | Fix Generate Prep Brief — pass full lead data instead of just leadId | `PrepIntelTab.tsx` | **Critical** — feature broken |
+| 2 | Display prep brief results inline/sheet instead of just toast | `PrepIntelTab.tsx` | **High** — feature incomplete |
+| 3 | Upgrade generate-follow-up-action to gpt-4o for better drafts | `generate-follow-up-action/index.ts` | **Medium** — quality |
+| 4 | Upgrade draft-followup to gpt-4o | `draft-followup/index.ts` | **Medium** — quality |
+| 5 | Fix dueThisWeek filter to use startOfDay consistently | `FollowUpsTab.tsx` | **Low** — edge case |
 
 ### Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/command-center/FollowUpsTab.tsx` | Use `startOfDay` to exclude today from overdue; add toast to snooze buttons |
-| `src/components/command-center/ScheduleTab.tsx` | Override "Due today" color to blue in ActionRow |
-| `src/components/command-center/PrepIntelTab.tsx` | Show enrichment.companyDescription; improve error message in prep brief |
-| `src/components/command-center/DealPulseTab.tsx` | Add empty state for momentum board |
+| `src/components/command-center/PrepIntelTab.tsx` | Fix handleGeneratePrep to pass meetings/leadFields/dealIntelligence; add PrepBriefSheet to display structured brief results; add state management for brief data |
+| `supabase/functions/generate-follow-up-action/index.ts` | Change model from gpt-4o-mini to gpt-4o |
+| `supabase/functions/draft-followup/index.ts` | Change model from gpt-4o-mini to gpt-4o |
+| `src/components/command-center/FollowUpsTab.tsx` | Fix dueThisWeek filter to use startOfDay(now) |
 
