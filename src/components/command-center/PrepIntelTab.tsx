@@ -636,7 +636,23 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                   </div>
                 )}
 
-                {briefBattleCard.meetingGoal && (
+                {/* KEY INSIGHTS */}
+                {enrichment?.keyInsights && Array.isArray(enrichment.keyInsights) && (enrichment.keyInsights as string[]).length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <Key className="h-3 w-3 text-primary" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Key Insights</span>
+                    </div>
+                    <ul className="space-y-0.5">
+                      {(enrichment.keyInsights as string[]).slice(0, 5).map((insight: string, i: number) => (
+                        <li key={i} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+                          <span className="text-primary shrink-0">•</span>{insight}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                   <div>
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <Crown className="h-3 w-3 text-primary" />
