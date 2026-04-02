@@ -1,80 +1,72 @@
 
 
-# Command Center Audit — What's Remaining
+# Command Center Audit — Remaining Issues
 
-## Status Summary
-
-The 4-tab structure (Schedule, Follow-Ups, Deal Pulse, Prep Intel) is fully built with badge counts, morning briefing, sort controls, AI action sheet, forecast KPIs, momentum board, velocity, and win-strategy intel cards. No runtime errors. Below is everything that still needs work.
-
----
-
-## Issues Found
-
-### 1. Follow-Ups: Action chips only visible on hover — not actionable on mobile/touch
-The action chip (Draft Outreach, Reply, etc.) uses `opacity-0 group-hover:opacity-100` (line 164). On mobile or touch devices, hover doesn't exist — users can never see or tap these buttons.
-
-**Fix**: Always show the action chip (remove opacity-0 logic), make it a subtle but always-visible pill.
-
-### 2. Follow-Ups: Calendar renders inline in Action Sheet — broken layout
-The `ActionSheet` renders a full `<Calendar>` component inline next to the suggested date text (lines 311-316). This makes the sheet extremely tall and the calendar sits awkwardly beside a text label. Should be a date picker popover instead.
-
-**Fix**: Wrap Calendar in a Popover triggered by clicking the date text.
-
-### 3. Follow-Ups: `overdueSet` declared with `useMemo(() => new Set(), [])` — never actually reactive
-Line 490 creates a stable empty Set that's mutated inside another `useMemo`. This is a React anti-pattern — the Set reference never changes so dependent memos (`goingDark`, `unansweredLeads`) may not re-compute correctly.
-
-**Fix**: Compute `overdueSet` inside the `overdue` memo and return it alongside the array, or derive it separately.
-
-### 4. Follow-Ups: `goingDark` missing `sortField/sortDir` application
-Line 526-540: `goingDark` has `sortField, sortDir` in its dependency array but doesn't call `applySortToLeads` — it only uses default `.sort()`. Sorting buttons don't affect this section.
-
-**Fix**: Apply `applySortToLeads` like the other sections.
-
-### 5. Deal Pulse: Momentum Board grid doesn't respond well below ~900px
-The 7-column grid (`grid-cols-[1fr_100px_70px_80px_50px_50px_80px]`) on line 145 is fixed and will overflow/clip on smaller screens.
-
-**Fix**: Make the board horizontally scrollable with `overflow-x-auto`, or collapse columns on mobile.
-
-### 6. Prep Intel: Only shows meetings within 7 days — inconsistent with Schedule tab's 30d horizon
-The Prep Intel tab hardcodes a 7-day window (line 34). If a user extends the Schedule tab to 14d or 30d, Prep Intel still only shows 7d.
-
-**Fix**: Add the same horizon toggle (or match the Schedule tab's horizon state by lifting it to `ActionQueue`).
-
-### 7. Schedule: "Since Yesterday" briefing strip counts ALL leads, not just filtered owner
-Line 107-114: `MorningBriefing` receives `leads` (all) and filters by owner — correct. But the email query on line 139 uses `filtered` lead IDs which IS correct. No issue here actually.
-
-### 8. Edge Function: Enrichment field paths are wrong
-Line 104: `e.companyProfile?.summary` — this field doesn't exist on `LeadEnrichment`. The actual fields are `companyDescription`, `buyerMotivation`, `urgency`. Same for `e.suggestedUpdates?.motivation` (line 105) — the actual shape is `suggestedUpdates.stage`, `suggestedUpdates.nextFollowUp`, etc. The enrichment context sent to AI is largely empty.
-
-**Fix**: Use correct field names: `e.companyDescription`, `e.buyerMotivation`, `e.urgency`, etc.
-
-### 9. Edge Function: No `lastEmail` is ever passed from the client
-The Action Sheet (line 210-232) never fetches or passes `lastEmail` for `reply-inbound` action types. The edge function supports it (lines 140-145) but receives nothing.
-
-**Fix**: When `actionType === "reply-inbound"`, fetch the latest inbound email from `lead_emails` and pass it.
-
-### 10. Action Sheet: Missing `SheetDescription` — accessibility warning
-Radix Dialog requires either `aria-describedby` or a `SheetDescription`. Currently only `SheetTitle` is rendered.
-
-**Fix**: Add a hidden `SheetDescription`.
-
-### 11. Schedule Tab: `buildActionItems` is exported and imported in `ActionQueue.tsx` (line 10) but never used there
-The import on line 10 of `ActionQueue.tsx` is dead code.
-
-**Fix**: Remove unused import.
+## Current State
+All 4 tabs render without errors. The Follow-Ups tab was recently redesigned with rich rows, sort controls, and AI action chips. Schedule, Deal Pulse, and Prep Intel are functional. Below is everything still needing work.
 
 ---
 
-## Remaining Feature Gaps (from approved plans)
+## Bugs & Issues
 
-### A. "Copy to Clipboard" should also offer "Copy as Email" format
-Currently just copies raw text. For email drafts, should format with subject line separated.
+### 1. Prep Intel: Cards are bare — no intelligence displayed
+The Prep Intel tab shows 3 upcoming meetings but only displays name, role, company, stage, and date. The `IntelCard` component has rich sections (Win Strategy, Psychological Profile, Enrichment, Objections, Action Items, Risks, Deal Narrative) but none of it renders because these leads don't have `dealIntelligence` or `enrichment` populated yet. The cards look empty and uninformative.
 
-### B. No bulk actions on Follow-Ups
-Multiple plans mentioned batch-select for setting follow-up dates or stage changes across multiple leads. Not implemented.
+**Fix**: Show whatever data IS available — Calendly event details, deal value, meeting count, email history. When no deep intelligence exists, show a "Generate prep brief" action button that calls `generate-meeting-prep`.
 
-### C. No "What's New" count for stage changes in badge computation
-The badge on the Schedule tab counts only meetings today. The morning briefing shows stage changes, but the tab badge doesn't reflect overnight activity.
+### 2. Prep Intel: Horizon toggle doesn't sync with Schedule tab
+The Schedule tab has its own internal `meetingHorizon` state (line 247 of ScheduleTab). The ActionQueue also has a `meetingHorizon` state (line 47) that is only shown when `commandTab === "schedule" || commandTab === "intel"`. But the Schedule tab ignores the parent's horizon — it manages its own. So the top-level 7d/14d/30d buttons affect Prep Intel but NOT Schedule.
+
+**Fix**: Remove the internal `meetingHorizon` from ScheduleTab and pass it as a prop from ActionQueue, or remove the duplicate toggle from ActionQueue header.
+
+### 3. Deal Pulse: Momentum Board shows "New Lead" entries with 100+ day counts
+The board includes leads in "New Lead" stage with 150d, 140d etc. These aren't real "deals" — they're untouched leads polluting the momentum board. The `ACTIVE_STAGES` set excludes "New Lead" but `activeDeals` on line 54 explicitly adds `|| l.stage === "New Lead"`.
+
+**Fix**: Remove `|| l.stage === "New Lead"` from `activeDeals` filter on DealPulseTab line 54. New Leads should only appear in Follow-Ups tab.
+
+### 4. Deal Pulse: Pipeline Velocity shows "Meeting Held" at 16d avg across 70 deals
+This number seems inflated — 70 deals in "Meeting Held" suggests leads are getting stuck there. The velocity display doesn't indicate whether this is healthy or problematic.
+
+**Fix**: Add color coding that matches `daysInStageColor` to velocity cards (already partially done) and add a "benchmark" indicator.
+
+### 5. Follow-Ups: "Copy to Clipboard" doesn't separate subject line for email drafts
+When the AI generates an email (subject on line 1, body after blank line), the copy button copies raw text. No "Copy as Email" option that separates subject from body.
+
+**Fix**: Add a secondary "Copy Subject + Body" that splits on first double-newline.
+
+### 6. Schedule Tab: Duplicate horizon toggle
+The Schedule tab has its own 7d/14d/30d toggle inside the "Upcoming Meetings" section header (line 300-306). The ActionQueue header ALSO shows a horizon toggle when on the schedule tab (line 131-143). This is confusing — two independent horizon controls.
+
+**Fix**: Remove the ActionQueue header toggle for the schedule tab (keep it only for intel), or wire them together.
+
+### 7. Follow-Ups: No total count per section visible at top level
+The top says "98 items needing action" but there's no quick breakdown. User has to expand each section to see counts.
+
+**Fix**: Add a summary strip like Schedule tab has (e.g., "78 Overdue · 3 Due This Week · 5 Unanswered · 10 Untouched · 2 Going Dark").
+
+### 8. Edge Function: `lastEmail` field name mismatch
+The edge function reads `lastEmail.fromName` and `lastEmail.fromAddress` (lines 144-145) but the Supabase query returns `from_name` and `from_address` (snake_case). The Supabase JS client auto-converts to camelCase, so this actually works. No issue.
+
+### 9. Schedule Tab: `buildActionItems` is exported but not imported in ActionQueue
+Confirmed: ActionQueue line 10 no longer imports `buildActionItems` — this was already fixed in the last edit. No issue.
+
+---
+
+## Design & UX Improvements
+
+### A. Prep Intel cards need more substance
+Currently the simplest-looking tab despite being the most strategically important. Cards should show:
+- Calendly event name and duration
+- Number of prior meetings with this lead
+- Email exchange count
+- A "Generate Prep Brief" button if no intelligence exists
+- Prior meeting summaries if available
+
+### B. Deal Pulse: Momentum Board needs sorting/filtering
+Currently sorted by risk score (stalled deals first) but no user control. Should add sort toggles like Follow-Ups tab has (by Value, Days, Stage, Temperature).
+
+### C. Follow-Ups: Action chip label is always "Follow Up" for Meeting Held leads
+Every Meeting Held lead shows the same "Follow Up" chip. Should differentiate based on context — if proposal-ready, show "Send Proposal"; if they have open action items, show "Complete Actions."
 
 ---
 
@@ -82,24 +74,19 @@ The badge on the Schedule tab counts only meetings today. The morning briefing s
 
 | Priority | Fix | File |
 |----------|-----|------|
-| 1 | Always show action chips (remove hover-only) | `FollowUpsTab.tsx` line 164 |
-| 2 | Fix enrichment field paths in edge function | `generate-follow-up-action/index.ts` lines 102-107 |
-| 3 | Fetch & pass `lastEmail` for reply-inbound actions | `FollowUpsTab.tsx` ActionSheet |
-| 4 | Fix `overdueSet` React anti-pattern | `FollowUpsTab.tsx` line 490 |
-| 5 | Apply sort to `goingDark` section | `FollowUpsTab.tsx` line 526 |
-| 6 | Calendar → Popover date picker in Action Sheet | `FollowUpsTab.tsx` lines 311-316 |
-| 7 | Add `SheetDescription` for accessibility | `FollowUpsTab.tsx` line 278 |
-| 8 | Make Momentum Board responsive | `DealPulseTab.tsx` line 145 |
-| 9 | Add horizon toggle to Prep Intel (or share state) | `PrepIntelTab.tsx` + `ActionQueue.tsx` |
-| 10 | Remove dead import in ActionQueue | `ActionQueue.tsx` line 10 |
+| 1 | Remove "New Lead" from Deal Pulse activeDeals | `DealPulseTab.tsx` line 54 |
+| 2 | Remove duplicate horizon toggle from ActionQueue header for schedule tab | `ActionQueue.tsx` line 131 |
+| 3 | Add summary counts strip to Follow-Ups tab | `FollowUpsTab.tsx` |
+| 4 | Enrich Prep Intel cards with Calendly details, meeting count, email count, and "Generate Brief" button | `PrepIntelTab.tsx` |
+| 5 | Add sort controls to Momentum Board | `DealPulseTab.tsx` |
+| 6 | Add "Copy as Email" split option in Action Sheet | `FollowUpsTab.tsx` |
 
 ### Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/command-center/FollowUpsTab.tsx` | Fix action chip visibility, overdueSet pattern, goingDark sort, Calendar popover, SheetDescription, lastEmail fetch |
-| `supabase/functions/generate-follow-up-action/index.ts` | Fix enrichment field paths to match `LeadEnrichment` type |
-| `src/components/command-center/DealPulseTab.tsx` | Wrap momentum board in `overflow-x-auto` |
-| `src/components/command-center/PrepIntelTab.tsx` | Accept and use `meetingHorizon` prop |
-| `src/components/ActionQueue.tsx` | Remove dead import, pass `meetingHorizon` to PrepIntelTab |
+| `src/components/command-center/DealPulseTab.tsx` | Remove New Lead from activeDeals; add sort controls to Momentum Board |
+| `src/components/ActionQueue.tsx` | Show horizon toggle only for intel tab (not schedule, which has its own) |
+| `src/components/command-center/FollowUpsTab.tsx` | Add section summary strip; add "Copy as Email" |
+| `src/components/command-center/PrepIntelTab.tsx` | Enrich cards with Calendly, email counts, meeting history; add "Generate Brief" button |
 
