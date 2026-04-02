@@ -246,6 +246,21 @@ export default function DealRoom() {
               <p className="text-xs text-muted-foreground leading-relaxed">{lead.dealIntelligence.dealNarrative}</p>
             </div>
           )}
+
+          {/* Similar Deals Won */}
+          {similarWon.length > 0 && (
+            <div className="border-t border-border pt-3">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1"><Trophy className="h-3 w-3" /> Similar Won ({similarWon.length})</p>
+              <div className="space-y-1.5">
+                {similarWon.slice(0, 3).map((s, i) => (
+                  <div key={i} className="text-xs">
+                    <p className="font-medium">{s.name} · ${s.dealValue.toLocaleString()}/mo</p>
+                    <p className="text-[10px] text-muted-foreground">{s.winTactic}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Center: Tabbed Workspace */}
