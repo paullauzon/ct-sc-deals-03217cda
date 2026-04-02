@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Lead } from "@/types/lead";
 import { BrandLogo } from "@/components/BrandLogo";
-import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight, Send, CheckCircle2, SkipForward, ListChecks } from "lucide-react";
+import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight, Send, CheckCircle2, SkipForward, ListChecks, ExternalLink, Link2 } from "lucide-react";
 import { format, parseISO, differenceInDays, isBefore } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useLeads } from "@/contexts/LeadContext";
@@ -24,6 +24,53 @@ function DealTempBadge({ temp }: { temp?: string }) {
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${c.color}`}>
       <Icon className="h-3 w-3" />{temp}
     </span>
+  );
+}
+
+// ─── Source Citations Component ───
+function SourcesCitation({ dataSources }: { dataSources: string }) {
+  const [open, setOpen] = useState(false);
+  // Parse dataSources string into individual lines, extract URLs
+  const sources = dataSources.split("\n").map(s => s.replace(/^[-•]\s*/, "").trim()).filter(Boolean);
+  if (sources.length === 0) return null;
+
+  return (
+    <div className="mt-2 pt-2 border-t border-border/50">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Link2 className="h-3 w-3" />
+        <span className="font-medium">{sources.length} Source{sources.length !== 1 ? "s" : ""}</span>
+        {open ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
+      </button>
+      {open && (
+        <ul className="mt-1.5 space-y-1">
+          {sources.map((src, i) => {
+            const urlMatch = src.match(/(https?:\/\/[^\s,)]+)/);
+            return (
+              <li key={i} className="text-[10px] text-muted-foreground flex items-start gap-1.5">
+                <span className="text-muted-foreground/50 shrink-0 mt-px">•</span>
+                {urlMatch ? (
+                  <a
+                    href={urlMatch[1]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 break-all"
+                  >
+                    {src.replace(urlMatch[1], "").trim() || new URL(urlMatch[1]).hostname}
+                    <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                  </a>
+                ) : (
+                  <span>{src}</span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -444,6 +491,8 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
             leadGeography: lead.geography,
             leadAcquisitionStrategy: lead.acquisitionStrategy,
             leadNotes: lead.notes,
+            leadLinkedinUrl: lead.linkedinUrl || "",
+            leadLinkedinTitle: lead.linkedinTitle || "",
             meetings: lead.meetings || [],
             dealIntelligence: lead.dealIntelligence || null,
           };
@@ -604,6 +653,10 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                       ))}
                     </ol>
                   </div>
+                )}
+
+                {enrichment?.dataSources && (
+                  <SourcesCitation dataSources={enrichment.dataSources as string} />
                 )}
               </>
             ) : hasPrepItems ? (

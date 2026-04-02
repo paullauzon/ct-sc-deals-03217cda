@@ -78,6 +78,7 @@ serve(async (req) => {
       leadLostReason, leadNotes, leadTargetCriteria, leadTargetRevenue,
       leadGeography, leadAcquisitionStrategy, leadBuyerType,
       leadDaysInStage, leadStageEnteredDate,
+      leadLinkedinUrl, leadLinkedinTitle,
       meetingIntelligence,
       dealIntelligence,
     } = body;
@@ -86,10 +87,11 @@ serve(async (req) => {
     if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
     const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
 
-    // Step 1: External research — scrape company + web search for company + prospect separately
+    // Step 1: External research — scrape company + web search for company + prospect + LinkedIn
     let websiteContent = "";
     let companySearchContent = "";
     let prospectSearchContent = "";
+    let linkedinContent = "";
     let companySearchUrls: string[] = [];
     let prospectSearchUrls: string[] = [];
     const tasks: Promise<void>[] = [];
@@ -110,6 +112,10 @@ serve(async (req) => {
         prospectSearchContent = r.content;
         prospectSearchUrls = r.urls;
       }));
+    }
+    // Scrape LinkedIn profile if URL available
+    if (FIRECRAWL_API_KEY && leadLinkedinUrl) {
+      tasks.push(scrapeWebsite(leadLinkedinUrl, FIRECRAWL_API_KEY).then(c => { linkedinContent = c; }));
     }
     await Promise.all(tasks);
 
@@ -145,6 +151,7 @@ serve(async (req) => {
       `- Form submission: ${leadMessage ? "YES" : "NO"}`,
       `- Company web search: ${companySearchContent ? `YES (${companySearchUrls.length} results)` : "NO"}`,
       `- Prospect web search: ${prospectSearchContent ? `YES (${prospectSearchUrls.length} results)` : "NO"}`,
+      `- LinkedIn profile: ${linkedinContent ? "YES" : leadLinkedinTitle ? `TITLE ONLY (${leadLinkedinTitle})` : "NO"}`,
       `- Meeting summaries: ${meetingSummaries ? `YES (${meetingsWithTranscripts.length})` : "NO"}`,
       `- Deal fields: ${dealFields.length > 0 ? "YES" : "NO"}`,
       `- Notes: ${leadNotes ? "YES" : "NO"}`,
@@ -161,6 +168,8 @@ serve(async (req) => {
     if (leadMessage) contextParts.push(`Original Form Submission:\n${leadMessage}`);
     if (leadNotes) contextParts.push(`Internal Notes:\n${leadNotes}`);
     if (websiteContent) contextParts.push(`COMPANY WEBSITE CONTENT:\n${websiteContent}`);
+    if (linkedinContent) contextParts.push(`LINKEDIN PROFILE CONTENT (${leadLinkedinUrl}):\n${linkedinContent}`);
+    else if (leadLinkedinTitle) contextParts.push(`LINKEDIN TITLE: ${leadLinkedinTitle}${leadLinkedinUrl ? ` (${leadLinkedinUrl})` : ""}`);
     if (companySearchContent) contextParts.push(`COMPANY WEB SEARCH RESULTS:\n${companySearchContent}`);
     if (prospectSearchContent) contextParts.push(`PROSPECT WEB SEARCH RESULTS:\n${prospectSearchContent}`);
     if (meetingSummaries) contextParts.push(`MEETING SUMMARIES (high-level only):\n${meetingSummaries}`);
