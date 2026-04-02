@@ -156,6 +156,15 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
         <div>
           <div className="flex items-center gap-2 mb-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Momentum Board</h3>
+            <button
+              onClick={() => setShowIntelOnly(v => !v)}
+              className={cn(
+                "text-[10px] px-2 py-0.5 rounded-full border transition-colors ml-2",
+                showIntelOnly ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Has Intel ({sortedDeals.filter(d => !!(d.lead.dealIntelligence)).length})
+            </button>
             <div className="flex items-center gap-1 ml-auto">
               <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
               {(["risk", "value", "days", "name"] as const).map(s => (
