@@ -448,15 +448,22 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
       const { data, error } = await supabase.functions.invoke(fnName, { body });
       if (error) throw error;
       if (data?.brief) {
+        setBriefBattleCard({
+          openingHook: data.brief.openingHook,
+          theOneInsight: data.brief.theOneInsight,
+          landmines: data.brief.landmines,
+          keyQuestions: data.brief.keyQuestions,
+          meetingGoal: data.brief.meetingGoal,
+        });
         onBriefGenerated(lead.id, lead.name, data.brief);
-        toast({ title: "Prep brief ready", description: `Intelligence generated for ${lead.name}` });
+        toast({ title: "Prep brief ready", description: `Battle card generated for ${lead.name}` });
       } else if (!hasMeetings && data?.enrichment) {
         await supabase.from("leads").update({
           enrichment: data.enrichment,
           enrichment_status: "complete",
         }).eq("id", lead.id);
         setEnrichmentUpdated(true);
-        toast({ title: "Prospect researched", description: `Research saved for ${lead.name}` });
+        toast({ title: "Prospect researched", description: `Battle card saved for ${lead.name}` });
       } else if (data?.error) {
         toast({ title: "Could not generate brief", description: data.error, variant: "destructive" });
       }
