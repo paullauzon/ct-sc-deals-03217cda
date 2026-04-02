@@ -378,9 +378,14 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
       if (data?.brief) {
         onBriefGenerated(lead.id, lead.name, data.brief);
         toast({ title: "Prep brief ready", description: `Intelligence generated for ${lead.name}` });
-      } else if (!hasMeetings && data) {
+      } else if (!hasMeetings && data?.enrichment) {
+        // Persist enrichment to database
+        await supabase.from("leads").update({
+          enrichment: data.enrichment,
+          enrichment_status: "complete",
+        }).eq("id", lead.id);
         setEnrichmentUpdated(true);
-        toast({ title: "Prospect researched", description: `Enrichment data updated for ${lead.name}. Refresh to see full details.` });
+        toast({ title: "Prospect researched", description: `Research saved for ${lead.name}` });
       } else if (data?.error) {
         toast({ title: "Could not generate brief", description: data.error, variant: "destructive" });
       }
