@@ -1,177 +1,178 @@
 
 
-# Complete Transcript Intelligence Extraction Strategy
+# Mega Strategy: Turning Intelligence Into Rep Enablement
 
-## Current Floor (What's Already Surfaced)
+## The Core Problem
 
-The Business Operations dashboard currently surfaces these transcript-derived metrics:
-- Signal-to-Close Conversion Matrix (intent + engagement vs outcomes)
-- Sales Coaching Scorecard (talk ratio, question quality, objection handling per rep)
-- Stuck Pipeline Alert (high-intent deals stuck 14+ days)
-- Objection & Competitor Heatmap (objection frequency + competitor mentions)
+Right now, your system has two worlds that don't talk to each other:
 
-The Intel tab separately covers: signal distributions, competitive radar, loss intelligence, coaching, and GTM insights.
+1. **COO World** (Dashboard): Aggregated intelligence across all deals — pricing corridors, urgency taxonomies, coaching scorecards, competitive displacement playbooks, stakeholder risk heatmaps. This is where the *patterns* live.
 
----
+2. **Rep World** (Command Center + Pipeline + Deal Room): Individual deal context — prep briefs, follow-up sequences, deal intelligence panels, action sheets. This is where the *execution* happens.
 
-## The Ceiling: What's Buried in the Data (and Not Yet Surfaced)
-
-### Tier 1: High Coverage, High Impact (100+ data points)
-
-**1. Pricing Intelligence Dashboard** (123 meetings with pricing data, 65 with explicit budgets)
-- Actual price points discussed: $2,000-$8,000/mo for Captarget, $3,300-$6,500/mo for SourceCo
-- Won deals clustered at $2,500-$7,000/mo range
-- Budget-to-close correlation: prospects who stated specific budgets vs those who didn't — what's the conversion difference?
-- Price sensitivity mapping: which price points get pushback vs acceptance, by service tier
-- **COO value**: Answers "are we pricing correctly?" and "where are we leaving money on the table?"
-
-**2. Urgency Driver Taxonomy** (149 urgency drivers extracted)
-- Top themes: "need systematic M&A process," "current sourcing partner underperforming," "deal flow increase needed"
-- Currently invisible — buried in individual meeting records
-- Can categorize into: Competitive Pressure, Resource Constraints, Market Timing, Incumbent Failure, Growth Mandate
-- Correlate urgency categories with close rates
-- **COO value**: Tells marketing which pain narratives to lead with in ads/content
-
-**3. Value Proposition Effectiveness** (120 meetings with value_prop data)
-- What Captarget/SourceCo value prop resonated in won vs lost deals
-- Won: "outsourced BD approach relieving bandwidth burden," "no success fee model," "both on/off market strategies"
-- Lost: "customized outreach with transparent pricing" — same messaging, different outcome
-- **COO value**: Refine sales pitch. Know which value angles close and which don't.
-
-**4. Sentiment Trajectory Analysis** (127 meetings with sentiment)
-- Won deals: 83% Positive, 17% Very Positive, 0% Neutral/Cautious
-- Lost deals: 75% Positive, 25% Very Positive (counterintuitive — sentiment alone doesn't predict losses)
-- Neutral sentiment = 0 wins across 7 meetings (strong negative predictor)
-- **COO value**: Sentiment is a necessary-but-not-sufficient condition. Combine with action item completion for true predictive power.
-
-**5. Action Item Completion Crisis** (169 action items tracked, 131 still "Open")
-- Only 10 completed out of 169 (5.9% completion rate)
-- This is a massive operational red flag — promises being made in meetings and not followed through
-- Can break down by rep: who's dropping the ball?
-- Correlate completion rates with deal outcomes
-- **COO value**: Single biggest controllable factor in deal conversion. Fix this, close more deals.
-
-### Tier 2: Moderate Coverage, Strategic Value (20-85 data points)
-
-**6. Deal Temperature + Momentum Matrix** (85 deals with deal intelligence)
-- 74 deals rated "Warm," 6 "Lukewarm," 2 "Cold," 2 "On Fire"
-- 66 "Steady" momentum, 17 "Accelerating," 2 "Stalling/Stalled"
-- Cross-reference: "Warm + Steady" = 60+ deals sitting in neutral. "Warm + Accelerating" = 17 deals actively progressing
-- **COO value**: Dashboard showing which deals need a push (Warm+Steady for too long) vs which are self-propelling
-
-**7. Stakeholder Influence Map Aggregation** (195 stakeholders mapped across 85 deals)
-- 39 Champions who are Decision Makers
-- 16 Neutral Decision Makers (deals at risk — no internal advocate)
-- 40 "Supporter/Medium" — passive goodwill but no power
-- **COO value**: Deals with Neutral Decision Makers and no Champion = systematically at risk. Flag these for executive-level engagement.
-
-**8. Risk Register Aggregation** (85 deals with risk registers, 23 total risk factors)
-- Risk severity distribution across active pipeline
-- Unmitigated vs Partially Mitigated vs Mitigated — what percentage of pipeline risk is addressed?
-- Common risk patterns: budget constraints, CEO approval dependency, competitor engagement, internal team capacity
-- **COO value**: Portfolio-level risk view. "How much of our pipeline has unmitigated critical risks?"
-
-**9. Win Strategy Intelligence** (83 deals with win strategies)
-- Closing windows: most say "30 days" or "next quarter" — are they actually closing in that window?
-- Number One Closer themes: "demonstrate ROI," "case studies," "trial/pilot program" — which closing tactics correlate with wins?
-- Power Moves: what types of power moves were recommended vs executed?
-- **COO value**: Build a playbook from what actually works, not theory.
-
-**10. Multi-Meeting Deal Patterns** (20+ leads with 2+ meetings)
-- Rish Sharma: 5 meetings, $40K deal, still in Meeting Held — meeting fatigue or genuine complexity?
-- Won deals averaged how many meetings before close?
-- Is there a "meeting count sweet spot"? (too few = not enough trust, too many = stalling)
-- **COO value**: Optimal meeting cadence per deal size. "After 3 meetings with no advancement, change strategy."
-
-**11. Decision Process Intelligence** (120 meetings with decision process data)
-- Patterns: "internal review by committee," "sole decision maker," "board approval required," "pending partner discussion"
-- Correlate decision complexity with cycle time and win rate
-- Solo decision makers close faster? Committee deals need different strategy?
-- **COO value**: Adjust sales approach based on decision structure. Prioritize solo-DM deals for speed.
-
-### Tier 3: Emerging Data, Future Value (5-27 data points)
-
-**12. Competitive Displacement Intelligence** (11 structured competitor details, 50 total mentions)
-- Current solutions being used: Apollo, Source Scrub, RADA, PitchBook, Clay, Pod, internal teams
-- Prospect sentiment toward incumbents: 3 "Unfavorable" (opportunity), 5 "Neutral" (need differentiation), 3 "Mixed" (risk)
-- Switching barriers: 14 unique barriers identified (existing relationships, regulatory, self-sufficiency)
-- **COO value**: Displacement playbooks per competitor. "When they use Apollo, lead with X."
-
-**13. Evaluation Criteria Mapping** (27 criteria extracted)
-- Top: Price (2x), Lead Quality (2x), Service Flexibility, Industry Expertise
-- Can map which criteria won deals prioritized vs lost deals
-- **COO value**: Adjust pitch emphasis. If "Lead Quality" wins deals but "Price" loses them, lead with quality.
-
-**14. Speed-to-Meeting Correlation** (42 leads with hours_to_meeting_set)
-- Captarget Meeting Held: avg 210 hours (8.75 days), range 3-1342 hours
-- Won deals: avg 438 hours but high variance (6 to 1194 hours) — small sample
-- SourceCo: faster at avg 153 hours for Meeting Held
-- **COO value**: Response time benchmarking. Not yet enough data to be definitive but trending.
-
-**15. Buyer Journey & Champion Strength** (6 data points each — too sparse for dashboard)
-- Worth tracking but need 30+ data points before surfacing
-- Recommendation: keep extracting, build dashboard widget when coverage hits 20%
+The gap: your reps can't benefit from the patterns. Malik doesn't know that "Strong intent + Steady momentum for 14+ days" is a red flag across 60 deals. He just sees his 8 deals individually. The COO intelligence stays on the COO dashboard. The reps never see it.
 
 ---
 
-## What Should Be Built (Prioritized)
+## What to Build (Prioritized by Revenue Impact)
 
-### Must-Build (Data exists, high COO impact, not surfaced anywhere)
+### Tier 1: Close Revenue That's Already There
 
-| # | Section | Tab | Why |
-|---|---------|-----|-----|
-| 1 | **Action Item Completion Tracker** | Operations | 5.9% completion rate is a crisis. Show per-rep completion rates, overdue items, and dropped promises. This is the single most actionable metric. |
-| 2 | **Pricing Intelligence** | Economics | Price ranges discussed vs won price points. Shows optimal pricing corridors per brand and service type. |
-| 3 | **Deal Temperature & Momentum Grid** | Operations | 60+ deals sitting "Warm + Steady" — surface which need intervention vs which are progressing |
-| 4 | **Stakeholder Risk Heatmap** | Forecast | 16 deals with Neutral Decision Makers and no Champion = highest risk. Flag for executive engagement. |
-| 5 | **Urgency Driver Taxonomy** | Overview | Categorized urgency drivers with frequency. Tells marketing and sales what language resonates. |
+**1. "Why You'll Win / Why You'll Lose" Card — per deal, in real time**
 
-### Should-Build (Strategic but lower urgency)
+Where: Pipeline card hover, Deal Room sidebar, Follow-Ups row expansion
+What: For each active deal, synthesize a 2-line card from existing deal intelligence:
+- **Win because**: Pull from `winStrategy.numberOneCloser` + `stakeholderMap` champion presence + `momentumSignals.momentum`
+- **Lose because**: Pull from `riskRegister` unmitigated items + `objectionTracker` open objections + missing champion flag
+- **Do next**: The single highest-leverage action from `actionItemTracker` (oldest open item) or `winStrategy.powerMove`
 
-| # | Section | Tab | Why |
-|---|---------|-----|-----|
-| 6 | **Meeting Count vs Outcome** | Operations | Optimal meeting cadence analysis. "After N meetings, convert or deprioritize." |
-| 7 | **Decision Process Complexity** | Forecast | Solo DM vs committee deals — different strategies needed |
-| 8 | **Value Prop Effectiveness** | Overview | Which pitch angles close vs which don't |
-| 9 | **Risk Portfolio View** | Forecast | Aggregate unmitigated risks across pipeline |
-| 10 | **Competitive Displacement Playbook** | Overview | Per-incumbent displacement strategies |
+Data source: `deal_intelligence.winStrategy`, `deal_intelligence.riskRegister`, `deal_intelligence.stakeholderMap`, `deal_intelligence.actionItemTracker`
+Coverage: 83-85 deals — everything with a meeting.
 
-### Not Yet (Insufficient data)
+This replaces "a rep needs to click into Deal Room → Intelligence tab → read 5 sections → synthesize mentally" with a 2-second glance.
 
-- Buyer Journey Distribution (6 data points)
-- Champion Strength Overview (6 data points)
-- Speed-to-meeting causation (42 points, high variance)
+**2. "Dropped Promise" Alerts — inline in Follow-Ups and Schedule**
+
+Where: FollowUpsTab rows, ScheduleTab items, Pipeline card badges
+What: When a deal has open action items from `deal_intelligence.actionItemTracker` with status "Open" or "Overdue," surface the specific promise directly in the follow-up row. Not just "Complete Actions" — show *what* was promised: "Send case study (14d overdue)," "Share pricing proposal (7d overdue)."
+
+Currently: `getRecommendation()` in FollowUpsTab checks for open action items but only shows the first one generically. The Schedule tab doesn't check at all. Pipeline cards don't show dropped promises.
+
+The 5.9% action item completion rate means 131 promises are invisible. Making them visible in the rep's daily workflow is the single highest-ROI change.
+
+**3. "Similar Deals Won" Pattern Match — per deal**
+
+Where: Prep Intel battle cards, Deal Room sidebar
+What: When a rep is prepping for a meeting, show "3 deals with similar profile closed at $X/mo in Y days." Match on: same brand, similar deal value range (within 30%), same service interest, same ICP fit. Show what tactics worked (from those deals' `winStrategy.numberOneCloser`).
+
+Data: Cross-reference current deal attributes against the 6 won deals (4 Captarget, 2+ SourceCo eventually). As more deals close, this becomes increasingly powerful. Even with 4 won deals, showing "Alexander Kurian had similar objections and closed at $7K/mo after demonstrating ROI" is actionable.
+
+**4. Pricing Guidance — per deal, context-aware**
+
+Where: Prep Intel battle cards (before meetings), Follow-Up action sheet (when drafting proposals)
+What: When a rep is about to discuss pricing, show:
+- This prospect's stated budget (from `meetings[].intelligence.dealSignals.budgetMentioned`)
+- Won deal pricing corridor for this brand (from aggregated pricing intelligence)
+- What value props resonated in deals at this price point (from `ValuePropEffectiveness` data)
+
+Currently: Pricing data exists in 123 meetings but is only visible on the COO Economics tab. The rep going into a pricing conversation has zero guidance from the system.
+
+### Tier 2: Prevent Revenue Loss
+
+**5. "Deal Health Score" — composite, visual, per deal**
+
+Where: Pipeline cards (replacing or supplementing the current aging heatmap), Deal Pulse tab, Follow-Ups rows
+What: A single 0-100 score computed from:
+- Champion presence (stakeholder map has at least 1 Champion = +25, none = -25)
+- Action item completion rate for this deal (+/- 25)
+- Momentum signal (Accelerating = +20, Steady = 0, Stalling = -20)
+- Days in stage vs. average for won deals at this stage (+/- 15)
+- Open unmitigated critical risks (-15 per)
+
+Currently: Deal Pulse shows momentum + temperature separately. The rep has to mentally combine 5 signals. A single score with color coding (green/amber/red) makes triage instant.
+
+**6. "Stakeholder Coverage" Warning — per deal**
+
+Where: Pipeline cards, Deal Room header, Prep Intel
+What: Flag deals where:
+- No champion identified (16 deals currently)
+- Decision maker is "Neutral" (highest risk pattern from stakeholder analysis)
+- Only 1 stakeholder mapped (single-threaded = fragile)
+
+Show as a badge: "No Champion" (red), "Single-threaded" (amber), "Multi-threaded" (green).
+
+Data: `deal_intelligence.stakeholderMap` — 195 stakeholders across 85 deals.
+
+**7. "Objection Playbook" — context-aware per deal**
+
+Where: Prep Intel battle cards, inline in Follow-Ups when objection is detected
+What: When a deal has open objections (from `deal_intelligence.objectionTracker`), show the rep how similar objections were handled in won deals. Pull from the aggregated objection data:
+- "Budget/Pricing" objection → "In 3 won deals, this was addressed by leading with ROI and offering quarterly billing"
+- "Past vendor failure" → "In 2 won deals, case studies and a pilot program closed the trust gap"
+
+Currently: Objections are tracked per-deal in the Deal Intelligence panel, and aggregated on the Forecast tab heatmap. But there's no connection: when a rep faces a pricing objection, the system doesn't tell them what worked before.
+
+### Tier 3: Accelerate and Optimize
+
+**8. "Next Best Action" Engine — replacing generic playbooks**
+
+Where: Schedule tab, Follow-Ups tab, Pipeline card action chips
+What: Instead of static playbook sequences (send confirmation → send agenda → follow up), dynamically compute the next best action based on deal state:
+- If momentum is "Stalling" and last contact > 7 days → "Re-engage with case study"
+- If sentiment was "Neutral" in last meeting and no follow-up sent → "Send value-add (urgent)"
+- If proposal sent > 5 days ago and no response → "Direct ask about timeline"
+- If they have open action items they owe us → "Nudge on [specific item]"
+
+Currently: The playbook system (`src/lib/playbooks.ts`) is stage-based with fixed day offsets. It doesn't account for deal intelligence. A "Meeting Held" deal gets the same sequence whether it's "On Fire" or "Cold."
+
+Data: Combine `deal_intelligence.momentumSignals`, latest `meetings[].intelligence.dealSignals`, `deal_intelligence.actionItemTracker`, stage duration, and last contact date.
+
+**9. "Morning Briefing" — daily digest per rep**
+
+Where: Schedule tab header (already has "Since Yesterday" strip)
+What: Expand the briefing strip to include:
+- Deals where momentum changed (Steady → Stalling, or Accelerating)
+- Action items that became overdue overnight
+- Deals hitting the "meeting count sweet spot" threshold (3+ meetings, no stage advance)
+- Any deal where a competitor was mentioned for the first time
+
+Currently: "Since Yesterday" shows new leads, Calendly bookings, and stage changes. It doesn't surface intelligence changes.
+
+**10. "Win/Loss Debrief" Auto-Insights — when a deal closes**
+
+Where: Deal Room (for closed deals), Follow-Ups tab (as a learning moment)
+What: When a deal is marked Closed Won or Closed Lost, auto-generate a debrief:
+- What signals predicted this outcome (from Signal-to-Close Matrix data)
+- What the rep did well (from coaching metrics for this deal's meetings)
+- What could improve (dropped action items, weak objection handling, single-threading)
+- How this compares to the average won/lost deal
+
+Data: All transcript intelligence + deal intelligence for the specific lead, cross-referenced with aggregate patterns.
 
 ---
 
-## Data Sources Summary
+## How These Connect to the Transcript Intelligence Plan
 
-All metrics above use data already in the database. No fabrication required:
+| Transcript Intelligence (COO Dashboard) | Rep Enablement (Command Center) |
+|---|---|
+| Action Item Completion Tracker (5.9% crisis) | → Dropped Promise Alerts inline in Follow-Ups (#2) |
+| Pricing Intelligence corridors | → Pricing Guidance per deal before meetings (#4) |
+| Signal-to-Close Matrix | → Deal Health Score composite (#5) |
+| Stakeholder Risk Heatmap | → Stakeholder Coverage Warning badges (#6) |
+| Objection & Competitor Heatmap | → Objection Playbook per deal (#7) |
+| Urgency Driver Taxonomy | → Opening hooks in Prep Intel already use this |
+| Value Prop Effectiveness | → Similar Deals Won pattern matching (#3) |
+| Deal Temperature & Momentum | → Next Best Action engine (#8) |
+| Win Strategy Intelligence | → Win/Lose card per deal (#1) |
+| Meeting Count vs Outcome | → Morning Briefing threshold alerts (#9) |
 
-| Source | Field Path | Coverage |
-|--------|-----------|----------|
-| Meeting intelligence | `meetings[].intelligence.*` | 127/133 meetings |
-| Deal intelligence | `deal_intelligence.*` | 85/94 leads with meetings |
-| Pricing discussions | `meetings[].intelligence.pricingDiscussion` | 123 meetings |
-| Budget mentioned | `meetings[].intelligence.dealSignals.budgetMentioned` | 65 meetings |
-| Action items | `deal_intelligence.actionItemTracker[]` | 85 leads, 169 items |
-| Stakeholder map | `deal_intelligence.stakeholderMap[]` | 85 leads, 195 stakeholders |
-| Win strategy | `deal_intelligence.winStrategy` | 83 leads |
-| Momentum signals | `deal_intelligence.momentumSignals` | 85 leads |
-| Risk register | `deal_intelligence.riskRegister[]` | 85 leads |
-| Urgency drivers | `meetings[].intelligence.dealSignals.urgencyDrivers[]` | 149 items |
-| Decision process | `meetings[].intelligence.dealSignals.decisionProcess` | 120 meetings |
-| Current solution | `meetings[].intelligence.dealSignals.currentSolution` | 7 specific tools |
-| Evaluation criteria | `meetings[].intelligence.dealSignals.evaluationCriteria[]` | 27 criteria |
-| Switching barriers | `meetings[].intelligence.dealSignals.switchingBarriers[]` | 14 barriers |
+The pattern: every COO-level insight becomes a rep-level action.
 
 ---
 
-## The One Metric That Matters Most
+## What NOT to Build (and Why)
 
-**Action item completion rate: 5.9%.**
+- **Automated email sending**: You want human judgment in the loop. AI drafts + one-click copy is the right model (already implemented).
+- **Lead scoring visible to reps**: Tier/score is a prioritization tool for management, not a rep motivator. Showing "this lead is Tier 3" to a rep creates self-fulfilling prophecy.
+- **Full competitive intelligence per deal**: The Prep Intel battle cards already surface competitive positioning. Adding more would create information overload.
+- **Real-time notifications/push alerts**: Without a mobile app or email integration, in-app alerts only work when the rep is already looking at the CRM. The morning briefing + follow-up prioritization handles this better.
 
-131 out of 169 action items are still "Open." This means promises made in sales meetings — "I'll send you the proposal," "We'll schedule a follow-up," "I'll share case studies" — are systematically not being tracked or executed. This is almost certainly the primary reason 42 "Strong Intent" deals are stuck in Meeting Held. The intelligence exists. The follow-through doesn't.
+---
 
-Building an Action Item Completion dashboard per rep with overdue alerts would likely have more revenue impact than any other single feature in this system.
+## Implementation Priority (by effort vs impact)
+
+| # | Feature | Impact | Effort | Files |
+|---|---------|--------|--------|-------|
+| 1 | Win/Lose card per deal | Very High | Low | Pipeline.tsx, DealRoom.tsx, FollowUpsTab.tsx |
+| 2 | Dropped Promise Alerts | Very High | Low | FollowUpsTab.tsx, ScheduleTab.tsx, Pipeline.tsx |
+| 3 | Deal Health Score | High | Medium | New utility + Pipeline.tsx, DealPulseTab.tsx |
+| 4 | Stakeholder Coverage Warning | High | Low | Pipeline.tsx, DealRoom.tsx |
+| 5 | Pricing Guidance in Prep Intel | High | Medium | PrepIntelTab.tsx |
+| 6 | Objection Playbook | Medium | Medium | PrepIntelTab.tsx, FollowUpsTab.tsx |
+| 7 | Next Best Action engine | High | High | New utility + playbooks.ts + ScheduleTab.tsx + FollowUpsTab.tsx |
+| 8 | Similar Deals Won | Medium | Medium | PrepIntelTab.tsx, DealRoom.tsx |
+| 9 | Enhanced Morning Briefing | Medium | Low | ScheduleTab.tsx |
+| 10 | Win/Loss Debrief | Low (rare event) | Medium | DealRoom.tsx |
+
+All use existing data. No new database tables, no new API calls, no fabricated metrics. Pure intelligence surfacing.
 
