@@ -447,7 +447,138 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
   );
 }
 
-function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail, onUpdateLead }: { lead: Lead; onSelect: () => void; emailCount: number; onBriefGenerated: (leadId: string, leadName: string, brief: PrepBrief) => void; onDraftEmail: (lead: Lead) => void; onUpdateLead: (id: string, updates: Partial<Lead>) => void }) {
+// ─── Collapsible Enrichment Section ───
+function EnrichmentCollapsible({ title, icon: Icon, iconColor, children }: { title: string; icon: typeof Target; iconColor: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-border">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        className="w-full px-4 py-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-secondary/20 transition-colors"
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        <Icon className={`h-3 w-3 ${iconColor}`} />
+        {title}
+      </button>
+      {open && <div className="px-4 pb-3 space-y-1.5">{children}</div>}
+    </div>
+  );
+}
+
+// ─── Enrichment Deep Sections ───
+function EnrichmentSections({ enrichment, lead, onUpdateLead }: { enrichment: any; lead: Lead; onUpdateLead: (id: string, updates: Partial<Lead>) => void }) {
+  const hasProspectProfile = !!enrichment.prospectProfile;
+  const hasCompanyDossier = !!enrichment.companyDossier;
+  const hasCompetitive = !!enrichment.competitivePositioning;
+  const hasSuggested = enrichment.suggestedUpdates && typeof enrichment.suggestedUpdates === "object" && Object.keys(enrichment.suggestedUpdates).length > 0;
+  const hasPreMeetingAmmo = enrichment.preMeetingAmmo && Array.isArray(enrichment.preMeetingAmmo) && enrichment.preMeetingAmmo.length > 0;
+  const hasDecisionMakers = !!enrichment.decisionMakers;
+  const hasAcquisitionCriteria = !!enrichment.acquisitionCriteria;
+
+  const hasAnything = hasProspectProfile || hasCompanyDossier || hasCompetitive || hasSuggested || hasPreMeetingAmmo || hasDecisionMakers || hasAcquisitionCriteria;
+  if (!hasAnything) return null;
+
+  const handleApplySuggestion = (field: string, value: string) => {
+    const updates: Partial<Lead> = {};
+    if (field === "stage") updates.stage = value;
+    else if (field === "priority") updates.priority = value;
+    else if (field === "icp_fit" || field === "icpFit") updates.icpFit = value;
+    else if (field === "buyer_type" || field === "buyerType") updates.buyerType = value;
+    else if (field === "service_interest" || field === "serviceInterest") updates.serviceInterest = value;
+    else return;
+    onUpdateLead(lead.id, updates);
+    toast({ title: `Updated ${field}`, description: `Set to "${value}"` });
+  };
+
+  return (
+    <>
+      {/* Prospect Profile */}
+      {hasProspectProfile && (
+        <EnrichmentCollapsible title="Prospect Profile" icon={Users} iconColor="text-purple-500">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">{enrichment.prospectProfile}</p>
+        </EnrichmentCollapsible>
+      )}
+
+      {/* Company Intel */}
+      {(hasCompanyDossier || hasDecisionMakers || hasAcquisitionCriteria) && (
+        <EnrichmentCollapsible title="Company Intel" icon={Building2} iconColor="text-blue-500">
+          {hasCompanyDossier && <p className="text-[11px] text-muted-foreground leading-relaxed">{enrichment.companyDossier}</p>}
+          {hasDecisionMakers && (
+            <div className="mt-1.5">
+              <span className="text-[10px] font-semibold text-foreground">Decision Makers: </span>
+              <span className="text-[11px] text-muted-foreground">{enrichment.decisionMakers}</span>
+            </div>
+          )}
+          {hasAcquisitionCriteria && (
+            <div className="mt-1.5">
+              <span className="text-[10px] font-semibold text-foreground">Acquisition Criteria: </span>
+              <span className="text-[11px] text-muted-foreground">{enrichment.acquisitionCriteria}</span>
+            </div>
+          )}
+        </EnrichmentCollapsible>
+      )}
+
+      {/* Pre-Meeting Ammo */}
+      {hasPreMeetingAmmo && (
+        <EnrichmentCollapsible title="Talking Points" icon={Zap} iconColor="text-amber-500">
+          <ul className="space-y-1">
+            {(enrichment.preMeetingAmmo as any[]).map((item: any, i: number) => (
+              <li key={i} className="text-[11px] text-muted-foreground">
+                <span className="font-medium text-foreground">{typeof item === "string" ? item : item.point || item.topic}</span>
+                {typeof item !== "string" && item.whyItMatters && (
+                  <span className="text-muted-foreground"> — {item.whyItMatters}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </EnrichmentCollapsible>
+      )}
+
+      {/* Competitive Landscape */}
+      {hasCompetitive && (
+        <EnrichmentCollapsible title="Competitive Landscape" icon={Swords} iconColor="text-red-500">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">{enrichment.competitivePositioning}</p>
+          {enrichment.competitorTools && (
+            <div className="mt-1.5">
+              <span className="text-[10px] font-semibold text-foreground">Competitor Tools: </span>
+              <span className="text-[11px] text-muted-foreground">{enrichment.competitorTools}</span>
+            </div>
+          )}
+        </EnrichmentCollapsible>
+      )}
+
+      {/* Suggested CRM Updates */}
+      {hasSuggested && (
+        <EnrichmentCollapsible title="Suggested CRM Updates" icon={Settings2} iconColor="text-emerald-500">
+          <div className="space-y-1.5">
+            {Object.entries(enrichment.suggestedUpdates as Record<string, any>).map(([field, suggestion]: [string, any]) => {
+              const value = typeof suggestion === "string" ? suggestion : suggestion?.value;
+              const reason = typeof suggestion === "object" ? suggestion?.reason : "";
+              if (!value) return null;
+              return (
+                <div key={field} className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[11px] font-medium text-foreground">{field}: </span>
+                    <span className="text-[11px] text-muted-foreground">{value}</span>
+                    {reason && <span className="text-[10px] text-muted-foreground/70 block">{reason}</span>}
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleApplySuggestion(field, value); }}
+                    className="shrink-0 text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary font-medium hover:bg-primary/20 transition-colors"
+                  >
+                    Apply
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </EnrichmentCollapsible>
+      )}
+    </>
+  );
+}
+
+
   const [generatingPrep, setGeneratingPrep] = useState(false);
   const [enrichmentUpdated, setEnrichmentUpdated] = useState(false);
   const [deepIntelOpen, setDeepIntelOpen] = useState(false);
