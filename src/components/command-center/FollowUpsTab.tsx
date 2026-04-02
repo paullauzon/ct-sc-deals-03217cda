@@ -483,6 +483,13 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   const [sortField, setSortField] = useState<SortField>("default");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [openSections, setOpenSections] = useState({ overdue: true, dueThisWeek: true, unanswered: true, untouched: true, goingDark: true });
+  const { tasks: allTasks } = useLeadTasks();
+
+  const taskCountMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of allTasks) m.set(t.lead_id, (m.get(t.lead_id) || 0) + 1);
+    return m;
+  }, [allTasks]);
 
   // Action sheet state
   const [sheetOpen, setSheetOpen] = useState(false);
