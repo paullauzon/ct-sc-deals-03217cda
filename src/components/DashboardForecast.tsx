@@ -30,7 +30,7 @@ const DEFAULT_DAYS_TO_CLOSE: Record<string, number> = {
   "Contract Sent": 7,
 };
 
-const TERMINAL = ["Closed Won", "Closed Lost", "Duplicate", "Disqualified"];
+const TERMINAL = ["Closed Won", "Closed Lost", "Went Dark", "Duplicate", "Disqualified"];
 const MONTHLY_TARGET = 15000;
 
 interface Props {

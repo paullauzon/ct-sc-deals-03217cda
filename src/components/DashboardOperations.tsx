@@ -22,7 +22,7 @@ const ACTIVE_STAGES: LeadStage[] = [
   "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
 ];
 
-const TERMINAL_STAGES = ["Closed Won", "Closed Lost", "Went Dark"];
+const TERMINAL_STAGES = ["Closed Won", "Closed Lost", "Went Dark", "Duplicate", "Disqualified"];
 const REP_CAPACITY_THRESHOLD = 25;
 const QUARTERLY_TARGET_DEFAULT = 100000;
 

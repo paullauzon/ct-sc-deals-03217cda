@@ -367,6 +367,11 @@ export function DashboardEconomics({ leads }: Props) {
                         <p className="text-[10px] text-muted-foreground">LTV</p>
                       </div>
                     </div>
+                  ) : leads.filter(l => l.brand === brand && l.stage === "Closed Won").length === 0 ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      No closed won deals yet for {brand}
+                    </div>
                   ) : (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
                       <AlertCircle className="h-3.5 w-3.5 shrink-0" />
