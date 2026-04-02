@@ -141,8 +141,8 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
         {/* Momentum Board */}
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Momentum Board</h3>
-          <div className="border border-border rounded-md overflow-hidden">
-            <div className="grid grid-cols-[1fr_100px_70px_80px_50px_50px_80px] gap-0 px-4 py-2 bg-secondary/30 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          <div className="border border-border rounded-md overflow-hidden overflow-x-auto">
+            <div className="grid grid-cols-[1fr_100px_70px_80px_50px_50px_80px] gap-0 px-4 py-2 bg-secondary/30 text-[10px] font-medium text-muted-foreground uppercase tracking-wider min-w-[600px]">
               <span>Deal</span>
               <span>Stage</span>
               <span className="text-center">Days</span>
@@ -151,7 +151,7 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
               <span className="text-center">Mom.</span>
               <span className="text-right">Last Contact</span>
             </div>
-            <div className="divide-y divide-border max-h-[400px] overflow-y-auto">
+            <div className="divide-y divide-border max-h-[400px] overflow-y-auto min-w-[600px]">
               {sortedDeals.map(({ lead, days, momentum, dealTemp, closingWindow }) => {
                 const isStalled = days > 14;
                 const lastDate = lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate;

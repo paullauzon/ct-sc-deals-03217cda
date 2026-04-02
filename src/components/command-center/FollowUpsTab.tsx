@@ -11,7 +11,9 @@ import { format, parseISO, differenceInDays, isToday, addDays, isBefore } from "
 import { supabase } from "@/integrations/supabase/client";
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -160,11 +162,11 @@ function FollowUpRow({
           <CalendarCheck className="h-2.5 w-2.5 text-muted-foreground" />
         )}
 
-        {/* Action chip */}
-        <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
+        {/* Action chip — always visible */}
+        <div className="ml-auto flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
           <button
             onClick={() => onAction(lead, action.type)}
-            className="text-[10px] px-2.5 py-1 rounded-full border border-foreground/20 text-foreground hover:bg-foreground hover:text-background transition-colors flex items-center gap-1.5 font-medium"
+            className="text-[10px] px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:bg-foreground hover:text-background hover:border-foreground transition-colors flex items-center gap-1.5 font-medium"
           >
             <ActionIcon className="h-3 w-3" />
             {action.label}
@@ -207,6 +209,19 @@ function ActionSheet({
       // Find most recent meeting for context
       const recentMeeting = lead.meetings?.length > 0 ? lead.meetings[lead.meetings.length - 1] : null;
 
+      // Fetch last inbound email for reply-inbound
+      let lastEmail: any = undefined;
+      if (actionType === "reply-inbound") {
+        const { data: emailData } = await supabase
+          .from("lead_emails")
+          .select("from_address, from_name, subject, body_preview")
+          .eq("lead_id", lead.id)
+          .eq("direction", "inbound")
+          .order("email_date", { ascending: false })
+          .limit(1);
+        if (emailData?.[0]) lastEmail = emailData[0];
+      }
+
       const { data, error } = await supabase.functions.invoke("generate-follow-up-action", {
         body: {
           actionType,
@@ -221,6 +236,7 @@ function ActionSheet({
             enrichment: lead.enrichment,
             dealIntelligence: lead.dealIntelligence,
           },
+          lastEmail,
           meetingContext: recentMeeting ? {
             title: recentMeeting.title,
             date: recentMeeting.date,
@@ -275,6 +291,7 @@ function ActionSheet({
             <span>{lead?.name}</span>
             <span className="text-muted-foreground font-normal">· {actionType && actionLabels[actionType]}</span>
           </SheetTitle>
+          <SheetDescription className="sr-only">AI-generated action draft for {lead?.name}</SheetDescription>
         </SheetHeader>
 
         <div className="mt-6 space-y-4">
@@ -304,17 +321,22 @@ function ActionSheet({
               <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
                 Suggested Next Follow-Up
               </label>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">
-                  {(() => { try { return format(parseISO(suggestedFollowUp), "EEE, MMM d"); } catch { return suggestedFollowUp; } })()}
-                </span>
-                <Calendar
-                  mode="single"
-                  selected={suggestedFollowUp ? parseISO(suggestedFollowUp) : undefined}
-                  onSelect={(date) => { if (date) setSuggestedFollowUp(format(date, "yyyy-MM-dd")); }}
-                  className="border border-border rounded-md p-2"
-                />
-              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-md border border-border hover:bg-secondary/50 transition-colors">
+                    <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                    {(() => { try { return format(parseISO(suggestedFollowUp), "EEE, MMM d"); } catch { return suggestedFollowUp; } })()}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={suggestedFollowUp ? parseISO(suggestedFollowUp) : undefined}
+                    onSelect={(date) => { if (date) setSuggestedFollowUp(format(date, "yyyy-MM-dd")); }}
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           )}
 
@@ -487,17 +509,15 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   const toggleSection = (key: keyof typeof openSections) => setOpenSections(s => ({ ...s, [key]: !s[key] }));
 
   // Build sections — dedup: overdue takes priority over goingDark
-  const overdueSet = useMemo(() => new Set<string>(), []);
-
   const overdue = useMemo(() => {
     const items = active
       .filter(l => l.nextFollowUp && isBefore(parseISO(l.nextFollowUp), now))
       .map(l => ({ lead: l, daysOverdue: differenceInDays(now, parseISO(l.nextFollowUp)) }))
       .sort((a, b) => b.daysOverdue - a.daysOverdue);
-    overdueSet.clear();
-    items.forEach(i => overdueSet.add(i.lead.id));
     return applySortToLeads(items, sortField, sortDir, (a, b) => b.daysOverdue - a.daysOverdue);
   }, [active, now, sortField, sortDir]);
+
+  const overdueSet = useMemo(() => new Set(overdue.map(i => i.lead.id)), [overdue]);
 
   const dueThisWeek = useMemo(() => {
     const weekEnd = addDays(now, 7);
@@ -524,7 +544,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   }, [active, now, sortField, sortDir]);
 
   const goingDark = useMemo(() => {
-    return active
+    const items = active
       .filter(l => {
         if (overdueSet.has(l.id)) return false;
         if (l.stage === "New Lead") return false;
@@ -535,8 +555,8 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
       .map(l => {
         const lastDate = l.lastContactDate || l.meetingDate || l.stageEnteredDate || l.dateSubmitted;
         return { lead: l, daysSilent: differenceInDays(now, parseISO(lastDate!)) };
-      })
-      .sort((a, b) => b.daysSilent - a.daysSilent);
+      });
+    return applySortToLeads(items, sortField, sortDir, (a, b) => b.daysSilent - a.daysSilent);
   }, [active, now, overdueSet, sortField, sortDir]);
 
   const totalItems = overdue.length + dueThisWeek.length + unansweredLeads.length + untouched.length + goingDark.length;
