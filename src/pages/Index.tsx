@@ -6,23 +6,31 @@ import { ActionQueue } from "@/components/ActionQueue";
 import { CommandPalette } from "@/components/CommandPalette";
 import { useLeads } from "@/contexts/LeadContext";
 import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";
+import { SystemSwitcher } from "@/components/SystemSwitcher";
+import { BusinessSystem } from "@/components/BusinessSystem";
 import { Search, BarChart3, Kanban, Users, CalendarCheck } from "lucide-react";
 
 type View = "dashboard" | "pipeline" | "leads" | "today";
+type System = "crm" | "business";
 
 const VALID_VIEWS = new Set<View>(["dashboard", "pipeline", "leads", "today"]);
 
-function parseViewFromHash(): View {
+function parseHashState(): { view: View; system: System } {
   const hash = window.location.hash.replace("#", "");
   const params = new URLSearchParams(hash);
   const v = params.get("view");
-  return v && VALID_VIEWS.has(v as View) ? (v as View) : "dashboard";
+  const s = params.get("sys");
+  return {
+    view: v && VALID_VIEWS.has(v as View) ? (v as View) : "dashboard",
+    system: s === "business" ? "business" : "crm",
+  };
 }
 
-function updateHash(view: View) {
+function updateHash(view: View, system: System = "crm") {
   const hash = window.location.hash.replace("#", "");
   const params = new URLSearchParams(hash);
   params.set("view", view);
+  params.set("sys", system);
   if (view !== "dashboard") params.delete("tab");
   window.location.hash = params.toString();
 }
@@ -35,18 +43,33 @@ const NAV_ITEMS: { key: View; label: string; desc: string; icon: typeof BarChart
 ];
 
 function AppContent() {
-  const [view, setViewState] = useState<View>(parseViewFromHash);
+  const [view, setViewState] = useState<View>(() => parseHashState().view);
+  const [system, setSystemState] = useState<System>(() => parseHashState().system);
   const { unseenCount, clearUnseen } = useLeads();
   const [cmdLeadId, setCmdLeadId] = useState<string | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
 
   const setView = useCallback((v: View) => {
     setViewState(v);
-    updateHash(v);
-  }, []);
+    updateHash(v, system);
+  }, [system]);
+
+  const setSystem = useCallback((s: System) => {
+    setSystemState(s);
+    const hash = window.location.hash.replace("#", "");
+    const params = new URLSearchParams(hash);
+    params.set("sys", s);
+    if (s === "business") { params.delete("view"); params.delete("tab"); }
+    else { params.set("view", view); }
+    window.location.hash = params.toString();
+  }, [view]);
 
   useEffect(() => {
-    const onHashChange = () => setViewState(parseViewFromHash());
+    const onHashChange = () => {
+      const state = parseHashState();
+      setViewState(state.view);
+      setSystemState(state.system);
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
