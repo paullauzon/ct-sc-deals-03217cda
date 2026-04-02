@@ -1059,6 +1059,85 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                 <p className="text-[10px] text-muted-foreground italic line-clamp-3">{di.dealNarrative}</p>
               )}
 
+              {/* Pricing Guidance */}
+              {(() => {
+                const pricing = getPricingGuidance(lead, allLeads);
+                const hasPricing = pricing.prospectBudget || pricing.wonRange;
+                if (!hasPricing) return null;
+                return (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <DollarSign className="h-3 w-3 text-emerald-500" />
+                      <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Pricing Guidance</span>
+                    </div>
+                    <div className="text-[11px] space-y-0.5">
+                      {pricing.prospectBudget && (
+                        <p><span className="text-muted-foreground">Their budget: </span><span className="font-medium">{pricing.prospectBudget}</span></p>
+                      )}
+                      {pricing.wonRange && (
+                        <p><span className="text-muted-foreground">Won corridor ({pricing.wonCount} deals): </span><span className="font-medium">${pricing.wonRange.min.toLocaleString()} – ${pricing.wonRange.max.toLocaleString()}/mo</span><span className="text-muted-foreground"> (avg ${pricing.wonRange.avg.toLocaleString()})</span></p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Similar Deals Won */}
+              {(() => {
+                const similar = findSimilarWonDeals(lead, allLeads);
+                if (similar.length === 0) return null;
+                return (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <Trophy className="h-3 w-3 text-amber-500" />
+                      <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Similar Deals Won ({similar.length})</span>
+                    </div>
+                    <div className="space-y-1">
+                      {similar.slice(0, 3).map((s, i) => (
+                        <div key={i} className="text-[11px]">
+                          <span className="font-medium">{s.name}</span>
+                          <span className="text-muted-foreground"> · {s.company} · ${s.dealValue.toLocaleString()}/mo</span>
+                          <p className="text-muted-foreground text-[10px]">Tactic: {s.winTactic}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Objection Playbook */}
+              {(() => {
+                const playbook = getObjectionPlaybook(lead, allLeads);
+                if (playbook.length === 0) return null;
+                return (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <Scale className="h-3 w-3 text-blue-500" />
+                      <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Objection Playbook</span>
+                    </div>
+                    {playbook.map((p, i) => (
+                      <div key={i} className="text-[11px]">
+                        <p><span className="text-muted-foreground">Objection: </span><span className="font-medium">"{p.objection}"</span></p>
+                        <p className="text-muted-foreground text-[10px]">Won via ({p.wonDealName}): {p.wonDealApproach}</p>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Stakeholder Coverage */}
+              {(() => {
+                const cov = getStakeholderCoverage(lead);
+                if (!cov) return null;
+                return (
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    <Users className="h-3 w-3" />
+                    <span className={cov.colorClass + " px-1.5 py-0.5 rounded text-[10px] font-medium"}>{cov.label}</span>
+                    <span className="text-muted-foreground">· {(lead.dealIntelligence?.stakeholderMap || []).length} stakeholders mapped</span>
+                  </div>
+                );
+              })()}
+
               {/* Win Strategy */}
               {hasWinStrategy && (
                 <div className="space-y-1">
