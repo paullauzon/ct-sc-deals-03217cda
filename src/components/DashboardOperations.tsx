@@ -280,6 +280,54 @@ export function DashboardOperations({ leads, onDrillDown }: Props) {
         </CardContent>
       </Card>
 
+      {/* Deal Velocity Timeline */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Zap className="h-4 w-4" /> Deal Velocity Timeline
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {velocityData.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No stage transition data in activity log yet</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Transition</TableHead>
+                  <TableHead className="text-xs text-right">CT Avg Days</TableHead>
+                  <TableHead className="text-xs text-right">CT Count</TableHead>
+                  <TableHead className="text-xs text-right">SC Avg Days</TableHead>
+                  <TableHead className="text-xs text-right">SC Count</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {velocityData.filter(r => r.ct.count > 0 || r.sc.count > 0).map(r => (
+                  <TableRow key={r.label}>
+                    <TableCell className="text-xs font-medium">{r.label}</TableCell>
+                    <TableCell className={`text-xs text-right ${r.ct.count ? velocityColor(r.ct.avg) : "text-muted-foreground/40"}`}>
+                      {r.ct.count ? `${r.ct.avg}d` : "-"}
+                    </TableCell>
+                    <TableCell className="text-xs text-right text-muted-foreground">{r.ct.count || "-"}</TableCell>
+                    <TableCell className={`text-xs text-right ${r.sc.count ? velocityColor(r.sc.avg) : "text-muted-foreground/40"}`}>
+                      {r.sc.count ? `${r.sc.avg}d` : "-"}
+                    </TableCell>
+                    <TableCell className="text-xs text-right text-muted-foreground">{r.sc.count || "-"}</TableCell>
+                  </TableRow>
+                ))}
+                {velocityData.every(r => r.ct.count === 0 && r.sc.count === 0) && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-xs text-center text-muted-foreground py-4">
+                      No transitions recorded yet — data populates as deals move through stages
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Rep Capacity */}
       <Card>
         <CardHeader className="pb-3">
