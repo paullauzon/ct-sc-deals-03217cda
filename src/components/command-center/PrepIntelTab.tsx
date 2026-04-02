@@ -607,6 +607,10 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                     </ol>
                   </div>
                 )}
+
+                {enrichment?.dataSources && (
+                  <SourcesCitation dataSources={enrichment.dataSources as string} />
+                )}
               </>
             ) : hasPrepItems ? (
               <div className="space-y-1.5">
