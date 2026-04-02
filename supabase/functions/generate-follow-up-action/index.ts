@@ -37,6 +37,10 @@ RULES:
 - If brand is Captarget: tone is market-intelligence-forward, deal-flow focused.
 - Match seniority: Managing Partners/CEOs get 3-4 sentences max. VPs/Directors can get slightly more context.
 - Use the enrichment data and deal intelligence to make EVERY claim specific. Don't say "your industry" — name the industry. Don't say "companies like yours" — name the company.
+- NEVER explain to the prospect what their own situation means. They know their fund size, their strategy, their portfolio. State what YOU have, not what THEY are.
+- NEVER use "our pipeline", "our team", "our services", "our platform" — these are vendor phrases. Say what you HAVE, not what you ARE. "3 off-market targets" not "our pipeline includes targets."
+- Every noun must be specific. Not "security firms" but "$8-12M commercial security companies in the Southeast." Not "tech-enhanced" but "IoT-enabled access control."
+- The CTA must name a specific deliverable, not a vague conversation. Not "discuss opportunities" but "send you 3 profiles" or "compare target lists."
 - No markdown formatting.
 - Return ONLY: subject line on first line, blank line, then body.
 
@@ -47,6 +51,10 @@ BAD vs GOOD examples:
 BAD: "Hi John, I hope this email finds you well. I wanted to follow up on our recent conversation about your acquisition strategy. I'd love to schedule a call to discuss how our services might align with your goals. Please let me know what works for your schedule. Best regards, The Team"
 
 GOOD: "John — your 3rd bolt-on this year puts you ahead of most platforms in building density. We have 2 off-market targets in your core geography, both $8-12M EBITDA. Worth a 15-min look Thursday? — Mike"
+
+BAD: "Cody — Shore Capital's $850M fund closure primes Dillard Door for aggressive acquisitions. Our pipeline includes five tech-enhanced security firms. Can we discuss alignment opportunities next Tuesday?"
+
+GOOD: "Cody — 3 commercial security companies in TX, $8-12M revenue, all off-market. One overlaps with Dillard Door's locksmith vertical. Profiles by Thursday if useful. — Mike"
 
 BAD: "Hi Sarah, I noticed your company has been growing recently. I wanted to reach out because I think our services could be a great fit. Would you be open to a quick call this week?"
 
