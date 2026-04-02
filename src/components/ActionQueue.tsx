@@ -154,7 +154,7 @@ export function ActionQueue() {
         </TabsList>
 
         <TabsContent value="schedule">
-          <ScheduleTab leads={leads} ownerFilter={ownerFilter} onSelectLead={setSelectedLeadId} />
+          <ScheduleTab leads={leads} ownerFilter={ownerFilter} onSelectLead={setSelectedLeadId} meetingHorizon={meetingHorizon} />
         </TabsContent>
         <TabsContent value="followups">
           <FollowUpsTab leads={leads} ownerFilter={ownerFilter} onSelectLead={setSelectedLeadId} />

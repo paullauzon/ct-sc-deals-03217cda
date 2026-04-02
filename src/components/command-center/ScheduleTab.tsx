@@ -296,13 +296,7 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
             <CalendarCheck className="h-3.5 w-3.5 text-blue-500" />
             <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">Upcoming Meetings</span>
             <span className="text-[10px] text-muted-foreground">({meetings.length})</span>
-            <div className="flex items-center gap-0.5 ml-auto border border-border rounded-md overflow-hidden">
-              {([7, 14, 30] as const).map(d => (
-                <button key={d} onClick={() => setMeetingHorizon(d)} className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${meetingHorizon === d ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary"}`}>
-                  {d}d
-                </button>
-              ))}
-            </div>
+            <span className="text-[10px] text-muted-foreground ml-auto">next {meetingHorizon}d</span>
           </div>
           <div className="space-y-3">
             {groupedMeetings.map(group => (

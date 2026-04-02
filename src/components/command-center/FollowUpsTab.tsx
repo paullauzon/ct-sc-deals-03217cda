@@ -594,7 +594,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
         {/* Overdue */}
         <SectionHeader title="Overdue" count={overdue.length} dotColor="bg-red-500" open={openSections.overdue} onToggle={() => toggleSection("overdue")} />
         {openSections.overdue && overdue.map(({ lead, daysOverdue }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={`${daysOverdue}d overdue`} labelStyle="bg-red-500/10 text-red-600 dark:text-red-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />
+          <FollowUpRow key={lead.id} lead={lead} label={daysOverdue === 0 ? "Due today" : `${daysOverdue}d overdue`} labelStyle={daysOverdue === 0 ? "bg-foreground text-background" : "bg-red-500/10 text-red-600 dark:text-red-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />
         ))}
 
         {/* Due This Week */}
