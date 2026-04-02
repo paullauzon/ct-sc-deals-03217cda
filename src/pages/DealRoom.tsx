@@ -9,11 +9,12 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
-import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Textarea } from "@/components/ui/textarea";
+import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage } from "@/lib/dealHealthUtils";
 
 const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 
@@ -79,6 +80,10 @@ export default function DealRoom() {
   const openActions = actionItems.filter(a => a.status === "Open" || a.status === "Overdue");
   const hasSidebarContent = stakeholders.length > 0 || unmitigatedRisks.length > 0 || openActions.length > 0 || lead.dealIntelligence?.winStrategy || lead.dealIntelligence?.buyingCommittee;
 
+  const dealHealth = computeDealHealthScore(lead);
+  const winLose = getWinLoseCard(lead);
+  const coverage = getStakeholderCoverage(lead);
+
   // Prev/Next navigation
   const currentIdx = leads.findIndex(l => l.id === id);
   const prevLead = currentIdx > 0 ? leads[currentIdx - 1] : null;
@@ -102,7 +107,22 @@ export default function DealRoom() {
                   {momentum}
                 </span>
               )}
-              {healthScore && (
+              {dealHealth && (
+                <span className={cn("text-xs px-1.5 py-0.5 rounded flex items-center gap-1 font-medium",
+                  dealHealth.color === "emerald" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
+                  dealHealth.color === "amber" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" :
+                  "bg-red-500/10 text-red-600 dark:text-red-400"
+                )}>
+                  <Heart className="h-3 w-3" /> {dealHealth.score} {dealHealth.label}
+                </span>
+              )}
+              {coverage && (
+                <span className={cn("text-xs px-1.5 py-0.5 rounded flex items-center gap-1", coverage.colorClass)}>
+                  {coverage.coverage === "no-champion" ? <ShieldAlert className="h-3 w-3" /> : <Users className="h-3 w-3" />}
+                  {coverage.label}
+                </span>
+              )}
+              {healthScore && !dealHealth && (
                 <span className="text-xs text-muted-foreground">{healthScore}</span>
               )}
             </div>
@@ -201,6 +221,18 @@ export default function DealRoom() {
             <div className="border-t border-border pt-3">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Revenue</p>
               <p className="text-sm font-medium tabular-nums">${lead.subscriptionValue.toLocaleString()} {lead.billingFrequency}</p>
+            </div>
+          )}
+
+          {/* Deal Narrative */}
+          {winLose && (
+            <div className="border-t border-border pt-3">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1"><Crown className="h-3 w-3" /> Win / Lose</p>
+              <div className="space-y-1.5 text-xs">
+                <p className="text-emerald-600 dark:text-emerald-400">✓ {winLose.win}</p>
+                <p className="text-red-600 dark:text-red-400">✗ {winLose.lose}</p>
+                <p className="font-medium text-foreground">→ {winLose.doNext}</p>
+              </div>
             </div>
           )}
 

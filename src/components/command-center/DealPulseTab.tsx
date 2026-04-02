@@ -2,10 +2,11 @@ import { useState, useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { BrandLogo } from "@/components/BrandLogo";
-import { TrendingUp, TrendingDown, Minus, Activity, DollarSign, Clock, CalendarCheck, AlertCircle, Flame, Snowflake, Thermometer, Gauge, ArrowUpDown } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Activity, DollarSign, Clock, CalendarCheck, AlertCircle, Flame, Snowflake, Thermometer, Gauge, ArrowUpDown, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, parseISO, differenceInDays, addDays, isBefore } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { computeDealHealthScore } from "@/lib/dealHealthUtils";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 const ACTIVE_STAGES = new Set(["Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"]);
@@ -184,16 +185,17 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
             </div>
           </div>
           <div className="border border-border rounded-md overflow-hidden overflow-x-auto">
-            <div className="grid grid-cols-[1fr_100px_70px_80px_50px_50px_80px] gap-0 px-4 py-2 bg-secondary/30 text-[10px] font-medium text-muted-foreground uppercase tracking-wider min-w-[600px]">
+            <div className="grid grid-cols-[1fr_100px_70px_80px_50px_50px_50px_80px] gap-0 px-4 py-2 bg-secondary/30 text-[10px] font-medium text-muted-foreground uppercase tracking-wider min-w-[650px]">
               <span>Deal</span>
               <span>Stage</span>
               <span className="text-center">Days</span>
               <span className="text-right">Value</span>
+              <span className="text-center">Health</span>
               <span className="text-center">Temp</span>
               <span className="text-center">Mom.</span>
               <span className="text-right">Last Contact</span>
             </div>
-            <div className="divide-y divide-border max-h-[400px] overflow-y-auto min-w-[600px]">
+            <div className="divide-y divide-border max-h-[400px] overflow-y-auto min-w-[650px]">
               {(() => {
                 const filtered = showIntelOnly ? sortedDeals.filter(d => {
                   const di = d.lead.dealIntelligence as any;
@@ -209,11 +211,12 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
                 return filtered.map(({ lead, days, momentum, dealTemp, closingWindow }) => {
                 const isStalled = days > 14;
                 const lastDate = lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate;
+                const health = computeDealHealthScore(lead);
                 return (
                   <div
                     key={lead.id}
                     onClick={() => onSelectLead(lead.id)}
-                    className={`grid grid-cols-[1fr_100px_70px_80px_50px_50px_80px] gap-0 px-4 py-2 cursor-pointer hover:bg-secondary/30 transition-colors ${isStalled ? "bg-red-500/5" : ""}`}
+                    className={`grid grid-cols-[1fr_100px_70px_80px_50px_50px_50px_80px] gap-0 px-4 py-2 cursor-pointer hover:bg-secondary/30 transition-colors ${isStalled ? "bg-red-500/5" : ""}`}
                   >
                     <div className="flex items-center gap-1.5 min-w-0">
                       <BrandLogo brand={lead.brand} size="xxs" />
@@ -227,6 +230,27 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
                     <span className="text-[10px] text-muted-foreground text-right self-center tabular-nums">
                       {lead.dealValue > 0 ? `$${lead.dealValue.toLocaleString()}` : "—"}
                     </span>
+                    <div className="flex items-center justify-center">
+                      {health ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className={cn("text-[10px] font-semibold tabular-nums flex items-center gap-0.5",
+                              health.color === "emerald" ? "text-emerald-600 dark:text-emerald-400" :
+                              health.color === "amber" ? "text-amber-600 dark:text-amber-400" :
+                              "text-red-600 dark:text-red-400"
+                            )}>
+                              <Heart className="h-2.5 w-2.5" />{health.score}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent className="text-xs max-w-[180px]">
+                            <p className="font-medium">{health.label}</p>
+                            {health.factors.slice(0, 3).map((f, i) => (
+                              <p key={i} className="text-muted-foreground">{f.impact > 0 ? "+" : ""}{f.impact} {f.label}</p>
+                            ))}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : <span className="text-[10px] text-muted-foreground">—</span>}
+                    </div>
                     <div className="flex items-center justify-center">
                       {dealTemp ? (
                         <Tooltip>

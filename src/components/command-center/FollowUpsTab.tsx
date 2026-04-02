@@ -94,12 +94,27 @@ function SectionHeader({
   );
 }
 
-// ─── Get recommended action ───
+// ─── Get recommended action (enhanced with dropped promises) ───
 function getRecommendation(lead: Lead): string | null {
   const di = lead.dealIntelligence;
   if (di?.actionItemTracker) {
-    const open = di.actionItemTracker.find(a => a.status === "Open" || a.status === "Overdue");
-    if (open) return `Action: ${open.item}`;
+    const openItems = di.actionItemTracker.filter(a => a.status === "Open" || a.status === "Overdue");
+    if (openItems.length > 0) {
+      const top = openItems[0];
+      let label = `⚡ ${top.item}`;
+      if (top.deadline) {
+        try {
+          const days = Math.floor((new Date().getTime() - new Date(top.deadline).getTime()) / 86400000);
+          if (days > 0) label += ` (${days}d overdue)`;
+        } catch {}
+      }
+      if (openItems.length > 1) label += ` +${openItems.length - 1} more`;
+      return label;
+    }
+  }
+  // Win/Lose quick glance
+  if (di?.winStrategy?.numberOneCloser) {
+    return `✓ Win if: ${di.winStrategy.numberOneCloser.slice(0, 80)}`;
   }
   const su = lead.enrichment?.suggestedUpdates;
   if (su?.nextFollowUp) return `AI: follow up by ${su.nextFollowUp.value}`;
