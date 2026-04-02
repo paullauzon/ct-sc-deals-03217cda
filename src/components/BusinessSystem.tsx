@@ -8,13 +8,14 @@ import { Lead } from "@/types/lead";
 import { cn } from "@/lib/utils";
 import { Eye, DollarSign, Settings2, TrendingUp, Lock } from "lucide-react";
 import { DashboardEconomics } from "@/components/DashboardEconomics";
+import { DashboardOperations } from "@/components/DashboardOperations";
 
 type BizTab = "overview" | "economics" | "operations" | "forecast";
 
 const TABS: { key: BizTab; label: string; desc: string; icon: typeof Eye; ready: boolean }[] = [
   { key: "overview", label: "Overview", desc: "Brand Scorecards", icon: Eye, ready: true },
   { key: "economics", label: "Economics", desc: "Unit Economics", icon: DollarSign, ready: true },
-  { key: "operations", label: "Operations", desc: "Capacity & Health", icon: Settings2, ready: false },
+  { key: "operations", label: "Operations", desc: "Capacity & Health", icon: Settings2, ready: true },
   { key: "forecast", label: "Forecast", desc: "Revenue Projections", icon: TrendingUp, ready: false },
 ];
 
