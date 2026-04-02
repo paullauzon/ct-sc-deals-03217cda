@@ -351,6 +351,11 @@ export interface LeadEnrichment {
   prospectProfile?: string;
   preMeetingAmmo?: string;
   competitivePositioning?: string;
+  // Battle card fields (Quick Prep for 0-meeting leads)
+  openingHook?: string;
+  discoveryQuestions?: string[];
+  valueAngle?: string;
+  watchOuts?: string[];
   // AI-suggested field updates
   suggestedUpdates?: SuggestedUpdates;
   // Legacy fields (kept for backward compatibility with existing enrichments)
