@@ -776,23 +776,33 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
     }
   }, [activeRowIndex]);
 
-  // Helper to build common row props
-  let rowIndex = 0;
-  const rowProps = (lead: Lead, label: string, labelStyle: string, isUnanswered: boolean) => {
-    const idx = rowIndex++;
+  // Build a leadId→flatIndex map for keyboard nav
+  const leadIdToIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    flatLeadIds.forEach((id, i) => m.set(id, i));
+    return m;
+  }, [flatLeadIds]);
+
+  // Common row props factory
+  const commonRowProps = useCallback((lead: Lead) => {
+    const idx = leadIdToIndex.get(lead.id) ?? -1;
     return {
-      lead, label, labelStyle, onSelect: onSelectLead,
+      onSelect: onSelectLead,
       emailCount: emailCounts.get(lead.id) || 0,
-      onUpdate: handleUpdate, isUnanswered, onAction: handleAction,
+      onUpdate: handleUpdate,
+      onAction: handleAction,
       taskCount: taskCountMap.get(lead.id),
       tasks: tasksByLead.get(lead.id),
       onCompleteTask: handleCompleteTask,
       onSkipTask: handleSkipTask,
       onGenerateTaskDraft: handleGenerateTaskDraft,
       isActive: activeRowIndex === idx,
-      rowRef: { current: null } as React.RefObject<HTMLDivElement>,
+      rowRef: (el: HTMLDivElement | null) => {
+        if (el) rowRefs.current.set(idx, el);
+        else rowRefs.current.delete(idx);
+      },
     };
-  };
+  }, [leadIdToIndex, onSelectLead, emailCounts, handleUpdate, handleAction, taskCountMap, tasksByLead, handleCompleteTask, handleSkipTask, handleGenerateTaskDraft, activeRowIndex]);
 
   return (
     <div className="space-y-3">
