@@ -692,7 +692,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
         {/* Going Dark */}
         <SectionHeader title="Going Dark" count={goingDark.length} dotColor="bg-amber-500" open={openSections.goingDark} onToggle={() => toggleSection("goingDark")} />
         {openSections.goingDark && goingDark.map(({ lead, daysSilent }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={`Silent ${daysSilent}d`} labelStyle="bg-amber-500/10 text-amber-600 dark:text-amber-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />
+          <FollowUpRow key={lead.id} lead={lead} label={`Silent ${daysSilent}d`} labelStyle="bg-amber-500/10 text-amber-600 dark:text-amber-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} />
         ))}
 
         {totalItems === 0 && (
