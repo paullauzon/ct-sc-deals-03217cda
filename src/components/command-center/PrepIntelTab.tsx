@@ -97,7 +97,8 @@ function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () =>
       toast({ title: "Prep brief queued", description: `Generating intelligence for ${lead.name}...` });
     } catch (err) {
       console.error(err);
-      toast({ title: "Failed to generate prep", variant: "destructive" });
+      const msg = err instanceof Error ? err.message : "Try again later";
+      toast({ title: "Failed to generate prep", description: msg, variant: "destructive" });
     } finally {
       setGeneratingPrep(false);
     }
