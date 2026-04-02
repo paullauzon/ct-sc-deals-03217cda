@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { BrandLogo } from "@/components/BrandLogo";
-import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight } from "lucide-react";
+import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight, Send } from "lucide-react";
 import { format, parseISO, differenceInDays, isBefore } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -198,6 +198,9 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
   const now = new Date();
   const [emailCounts, setEmailCounts] = useState<Map<string, number>>(new Map());
   const [briefData, setBriefData] = useState<{ leadId: string; leadName: string; brief: PrepBrief } | null>(null);
+  const [draftLead, setDraftLead] = useState<Lead | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftContent, setDraftContent] = useState("");
 
   const upcomingMeetings = useMemo(() => {
     const filtered = ownerFilter === "All" ? leads
@@ -209,7 +212,6 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
       .sort((a, b) => new Date(a.meetingDate).getTime() - new Date(b.meetingDate).getTime());
   }, [leads, ownerFilter, now, meetingHorizon]);
 
-  // Fetch email counts for upcoming meeting leads
   useEffect(() => {
     const ids = upcomingMeetings.map(l => l.id);
     if (ids.length === 0) { setEmailCounts(new Map()); return; }
@@ -225,6 +227,31 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
     setBriefData({ leadId, leadName, brief });
   };
 
+  const handleDraftEmail = async (lead: Lead) => {
+    setDraftLead(lead);
+    setDraftContent("");
+    setDraftLoading(true);
+    try {
+      const meetingCount = lead.meetings?.length || 0;
+      const actionType = meetingCount > 0 ? "post-meeting" : "initial-outreach";
+      const recentMeeting = meetingCount > 0 ? lead.meetings[lead.meetings.length - 1] : null;
+      const { data, error } = await supabase.functions.invoke("generate-follow-up-action", {
+        body: {
+          actionType,
+          lead: { name: lead.name, company: lead.company, role: lead.role, brand: lead.brand, stage: lead.stage, dealValue: lead.dealValue, serviceInterest: lead.serviceInterest, enrichment: lead.enrichment, dealIntelligence: lead.dealIntelligence },
+          meetingContext: recentMeeting ? { title: recentMeeting.title, date: recentMeeting.date, summary: recentMeeting.summary || recentMeeting.intelligence?.summary, nextSteps: recentMeeting.nextSteps, intelligence: recentMeeting.intelligence } : undefined,
+        },
+      });
+      if (error) throw error;
+      setDraftContent(data.content || "");
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Failed to generate draft", description: "Try again later.", variant: "destructive" });
+    } finally {
+      setDraftLoading(false);
+    }
+  };
+
   if (upcomingMeetings.length === 0) {
     return (
       <div className="px-6 py-12 text-center">
@@ -238,7 +265,7 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
       <p className="text-xs text-muted-foreground">{upcomingMeetings.length} meeting{upcomingMeetings.length !== 1 ? "s" : ""} in the next {meetingHorizon} days</p>
 
       {upcomingMeetings.map(lead => (
-        <IntelCard key={lead.id} lead={lead} onSelect={() => onSelectLead(lead.id)} emailCount={emailCounts.get(lead.id) || 0} onBriefGenerated={handleBriefGenerated} />
+        <IntelCard key={lead.id} lead={lead} onSelect={() => onSelectLead(lead.id)} emailCount={emailCounts.get(lead.id) || 0} onBriefGenerated={handleBriefGenerated} onDraftEmail={handleDraftEmail} />
       ))}
 
       <PrepBriefSheet
@@ -247,11 +274,52 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
         brief={briefData?.brief || null}
         leadName={briefData?.leadName || ""}
       />
+
+      {/* Draft Email Sheet */}
+      <Sheet open={!!draftLead} onOpenChange={(o) => { if (!o) setDraftLead(null); }}>
+        <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="text-sm">{draftLead?.meetings?.length ? "Draft Follow-Up" : "Draft Pre-Meeting Email"} — {draftLead?.name}</SheetTitle>
+            <SheetDescription className="sr-only">AI-generated email draft for {draftLead?.name}</SheetDescription>
+          </SheetHeader>
+          <div className="mt-4 space-y-3">
+            {draftLoading ? (
+              <div className="flex items-center justify-center py-12 border border-border rounded-md">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-xs text-muted-foreground">Generating AI draft...</span>
+              </div>
+            ) : (
+              <textarea
+                value={draftContent}
+                onChange={e => setDraftContent(e.target.value)}
+                className="w-full min-h-[280px] text-sm font-mono leading-relaxed p-3 border border-border rounded-md bg-background resize-y"
+                placeholder="AI draft will appear here..."
+              />
+            )}
+            {draftContent && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { navigator.clipboard.writeText(draftContent); toast({ title: "Copied to clipboard" }); }}
+                  className="flex-1 text-xs py-2.5 rounded-md bg-foreground text-background font-medium hover:bg-foreground/90 transition-colors"
+                >
+                  Copy to Clipboard
+                </button>
+                <button
+                  onClick={() => { setDraftContent(""); setDraftLoading(true); handleDraftEmail(draftLead!).finally(() => setDraftLoading(false)); }}
+                  className="text-xs px-3 py-2.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Regenerate
+                </button>
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
 
-function IntelCard({ lead, onSelect, emailCount, onBriefGenerated }: { lead: Lead; onSelect: () => void; emailCount: number; onBriefGenerated: (leadId: string, leadName: string, brief: PrepBrief) => void }) {
+function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail }: { lead: Lead; onSelect: () => void; emailCount: number; onBriefGenerated: (leadId: string, leadName: string, brief: PrepBrief) => void; onDraftEmail: (lead: Lead) => void }) {
   const [generatingPrep, setGeneratingPrep] = useState(false);
   const enrichment = lead.enrichment;
   const di = lead.dealIntelligence;
@@ -272,25 +340,35 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated }: { lead: Lea
     e.stopPropagation();
     setGeneratingPrep(true);
     try {
-      const { data, error } = await supabase.functions.invoke("generate-meeting-prep", {
-        body: {
-          meetings: lead.meetings || [],
-          leadFields: {
-            name: lead.name,
-            company: lead.company,
-            role: lead.role,
-            stage: lead.stage,
-            priority: lead.priority,
-            dealValue: lead.dealValue,
-            serviceInterest: lead.serviceInterest,
-          },
-          dealIntelligence: lead.dealIntelligence || null,
-        },
-      });
+      // If no meetings, use enrich-lead instead for prospect research
+      const hasMeetings = lead.meetings && lead.meetings.length > 0;
+      const fnName = hasMeetings ? "generate-meeting-prep" : "enrich-lead";
+      const body = hasMeetings
+        ? {
+            meetings: lead.meetings,
+            leadFields: {
+              name: lead.name, company: lead.company, role: lead.role,
+              stage: lead.stage, priority: lead.priority,
+              dealValue: lead.dealValue, serviceInterest: lead.serviceInterest,
+            },
+            dealIntelligence: lead.dealIntelligence || null,
+          }
+        : {
+            record: {
+              id: lead.id, name: lead.name, email: lead.email,
+              company: lead.company, company_url: lead.companyUrl,
+              role: lead.role, buyer_type: lead.buyerType,
+              message: lead.message, source: lead.source,
+            },
+          };
+      const { data, error } = await supabase.functions.invoke(fnName, { body });
       if (error) throw error;
       if (data?.brief) {
         onBriefGenerated(lead.id, lead.name, data.brief);
         toast({ title: "Prep brief ready", description: `Intelligence generated for ${lead.name}` });
+      } else if (!hasMeetings && data) {
+        // Enrichment succeeded — show confirmation
+        toast({ title: "Prospect researched", description: `Enrichment data updated for ${lead.name}` });
       } else if (data?.error) {
         toast({ title: "Could not generate brief", description: data.error, variant: "destructive" });
       }
@@ -354,15 +432,35 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated }: { lead: Lea
         )}
       </div>
 
-      {/* Generate Prep button */}
-      <button
-        onClick={handleGeneratePrep}
-        disabled={generatingPrep}
-        className="w-full text-xs py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center justify-center gap-2"
-      >
-        {generatingPrep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-        {generatingPrep ? "Generating prep brief..." : hasIntel ? "Regenerate Prep Brief" : "Generate Prep Brief"}
-      </button>
+      {/* Action buttons */}
+      <div className="flex gap-2">
+        {meetingCount > 0 ? (
+          <button
+            onClick={handleGeneratePrep}
+            disabled={generatingPrep}
+            className="flex-1 text-xs py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center justify-center gap-2"
+          >
+            {generatingPrep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+            {generatingPrep ? "Generating..." : hasIntel ? "Regenerate Prep Brief" : "Generate Prep Brief"}
+          </button>
+        ) : (
+          <button
+            onClick={handleGeneratePrep}
+            disabled={generatingPrep}
+            className="flex-1 text-xs py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center justify-center gap-2"
+          >
+            {generatingPrep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Target className="h-3.5 w-3.5" />}
+            {generatingPrep ? "Researching..." : "Research Prospect"}
+          </button>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onDraftEmail(lead); }}
+          className="text-xs px-3 py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center gap-1.5"
+        >
+          <Send className="h-3.5 w-3.5" />
+          {meetingCount > 0 ? "Draft Follow-Up" : "Draft Pre-Meeting Email"}
+        </button>
+      </div>
 
       {/* Prior meeting summary */}
       {meetingCount > 0 && (() => {

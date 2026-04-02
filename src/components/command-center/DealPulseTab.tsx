@@ -49,6 +49,7 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   const now = new Date();
   const [momentumSort, setMomentumSort] = useState<MomentumSort>("risk");
   const [momentumSortDir, setMomentumSortDir] = useState<"asc" | "desc">("desc");
+  const [showIntelOnly, setShowIntelOnly] = useState(false);
 
   const filtered = useMemo(() => {
     if (ownerFilter === "All") return leads;
@@ -156,6 +157,15 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
         <div>
           <div className="flex items-center gap-2 mb-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Momentum Board</h3>
+            <button
+              onClick={() => setShowIntelOnly(v => !v)}
+              className={cn(
+                "text-[10px] px-2 py-0.5 rounded-full border transition-colors ml-2",
+                showIntelOnly ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Has Intel ({sortedDeals.filter(d => !!(d.lead.dealIntelligence)).length})
+            </button>
             <div className="flex items-center gap-1 ml-auto">
               <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
               {(["risk", "value", "days", "name"] as const).map(s => (
@@ -176,12 +186,12 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
               <span className="text-right">Last Contact</span>
             </div>
             <div className="divide-y divide-border max-h-[400px] overflow-y-auto min-w-[600px]">
-              {sortedDeals.length === 0 && (
+              {(showIntelOnly ? sortedDeals.filter(d => !!d.lead.dealIntelligence) : sortedDeals).length === 0 && (
                 <div className="px-6 py-8 text-center">
-                  <p className="text-sm text-muted-foreground">No active deals match the current filter</p>
+                  <p className="text-sm text-muted-foreground">{showIntelOnly ? "No deals with intelligence data — run Deal Intelligence processing first" : "No active deals match the current filter"}</p>
                 </div>
               )}
-              {sortedDeals.map(({ lead, days, momentum, dealTemp, closingWindow }) => {
+              {(showIntelOnly ? sortedDeals.filter(d => !!d.lead.dealIntelligence) : sortedDeals).map(({ lead, days, momentum, dealTemp, closingWindow }) => {
                 const isStalled = days > 14;
                 const lastDate = lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate;
                 return (
