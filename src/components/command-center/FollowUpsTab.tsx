@@ -4,20 +4,37 @@ import { useLeads } from "@/contexts/LeadContext";
 import { BrandLogo } from "@/components/BrandLogo";
 import {
   ChevronDown, ChevronRight, Clock, AlertTriangle, UserX, Ghost,
-  Mail, Mic, CalendarCheck, ArrowUpDown, Zap
+  Mail, Mic, CalendarCheck, ArrowUpDown, Zap, Send, Phone, RotateCcw,
+  Reply, FileText, Loader2
 } from "lucide-react";
 import { format, parseISO, differenceInDays, isToday, addDays, isBefore } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 const STAGE_OPTIONS = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"] as const;
 
 type SortField = "default" | "dealValue" | "lastContact" | "stage" | "name";
 type SortDir = "asc" | "desc";
+type ActionType = "post-meeting" | "initial-outreach" | "meeting-nudge" | "proposal-followup" | "re-engagement" | "reply-inbound" | "schedule-call" | "prep-brief";
+
+// ─── Action type determination ───
+function getActionType(lead: Lead, isUnanswered: boolean): { type: ActionType; label: string; icon: typeof Mail } {
+  if (isUnanswered) return { type: "reply-inbound", label: "Reply", icon: Reply };
+  if (lead.stage === "New Lead" && !lead.lastContactDate) return { type: "initial-outreach", label: "Draft Outreach", icon: Send };
+  if (lead.stage === "Contacted" && !lead.calendlyBookedAt) return { type: "meeting-nudge", label: "Nudge Meeting", icon: Phone };
+  if (lead.stage === "Meeting Set") return { type: "prep-brief", label: "Prep Brief", icon: FileText };
+  if (lead.stage === "Meeting Held") return { type: "post-meeting", label: "Follow Up", icon: Send };
+  if (lead.stage === "Proposal Sent") return { type: "proposal-followup", label: "Check In", icon: Mail };
+  const lastDate = lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate || lead.dateSubmitted;
+  if (lastDate && differenceInDays(new Date(), parseISO(lastDate)) > 21) return { type: "re-engagement", label: "Re-engage", icon: RotateCcw };
+  return { type: "schedule-call", label: "Schedule Call", icon: Phone };
+}
 
 // ─── Sort bar ───
 function SortBar({ sortField, sortDir, onSort }: { sortField: SortField; sortDir: SortDir; onSort: (f: SortField) => void }) {
@@ -58,7 +75,7 @@ function SectionHeader({
 }) {
   if (count === 0) return null;
   return (
-    <button onClick={onToggle} className="w-full flex items-center gap-2.5 px-4 py-2 hover:bg-secondary/30 transition-colors">
+    <button onClick={onToggle} className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-secondary/30 transition-colors border-b border-border">
       <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", dotColor)} />
       <span className="text-[10px] font-semibold uppercase tracking-wider text-foreground">{title}</span>
       <span className="text-[10px] text-muted-foreground">({count})</span>
@@ -82,22 +99,28 @@ function getRecommendation(lead: Lead): string | null {
 
 // ─── Rich row ───
 function FollowUpRow({
-  lead, label, onSelect, emailCount, onUpdate,
+  lead, label, labelStyle, onSelect, emailCount, onUpdate, isUnanswered, onAction,
 }: {
-  lead: Lead; label: string; onSelect: (id: string) => void;
+  lead: Lead; label: string; labelStyle?: string; onSelect: (id: string) => void;
   emailCount: number;
   onUpdate: (id: string, data: Partial<Lead>) => void;
+  isUnanswered: boolean;
+  onAction: (lead: Lead, actionType: ActionType) => void;
 }) {
-  const now = new Date();
   const meetingCount = lead.meetings?.length || 0;
   const hasCalendly = !!lead.calendlyBookedAt;
   const recommendation = getRecommendation(lead);
   const lastContact = lead.lastContactDate
     ? (() => { try { return format(parseISO(lead.lastContactDate), "MMM d"); } catch { return "—"; } })()
     : null;
+  const action = getActionType(lead, isUnanswered);
+  const ActionIcon = action.icon;
 
   return (
-    <div className="px-4 py-2.5 hover:bg-secondary/20 transition-colors cursor-pointer group" onClick={() => onSelect(lead.id)}>
+    <div
+      className="px-4 py-3.5 hover:bg-secondary/20 transition-all cursor-pointer group border-b border-border last:border-b-0 hover:border-l-2 hover:border-l-foreground/20 hover:pl-[14px]"
+      onClick={() => onSelect(lead.id)}
+    >
       {/* Line 1: Identity */}
       <div className="flex items-center gap-2 min-w-0">
         <BrandLogo brand={lead.brand} size="xxs" />
@@ -107,11 +130,16 @@ function FollowUpRow({
         {lead.assignedTo && (
           <span className="w-4 h-4 rounded-full bg-foreground text-background flex items-center justify-center text-[9px] font-semibold shrink-0">{lead.assignedTo[0]}</span>
         )}
-        <span className="text-xs font-medium ml-auto whitespace-nowrap text-foreground">{label}</span>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <span className={cn(
+            "text-[10px] font-medium px-2 py-0.5 rounded-full",
+            labelStyle || "bg-secondary text-muted-foreground"
+          )}>{label}</span>
+        </div>
       </div>
 
       {/* Line 2: Context signals */}
-      <div className="flex items-center gap-3 mt-1 pl-6 min-w-0">
+      <div className="flex items-center gap-3 mt-1.5 pl-6 min-w-0">
         {lead.dealValue > 0 && (
           <span className="text-[10px] text-muted-foreground tabular-nums">${lead.dealValue.toLocaleString()}</span>
         )}
@@ -132,53 +160,208 @@ function FollowUpRow({
           <CalendarCheck className="h-2.5 w-2.5 text-muted-foreground" />
         )}
 
-        {/* Quick action: Next Step */}
+        {/* Action chip */}
         <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className="text-[9px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:bg-foreground hover:text-background transition-colors flex items-center gap-1">
-                <Zap className="h-2.5 w-2.5" /> Next Step
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-64 p-3" align="end">
-              <div className="space-y-3">
-                <div>
-                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Follow-up Date</p>
-                  <Calendar
-                    mode="single"
-                    selected={undefined}
-                    onSelect={(date) => { if (date) onUpdate(lead.id, { nextFollowUp: format(date, "yyyy-MM-dd") }); }}
-                    className={cn("p-2 pointer-events-auto")}
-                  />
-                </div>
-                <div>
-                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Advance Stage</p>
-                  <Select onValueChange={(val) => onUpdate(lead.id, { stage: val as Lead["stage"], stageEnteredDate: format(new Date(), "yyyy-MM-dd") })}>
-                    <SelectTrigger className="h-7 text-xs">
-                      <SelectValue placeholder={lead.stage} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STAGE_OPTIONS.map(s => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <button
-                  onClick={() => onUpdate(lead.id, { lastContactDate: format(new Date(), "yyyy-MM-dd") })}
-                  className="w-full text-xs py-1.5 rounded border border-border text-muted-foreground hover:bg-foreground hover:text-background transition-colors"
-                >
-                  Mark Contacted Today
-                </button>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <button
+            onClick={() => onAction(lead, action.type)}
+            className="text-[10px] px-2.5 py-1 rounded-full border border-foreground/20 text-foreground hover:bg-foreground hover:text-background transition-colors flex items-center gap-1.5 font-medium"
+          >
+            <ActionIcon className="h-3 w-3" />
+            {action.label}
+          </button>
         </div>
       </div>
 
       {/* Line 3: AI recommendation */}
       {recommendation && (
-        <p className="text-[10px] text-muted-foreground italic pl-6 mt-0.5 truncate">{recommendation}</p>
+        <p className="text-[10px] text-muted-foreground italic pl-6 mt-1 truncate">{recommendation}</p>
       )}
     </div>
+  );
+}
+
+// ─── Action Sheet ───
+function ActionSheet({
+  open, onClose, lead, actionType, onUpdate,
+}: {
+  open: boolean; onClose: () => void; lead: Lead | null; actionType: ActionType | null;
+  onUpdate: (id: string, data: Partial<Lead>) => void;
+}) {
+  const [content, setContent] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [suggestedFollowUp, setSuggestedFollowUp] = useState<string | null>(null);
+  const [selectedStage, setSelectedStage] = useState<string>("");
+
+  useEffect(() => {
+    if (!open || !lead || !actionType) return;
+    setContent("");
+    setSuggestedFollowUp(null);
+    setSelectedStage("");
+    generateDraft();
+  }, [open, lead?.id, actionType]);
+
+  const generateDraft = async () => {
+    if (!lead || !actionType) return;
+    setLoading(true);
+    try {
+      // Find most recent meeting for context
+      const recentMeeting = lead.meetings?.length > 0 ? lead.meetings[lead.meetings.length - 1] : null;
+
+      const { data, error } = await supabase.functions.invoke("generate-follow-up-action", {
+        body: {
+          actionType,
+          lead: {
+            name: lead.name,
+            company: lead.company,
+            role: lead.role,
+            brand: lead.brand,
+            stage: lead.stage,
+            dealValue: lead.dealValue,
+            serviceInterest: lead.serviceInterest,
+            enrichment: lead.enrichment,
+            dealIntelligence: lead.dealIntelligence,
+          },
+          meetingContext: recentMeeting ? {
+            title: recentMeeting.title,
+            date: recentMeeting.date,
+            summary: recentMeeting.summary || recentMeeting.intelligence?.summary,
+            nextSteps: recentMeeting.nextSteps,
+            intelligence: recentMeeting.intelligence,
+          } : undefined,
+        },
+      });
+
+      if (error) throw error;
+      setContent(data.content || "");
+      setSuggestedFollowUp(data.suggestedFollowUp || null);
+    } catch (err) {
+      console.error("Failed to generate action:", err);
+      toast({ title: "Failed to generate draft", description: "Try again or write manually.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApply = () => {
+    if (!lead) return;
+    const updates: Partial<Lead> = { lastContactDate: format(new Date(), "yyyy-MM-dd") };
+    if (suggestedFollowUp) updates.nextFollowUp = suggestedFollowUp;
+    if (selectedStage) {
+      updates.stage = selectedStage as Lead["stage"];
+      updates.stageEnteredDate = format(new Date(), "yyyy-MM-dd");
+    }
+    onUpdate(lead.id, updates);
+    toast({ title: "Lead updated", description: `${lead.name} marked as contacted.` });
+    onClose();
+  };
+
+  const actionLabels: Record<string, string> = {
+    "post-meeting": "Post-Meeting Follow-Up",
+    "initial-outreach": "Initial Outreach Draft",
+    "meeting-nudge": "Meeting Booking Nudge",
+    "proposal-followup": "Proposal Check-In",
+    "re-engagement": "Re-Engagement Email",
+    "reply-inbound": "Reply to Inbound",
+    "schedule-call": "Call Planning",
+    "prep-brief": "Pre-Meeting Brief",
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2 text-sm">
+            {lead && <BrandLogo brand={lead.brand} size="xxs" />}
+            <span>{lead?.name}</span>
+            <span className="text-muted-foreground font-normal">· {actionType && actionLabels[actionType]}</span>
+          </SheetTitle>
+        </SheetHeader>
+
+        <div className="mt-6 space-y-4">
+          {/* AI-generated content */}
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+              {actionType === "schedule-call" || actionType === "prep-brief" ? "Brief" : "Draft Email"}
+            </label>
+            {loading ? (
+              <div className="flex items-center justify-center py-12 border border-border rounded-md">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-xs text-muted-foreground">Generating AI draft...</span>
+              </div>
+            ) : (
+              <Textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="min-h-[240px] text-sm font-mono leading-relaxed"
+                placeholder="AI draft will appear here..."
+              />
+            )}
+          </div>
+
+          {/* Suggested follow-up */}
+          {suggestedFollowUp && (
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                Suggested Next Follow-Up
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">
+                  {(() => { try { return format(parseISO(suggestedFollowUp), "EEE, MMM d"); } catch { return suggestedFollowUp; } })()}
+                </span>
+                <Calendar
+                  mode="single"
+                  selected={suggestedFollowUp ? parseISO(suggestedFollowUp) : undefined}
+                  onSelect={(date) => { if (date) setSuggestedFollowUp(format(date, "yyyy-MM-dd")); }}
+                  className="border border-border rounded-md p-2"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Stage change */}
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+              Advance Stage (optional)
+            </label>
+            <Select value={selectedStage} onValueChange={setSelectedStage}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder={lead?.stage || "Current stage"} />
+              </SelectTrigger>
+              <SelectContent>
+                {STAGE_OPTIONS.map(s => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 pt-2 border-t border-border">
+            <button
+              onClick={handleApply}
+              className="flex-1 text-xs py-2.5 rounded-md bg-foreground text-background font-medium hover:bg-foreground/90 transition-colors"
+            >
+              Mark Contacted & Update
+            </button>
+            <button
+              onClick={generateDraft}
+              disabled={loading}
+              className="text-xs px-3 py-2.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors"
+            >
+              Regenerate
+            </button>
+          </div>
+
+          {/* Copy */}
+          {content && (
+            <button
+              onClick={() => { navigator.clipboard.writeText(content); toast({ title: "Copied to clipboard" }); }}
+              className="w-full text-xs py-2 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Copy to Clipboard
+            </button>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -229,6 +412,11 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   const [sortField, setSortField] = useState<SortField>("default");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [openSections, setOpenSections] = useState({ overdue: true, dueThisWeek: true, unanswered: true, untouched: true, goingDark: true });
+
+  // Action sheet state
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetLead, setSheetLead] = useState<Lead | null>(null);
+  const [sheetActionType, setSheetActionType] = useState<ActionType | null>(null);
 
   const filtered = useMemo(() => {
     if (ownerFilter === "All") return leads;
@@ -290,6 +478,12 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
     updateLead(leadId, data);
   };
 
+  const handleAction = (lead: Lead, actionType: ActionType) => {
+    setSheetLead(lead);
+    setSheetActionType(actionType);
+    setSheetOpen(true);
+  };
+
   const toggleSection = (key: keyof typeof openSections) => setOpenSections(s => ({ ...s, [key]: !s[key] }));
 
   // Build sections — dedup: overdue takes priority over goingDark
@@ -332,7 +526,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   const goingDark = useMemo(() => {
     return active
       .filter(l => {
-        if (overdueSet.has(l.id)) return false; // dedup
+        if (overdueSet.has(l.id)) return false;
         if (l.stage === "New Lead") return false;
         const lastDate = l.lastContactDate || l.meetingDate || l.stageEnteredDate || l.dateSubmitted;
         if (!lastDate) return false;
@@ -359,7 +553,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
         {/* Overdue */}
         <SectionHeader title="Overdue" count={overdue.length} dotColor="bg-red-500" open={openSections.overdue} onToggle={() => toggleSection("overdue")} />
         {openSections.overdue && overdue.map(({ lead, daysOverdue }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={`${daysOverdue}d overdue`} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} />
+          <FollowUpRow key={lead.id} lead={lead} label={`${daysOverdue}d overdue`} labelStyle="bg-red-500/10 text-red-600 dark:text-red-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />
         ))}
 
         {/* Due This Week */}
@@ -367,25 +561,25 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
         {openSections.dueThisWeek && dueThisWeek.map(lead => {
           const dueDate = parseISO(lead.nextFollowUp);
           const label = isToday(dueDate) ? "Today" : format(dueDate, "EEE, MMM d");
-          return <FollowUpRow key={lead.id} lead={lead} label={label} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} />;
+          return <FollowUpRow key={lead.id} lead={lead} label={label} labelStyle={isToday(dueDate) ? "bg-foreground text-background" : "bg-blue-500/10 text-blue-600 dark:text-blue-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />;
         })}
 
         {/* Unanswered Inbound */}
         <SectionHeader title="Unanswered Inbound" count={unansweredLeads.length} dotColor="bg-purple-500" open={openSections.unanswered} onToggle={() => toggleSection("unanswered")} />
         {openSections.unanswered && unansweredLeads.map(lead => (
-          <FollowUpRow key={lead.id} lead={lead} label="Awaiting reply" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} />
+          <FollowUpRow key={lead.id} lead={lead} label="Awaiting reply" labelStyle="bg-purple-500/10 text-purple-600 dark:text-purple-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={true} onAction={handleAction} />
         ))}
 
         {/* Untouched */}
         <SectionHeader title="Untouched New Leads" count={untouched.length} dotColor="bg-emerald-500" open={openSections.untouched} onToggle={() => toggleSection("untouched")} />
         {openSections.untouched && untouched.map(({ lead, daysOld }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={`${daysOld}d old`} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} />
+          <FollowUpRow key={lead.id} lead={lead} label={`${daysOld}d old`} labelStyle="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />
         ))}
 
         {/* Going Dark */}
         <SectionHeader title="Going Dark" count={goingDark.length} dotColor="bg-amber-500" open={openSections.goingDark} onToggle={() => toggleSection("goingDark")} />
         {openSections.goingDark && goingDark.map(({ lead, daysSilent }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={`Silent ${daysSilent}d`} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} />
+          <FollowUpRow key={lead.id} lead={lead} label={`Silent ${daysSilent}d`} labelStyle="bg-amber-500/10 text-amber-600 dark:text-amber-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />
         ))}
 
         {totalItems === 0 && (
@@ -394,6 +588,15 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
           </div>
         )}
       </div>
+
+      {/* AI Action Sheet */}
+      <ActionSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        lead={sheetLead}
+        actionType={sheetActionType}
+        onUpdate={handleUpdate}
+      />
     </div>
   );
 }
