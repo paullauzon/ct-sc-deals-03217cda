@@ -266,6 +266,15 @@ export function LeadProvider({ children }: { children: ReactNode }) {
           } else {
             updated.closedDate = "";
             dbPayload.closedDate = "";
+        }
+          // Auto-generate playbook tasks for the new stage
+          const playbook = getPlaybookForStage(updates.stage);
+          if (playbook) {
+            const tasks = generateTasksFromPlaybook(playbook, id);
+            supabase.from("lead_tasks").insert(tasks as any).then(({ error: taskErr }) => {
+              if (taskErr) console.error("Playbook task insert error:", taskErr);
+              else toast(`📋 ${playbook.steps.length} playbook tasks created for ${updated.name}`);
+            });
           }
         }
         if (updates.meetingSetDate && !l.meetingSetDate) {
