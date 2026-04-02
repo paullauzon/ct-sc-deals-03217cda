@@ -162,11 +162,11 @@ function FollowUpRow({
           <CalendarCheck className="h-2.5 w-2.5 text-muted-foreground" />
         )}
 
-        {/* Action chip */}
-        <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
+        {/* Action chip — always visible */}
+        <div className="ml-auto flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
           <button
             onClick={() => onAction(lead, action.type)}
-            className="text-[10px] px-2.5 py-1 rounded-full border border-foreground/20 text-foreground hover:bg-foreground hover:text-background transition-colors flex items-center gap-1.5 font-medium"
+            className="text-[10px] px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:bg-foreground hover:text-background hover:border-foreground transition-colors flex items-center gap-1.5 font-medium"
           >
             <ActionIcon className="h-3 w-3" />
             {action.label}
