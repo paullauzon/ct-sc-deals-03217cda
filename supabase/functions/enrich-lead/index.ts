@@ -151,6 +151,7 @@ serve(async (req) => {
       `- Form submission: ${leadMessage ? "YES" : "NO"}`,
       `- Company web search: ${companySearchContent ? `YES (${companySearchUrls.length} results)` : "NO"}`,
       `- Prospect web search: ${prospectSearchContent ? `YES (${prospectSearchUrls.length} results)` : "NO"}`,
+      `- LinkedIn profile: ${linkedinContent ? "YES" : leadLinkedinTitle ? `TITLE ONLY (${leadLinkedinTitle})` : "NO"}`,
       `- Meeting summaries: ${meetingSummaries ? `YES (${meetingsWithTranscripts.length})` : "NO"}`,
       `- Deal fields: ${dealFields.length > 0 ? "YES" : "NO"}`,
       `- Notes: ${leadNotes ? "YES" : "NO"}`,
@@ -167,6 +168,8 @@ serve(async (req) => {
     if (leadMessage) contextParts.push(`Original Form Submission:\n${leadMessage}`);
     if (leadNotes) contextParts.push(`Internal Notes:\n${leadNotes}`);
     if (websiteContent) contextParts.push(`COMPANY WEBSITE CONTENT:\n${websiteContent}`);
+    if (linkedinContent) contextParts.push(`LINKEDIN PROFILE CONTENT (${leadLinkedinUrl}):\n${linkedinContent}`);
+    else if (leadLinkedinTitle) contextParts.push(`LINKEDIN TITLE: ${leadLinkedinTitle}${leadLinkedinUrl ? ` (${leadLinkedinUrl})` : ""}`);
     if (companySearchContent) contextParts.push(`COMPANY WEB SEARCH RESULTS:\n${companySearchContent}`);
     if (prospectSearchContent) contextParts.push(`PROSPECT WEB SEARCH RESULTS:\n${prospectSearchContent}`);
     if (meetingSummaries) contextParts.push(`MEETING SUMMARIES (high-level only):\n${meetingSummaries}`);
