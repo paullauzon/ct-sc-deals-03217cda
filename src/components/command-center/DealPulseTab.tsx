@@ -164,7 +164,10 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
                 showIntelOnly ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground hover:text-foreground"
               )}
             >
-              Has Intel ({sortedDeals.filter(d => !!(d.lead.dealIntelligence)).length})
+              Has Intel ({sortedDeals.filter(d => {
+                const di = d.lead.dealIntelligence as any;
+                return di?.winStrategy?.dealTemperature || di?.momentumSignals?.momentum;
+              }).length})
             </button>
             <div className="flex items-center gap-1 ml-auto">
               <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
