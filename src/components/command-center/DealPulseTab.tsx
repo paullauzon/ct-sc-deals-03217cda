@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { BrandLogo } from "@/components/BrandLogo";
-import { TrendingUp, TrendingDown, Minus, Activity, DollarSign, Clock, CalendarCheck, AlertCircle, Flame, Snowflake, Thermometer, Gauge } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Activity, DollarSign, Clock, CalendarCheck, AlertCircle, Flame, Snowflake, Thermometer, Gauge, ArrowUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { format, parseISO, differenceInDays, addDays, isBefore } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
