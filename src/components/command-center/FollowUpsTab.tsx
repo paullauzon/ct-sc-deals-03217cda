@@ -7,7 +7,7 @@ import {
   Mail, Mic, CalendarCheck, ArrowUpDown, Zap, Send, Phone, RotateCcw,
   Reply, FileText, Loader2
 } from "lucide-react";
-import { format, parseISO, differenceInDays, isToday, addDays, isBefore } from "date-fns";
+import { format, parseISO, differenceInDays, isToday, addDays, isBefore, startOfDay } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
