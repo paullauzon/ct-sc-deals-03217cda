@@ -14,7 +14,12 @@ BANNED PHRASES (never use any of these — if you catch yourself writing one, de
 "Let me know if you have any questions", "Happy to discuss further", "Quick question",
 "I noticed that", "It was great to", "Thank you for your time", "I hope you're doing well",
 "I hope you had a great weekend", "Just wanted to", "Reach out", "Touch base",
-"Best regards", "Kind regards", "Warm regards", "Looking forward to hearing from you"`;
+"Best regards", "Kind regards", "Warm regards", "Looking forward to hearing from you",
+"leveraging", "synergies", "alignment", "opportunities", "solutions", "offerings",
+"capabilities", "value proposition", "strategic fit", "growth trajectory",
+"aggressive acquisitions", "primes you for", "positions you to",
+"our pipeline includes", "our team can", "our services", "our platform",
+"discuss how we can", "explore ways", "mutually beneficial"`;
 
 type ActionType = "post-meeting" | "initial-outreach" | "meeting-nudge" | "proposal-followup" | "re-engagement" | "reply-inbound" | "schedule-call" | "prep-brief";
 
@@ -32,6 +37,10 @@ RULES:
 - If brand is Captarget: tone is market-intelligence-forward, deal-flow focused.
 - Match seniority: Managing Partners/CEOs get 3-4 sentences max. VPs/Directors can get slightly more context.
 - Use the enrichment data and deal intelligence to make EVERY claim specific. Don't say "your industry" — name the industry. Don't say "companies like yours" — name the company.
+- NEVER explain to the prospect what their own situation means. They know their fund size, their strategy, their portfolio. State what YOU have, not what THEY are.
+- NEVER use "our pipeline", "our team", "our services", "our platform" — these are vendor phrases. Say what you HAVE, not what you ARE. "3 off-market targets" not "our pipeline includes targets."
+- Every noun must be specific. Not "security firms" but "$8-12M commercial security companies in the Southeast." Not "tech-enhanced" but "IoT-enabled access control."
+- The CTA must name a specific deliverable, not a vague conversation. Not "discuss opportunities" but "send you 3 profiles" or "compare target lists."
 - No markdown formatting.
 - Return ONLY: subject line on first line, blank line, then body.
 
@@ -42,6 +51,10 @@ BAD vs GOOD examples:
 BAD: "Hi John, I hope this email finds you well. I wanted to follow up on our recent conversation about your acquisition strategy. I'd love to schedule a call to discuss how our services might align with your goals. Please let me know what works for your schedule. Best regards, The Team"
 
 GOOD: "John — your 3rd bolt-on this year puts you ahead of most platforms in building density. We have 2 off-market targets in your core geography, both $8-12M EBITDA. Worth a 15-min look Thursday? — Mike"
+
+BAD: "Cody — Shore Capital's $850M fund closure primes Dillard Door for aggressive acquisitions. Our pipeline includes five tech-enhanced security firms. Can we discuss alignment opportunities next Tuesday?"
+
+GOOD: "Cody — 3 commercial security companies in TX, $8-12M revenue, all off-market. One overlaps with Dillard Door's locksmith vertical. Profiles by Thursday if useful. — Mike"
 
 BAD: "Hi Sarah, I noticed your company has been growing recently. I wanted to reach out because I think our services could be a great fit. Would you be open to a quick call this week?"
 
@@ -62,10 +75,12 @@ TASK: Draft a post-meeting follow-up email.
       return `${base}
 
 TASK: Draft an initial outreach email to a prospect who has NOT been contacted yet.
-- First sentence: lead with a SPECIFIC insight from their enrichment data — a deal they did, a market shift in their sector, a portfolio gap. Not "I noticed your company is growing."
-- Second sentence: one line of value — what you bring that's specific to their situation.
-- Third sentence: ONE CTA — suggest a specific time frame.
-- That's it. Three sentences. Maybe four if the insight needs a sentence of context.`;
+- First sentence: state a SPECIFIC fact — a deal count, a market data point, a target you're tracking. Not about THEM, about what YOU have that's relevant to them.
+- Second sentence: connect it to their situation in ONE line. Be specific — name EBITDA ranges, geographies, sectors, company count.
+- Third sentence: ONE CTA with a specific deliverable. Not "let's discuss" but "I'll send profiles Thursday" or "15 min to compare target lists."
+- That's it. Three sentences. Maybe four if the data needs a sentence of context.
+- NEVER tell them what their own fund/strategy/portfolio means. They know.
+- NEVER say "our pipeline includes" or "our team has identified." Say "tracking 3 targets" or "2 off-market companies match."`;
 
     case "meeting-nudge":
       return `${base}
