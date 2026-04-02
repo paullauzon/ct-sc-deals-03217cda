@@ -209,7 +209,7 @@ function ActionRow({ item, onClick }: { item: ActionItem; onClick: () => void })
           {item.lead.assignedTo[0]}
         </span>
       )}
-      <span className={`text-xs font-medium ml-auto whitespace-nowrap ${TYPE_TEXT_COLORS[item.type]}`}>{item.label}</span>
+      <span className={`text-xs font-medium ml-auto whitespace-nowrap ${item.label === "Due today" ? "text-blue-600 dark:text-blue-400" : TYPE_TEXT_COLORS[item.type]}`}>{item.label}</span>
       {item.lead.dealValue > 0 && (
         <span className="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">${item.lead.dealValue.toLocaleString()}</span>
       )}
