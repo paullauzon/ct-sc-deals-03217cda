@@ -374,12 +374,28 @@ function ActionSheet({
 
           {/* Copy */}
           {content && (
-            <button
-              onClick={() => { navigator.clipboard.writeText(content); toast({ title: "Copied to clipboard" }); }}
-              className="w-full text-xs py-2 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Copy to Clipboard
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { navigator.clipboard.writeText(content); toast({ title: "Copied to clipboard" }); }}
+                className="flex-1 text-xs py-2 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Copy All
+              </button>
+              {content.includes("\n\n") && (
+                <button
+                  onClick={() => {
+                    const idx = content.indexOf("\n\n");
+                    const subject = content.slice(0, idx).replace(/^Subject:\s*/i, "");
+                    const body = content.slice(idx + 2);
+                    navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
+                    toast({ title: "Copied as email", description: `Subject: ${subject.slice(0, 50)}…` });
+                  }}
+                  className="flex-1 text-xs py-2 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Copy as Email
+                </button>
+              )}
+            </div>
           )}
         </div>
       </SheetContent>

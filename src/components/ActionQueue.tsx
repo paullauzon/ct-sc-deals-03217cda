@@ -128,7 +128,7 @@ export function ActionQueue() {
               {OWNERS.map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
-          {(commandTab === "schedule" || commandTab === "intel") && (
+          {commandTab === "intel" && (
             <div className="flex items-center gap-1">
               {HORIZONS.map(h => (
                 <button

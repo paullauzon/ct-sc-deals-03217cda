@@ -69,7 +69,8 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
   );
 }
 
-function IntelCard({ lead, onSelect }: { lead: Lead; onSelect: () => void }) {
+function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () => void; emailCount: number }) {
+  const [generatingPrep, setGeneratingPrep] = useState(false);
   const enrichment = lead.enrichment;
   const di = lead.dealIntelligence;
   const latestMeeting = lead.meetings?.length > 0 ? lead.meetings[lead.meetings.length - 1] : null;
@@ -77,10 +78,30 @@ function IntelCard({ lead, onSelect }: { lead: Lead; onSelect: () => void }) {
   const winStrategy = di?.winStrategy;
   const psych = di?.psychologicalProfile;
   const buyingCommittee = di?.buyingCommittee;
+  const meetingCount = lead.meetings?.length || 0;
+  const hasCalendly = !!lead.calendlyBookedAt;
+  const hasIntel = !!(di || enrichment?.buyerMotivation);
 
   const openActions = di?.actionItemTracker?.filter(a => a.status === "Open") || [];
   const openObjections = di?.objectionTracker?.filter(o => o.status === "Open" || o.status === "Recurring") || [];
   const risks = di?.riskRegister?.filter(r => r.mitigationStatus !== "Mitigated") || [];
+
+  const handleGeneratePrep = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setGeneratingPrep(true);
+    try {
+      const { error } = await supabase.functions.invoke("generate-meeting-prep", {
+        body: { leadId: lead.id },
+      });
+      if (error) throw error;
+      toast({ title: "Prep brief queued", description: `Generating intelligence for ${lead.name}...` });
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Failed to generate prep", variant: "destructive" });
+    } finally {
+      setGeneratingPrep(false);
+    }
+  };
 
   return (
     <div onClick={onSelect} className="border border-border rounded-lg p-4 cursor-pointer hover:bg-secondary/20 transition-colors space-y-3">
@@ -104,6 +125,44 @@ function IntelCard({ lead, onSelect }: { lead: Lead; onSelect: () => void }) {
           <span>{format(parseISO(lead.meetingDate), "EEE, MMM d 'at' h:mm a")}</span>
         </div>
       </div>
+
+      {/* Calendly + Signal Strip */}
+      <div className="flex items-center gap-3 flex-wrap text-[10px] text-muted-foreground">
+        {hasCalendly && lead.calendlyEventName && (
+          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">
+            <CalendarCheck className="h-2.5 w-2.5" />
+            {lead.calendlyEventName}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration}m` : ""}
+          </span>
+        )}
+        {meetingCount > 0 && (
+          <span className="flex items-center gap-1">
+            <Mic className="h-2.5 w-2.5" />{meetingCount} meeting{meetingCount !== 1 ? "s" : ""}
+          </span>
+        )}
+        {emailCount > 0 && (
+          <span className="flex items-center gap-1">
+            <Mail className="h-2.5 w-2.5" />{emailCount} email{emailCount !== 1 ? "s" : ""}
+          </span>
+        )}
+        {lead.dealValue > 0 && (
+          <span className="tabular-nums font-medium">${lead.dealValue.toLocaleString()}</span>
+        )}
+        {lead.stage && (
+          <span className="px-1.5 py-0.5 rounded bg-secondary">{lead.stage}</span>
+        )}
+      </div>
+
+      {/* Generate Prep button when no intel exists */}
+      {!hasIntel && (
+        <button
+          onClick={handleGeneratePrep}
+          disabled={generatingPrep}
+          className="w-full text-xs py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center justify-center gap-2"
+        >
+          {generatingPrep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+          {generatingPrep ? "Generating prep brief..." : "Generate Prep Brief"}
+        </button>
+      )}
 
       {/* Context Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5 text-[11px]">

@@ -154,7 +154,17 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
 
         {/* Momentum Board */}
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Momentum Board</h3>
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Momentum Board</h3>
+            <div className="flex items-center gap-1 ml-auto">
+              <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
+              {(["risk", "value", "days", "name"] as const).map(s => (
+                <button key={s} onClick={() => { if (momentumSort === s) setMomentumSortDir(d => d === "asc" ? "desc" : "asc"); else { setMomentumSort(s); setMomentumSortDir("desc"); } }} className={cn("text-[10px] px-2 py-0.5 rounded-full border transition-colors", momentumSort === s ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground hover:text-foreground")}>
+                  {s === "risk" ? "Risk" : s === "value" ? "Value" : s === "days" ? "Days" : "Name"}{momentumSort === s ? (momentumSortDir === "asc" ? " ↑" : " ↓") : ""}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="border border-border rounded-md overflow-hidden overflow-x-auto">
             <div className="grid grid-cols-[1fr_100px_70px_80px_50px_50px_80px] gap-0 px-4 py-2 bg-secondary/30 text-[10px] font-medium text-muted-foreground uppercase tracking-wider min-w-[600px]">
               <span>Deal</span>
