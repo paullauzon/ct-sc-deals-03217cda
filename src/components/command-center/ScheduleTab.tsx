@@ -336,6 +336,52 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
         </div>
       )}
 
+      {/* Playbook Tasks Due Today */}
+      {todaysTasks.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <ListChecks className="h-3.5 w-3.5 text-primary" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-primary">Playbook Tasks</span>
+            <span className="text-[10px] text-muted-foreground">({todaysTasks.length})</span>
+          </div>
+          <div className="border border-border rounded-md overflow-hidden divide-y divide-border">
+            {todaysTasks.map(task => {
+              const lead = leadMap.get(task.lead_id);
+              const typeIcon = task.task_type === "email" ? "✉️" : task.task_type === "call" ? "📞" : task.task_type === "prep" ? "📋" : "📌";
+              return (
+                <div key={task.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/20 transition-colors">
+                  <span className="text-sm">{typeIcon}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      {lead && <BrandLogo brand={lead.brand} size="xxs" />}
+                      <span className="text-xs font-medium truncate">{lead?.name || task.lead_id}</span>
+                      <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">{lead?.company}</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground truncate mt-0.5">{task.title}</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => { completeTask(task.id); toast({ title: `✓ ${task.title}`, description: `Completed for ${lead?.name}` }); }}
+                      className="p-1 rounded hover:bg-primary/10 text-primary transition-colors"
+                      title="Complete"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => { skipTask(task.id); toast({ title: `Skipped: ${task.title}` }); }}
+                      className="p-1 rounded hover:bg-secondary text-muted-foreground transition-colors"
+                      title="Skip"
+                    >
+                      <SkipForward className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Priority Tiers */}
       <div className="border border-border rounded-md overflow-hidden divide-y divide-border">
         {(["urgent", "at-risk", "monitor"] as PriorityTier[]).map(tier => (
