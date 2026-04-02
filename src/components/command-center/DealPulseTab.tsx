@@ -26,9 +26,10 @@ function KpiCard({ label, value, subValue, icon: Icon, accent }: { label: string
 function MomentumIcon({ momentum }: { momentum?: string }) {
   if (momentum === "Accelerating") return <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />;
   if (momentum === "Stalling" || momentum === "Stalled") return <TrendingDown className="h-3.5 w-3.5 text-red-500" />;
-  if (momentum === "Steady" || momentum === "Neutral") return <Minus className="h-3.5 w-3.5 text-blue-400" />;
+  if (momentum === "Steady") return <span className="text-[9px] text-blue-400 font-medium">Steady</span>;
+  if (momentum === "Neutral") return <span className="text-[9px] text-blue-400 font-medium">Neutral</span>;
   if (!momentum || momentum.length === 0) return <span className="text-[10px] text-muted-foreground">—</span>;
-  return <Minus className="h-3.5 w-3.5 text-blue-400" />;
+  return <span className="text-[9px] text-blue-400 font-medium">{momentum}</span>;
 }
 
 function DealTempIcon({ temp }: { temp?: string }) {
