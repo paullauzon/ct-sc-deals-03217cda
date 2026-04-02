@@ -281,7 +281,7 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
 
       {/* Summary Stats */}
       <div className="flex gap-3 flex-wrap text-[11px] text-muted-foreground">
-        {(["overdue", "meeting", "dark", "untouched", "renewal", "stale"] as const).map(type => {
+        {(["overdue", "meeting", "renewal"] as const).map(type => {
           const count = typeCounts[type] || 0;
           if (count === 0) return null;
           const labels: Record<string, string> = { overdue: "Overdue", meeting: "Meetings", dark: "Going Dark", untouched: "Untouched", renewal: "Renewals", stale: "Stale" };
