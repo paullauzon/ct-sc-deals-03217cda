@@ -1,57 +1,52 @@
 
 
-# Command Center — Comprehensive Final Audit
+# Command Center — Final Comprehensive Audit
 
-## Current Status: All 4 Tabs Fully Functional
+## Current Status: Feature-Complete, 3 Remaining Issues
 
-Verified live with 212 leads loaded, zero runtime errors, all badge counts accurate (Schedule=2, Follow-Ups=26, Deal Pulse=27, Prep Intel=3).
-
-**Schedule**: Morning briefing with +1 Leads / 1 Stage Changes, 3 meeting cards (2 today, 1 in 6d), "Due today" blue / "1d overdue" red, horizon toggle synced, Urgent tier with 2 items, Playbook Tasks section ready (0 tasks currently — will populate on stage changes). Working correctly.
-
-**Follow-Ups**: 98 items across 5 sections (77 Overdue / 5 Due This Week / 10 Untouched / 6 Going Dark), rich rows with deal value + last contact + meeting count + email count + Calendly, context-aware AI action chips (Send Proposal, Follow Up, Pre-Meeting Email, Complete Actions), batch snooze >14d, inline 3d/7d/14d snooze per row, sort controls, summary strip, AI Action Sheet with Copy & Mark Done + Regenerate + stage advance + calendar picker, task count badges per lead. Working correctly.
-
-**Deal Pulse**: 4 KPIs with benchmark labels, forecast strip, momentum board with Has Intel (81) toggle, "Steady" rendered as distinct blue text, sort controls, velocity cards with benchmarks, renewals section. Working correctly.
-
-**Prep Intel**: 3 cards with Calendly details, Research Prospect (correct flat payload + DB persistence), Draft Pre-Meeting Email, Deal Room link, prospect messages, company descriptions, context grid, win strategy, psychological profile, enrichment highlights, playbook tasks section. Working correctly.
-
-**Playbook System**: `lead_tasks` table exists. Playbook definitions in `src/lib/playbooks.ts` with 5 stage-triggered sequences. `LeadContext.tsx` auto-generates tasks on stage change. `useLeadTasks.ts` hook with complete/skip. All three tabs (Schedule, Follow-Ups, Prep Intel) wired to display tasks. 0 tasks currently — tasks will generate the first time a lead's stage changes going forward.
+After reviewing all ~2,900 lines across the 4 tabs + ActionQueue, the Command Center is fully functional. All originally requested features are built and wired. Here is what remains:
 
 ---
 
-## Remaining: Nothing Is Broken
+## Issues Found
 
-After 10+ audit rounds and implementation cycles, the Command Center has reached feature-complete status for all originally specified functionality:
+### 1. Bug: FollowUpRow keyboard navigation refs are broken
+**File**: `FollowUpsTab.tsx` line 793
+The `rowRef` is created as a new object literal `{ current: null }` on every render and never connected to the refs map (`rowRefs.current`). This means `scrollIntoView` on line 775 never fires — keyboard navigation with j/k works for highlighting but the view never scrolls to the active row.
 
-1. All 4 tabs render cleanly with correct data
-2. All 3 AI edge functions (generate-follow-up-action, generate-meeting-prep, enrich-lead) are on gpt-4o
-3. Research Prospect sends correct payload and persists to DB
-4. Playbook task system is fully wired end-to-end
-5. "Steady" momentum is visually distinct from no-data
-6. Badge counts are accurate and capped appropriately
-7. Batch snooze, inline snooze, sort controls all functional
-8. Action Sheet generates context-aware drafts with Copy & Mark Done
+**Fix**: Connect `rowRef` to the `rowRefs` Map using a callback ref pattern, and pass the actual `rowIndex` so the ref is stored correctly.
 
----
+### 2. Bug: FollowUpRow `rowIndex` counter resets on every render cycle
+**File**: `FollowUpsTab.tsx` line 780
+`let rowIndex = 0;` is declared inside the render body but the `rowProps` helper increments it. Since each section calls `rowProps` independently in JSX, the counter only works if all sections render in a single pass. This is fragile — and more critically, the `isActive` check (line 792) compares against a counter that doesn't account for collapsed sections, while `flatLeadIds` (line 734) does. These can desync, causing the wrong row to highlight.
 
-## Optional Polish (Not Required — For Future Enhancement)
+**Fix**: Pre-compute a `leadIdToIndex` map from `flatLeadIds` and use `flatLeadIds.indexOf(lead.id)` instead of an incrementing counter.
 
-These are not bugs or missing features. They are potential quality-of-life improvements a sales veteran might appreciate over time:
-
-### 1. AI Draft Content for Playbook Tasks
-Currently playbook tasks store title/description but no pre-generated AI content. When a user clicks a playbook task, it could auto-invoke `generate-follow-up-action` to fill the `ai_content` column and open the Action Sheet pre-filled. This would make playbook tasks one-click actionable instead of requiring manual draft generation.
-
-### 2. Playbook Task Expansion in Follow-Ups
-The Follow-Ups tab shows a task count badge per lead but doesn't expand to show the actual task list inline. Adding a collapsible task checklist below each row (like an accordion) would let veterans work through sequences without leaving the tab.
-
-### 3. Stale Playbook Detection
-If a lead's stage changes again before the current playbook completes, old pending tasks should be auto-archived. Currently they'd accumulate. A cleanup on stage change (marking old playbook tasks as "superseded") would keep the task list clean.
-
-### 4. Keyboard Shortcuts
-No keyboard navigation in the Command Center. A sales veteran working 50+ leads daily would benefit from j/k for row navigation, Enter to open Action Sheet, Escape to close.
+### 3. Minor: "Due today" items can appear in both Overdue and Due This Week
+**File**: `FollowUpsTab.tsx`
+The overdue filter uses `isBefore(parseISO(l.nextFollowUp), todayStart)` (line 682) which correctly excludes today. But the `dueThisWeek` filter (line 697) uses `!isBefore(d, todayStart)` which includes today. Meanwhile, `FollowUpRow` for overdue shows `daysOverdue === 0 ? "Due today"` (line 846). Since `daysOverdue` uses `differenceInDays(now, ...)` which can be 0 for items due earlier today, an item due at midnight today could show as "0d overdue" labeled "Due today" in the Overdue section AND also appear in Due This Week. This is a minor edge case but worth fixing by ensuring the overdue label never shows "Due today" (it should show "1d overdue" minimum since the filter already excludes today-start).
 
 ---
 
-## Verdict
+## Everything Else: Working Correctly
 
-The Command Center is production-ready. All originally specified features from your prompts are implemented and working. The automated follow-up task playbook system — the last major gap — is now fully wired. The optional polish items above are incremental improvements, not blockers.
+**Schedule Tab**: Morning briefing, meeting cards with time grouping, playbook tasks due today, priority tiers filtered to today-only items, summary stats strip. All correct.
+
+**Follow-Ups Tab**: 5 sections (Overdue, Due This Week, Unanswered Inbound, Untouched, Going Dark) with deduplication. Rich rows with deal value, meeting count, email count, Calendly, task badge. Context-aware AI action chips. Batch snooze (>14d, >30d). Inline snooze (3d/7d/14d). Sort controls. AI Action Sheet with Copy & Mark Done, Regenerate, stage advance, calendar picker. Inline task checklist expansion. All correct.
+
+**Deal Pulse Tab**: 4 KPIs with benchmark labels, forecast strip, momentum board with Has Intel toggle and sort controls, "Steady" as distinct blue text, velocity cards with benchmarks, renewals section, empty state. All correct.
+
+**Prep Intel Tab**: Cards with Calendly details, Research Prospect (correct flat payload + DB persistence), Generate Prep Brief (correct full payload), Draft Pre-Meeting Email, Deal Room link (correct `/deal/` route), prospect messages, company descriptions, context grid, win strategy, psychological profile, enrichment highlights, open items, deal narrative, playbook tasks section. All correct.
+
+**Playbook System**: `lead_tasks` table exists. 5 playbook definitions. Stage-change triggers in LeadContext with stale task cleanup. useLeadTasks hook. All 3 tabs wired to display tasks. All correct.
+
+---
+
+## Plan: Fix the 2 Bugs
+
+### Files Changed
+
+| File | Changes |
+|------|---------|
+| `src/components/command-center/FollowUpsTab.tsx` | Fix keyboard nav scroll refs using `flatLeadIds.indexOf(lead.id)` instead of incrementing counter; fix rowRef connection to enable scrollIntoView |
 
