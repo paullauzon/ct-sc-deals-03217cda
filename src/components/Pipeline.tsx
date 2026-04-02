@@ -15,11 +15,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 
-import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3, Check, Linkedin, CalendarCheck } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3, Check, Linkedin, CalendarCheck, Heart, ShieldAlert, Crown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
 import { BrandLogo } from "@/components/BrandLogo";
+import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises } from "@/lib/dealHealthUtils";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
@@ -401,25 +402,84 @@ export function Pipeline() {
                           {lead.meetingOutcome && <span>{lead.meetingOutcome}</span>}
                         </div>
                       </div>
-                      {/* Row 5: Intelligence indicators (monochrome) */}
-                      {lead.dealIntelligence && (
-                        <div className="flex items-center gap-1.5 text-[10px]">
-                          {lead.dealIntelligence.momentumSignals?.momentum && (
-                            <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-                              {lead.dealIntelligence.momentumSignals.momentum === "Accelerating" ? "↑" :
-                               lead.dealIntelligence.momentumSignals.momentum === "Stalling" || lead.dealIntelligence.momentumSignals.momentum === "Stalled" ? "↓" : "→"} {lead.dealIntelligence.momentumSignals.momentum}
-                            </span>
-                          )}
-                          {lead.dealIntelligence.riskRegister?.filter(r => r.mitigationStatus !== "Mitigated").length > 0 && (
+                      {/* Row 5: Deal Health + Stakeholder Coverage + Intelligence */}
+                      {(() => {
+                        const health = computeDealHealthScore(lead);
+                        const coverage = getStakeholderCoverage(lead);
+                        const dropped = getDroppedPromises(lead);
+                        const winLose = !closed ? getWinLoseCard(lead) : null;
+                        const hasIntelBadges = health || coverage || lead.dealIntelligence?.momentumSignals?.momentum || dropped.length > 0;
+
+                        return hasIntelBadges ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 text-[10px] flex-wrap">
+                              {health && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className={cn("px-1.5 py-0.5 rounded flex items-center gap-0.5 font-medium",
+                                      health.color === "emerald" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
+                                      health.color === "amber" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" :
+                                      "bg-red-500/10 text-red-600 dark:text-red-400"
+                                    )}>
+                                      <Heart className="h-2.5 w-2.5" /> {health.score}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="text-xs max-w-[200px]">
+                                    <p className="font-medium mb-1">Deal Health: {health.label}</p>
+                                    {health.factors.map((f, i) => (
+                                      <p key={i} className="text-muted-foreground">{f.impact > 0 ? "+" : ""}{f.impact} {f.label}</p>
+                                    ))}
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                              {coverage && (
+                                <span className={cn("px-1.5 py-0.5 rounded flex items-center gap-0.5", coverage.colorClass)}>
+                                  {coverage.coverage === "no-champion" ? <ShieldAlert className="h-2.5 w-2.5" /> : <Users className="h-2.5 w-2.5" />}
+                                  {coverage.label}
+                                </span>
+                              )}
+                              {lead.dealIntelligence?.momentumSignals?.momentum && (
+                                <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                                  {lead.dealIntelligence.momentumSignals.momentum === "Accelerating" ? "↑" :
+                                   lead.dealIntelligence.momentumSignals.momentum === "Stalling" || lead.dealIntelligence.momentumSignals.momentum === "Stalled" ? "↓" : "→"} {lead.dealIntelligence.momentumSignals.momentum}
+                                </span>
+                              )}
+                              {lead.enrichment && (
+                                <span className="px-1 py-0.5 rounded bg-secondary text-muted-foreground">AI</span>
+                              )}
+                            </div>
+                            {/* Dropped promises */}
+                            {dropped.length > 0 && !closed && (
+                              <div className="flex items-start gap-1 text-[9px] text-red-600 dark:text-red-400">
+                                <AlertTriangle className="h-2.5 w-2.5 shrink-0 mt-0.5" />
+                                <span className="line-clamp-1">{dropped[0].item}{dropped[0].daysOverdue > 0 ? ` (${dropped[0].daysOverdue}d)` : ""}{dropped.length > 1 ? ` +${dropped.length - 1} more` : ""}</span>
+                              </div>
+                            )}
+                            {/* Win/Lose micro-card on hover would be tooltip */}
+                            {winLose && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-help">
+                                    <Crown className="h-2.5 w-2.5 shrink-0" />
+                                    <span className="truncate">{winLose.doNext !== "—" ? winLose.doNext : winLose.win}</span>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent className="text-xs max-w-[250px] space-y-1">
+                                  <p className="text-emerald-600 dark:text-emerald-400">✓ Win: {winLose.win}</p>
+                                  <p className="text-red-600 dark:text-red-400">✗ Lose: {winLose.lose}</p>
+                                  <p className="font-medium">→ Do next: {winLose.doNext}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                        ) : lead.dealIntelligence?.riskRegister?.filter(r => r.mitigationStatus !== "Mitigated").length ? (
+                          <div className="flex items-center gap-1.5 text-[10px]">
                             <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground flex items-center gap-0.5">
-                              <AlertTriangle className="h-2.5 w-2.5" /> {lead.dealIntelligence.riskRegister.filter(r => r.mitigationStatus !== "Mitigated").length} risks
+                              <AlertTriangle className="h-2.5 w-2.5" /> {lead.dealIntelligence.riskRegister!.filter(r => r.mitigationStatus !== "Mitigated").length} risks
                             </span>
-                          )}
-                          {lead.enrichment && (
-                            <span className="px-1 py-0.5 rounded bg-secondary text-muted-foreground">AI</span>
-                          )}
-                        </div>
-                      )}
+                          </div>
+                        ) : null;
+                      })()}
                       {/* Pending suggestions indicator */}
                       {(() => {
                         const job = leadJobs[lead.id];
