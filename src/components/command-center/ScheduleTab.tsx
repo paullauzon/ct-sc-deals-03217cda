@@ -1,9 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Lead } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
-import { CalendarCheck, ChevronDown, ChevronRight } from "lucide-react";
+import { CalendarCheck, ChevronDown, ChevronRight, Sparkles, Users, Mail, ArrowUpRight } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
-import { format } from "date-fns";
+import { format, parseISO, differenceInDays, subHours } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 
@@ -100,6 +101,65 @@ export function buildActionItems(leads: Lead[], ownerFilter: string, meetingHori
   }
 
   return actions.sort((a, b) => b.urgency - a.urgency);
+}
+
+/* ─── Morning Briefing Strip ─── */
+function MorningBriefing({ leads, ownerFilter }: { leads: Lead[]; ownerFilter: string }) {
+  const [emailCount, setEmailCount] = useState<number>(0);
+
+  const filtered = useMemo(() => {
+    if (ownerFilter === "All") return leads;
+    if (ownerFilter === "Unassigned") return leads.filter(l => !l.assignedTo);
+    return leads.filter(l => l.assignedTo === ownerFilter);
+  }, [leads, ownerFilter]);
+
+  const since24h = useMemo(() => subHours(new Date(), 24), []);
+
+  const stats = useMemo(() => {
+    const newLeads = filtered.filter(l => {
+      try { return parseISO(l.createdAt) >= since24h; } catch { return false; }
+    }).length;
+
+    const newMeetings = filtered.filter(l => {
+      if (!l.calendlyBookedAt) return false;
+      try { return parseISO(l.calendlyBookedAt) >= since24h; } catch { return false; }
+    }).length;
+
+    const stageChanges = filtered.filter(l => {
+      if (!l.stageEnteredDate) return false;
+      try { return parseISO(l.stageEnteredDate) >= since24h; } catch { return false; }
+    }).length;
+
+    return { newLeads, newMeetings, stageChanges };
+  }, [filtered, since24h]);
+
+  useEffect(() => {
+    const leadIds = filtered.map(l => l.id);
+    if (leadIds.length === 0) { setEmailCount(0); return; }
+    supabase
+      .from("lead_emails")
+      .select("id", { count: "exact", head: true })
+      .in("lead_id", leadIds)
+      .gte("email_date", since24h.toISOString())
+      .eq("direction", "inbound")
+      .then(({ count }) => setEmailCount(count || 0));
+  }, [filtered, since24h]);
+
+  const hasAnything = stats.newLeads + stats.newMeetings + stats.stageChanges + emailCount > 0;
+  if (!hasAnything) return null;
+
+  return (
+    <div className="flex items-center gap-4 px-3 py-2 rounded-md bg-primary/5 border border-primary/10">
+      <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
+      <span className="text-[11px] font-medium text-primary">Since Yesterday</span>
+      <div className="flex gap-3 text-[11px] text-muted-foreground">
+        {stats.newLeads > 0 && <span className="flex items-center gap-1"><Users className="h-3 w-3" /><span className="font-medium text-foreground">+{stats.newLeads}</span> Leads</span>}
+        {stats.newMeetings > 0 && <span className="flex items-center gap-1"><CalendarCheck className="h-3 w-3" /><span className="font-medium text-foreground">+{stats.newMeetings}</span> Booked</span>}
+        {emailCount > 0 && <span className="flex items-center gap-1"><Mail className="h-3 w-3" /><span className="font-medium text-foreground">{emailCount}</span> Emails</span>}
+        {stats.stageChanges > 0 && <span className="flex items-center gap-1"><ArrowUpRight className="h-3 w-3" /><span className="font-medium text-foreground">{stats.stageChanges}</span> Stage Changes</span>}
+      </div>
+    </div>
+  );
 }
 
 /* ─── Meeting Card ─── */
@@ -217,6 +277,9 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead }: { leads: Lead[
 
   return (
     <div className="space-y-5">
+      {/* Morning Briefing */}
+      <MorningBriefing leads={leads} ownerFilter={ownerFilter} />
+
       {/* Summary Stats */}
       <div className="flex gap-3 flex-wrap text-[11px] text-muted-foreground">
         {(["overdue", "meeting", "dark", "untouched", "renewal", "stale"] as const).map(type => {

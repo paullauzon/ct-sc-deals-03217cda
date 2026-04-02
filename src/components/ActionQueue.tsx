@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { LeadDetail } from "@/components/LeadsTable";
 import { Filter, Command } from "lucide-react";
@@ -7,9 +7,14 @@ import { ScheduleTab } from "@/components/command-center/ScheduleTab";
 import { FollowUpsTab } from "@/components/command-center/FollowUpsTab";
 import { DealPulseTab } from "@/components/command-center/DealPulseTab";
 import { PrepIntelTab } from "@/components/command-center/PrepIntelTab";
+import { buildActionItems } from "@/components/command-center/ScheduleTab";
+import { isBefore, parseISO, differenceInDays } from "date-fns";
 
 const OWNERS = ["All", "Malik", "Valeria", "Tomos", "Unassigned"] as const;
 type CommandTab = "schedule" | "followups" | "pulse" | "intel";
+
+const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+const ACTIVE_STAGES = new Set(["Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"]);
 
 function parseTabFromHash(): CommandTab {
   const hash = window.location.hash.replace("#", "");
@@ -24,6 +29,15 @@ function updateTabHash(tab: CommandTab) {
   const params = new URLSearchParams(hash);
   params.set("ctab", tab);
   window.location.hash = params.toString();
+}
+
+function Badge({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span className="ml-1.5 inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold tabular-nums">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
 }
 
 export function ActionQueue() {
@@ -43,6 +57,53 @@ export function ActionQueue() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  // Compute badge counts
+  const badges = useMemo(() => {
+    const now = new Date();
+    const filtered = ownerFilter === "All" ? leads
+      : ownerFilter === "Unassigned" ? leads.filter(l => !l.assignedTo)
+      : leads.filter(l => l.assignedTo === ownerFilter);
+
+    // Schedule: meetings today
+    const meetingsToday = filtered.filter(l => {
+      if (!l.meetingDate) return false;
+      const d = differenceInDays(parseISO(l.meetingDate), now);
+      return d >= 0 && d === 0;
+    }).length;
+
+    // Follow-ups: overdue + untouched
+    const active = filtered.filter(l => !CLOSED_STAGES.has(l.stage));
+    const overdue = active.filter(l => l.nextFollowUp && isBefore(parseISO(l.nextFollowUp), now)).length;
+    const untouched = active.filter(l => l.stage === "New Lead" && !l.lastContactDate && !l.assignedTo).length;
+    const goingDark = active.filter(l => {
+      if (l.stage === "New Lead") return false;
+      const lastDate = l.lastContactDate || l.meetingDate || l.stageEnteredDate || l.dateSubmitted;
+      if (!lastDate) return false;
+      return differenceInDays(now, parseISO(lastDate)) > 21;
+    }).length;
+
+    // Deal Pulse: stalled deals (14+ days in stage)
+    const stalled = active.filter(l => {
+      if (!ACTIVE_STAGES.has(l.stage)) return false;
+      const days = l.stageEnteredDate ? differenceInDays(now, parseISO(l.stageEnteredDate)) : 0;
+      return days > 14;
+    }).length;
+
+    // Prep Intel: meetings in next 7 days
+    const prepMeetings = filtered.filter(l => {
+      if (!l.meetingDate) return false;
+      const d = differenceInDays(parseISO(l.meetingDate), now);
+      return d >= 0 && d <= 7;
+    }).length;
+
+    return {
+      schedule: meetingsToday,
+      followups: overdue + untouched + goingDark,
+      pulse: stalled,
+      intel: prepMeetings,
+    };
+  }, [leads, ownerFilter]);
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-5">
@@ -70,10 +131,10 @@ export function ActionQueue() {
       {/* Tabs */}
       <Tabs value={commandTab} onValueChange={handleTabChange}>
         <TabsList className="w-full justify-start">
-          <TabsTrigger value="schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="followups">Follow-Ups</TabsTrigger>
-          <TabsTrigger value="pulse">Deal Pulse</TabsTrigger>
-          <TabsTrigger value="intel">Prep Intel</TabsTrigger>
+          <TabsTrigger value="schedule" className="flex items-center">Schedule<Badge count={badges.schedule} /></TabsTrigger>
+          <TabsTrigger value="followups" className="flex items-center">Follow-Ups<Badge count={badges.followups} /></TabsTrigger>
+          <TabsTrigger value="pulse" className="flex items-center">Deal Pulse<Badge count={badges.pulse} /></TabsTrigger>
+          <TabsTrigger value="intel" className="flex items-center">Prep Intel<Badge count={badges.intel} /></TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule">
