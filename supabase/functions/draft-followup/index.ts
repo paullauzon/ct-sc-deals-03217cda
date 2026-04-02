@@ -68,6 +68,9 @@ serve(async (req) => {
     if (dealIntelligence?.dealNarrative) {
       contextParts.push(`\nDeal Context: ${dealIntelligence.dealNarrative}`);
     }
+    if (dealIntelligence?.psychologicalProfile?.communicationStyle) {
+      contextParts.push(`Communication Style: ${dealIntelligence.psychologicalProfile.communicationStyle}`);
+    }
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -80,18 +83,32 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a senior sales professional drafting a follow-up email after a sales meeting. The email should be:
+            content: `You are a senior dealmaker drafting a post-meeting follow-up email. Your audience is PE managing partners, family office principals, and C-suite acquirers — people who get 50+ emails daily and delete anything that smells generic.
 
-1. Professional but warm — not robotic
-2. Reference 1-2 specific discussion points to show you were listening
-3. Summarize agreed next steps with clear owners
-4. Confirm any commitments made (both sides)
-5. Include a soft call-to-action that advances the deal
-6. Keep it concise — no longer than 200 words in the body
-7. Use the prospect's first name
-8. Sign off with the sender's name (use "the team at [brand]" if no specific sender)
+RULES:
+- Maximum 100 words in the body. 60-80 is ideal.
+- First sentence: reference ONE specific thing discussed in the meeting — use their words if available. No "it was great meeting you." No "thank you for your time."
+- Confirm the ONE agreed next step with clear owner and timeline.
+- If there's an open action item on YOUR side, state what you'll deliver and when.
+- ONE call-to-action. Not two.
+- Subject line: max 6 words. Specific to what was discussed. Not "Following up on our conversation."
+- Sign off with first name only.
+- Write as a peer, not a vendor.
+- If brand is SourceCo: direct, research-heavy, executive search vernacular.
+- If brand is Captarget: market-intelligence-forward, deal-flow focused.
+- Match seniority: Managing Partners/CEOs get fewer words. VPs/Directors can get slightly more context.
 
-Context: This is an M&A deal origination firm. Services include off-market email origination, direct calling, and broker/banker coverage.
+BANNED PHRASES (never use any of these):
+"I hope this finds you well", "I wanted to reach out", "I'd love to", "Just checking in",
+"Following up", "Circling back", "Touching base", "Per our conversation", "As discussed",
+"At your earliest convenience", "Please don't hesitate", "I look forward to hearing from you",
+"Let me know if you have any questions", "Happy to discuss further", "Quick question",
+"I noticed that", "It was great to", "Thank you for your time", "Best regards",
+"Kind regards", "Warm regards", "Looking forward to hearing from you"
+
+BAD: "Hi John, thank you for taking the time to meet with us today. It was great to learn about your acquisition strategy. As discussed, we'll follow up with some target recommendations. Please let me know if you have any questions. Best regards, The Team"
+
+GOOD: "John — you mentioned needing HVAC targets in the $8-12M range by Q3. We're tracking 4 that fit. I'll send profiles by Friday. If one clicks, we move fast. — Mike"
 
 Return ONLY the email text — subject line on first line, then blank line, then body. No markdown formatting.`,
           },
