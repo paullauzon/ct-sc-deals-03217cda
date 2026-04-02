@@ -1,106 +1,105 @@
 
 
-# Follow-Ups Tab: Design Polish + AI-Powered Action Playbook
+# Command Center Audit — What's Remaining
 
-## Part 1: Row Design Fix
+## Status Summary
 
-**Problem**: Rows blend together — no visual separation, everything is the same flat `px-4 py-2.5` with identical styling.
+The 4-tab structure (Schedule, Follow-Ups, Deal Pulse, Prep Intel) is fully built with badge counts, morning briefing, sort controls, AI action sheet, forecast KPIs, momentum board, velocity, and win-strategy intel cards. No runtime errors. Below is everything that still needs work.
 
-**Fix**: Add clear row separation with:
-- Bottom border between rows (`border-b border-border`)
-- Slightly more vertical padding (`py-3.5` instead of `py-2.5`)
-- Left accent bar on hover (2px left border on hover, matching section color)
-- Subtle alternating background on even rows (`even:bg-secondary/5`)
-- Make the status label (e.g., "30d overdue") more prominent with a badge-style treatment instead of plain text
+---
 
-## Part 2: AI-Powered Follow-Up Action System
+## Issues Found
 
-This is the real game-changer. A veteran doesn't just "follow up" — they execute a **specific playbook** based on where each deal stands. The system should auto-determine the right action type and generate AI-personalized content.
+### 1. Follow-Ups: Action chips only visible on hover — not actionable on mobile/touch
+The action chip (Draft Outreach, Reply, etc.) uses `opacity-0 group-hover:opacity-100` (line 164). On mobile or touch devices, hover doesn't exist — users can never see or tap these buttons.
 
-### Stage-Based Action Playbook
+**Fix**: Always show the action chip (remove opacity-0 logic), make it a subtle but always-visible pill.
 
-The system determines the **recommended action type** based on the lead's current state:
+### 2. Follow-Ups: Calendar renders inline in Action Sheet — broken layout
+The `ActionSheet` renders a full `<Calendar>` component inline next to the suggested date text (lines 311-316). This makes the sheet extremely tall and the calendar sits awkwardly beside a text label. Should be a date picker popover instead.
 
-```text
-STATE                          → ACTION TYPE
-─────────────────────────────────────────────
-New Lead, no contact           → Initial outreach email
-Contacted, no meeting booked   → Meeting booking nudge
-Meeting Set (upcoming)         → Pre-meeting prep reminder
-Meeting Held, no follow-up     → Post-meeting follow-up email
-Proposal Sent, no response     → Proposal check-in
-Going Dark (21+ days silent)   → Re-engagement attempt
-Unanswered inbound email       → Reply to their message
-Has open action items          → Complete action items first
-```
+**Fix**: Wrap Calendar in a Popover triggered by clicking the date text.
 
-### What Each Action Generates (AI-Powered)
+### 3. Follow-Ups: `overdueSet` declared with `useMemo(() => new Set(), [])` — never actually reactive
+Line 490 creates a stable empty Set that's mutated inside another `useMemo`. This is a React anti-pattern — the Set reference never changes so dependent memos (`goingDark`, `unansweredLeads`) may not re-compute correctly.
 
-Each action type produces a **draft** using the existing `draft-followup` edge function pattern, customized with:
-- Lead's enrichment data (company, motivation, urgency)
-- Meeting intelligence (what was discussed, pain points, objections)
-- Deal intelligence (action items, stakeholder info, win strategy)
-- Psychological profile (communication style, real motivations)
+**Fix**: Compute `overdueSet` inside the `overdue` memo and return it alongside the array, or derive it separately.
 
-**Action Types:**
+### 4. Follow-Ups: `goingDark` missing `sortField/sortDir` application
+Line 526-540: `goingDark` has `sortField, sortDir` in its dependency array but doesn't call `applySortToLeads` — it only uses default `.sort()`. Sorting buttons don't affect this section.
 
-1. **Draft Email** — AI generates a contextual follow-up email based on stage + meeting history. Uses existing `draft-followup` edge function, extended with a `template` parameter for different email types (post-meeting, proposal follow-up, re-engagement, initial outreach).
+**Fix**: Apply `applySortToLeads` like the other sections.
 
-2. **Schedule Call** — Shows a one-click "Schedule Follow-Up Call" that sets `nextFollowUp` to a suggested date and adds a note about what to discuss (pulled from open action items / objections).
+### 5. Deal Pulse: Momentum Board grid doesn't respond well below ~900px
+The 7-column grid (`grid-cols-[1fr_100px_70px_80px_50px_50px_80px]`) on line 145 is fixed and will overflow/clip on smaller screens.
 
-3. **Prep Brief** — For leads with upcoming meetings, links to the existing meeting prep brief or triggers generation.
+**Fix**: Make the board horizontally scrollable with `overflow-x-auto`, or collapse columns on mobile.
 
-### UI: Action Chip on Each Row
+### 6. Prep Intel: Only shows meetings within 7 days — inconsistent with Schedule tab's 30d horizon
+The Prep Intel tab hardcodes a 7-day window (line 34). If a user extends the Schedule tab to 14d or 30d, Prep Intel still only shows 7d.
 
-Replace the generic "Next Step" popover button with a **contextual action chip** that shows the specific recommended action:
+**Fix**: Add the same horizon toggle (or match the Schedule tab's horizon state by lifting it to `ActionQueue`).
 
-```text
-[✉ Draft Follow-Up]  — for post-meeting leads
-[✉ Send Proposal]    — for Meeting Held leads ready to advance
-[📞 Schedule Call]    — for leads needing a call
-[↩ Reply]            — for unanswered inbound
-[🔄 Re-engage]       — for going dark leads
-```
+### 7. Schedule: "Since Yesterday" briefing strip counts ALL leads, not just filtered owner
+Line 107-114: `MorningBriefing` receives `leads` (all) and filters by owner — correct. But the email query on line 139 uses `filtered` lead IDs which IS correct. No issue here actually.
 
-Clicking the chip opens a **slide-out panel** (not a tiny popover) with:
-- The AI-generated draft email (editable)
-- Suggested follow-up date
-- Suggested stage change
-- "Mark Done" button that updates the lead + sets next follow-up
+### 8. Edge Function: Enrichment field paths are wrong
+Line 104: `e.companyProfile?.summary` — this field doesn't exist on `LeadEnrichment`. The actual fields are `companyDescription`, `buyerMotivation`, `urgency`. Same for `e.suggestedUpdates?.motivation` (line 105) — the actual shape is `suggestedUpdates.stage`, `suggestedUpdates.nextFollowUp`, etc. The enrichment context sent to AI is largely empty.
 
-### New Edge Function: `generate-follow-up-action`
+**Fix**: Use correct field names: `e.companyDescription`, `e.buyerMotivation`, `e.urgency`, etc.
 
-Extends the existing `draft-followup` function to handle multiple action types via a `type` parameter:
-- `post-meeting` — current behavior
-- `initial-outreach` — intro email based on enrichment
-- `proposal-followup` — check-in after proposal sent
-- `re-engagement` — win-back email for dark leads
-- `reply-inbound` — suggested reply to their last email
+### 9. Edge Function: No `lastEmail` is ever passed from the client
+The Action Sheet (line 210-232) never fetches or passes `lastEmail` for `reply-inbound` action types. The edge function supports it (lines 140-145) but receives nothing.
 
-## Technical Details
+**Fix**: When `actionType === "reply-inbound"`, fetch the latest inbound email from `lead_emails` and pass it.
+
+### 10. Action Sheet: Missing `SheetDescription` — accessibility warning
+Radix Dialog requires either `aria-describedby` or a `SheetDescription`. Currently only `SheetTitle` is rendered.
+
+**Fix**: Add a hidden `SheetDescription`.
+
+### 11. Schedule Tab: `buildActionItems` is exported and imported in `ActionQueue.tsx` (line 10) but never used there
+The import on line 10 of `ActionQueue.tsx` is dead code.
+
+**Fix**: Remove unused import.
+
+---
+
+## Remaining Feature Gaps (from approved plans)
+
+### A. "Copy to Clipboard" should also offer "Copy as Email" format
+Currently just copies raw text. For email drafts, should format with subject line separated.
+
+### B. No bulk actions on Follow-Ups
+Multiple plans mentioned batch-select for setting follow-up dates or stage changes across multiple leads. Not implemented.
+
+### C. No "What's New" count for stage changes in badge computation
+The badge on the Schedule tab counts only meetings today. The morning briefing shows stage changes, but the tab badge doesn't reflect overnight activity.
+
+---
+
+## Implementation Plan
+
+| Priority | Fix | File |
+|----------|-----|------|
+| 1 | Always show action chips (remove hover-only) | `FollowUpsTab.tsx` line 164 |
+| 2 | Fix enrichment field paths in edge function | `generate-follow-up-action/index.ts` lines 102-107 |
+| 3 | Fetch & pass `lastEmail` for reply-inbound actions | `FollowUpsTab.tsx` ActionSheet |
+| 4 | Fix `overdueSet` React anti-pattern | `FollowUpsTab.tsx` line 490 |
+| 5 | Apply sort to `goingDark` section | `FollowUpsTab.tsx` line 526 |
+| 6 | Calendar → Popover date picker in Action Sheet | `FollowUpsTab.tsx` lines 311-316 |
+| 7 | Add `SheetDescription` for accessibility | `FollowUpsTab.tsx` line 278 |
+| 8 | Make Momentum Board responsive | `DealPulseTab.tsx` line 145 |
+| 9 | Add horizon toggle to Prep Intel (or share state) | `PrepIntelTab.tsx` + `ActionQueue.tsx` |
+| 10 | Remove dead import in ActionQueue | `ActionQueue.tsx` line 10 |
 
 ### Files Changed
 
-| File | Change |
-|------|--------|
-| `src/components/command-center/FollowUpsTab.tsx` | Row design upgrade (borders, padding, badges). Replace "Next Step" popover with contextual action chip. Add action panel slide-out with AI draft, suggested date, stage change. |
-| `supabase/functions/generate-follow-up-action/index.ts` | New edge function extending draft-followup pattern with multi-type support (post-meeting, outreach, re-engage, reply, proposal). Uses existing OPENAI_API_KEY. |
-
-### Action Type Determination Logic (client-side)
-```typescript
-function getActionType(lead: Lead): ActionType {
-  if (unansweredInbound) return "reply-inbound";
-  if (stage === "New Lead" && !lastContactDate) return "initial-outreach";
-  if (stage === "Meeting Held" && hasRecentMeeting) return "post-meeting";
-  if (stage === "Proposal Sent") return "proposal-followup";
-  if (daysSilent > 21) return "re-engagement";
-  return "schedule-call"; // default
-}
-```
-
-### Data Flow
-1. User clicks action chip → opens Sheet (slide-out panel)
-2. Sheet calls `generate-follow-up-action` edge function with lead data + action type
-3. AI returns draft email + suggested next steps
-4. User edits, then clicks "Send & Update" which updates lead fields
+| File | Changes |
+|------|---------|
+| `src/components/command-center/FollowUpsTab.tsx` | Fix action chip visibility, overdueSet pattern, goingDark sort, Calendar popover, SheetDescription, lastEmail fetch |
+| `supabase/functions/generate-follow-up-action/index.ts` | Fix enrichment field paths to match `LeadEnrichment` type |
+| `src/components/command-center/DealPulseTab.tsx` | Wrap momentum board in `overflow-x-auto` |
+| `src/components/command-center/PrepIntelTab.tsx` | Accept and use `meetingHorizon` prop |
+| `src/components/ActionQueue.tsx` | Remove dead import, pass `meetingHorizon` to PrepIntelTab |
 
