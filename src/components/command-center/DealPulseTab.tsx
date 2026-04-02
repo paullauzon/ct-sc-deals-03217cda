@@ -49,6 +49,7 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   const now = new Date();
   const [momentumSort, setMomentumSort] = useState<MomentumSort>("risk");
   const [momentumSortDir, setMomentumSortDir] = useState<"asc" | "desc">("desc");
+  const [showIntelOnly, setShowIntelOnly] = useState(false);
 
   const filtered = useMemo(() => {
     if (ownerFilter === "All") return leads;
