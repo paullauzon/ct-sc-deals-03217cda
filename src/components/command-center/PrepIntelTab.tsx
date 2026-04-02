@@ -670,10 +670,6 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
           </div>
         </div>
       </div>
-            </a>
-          </div>
-        </div>
-      )}
 
       {/* ─── ZONE 2: CONTEXT ─── */}
       {hasContext && (
