@@ -321,6 +321,7 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
 
 function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail }: { lead: Lead; onSelect: () => void; emailCount: number; onBriefGenerated: (leadId: string, leadName: string, brief: PrepBrief) => void; onDraftEmail: (lead: Lead) => void }) {
   const [generatingPrep, setGeneratingPrep] = useState(false);
+  const [enrichmentUpdated, setEnrichmentUpdated] = useState(false);
   const enrichment = lead.enrichment;
   const di = lead.dealIntelligence;
   const latestMeeting = lead.meetings?.length > 0 ? lead.meetings[lead.meetings.length - 1] : null;
