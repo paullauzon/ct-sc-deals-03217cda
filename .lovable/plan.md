@@ -3,54 +3,54 @@
 # Command Center — Final Comprehensive Audit
 
 ## What's Working Well
-- All 4 tabs render with no runtime errors
-- Schedule: Morning briefing, meeting cards, today-only priority tiers, horizon toggle synced with parent
-- Follow-Ups: Rich rows with context signals (deal value, meetings, emails, Calendly), AI action chips with context-aware labels (Send Proposal, Follow Up, Pre-Meeting Email), sort controls, summary strip, collapsible sections, AI Action Sheet with draft generation, Copy All / Copy as Email
-- Deal Pulse: KPIs, forecast strip, momentum board with sort controls, velocity cards with benchmark labels, renewals section
-- Prep Intel: Cards with Calendly details, email counts, meeting history, enrichment fields, "Generate Prep Brief" button, deal value always shown
-- Edge function `generate-follow-up-action` registered in config.toml with `verify_jwt = false`
+All 4 tabs render cleanly with zero runtime errors. Schedule has morning briefing, today-only priority tiers, horizon toggle synced from parent. Follow-Ups has rich rows with context signals, AI action chips with context-aware labels (Send Proposal, Follow Up, Pre-Meeting Email), sort controls, summary strip, snooze buttons, collapsible sections, AI Action Sheet with "Copy & Mark Done". Deal Pulse has KPIs with benchmark label, forecast strip, momentum board with sort, velocity cards with benchmarks. Prep Intel shows Calendly details, prospect messages, enrichment fields, meeting summaries, "Generate Prep Brief" button, deal value always shown. Edge function registered in config.toml.
 
-## Remaining Issues
+## What's Still Remaining
 
-### 1. Schedule Tab: "0d overdue" Still Shows for Peter Wylie
-The Schedule tab's Urgent tier shows Peter Wylie as "0d overdue" in red. The Follow-Ups tab correctly shows "Due today" with dark styling, but the Schedule tab's `ActionRow` component renders the raw label from `buildActionItems()` which generates `"0d overdue"` at line 74 of ScheduleTab.tsx.
+### 1. Follow-Ups: Snooze Buttons Don't Show Toast Feedback
+When clicking a snooze button (3d/7d/14d), the lead's `nextFollowUp` updates silently — no toast confirmation. The user has no feedback that the snooze worked, and the row doesn't visually move out of the overdue section until a re-render.
 
-**Fix**: In `buildActionItems()` (line 74), change the label: if `daysOverdue === 0`, set label to `"Due today"` instead of `"0d overdue"`.
+**Fix**: Add a toast after snooze (`"Snoozed {name} for {d} days"`) and trigger the list to refresh so the lead moves to "Due This Week" or disappears.
 
-### 2. Schedule Tab: Summary Shows "78 Overdue" — Misleading
-The stats strip at line 302 counts ALL overdue items from `buildActionItems()` (78), but the priority tiers below only show today's overdue (2). This mismatch is confusing — it says 78 overdue but only shows 2 items.
+### 2. Follow-Ups: "Due today" Label in Overdue Section is Confusing
+Peter Wylie shows as "Due today" inside the **Overdue** section header. But "Due today" isn't overdue — it's current. Items due today should appear in the "Due This Week" section instead, not under "Overdue".
 
-**Fix**: Change the stats strip to reflect the filtered tier counts (what's actually shown), not the total from `items`. Show "2 Due Today" instead of "78 Overdue".
+**Fix**: In the `overdue` memo, change `isBefore(parseISO(l.nextFollowUp), now)` to use `startOfDay(now)` so items due today are excluded from overdue and correctly appear in "Due This Week".
 
-### 3. Follow-Ups: Action Sheet Missing "Send & Schedule" Workflow
-The Action Sheet has "Mark Contacted & Update" but no ability to actually send the email. It generates a draft, the user copies it manually, then clicks a button. A 50-year sales veteran would want a streamlined "Copy + Mark Done" single action.
+### 3. Schedule Tab: "Due today" Label Shows in Red Styling
+Peter Wylie shows "Due today" but the text uses `TYPE_TEXT_COLORS.overdue` (red) because the item type is still "overdue". Due-today items should use blue styling to match the Follow-Ups tab convention.
 
-**Fix**: Rename "Mark Contacted & Update" to "Copy & Mark Done" — auto-copy the content to clipboard AND update the lead in one click.
+**Fix**: In `buildActionItems()`, when `daysOverdue === 0`, set type to `"meeting"` (blue) or add a new type "due-today" — or simply override the color in `ActionRow` when label is "Due today".
 
-### 4. Follow-Ups: No Quick-Dismiss / Snooze for Overdue Items
-78 overdue items with no way to snooze or batch-dismiss stale ones. A veteran needs to quickly snooze a lead for 3/7/14 days without opening the full detail panel.
+### 4. Deal Pulse: Momentum Board Has No Empty State
+If no active deals exist in the filter, the momentum board shows an empty bordered table with just headers. No "no deals" message.
 
-**Fix**: Add inline snooze buttons (3d, 7d, 14d) to each row that set `nextFollowUp` to that many days from now.
+**Fix**: Add an empty state message below the momentum board header when `sortedDeals.length === 0`.
 
-### 5. Prep Intel: Cards Are Still Sparse for New Leads
-Cards for Cody Mauri, john lindsey show only: Calendly badge, $0, Meeting Set, and "Generate Prep Brief" button. No company description, no submission message, no form data. The lead's original `message` field (their form submission) is valuable prep context but isn't shown.
+### 5. Deal Pulse: Many Deals Show "—" for Value, Temp, and Momentum
+Most deals in the momentum board have no deal intelligence, so Temp and Momentum columns show "—" for the majority. This makes the columns feel wasted for datasets without deep intelligence.
 
-**Fix**: Show `lead.message` (truncated) on Prep Intel cards when available — this is often the prospect's own description of what they're looking for.
+**Status**: Not a bug — these populate as meetings are processed and intelligence is synthesized. The "—" is the correct default. No action needed.
 
-### 6. Deal Pulse: "Avg Days in Stage" KPI Shows 14d Without Benchmark Context
-The KPI card shows "14d" with amber color from `daysInStageColor`, but the velocity cards below have benchmark labels ("on track", "watch", "above target"). The KPI card should also have a benchmark label for consistency.
+### 6. Prep Intel: "Generate Prep Brief" Error Handling
+The button calls `generate-meeting-prep` which may not handle leads without meetings gracefully. If it fails, the toast says "Failed to generate prep" with no actionable detail.
 
-**Fix**: Add a benchmark label below the 14d value in the KPI card, matching the velocity card pattern.
+**Fix**: Catch the specific error message from the edge function and surface it (e.g., "No meeting data available yet — schedule a meeting first").
 
-### 7. Follow-Ups: Email Count Query Hits 1000-Row Supabase Limit
-The email count query at line 477-488 uses `.select("lead_id").in("lead_id", ids)` without `.limit()`. With 100+ active leads, this could hit the 1000-row default limit and undercount emails.
+### 7. Follow-Ups: Action Sheet Has No Loading State for "Copy & Mark Done"
+When clicking "Copy & Mark Done", it copies and updates instantly — but if the `updateLead` call fails (network error), there's no error handling. The clipboard copy succeeds but the lead update silently fails.
 
-**Fix**: Use `{ count: "exact", head: true }` grouped approach, or add `.limit(5000)` to the query.
+**Fix**: Wrap `handleApply` in try/catch and show error toast on failure.
 
-### 8. Prep Intel: Email Count Query Has Same 1000-Row Limit Issue
-Same pattern at PrepIntelTab line 45-49.
+### 8. Prep Intel: Enrichment Company Description Not Shown
+The plan called for showing `enrichment.companyDescription` on Prep Intel cards. The context grid shows `acquisitionStrategy`, `buyerType`, `geography`, `targetCriteria` — but not the company description, which is often the most useful enrichment field for meeting prep.
 
-**Fix**: Same as above.
+**Fix**: Add `enrichment.companyDescription` (truncated to 150 chars) as a line above the context grid, similar to how "Prospect said:" is shown.
+
+### 9. Schedule Tab: Peter Wylie "Due today" is Still Red-Styled
+Looking at the screenshot, Peter Wylie shows "Due today" in red text (from the `overdue` type text color). The "Due today" label was fixed but the color still uses the overdue red instead of blue.
+
+**Fix**: In `ActionRow`, check if `item.label === "Due today"` and override color to blue.
 
 ---
 
@@ -58,20 +58,19 @@ Same pattern at PrepIntelTab line 45-49.
 
 | # | Fix | File | Impact |
 |---|-----|------|--------|
-| 1 | Fix "0d overdue" label in buildActionItems | `ScheduleTab.tsx` line 74 | Visual bug |
-| 2 | Fix Schedule stats to show filtered counts | `ScheduleTab.tsx` lines 289-308 | UX confusion |
-| 3 | Add "Copy & Mark Done" to Action Sheet | `FollowUpsTab.tsx` line 367 | Workflow efficiency |
-| 4 | Add inline snooze buttons (3d/7d/14d) to Follow-Up rows | `FollowUpsTab.tsx` FollowUpRow component | Workflow efficiency |
-| 5 | Show lead.message on Prep Intel cards | `PrepIntelTab.tsx` IntelCard | Intel completeness |
-| 6 | Add benchmark label to Avg Days KPI | `DealPulseTab.tsx` line 133 | Visual consistency |
-| 7 | Fix email count queries with proper limits | `FollowUpsTab.tsx` + `PrepIntelTab.tsx` | Data accuracy |
+| 1 | Move "Due today" items from Overdue to Due This Week in Follow-Ups | `FollowUpsTab.tsx` | UX logic bug |
+| 2 | Fix "Due today" color in Schedule tab (red → blue) | `ScheduleTab.tsx` | Visual consistency |
+| 3 | Add toast feedback after snooze | `FollowUpsTab.tsx` | UX feedback |
+| 4 | Show enrichment.companyDescription on Prep Intel cards | `PrepIntelTab.tsx` | Intel completeness |
+| 5 | Add empty state to momentum board | `DealPulseTab.tsx` | Edge case |
+| 6 | Better error handling in Prep Brief generation | `PrepIntelTab.tsx` | Error UX |
 
 ### Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/command-center/ScheduleTab.tsx` | Fix "0d overdue" → "Due today" in buildActionItems; change stats strip to show filtered tier counts |
-| `src/components/command-center/FollowUpsTab.tsx` | Rename action button to "Copy & Mark Done" with auto-copy; add inline snooze buttons; fix email query limit |
-| `src/components/command-center/PrepIntelTab.tsx` | Show lead.message as prep context; fix email query limit |
-| `src/components/command-center/DealPulseTab.tsx` | Add benchmark label to Avg Days KPI card |
+| `src/components/command-center/FollowUpsTab.tsx` | Use `startOfDay` to exclude today from overdue; add toast to snooze buttons |
+| `src/components/command-center/ScheduleTab.tsx` | Override "Due today" color to blue in ActionRow |
+| `src/components/command-center/PrepIntelTab.tsx` | Show enrichment.companyDescription; improve error message in prep brief |
+| `src/components/command-center/DealPulseTab.tsx` | Add empty state for momentum board |
 
