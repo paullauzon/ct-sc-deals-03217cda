@@ -1,7 +1,11 @@
-import { useMemo } from "react";
-import { Lead, LeadSource, Brand } from "@/types/lead";
+import { useState, useEffect, useMemo } from "react";
+import { Lead, LeadSource, LeadStage, Brand } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { BrandLogo } from "@/components/BrandLogo";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { differenceInDays, parseISO, format } from "date-fns";
+import { DollarSign, TrendingUp, TrendingDown, Clock } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
@@ -250,6 +254,15 @@ export function DashboardBusiness({ leads, onDrillDown }: Props) {
         </div>
       </div>
 
+      {/* ── Brand P&L Summary ── */}
+      <BrandPnL leads={leads} />
+
+      {/* ── Stage Conversion Waterfall ── */}
+      <StageWaterfall leads={leads} />
+
+      {/* ── Lead Response Time ── */}
+      <LeadResponseTime leads={leads} />
+
       {/* ── Quick Insights ── */}
       <div>
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Key Observations</h2>
@@ -310,6 +323,211 @@ export function DashboardBusiness({ leads, onDrillDown }: Props) {
             ));
           })()}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Brand P&L Summary ──
+const BRANDS_LIST: Brand[] = ["Captarget", "SourceCo"];
+
+function BrandPnL({ leads }: { leads: Lead[] }) {
+  const [costs, setCosts] = useState<Record<Brand, { sales_cost: number; tool_cost: number; ad_spend: number }>>({
+    Captarget: { sales_cost: 0, tool_cost: 0, ad_spend: 0 },
+    SourceCo: { sales_cost: 0, tool_cost: 0, ad_spend: 0 },
+  });
+
+  useEffect(() => {
+    const month = format(new Date(), "yyyy-MM");
+    supabase.from("business_cost_inputs" as any).select("*").eq("month", month).then(({ data }) => {
+      const rows = (data || []) as any[];
+      const next = { ...costs };
+      for (const r of rows) {
+        if (r.brand === "Captarget" || r.brand === "SourceCo") {
+          next[r.brand as Brand] = {
+            sales_cost: Number(r.sales_cost) || 0,
+            tool_cost: Number(r.tool_cost) || 0,
+            ad_spend: Number(r.ad_spend) || 0,
+          };
+        }
+      }
+      setCosts(next);
+    });
+  }, []);
+
+  const pnl = useMemo(() => {
+    return BRANDS_LIST.map(brand => {
+      const won = leads.filter(l => l.brand === brand && l.stage === "Closed Won");
+      const mrr = won.reduce((s, l) => {
+        if (!l.subscriptionValue) return s;
+        if (l.billingFrequency === "Quarterly") return s + l.subscriptionValue / 3;
+        if (l.billingFrequency === "Annually") return s + l.subscriptionValue / 12;
+        return s + l.subscriptionValue;
+      }, 0);
+      const c = costs[brand];
+      const totalCost = c.sales_cost + c.tool_cost + c.ad_spend;
+      const profit = mrr - totalCost;
+      return { brand, mrr: Math.round(mrr), totalCost: Math.round(totalCost), profit: Math.round(profit) };
+    });
+  }, [leads, costs]);
+
+  const fmt = (n: number) => `$${Math.abs(n).toLocaleString()}`;
+
+  return (
+    <div>
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Brand P&L Summary</h2>
+      <div className="grid grid-cols-2 gap-4">
+        {pnl.map(p => {
+          const borderColor = p.brand === "Captarget" ? "border-t-red-500" : "border-t-amber-500";
+          const profitColor = p.profit >= 0 ? "text-emerald-500" : "text-destructive";
+          return (
+            <Card key={p.brand} className={`border-t-2 ${borderColor}`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  {p.brand} Monthly P&L
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Monthly Revenue (MRR)</span>
+                  <span className="font-medium">{fmt(p.mrr)}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Monthly Costs</span>
+                  <span className="font-medium">-{fmt(p.totalCost)}</span>
+                </div>
+                <div className="flex justify-between text-xs pt-2 border-t border-border">
+                  <span className="font-semibold flex items-center gap-1">
+                    {p.profit >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                    {p.profit >= 0 ? "Net Margin" : "Monthly Burn"}
+                  </span>
+                  <span className={`text-lg font-bold ${profitColor}`}>
+                    {p.profit >= 0 ? "" : "-"}{fmt(p.profit)}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Stage Conversion Waterfall ──
+const WATERFALL_STAGES: LeadStage[] = [
+  "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held",
+  "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won",
+];
+
+// Stages at or past a given index
+function atOrPast(stage: string, idx: number): boolean {
+  const stageIdx = WATERFALL_STAGES.indexOf(stage as LeadStage);
+  return stageIdx >= idx;
+}
+
+function StageWaterfall({ leads }: { leads: Lead[] }) {
+  const data = useMemo(() => {
+    return BRANDS_LIST.map(brand => {
+      const brandLeads = leads.filter(l => l.brand === brand);
+      const total = brandLeads.length;
+      const stages = WATERFALL_STAGES.map((stage, idx) => {
+        const count = brandLeads.filter(l => atOrPast(l.stage, idx)).length;
+        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+        return { stage, count, pct };
+      });
+      return { brand, total, stages };
+    });
+  }, [leads]);
+
+  return (
+    <div>
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Stage Conversion Waterfall</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {data.map(d => {
+          const borderColor = d.brand === "Captarget" ? "border-t-red-500" : "border-t-amber-500";
+          return (
+            <div key={d.brand} className={`border border-border border-t-2 ${borderColor} rounded-lg overflow-hidden`}>
+              <div className="px-4 py-2.5 bg-secondary/20 flex items-center gap-2">
+                <BrandLogo brand={d.brand as Brand} size="sm" />
+                <span className="text-xs font-medium">{d.brand}</span>
+                <span className="text-[10px] text-muted-foreground ml-auto">{d.total} total leads</span>
+              </div>
+              <div className="divide-y divide-border">
+                {d.stages.map((s, i) => {
+                  const prevCount = i > 0 ? d.stages[i - 1].count : d.total;
+                  const dropoff = prevCount > 0 ? Math.round(((prevCount - s.count) / prevCount) * 100) : 0;
+                  return (
+                    <div key={s.stage} className="flex items-center px-4 py-1.5 text-xs">
+                      <span className="w-28 text-muted-foreground truncate">{s.stage}</span>
+                      <div className="flex-1 mx-2">
+                        <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${d.brand === "Captarget" ? "bg-red-500/70" : "bg-amber-500/70"}`}
+                            style={{ width: `${s.pct}%` }}
+                          />
+                        </div>
+                      </div>
+                      <span className="w-8 text-right tabular-nums font-medium">{s.count}</span>
+                      <span className="w-10 text-right tabular-nums text-muted-foreground">{s.pct}%</span>
+                      {i > 0 && dropoff > 0 && (
+                        <span className="w-12 text-right text-[10px] text-destructive/70">-{dropoff}%</span>
+                      )}
+                      {(i === 0 || dropoff === 0) && <span className="w-12" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Lead Response Time ──
+function LeadResponseTime({ leads }: { leads: Lead[] }) {
+  const data = useMemo(() => {
+    return BRANDS_LIST.map(brand => {
+      const brandLeads = leads.filter(l => l.brand === brand && l.dateSubmitted);
+      const withResponse = brandLeads.filter(l => l.lastContactDate || l.stageEnteredDate);
+      if (withResponse.length === 0) return { brand, avg: null, count: 0 };
+
+      const total = withResponse.reduce((s, l) => {
+        const submitted = new Date(l.dateSubmitted).getTime();
+        const responded = l.lastContactDate
+          ? new Date(l.lastContactDate).getTime()
+          : l.stageEnteredDate
+            ? new Date(l.stageEnteredDate).getTime()
+            : submitted;
+        return s + Math.max(0, Math.floor((responded - submitted) / 86400000));
+      }, 0);
+      return { brand, avg: Math.round(total / withResponse.length), count: withResponse.length };
+    });
+  }, [leads]);
+
+  return (
+    <div>
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Lead Response Time</h2>
+      <div className="grid grid-cols-2 gap-4">
+        {data.map(d => {
+          const borderColor = d.brand === "Captarget" ? "border-t-red-500" : "border-t-amber-500";
+          return (
+            <Card key={d.brand} className={`border-t-2 ${borderColor}`}>
+              <CardContent className="pt-4 text-center">
+                <Clock className="h-4 w-4 text-muted-foreground mx-auto mb-1" />
+                <p className="text-2xl font-bold tabular-nums">
+                  {d.avg != null ? `${d.avg}d` : "N/A"}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {d.brand} avg response ({d.count} leads)
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

@@ -248,6 +248,9 @@ export function DashboardForecast({ leads, onDrillDown }: Props) {
         </Card>
       </div>
 
+      {/* Win/Loss Analysis */}
+      <WinLossAnalysis leads={leads} />
+
       {/* Revenue Concentration Risk */}
       <Card>
         <CardHeader className="pb-2">
