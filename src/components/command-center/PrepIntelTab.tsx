@@ -355,12 +355,23 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
             dealIntelligence: lead.dealIntelligence || null,
           }
         : {
-            record: {
-              id: lead.id, name: lead.name, email: lead.email,
-              company: lead.company, company_url: lead.companyUrl,
-              role: lead.role, buyer_type: lead.buyerType,
-              message: lead.message, source: lead.source,
-            },
+            companyUrl: lead.companyUrl,
+            leadName: lead.name,
+            leadMessage: lead.message,
+            leadRole: lead.role,
+            leadCompany: lead.company,
+            leadStage: lead.stage,
+            leadPriority: lead.priority,
+            leadDealValue: lead.dealValue,
+            leadServiceInterest: lead.serviceInterest,
+            leadBuyerType: lead.buyerType,
+            leadTargetCriteria: lead.targetCriteria,
+            leadTargetRevenue: lead.targetRevenue,
+            leadGeography: lead.geography,
+            leadAcquisitionStrategy: lead.acquisitionStrategy,
+            leadNotes: lead.notes,
+            meetings: lead.meetings || [],
+            dealIntelligence: lead.dealIntelligence || null,
           };
       const { data, error } = await supabase.functions.invoke(fnName, { body });
       if (error) throw error;
