@@ -597,24 +597,24 @@ function EnrichmentSections({ enrichment, lead, onUpdateLead }: { enrichment: an
       {/* Prospect Profile */}
       {hasProspectProfile && (
         <EnrichmentCollapsible title="Prospect Profile" icon={Users} iconColor="text-purple-500">
-          <p className="text-[11px] text-muted-foreground leading-relaxed">{enrichment.prospectProfile}</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed"><CitedText text={enrichment.prospectProfile} /></p>
         </EnrichmentCollapsible>
       )}
 
       {/* Company Intel */}
       {(hasCompanyDossier || hasDecisionMakers || hasAcquisitionCriteria) && (
         <EnrichmentCollapsible title="Company Intel" icon={Building2} iconColor="text-blue-500">
-          {hasCompanyDossier && <p className="text-[11px] text-muted-foreground leading-relaxed">{enrichment.companyDossier}</p>}
+          {hasCompanyDossier && <p className="text-[11px] text-muted-foreground leading-relaxed"><CitedText text={enrichment.companyDossier} /></p>}
           {hasDecisionMakers && (
             <div className="mt-1.5">
               <span className="text-[10px] font-semibold text-foreground">Decision Makers: </span>
-              <span className="text-[11px] text-muted-foreground">{enrichment.decisionMakers}</span>
+              <span className="text-[11px] text-muted-foreground"><CitedText text={enrichment.decisionMakers} /></span>
             </div>
           )}
           {hasAcquisitionCriteria && (
             <div className="mt-1.5">
               <span className="text-[10px] font-semibold text-foreground">Acquisition Criteria: </span>
-              <span className="text-[11px] text-muted-foreground">{enrichment.acquisitionCriteria}</span>
+              <span className="text-[11px] text-muted-foreground"><CitedText text={enrichment.acquisitionCriteria} /></span>
             </div>
           )}
         </EnrichmentCollapsible>
@@ -639,7 +639,7 @@ function EnrichmentSections({ enrichment, lead, onUpdateLead }: { enrichment: an
       {/* Competitive Landscape */}
       {hasCompetitive && (
         <EnrichmentCollapsible title="Competitive Landscape" icon={Swords} iconColor="text-red-500">
-          <p className="text-[11px] text-muted-foreground leading-relaxed">{enrichment.competitivePositioning}</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed"><CitedText text={enrichment.competitivePositioning} /></p>
           {enrichment.competitorTools && (
             <div className="mt-1.5">
               <span className="text-[10px] font-semibold text-foreground">Competitor Tools: </span>
