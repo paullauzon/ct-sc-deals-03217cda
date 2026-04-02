@@ -305,7 +305,7 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
                   Copy to Clipboard
                 </button>
                 <button
-                  onClick={() => { setDraftContent(""); setDraftLoading(true); handleDraftEmail(draftLead!).finally(() => setDraftLoading(false)); }}
+                  onClick={() => { setDraftContent(""); handleDraftEmail(draftLead!); }}
                   className="text-xs px-3 py-2.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Regenerate
@@ -460,6 +460,13 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
           <Send className="h-3.5 w-3.5" />
           {meetingCount > 0 ? "Draft Follow-Up" : "Draft Pre-Meeting Email"}
         </button>
+        <a
+          href={`/deal/${lead.id}`}
+          onClick={(e) => e.stopPropagation()}
+          className="text-xs px-3 py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center gap-1.5"
+        >
+          Deal Room →
+        </a>
       </div>
 
       {/* Prior meeting summary */}

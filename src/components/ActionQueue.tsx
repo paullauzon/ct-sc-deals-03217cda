@@ -75,7 +75,10 @@ export function ActionQueue() {
 
     // Follow-ups: overdue + untouched
     const active = filtered.filter(l => !CLOSED_STAGES.has(l.stage));
-    const overdue = active.filter(l => l.nextFollowUp && isBefore(parseISO(l.nextFollowUp), now)).length;
+    const overdue = active.filter(l => {
+      if (!l.nextFollowUp || !isBefore(parseISO(l.nextFollowUp), now)) return false;
+      return differenceInDays(now, parseISO(l.nextFollowUp)) <= 7;
+    }).length;
     const untouched = active.filter(l => l.stage === "New Lead" && !l.lastContactDate && !l.assignedTo).length;
     const goingDark = active.filter(l => {
       if (l.stage === "New Lead") return false;
