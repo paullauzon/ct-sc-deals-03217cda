@@ -1,47 +1,33 @@
 
 
-# Ban Em Dashes, En Dashes, and Double Hyphens from AI Output
+# Add Undo for Stage Changes
 
 ## Problem
 
-The GOOD examples in our prompts use em dashes (`—`) as separators:
-- `"John — your 3rd bolt-on..."` 
-- `"— Mike"`
-- `"Sarah — 14 HVAC distributors..."`
+Accidentally changing a lead's stage (e.g., marking Brian Steel as "Contacted") triggers irreversible side effects: stageEnteredDate resets, playbook tasks get superseded and new ones created, lastContactDate auto-sets. There's no way to reverse it.
 
-The AI mimics these examples and produces copy full of em dashes. The user wants none of these in any generated output.
+## Solution
 
-## Fix
+Add an **undo toast** pattern. When any stage change happens via `updateLead`, show a toast with an "Undo" button that restores the previous stage and all affected fields within a 5-second window.
 
-### 1. Add dash ban to all email-generating prompts
+## How It Works
 
-Add this rule to the base prompt in both `generate-follow-up-action` and `draft-followup`:
+1. Before applying a stage change in `updateLead`, snapshot the fields that will be modified: `stage`, `stageEnteredDate`, `daysInCurrentStage`, `lastContactDate`, `closedDate`, `hoursToMeetingSet`, `meetingSetDate`
+2. Apply the change as normal (DB write, playbook tasks, etc.)
+3. Show a toast: `"Stage changed to Contacted"` with an **Undo** button
+4. If Undo is clicked within 5 seconds: call `updateLead` with the snapshot values, and restore superseded playbook tasks
 
-```
-- NEVER use em dashes (—), en dashes (–), or double hyphens (--). Use periods, commas, or line breaks instead.
-```
+For the immediate fix (Brian Steel): the plan also includes a manual stage selector in the lead detail panel so you can set any lead back to any stage at any time.
 
-### 2. Rewrite all GOOD examples to remove dashes
+## Technical Details
 
-Replace dash-separated examples with comma/period equivalents:
-
-**Before:** `"John — your 3rd bolt-on this year puts you ahead...Worth a 15-min look Thursday? — Mike"`
-
-**After:** `"John, your 3rd bolt-on this year puts you ahead...Worth a 15-min look Thursday?\n\nMike"`
-
-### 3. Fix sign-off format
-
-Current examples sign off with `— Mike`. Change to just `Mike` on its own line (which also matches the "sign off with first name only" rule better).
-
-### 4. Apply to `enrich-lead` openingHook field
-
-Add to the openingHook field description: "Do not use em dashes, en dashes, or double hyphens."
+- The undo toast uses Sonner's `action` prop (already installed)
+- Playbook task restoration: when undoing, re-query `lead_tasks` where `status = 'superseded'` and `lead_id` matches, update back to `pending`
+- The snapshot is stored in a closure within the toast callback
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/generate-follow-up-action/index.ts` | Add dash ban rule; rewrite all 6 GOOD examples to use commas/periods instead of dashes; fix sign-off format |
-| `supabase/functions/draft-followup/index.ts` | Add dash ban rule; rewrite GOOD examples; fix sign-off format |
-| `supabase/functions/enrich-lead/index.ts` | Add dash ban to `openingHook` and `preMeetingAmmo` field descriptions |
+| `src/contexts/LeadContext.tsx` | Add undo toast with 5-second window on stage changes; snapshot pre-change fields; restore on undo including superseded tasks |
 
