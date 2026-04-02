@@ -71,7 +71,7 @@ export function buildActionItems(leads: Lead[], ownerFilter: string, meetingHori
       const followUp = new Date(lead.nextFollowUp);
       if (followUp < now) {
         const daysOverdue = Math.floor((now.getTime() - followUp.getTime()) / 86400000);
-        actions.push({ lead, type: "overdue", label: `${daysOverdue}d overdue`, detail: lead.stage, urgency: 200 + daysOverdue });
+        actions.push({ lead, type: "overdue", label: daysOverdue === 0 ? "Due today" : `${daysOverdue}d overdue`, detail: lead.stage, urgency: 200 + daysOverdue });
       }
     }
 
