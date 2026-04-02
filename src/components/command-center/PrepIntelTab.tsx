@@ -321,6 +321,7 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
 
 function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail }: { lead: Lead; onSelect: () => void; emailCount: number; onBriefGenerated: (leadId: string, leadName: string, brief: PrepBrief) => void; onDraftEmail: (lead: Lead) => void }) {
   const [generatingPrep, setGeneratingPrep] = useState(false);
+  const [enrichmentUpdated, setEnrichmentUpdated] = useState(false);
   const enrichment = lead.enrichment;
   const di = lead.dealIntelligence;
   const latestMeeting = lead.meetings?.length > 0 ? lead.meetings[lead.meetings.length - 1] : null;
@@ -367,8 +368,8 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
         onBriefGenerated(lead.id, lead.name, data.brief);
         toast({ title: "Prep brief ready", description: `Intelligence generated for ${lead.name}` });
       } else if (!hasMeetings && data) {
-        // Enrichment succeeded — show confirmation
-        toast({ title: "Prospect researched", description: `Enrichment data updated for ${lead.name}` });
+        setEnrichmentUpdated(true);
+        toast({ title: "Prospect researched", description: `Enrichment data updated for ${lead.name}. Refresh to see full details.` });
       } else if (data?.error) {
         toast({ title: "Could not generate brief", description: data.error, variant: "destructive" });
       }
@@ -449,8 +450,8 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
             disabled={generatingPrep}
             className="flex-1 text-xs py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center justify-center gap-2"
           >
-            {generatingPrep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Target className="h-3.5 w-3.5" />}
-            {generatingPrep ? "Researching..." : "Research Prospect"}
+            {generatingPrep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : enrichmentUpdated ? <Zap className="h-3.5 w-3.5 text-emerald-500" /> : <Target className="h-3.5 w-3.5" />}
+            {generatingPrep ? "Researching..." : enrichmentUpdated ? "✓ Enriched — Refresh to View" : "Research Prospect"}
           </button>
         )}
         <button
