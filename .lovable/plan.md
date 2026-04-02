@@ -1,52 +1,67 @@
 
 
-# Command Center — Final Comprehensive Audit
+# Prep Intel Card Redesign
 
-## Current Status: Feature-Complete, 3 Remaining Issues
+## Problems with Current Layout
 
-After reviewing all ~2,900 lines across the 4 tabs + ActionQueue, the Command Center is fully functional. All originally requested features are built and wired. Here is what remains:
+1. **No information hierarchy**: Company description, prospect quote, enrichment highlights, win strategy, psychological profile, open items, and context grid are all stacked vertically in a flat list — making each card a tall wall of text with no clear "read this first" signal.
 
----
+2. **Action buttons buried in the middle**: Research Prospect / Draft Email / Deal Room sit between the signal strip and the actual intel content. A sales rep scanning before a call has to hunt for the actionable parts.
 
-## Issues Found
+3. **Duplicate/scattered enrichment data**: Motivation and urgency appear at the bottom separated from company description and prospect message at the top. Related context is fragmented.
 
-### 1. Bug: FollowUpRow keyboard navigation refs are broken
-**File**: `FollowUpsTab.tsx` line 793
-The `rowRef` is created as a new object literal `{ current: null }` on every render and never connected to the refs map (`rowRefs.current`). This means `scrollIntoView` on line 775 never fires — keyboard navigation with j/k works for highlighting but the view never scrolls to the active row.
+4. **No distinction between "prep to DO" vs "background context"**: Open objections, action items, and risks (the most critical pre-call items) are buried at the very bottom in a 3-column grid that's easy to miss.
 
-**Fix**: Connect `rowRef` to the `rowRefs` Map using a callback ref pattern, and pass the actual `rowIndex` so the ref is stored correctly.
+5. **For 0-meeting leads** (most common in Prep Intel), the card is mostly empty space with scattered enrichment snippets.
 
-### 2. Bug: FollowUpRow `rowIndex` counter resets on every render cycle
-**File**: `FollowUpsTab.tsx` line 780
-`let rowIndex = 0;` is declared inside the render body but the `rowProps` helper increments it. Since each section calls `rowProps` independently in JSX, the counter only works if all sections render in a single pass. This is fragile — and more critically, the `isActive` check (line 792) compares against a counter that doesn't account for collapsed sections, while `flatLeadIds` (line 734) does. These can desync, causing the wrong row to highlight.
+## Redesigned Layout
 
-**Fix**: Pre-compute a `leadIdToIndex` map from `flatLeadIds` and use `flatLeadIds.indexOf(lead.id)` instead of an incrementing counter.
+```text
+┌─────────────────────────────────────────────────────┐
+│ [Logo] Name [Owner] [Temp]    Thu, Apr 2 at 7:30 PM │
+│ Role · Company                                       │
+│ [Calendly badge] [meetings] [emails] [$value] [stage]│
+├─────────────────────────────────────────────────────┤
+│ ⚡ PREPARE                     │ ACTIONS              │
+│ • Objection: "Budget concerns" │ [Research Prospect]  │
+│ • We owe: Send pricing doc     │ [Draft Pre-Meeting]  │
+│ • Risk: Champion may leave     │ [Deal Room →]        │
+├─────────────────────────────────────────────────────┤
+│ 📋 CONTEXT                                           │
+│ Prospect said: "Need support with cold outreach..."  │
+│ Company: Dillard Door specializes in security...     │
+│ Motivation: Growth through new technologies...       │
+│ Urgency: Recent partnership suggests forward...      │
+├─────────────────────────────────────────────────────┤
+│ ▸ Deep Intel (collapsed: win strategy, psych, grid)  │
+└─────────────────────────────────────────────────────┘
+```
 
-### 3. Minor: "Due today" items can appear in both Overdue and Due This Week
-**File**: `FollowUpsTab.tsx`
-The overdue filter uses `isBefore(parseISO(l.nextFollowUp), todayStart)` (line 682) which correctly excludes today. But the `dueThisWeek` filter (line 697) uses `!isBefore(d, todayStart)` which includes today. Meanwhile, `FollowUpRow` for overdue shows `daysOverdue === 0 ? "Due today"` (line 846). Since `daysOverdue` uses `differenceInDays(now, ...)` which can be 0 for items due earlier today, an item due at midnight today could show as "0d overdue" labeled "Due today" in the Overdue section AND also appear in Due This Week. This is a minor edge case but worth fixing by ensuring the overdue label never shows "Due today" (it should show "1d overdue" minimum since the filter already excludes today-start).
+## Key Changes
 
----
+### 1. Split card into 3 clear zones
 
-## Everything Else: Working Correctly
+**Zone 1 — "Prepare" + Actions (side by side)**: Left side shows the critical pre-call items (open objections, action items we owe, action items they owe, risks) as a compact checklist. Right side has the action buttons stacked vertically. This ensures a rep sees what matters AND can act on it without scrolling.
 
-**Schedule Tab**: Morning briefing, meeting cards with time grouping, playbook tasks due today, priority tiers filtered to today-only items, summary stats strip. All correct.
+**Zone 2 — "Context"**: Prospect message, company description, motivation, urgency grouped together as background reading. No grid — just clean labeled paragraphs.
 
-**Follow-Ups Tab**: 5 sections (Overdue, Due This Week, Unanswered Inbound, Untouched, Going Dark) with deduplication. Rich rows with deal value, meeting count, email count, Calendly, task badge. Context-aware AI action chips. Batch snooze (>14d, >30d). Inline snooze (3d/7d/14d). Sort controls. AI Action Sheet with Copy & Mark Done, Regenerate, stage advance, calendar picker. Inline task checklist expansion. All correct.
+**Zone 3 — "Deep Intel" (collapsed by default)**: Win strategy, psychological profile, and the metadata grid (buyer type, geo, criteria, etc.) hidden behind a toggle. Only needed for complex deals with existing intel.
 
-**Deal Pulse Tab**: 4 KPIs with benchmark labels, forecast strip, momentum board with Has Intel toggle and sort controls, "Steady" as distinct blue text, velocity cards with benchmarks, renewals section, empty state. All correct.
+### 2. Smarter empty states
 
-**Prep Intel Tab**: Cards with Calendly details, Research Prospect (correct flat payload + DB persistence), Generate Prep Brief (correct full payload), Draft Pre-Meeting Email, Deal Room link (correct `/deal/` route), prospect messages, company descriptions, context grid, win strategy, psychological profile, enrichment highlights, open items, deal narrative, playbook tasks section. All correct.
+For 0-meeting leads with no deal intelligence, skip the "Prepare" zone entirely and lead with the Context zone + prominent Research Prospect button. Don't show empty sections.
 
-**Playbook System**: `lead_tasks` table exists. 5 playbook definitions. Stage-change triggers in LeadContext with stale task cleanup. useLeadTasks hook. All 3 tabs wired to display tasks. All correct.
+### 3. Compact action buttons
 
----
+Move from full-width dashed-border buttons to a tight vertical button group on the right side of the Prepare zone, saving vertical space.
 
-## Plan: Fix the 2 Bugs
+### 4. Deal Room link fix
+
+Change `/deal/${lead.id}` to `/deal-room/${lead.id}` (still wrong in current code).
 
 ### Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/command-center/FollowUpsTab.tsx` | Fix keyboard nav scroll refs using `flatLeadIds.indexOf(lead.id)` instead of incrementing counter; fix rowRef connection to enable scrollIntoView |
+| `src/components/command-center/PrepIntelTab.tsx` | Restructure IntelCard into 3 zones (Prepare+Actions, Context, Deep Intel collapsed); reorder content by actionability; fix Deal Room route |
 
