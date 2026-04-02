@@ -227,16 +227,22 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pipeline Velocity</h3>
             </div>
             <div className="flex gap-2 flex-wrap">
-              {velocity.map(({ stage, avgDays, count }) => (
-                <div key={stage} className="border border-border rounded-md px-3 py-2 min-w-[120px]">
-                  <p className="text-[10px] text-muted-foreground truncate">{stage}</p>
-                  <div className="flex items-baseline gap-1">
-                    <span className={`text-sm font-semibold tabular-nums ${daysInStageColor(avgDays)}`}>{avgDays}d</span>
-                    <span className="text-[9px] text-muted-foreground">avg</span>
+              {velocity.map(({ stage, avgDays, count }) => {
+                const benchmark = avgDays <= 7 ? { label: "on track", cls: "text-emerald-600 dark:text-emerald-400" } : avgDays <= 14 ? { label: "watch", cls: "text-amber-600 dark:text-amber-400" } : { label: "above target", cls: "text-red-600 dark:text-red-400" };
+                return (
+                  <div key={stage} className="border border-border rounded-md px-3 py-2 min-w-[120px]">
+                    <p className="text-[10px] text-muted-foreground truncate">{stage}</p>
+                    <div className="flex items-baseline gap-1">
+                      <span className={`text-sm font-semibold tabular-nums ${daysInStageColor(avgDays)}`}>{avgDays}d</span>
+                      <span className="text-[9px] text-muted-foreground">avg</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-muted-foreground">{count} deal{count !== 1 ? "s" : ""}</span>
+                      <span className={`text-[9px] font-medium ${benchmark.cls}`}>{benchmark.label}</span>
+                    </div>
                   </div>
-                  <span className="text-[9px] text-muted-foreground">{count} deal{count !== 1 ? "s" : ""}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

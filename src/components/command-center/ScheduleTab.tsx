@@ -260,7 +260,25 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
   }, [meetings]);
 
   const tierItems = useMemo(() => {
-    const nonMeeting = items.filter(i => i.type !== "meeting");
+    const now = new Date();
+    const nonMeeting = items.filter(i => {
+      if (i.type === "meeting") return false;
+      // Only show today's overdue items (not the full historical backlog)
+      if (i.type === "overdue") {
+        const nf = i.lead.nextFollowUp;
+        if (!nf) return false;
+        return differenceInDays(now, parseISO(nf)) <= 1;
+      }
+      // Exclude dark/untouched/stale — they belong in Follow-Ups
+      if (["dark", "untouched", "stale"].includes(i.type)) return false;
+      // Keep renewals expiring within 7 days
+      if (i.type === "renewal") {
+        const ce = i.lead.contractEnd;
+        if (!ce) return false;
+        return differenceInDays(parseISO(ce), now) <= 7;
+      }
+      return true;
+    });
     return {
       urgent: nonMeeting.filter(i => TIER_CONFIG.urgent.types.includes(i.type)),
       "at-risk": nonMeeting.filter(i => TIER_CONFIG["at-risk"].types.includes(i.type)),

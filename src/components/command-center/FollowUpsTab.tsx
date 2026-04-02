@@ -30,8 +30,13 @@ function getActionType(lead: Lead, isUnanswered: boolean): { type: ActionType; l
   if (isUnanswered) return { type: "reply-inbound", label: "Reply", icon: Reply };
   if (lead.stage === "New Lead" && !lead.lastContactDate) return { type: "initial-outreach", label: "Draft Outreach", icon: Send };
   if (lead.stage === "Contacted" && !lead.calendlyBookedAt) return { type: "meeting-nudge", label: "Nudge Meeting", icon: Phone };
-  if (lead.stage === "Meeting Set") return { type: "prep-brief", label: "Prep Brief", icon: FileText };
-  if (lead.stage === "Meeting Held") return { type: "post-meeting", label: "Follow Up", icon: Send };
+  if (lead.stage === "Meeting Set") return { type: "initial-outreach", label: "Pre-Meeting Email", icon: Send };
+  if (lead.stage === "Meeting Held") {
+    const openItems = lead.dealIntelligence?.actionItemTracker?.openItems;
+    if (openItems && Array.isArray(openItems) && openItems.length > 0) return { type: "post-meeting", label: "Complete Actions", icon: Zap };
+    if (lead.dealValue > 0) return { type: "post-meeting", label: "Send Proposal", icon: FileText };
+    return { type: "post-meeting", label: "Follow Up", icon: Send };
+  }
   if (lead.stage === "Proposal Sent") return { type: "proposal-followup", label: "Check In", icon: Mail };
   const lastDate = lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate || lead.dateSubmitted;
   if (lastDate && differenceInDays(new Date(), parseISO(lastDate)) > 21) return { type: "re-engagement", label: "Re-engage", icon: RotateCcw };
