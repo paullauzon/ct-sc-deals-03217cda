@@ -42,7 +42,7 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
   useEffect(() => {
     const ids = upcomingMeetings.map(l => l.id);
     if (ids.length === 0) { setEmailCounts(new Map()); return; }
-    supabase.from("lead_emails").select("lead_id").in("lead_id", ids).then(({ data }) => {
+    supabase.from("lead_emails").select("lead_id").in("lead_id", ids).limit(5000).then(({ data }) => {
       if (!data) return;
       const counts = new Map<string, number>();
       for (const row of data) counts.set(row.lead_id, (counts.get(row.lead_id) || 0) + 1);
