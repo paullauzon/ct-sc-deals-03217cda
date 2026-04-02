@@ -1,13 +1,14 @@
 import { useState, useMemo, useEffect } from "react";
 import { Lead } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
-import { CalendarCheck, ChevronDown, ChevronRight, Sparkles, Users, Mail, ArrowUpRight, CheckCircle2, SkipForward, ListChecks } from "lucide-react";
+import { CalendarCheck, ChevronDown, ChevronRight, Sparkles, Users, Mail, ArrowUpRight, CheckCircle2, SkipForward, ListChecks, AlertTriangle, TrendingDown, Zap } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { format, parseISO, differenceInDays, subHours, isToday as isTodayFn } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useLeadTasks, LeadTask } from "@/hooks/useLeadTasks";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { getDroppedPromises } from "@/lib/dealHealthUtils";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 
@@ -133,7 +134,26 @@ function MorningBriefing({ leads, ownerFilter }: { leads: Lead[]; ownerFilter: s
       try { return parseISO(l.stageEnteredDate) >= since24h; } catch { return false; }
     }).length;
 
-    return { newLeads, newMeetings, stageChanges };
+    // Intelligence-derived alerts
+    const stallingDeals = filtered.filter(l => {
+      const momentum = l.dealIntelligence?.momentumSignals?.momentum;
+      return momentum === "Stalling" || momentum === "Stalled";
+    }).length;
+
+    const droppedCount = filtered.reduce((sum, l) => {
+      const dropped = getDroppedPromises(l);
+      return sum + dropped.filter(d => d.daysOverdue > 7).length;
+    }, 0);
+
+    const stuckHighIntent = filtered.filter(l => {
+      if (l.stage !== "Meeting Held") return false;
+      const days = computeDaysInStage(l.stageEnteredDate);
+      if (days < 14) return false;
+      const meetings = l.meetings || [];
+      return meetings.length >= 3;
+    }).length;
+
+    return { newLeads, newMeetings, stageChanges, stallingDeals, droppedCount, stuckHighIntent };
   }, [filtered, since24h]);
 
   useEffect(() => {
@@ -148,18 +168,21 @@ function MorningBriefing({ leads, ownerFilter }: { leads: Lead[]; ownerFilter: s
       .then(({ count }) => setEmailCount(count || 0));
   }, [filtered, since24h]);
 
-  const hasAnything = stats.newLeads + stats.newMeetings + stats.stageChanges + emailCount > 0;
+  const hasAnything = stats.newLeads + stats.newMeetings + stats.stageChanges + emailCount + stats.stallingDeals + stats.droppedCount + stats.stuckHighIntent > 0;
   if (!hasAnything) return null;
 
   return (
-    <div className="flex items-center gap-4 px-3 py-2 rounded-md bg-primary/5 border border-primary/10">
+    <div className="flex items-center gap-4 px-3 py-2 rounded-md bg-primary/5 border border-primary/10 flex-wrap">
       <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
       <span className="text-[11px] font-medium text-primary">Since Yesterday</span>
-      <div className="flex gap-3 text-[11px] text-muted-foreground">
+      <div className="flex gap-3 text-[11px] text-muted-foreground flex-wrap">
         {stats.newLeads > 0 && <span className="flex items-center gap-1"><Users className="h-3 w-3" /><span className="font-medium text-foreground">+{stats.newLeads}</span> Leads</span>}
         {stats.newMeetings > 0 && <span className="flex items-center gap-1"><CalendarCheck className="h-3 w-3" /><span className="font-medium text-foreground">+{stats.newMeetings}</span> Booked</span>}
         {emailCount > 0 && <span className="flex items-center gap-1"><Mail className="h-3 w-3" /><span className="font-medium text-foreground">{emailCount}</span> Emails</span>}
         {stats.stageChanges > 0 && <span className="flex items-center gap-1"><ArrowUpRight className="h-3 w-3" /><span className="font-medium text-foreground">{stats.stageChanges}</span> Stage Changes</span>}
+        {stats.stallingDeals > 0 && <span className="flex items-center gap-1 text-red-600 dark:text-red-400"><TrendingDown className="h-3 w-3" /><span className="font-medium">{stats.stallingDeals}</span> Stalling</span>}
+        {stats.droppedCount > 0 && <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400"><AlertTriangle className="h-3 w-3" /><span className="font-medium">{stats.droppedCount}</span> Overdue Promises</span>}
+        {stats.stuckHighIntent > 0 && <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400"><Zap className="h-3 w-3" /><span className="font-medium">{stats.stuckHighIntent}</span> Stuck (3+ mtgs)</span>}
       </div>
     </div>
   );
