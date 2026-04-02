@@ -26,6 +26,7 @@ function DealTempBadge({ temp }: { temp?: string }) {
 
 export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon = 7 }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void; meetingHorizon?: number }) {
   const now = new Date();
+  const [emailCounts, setEmailCounts] = useState<Map<string, number>>(new Map());
 
   const upcomingMeetings = useMemo(() => {
     const filtered = ownerFilter === "All" ? leads
@@ -36,6 +37,18 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
       .filter(l => l.meetingDate && !isBefore(parseISO(l.meetingDate), now) && differenceInDays(parseISO(l.meetingDate), now) <= meetingHorizon)
       .sort((a, b) => new Date(a.meetingDate).getTime() - new Date(b.meetingDate).getTime());
   }, [leads, ownerFilter, now, meetingHorizon]);
+
+  // Fetch email counts for upcoming meeting leads
+  useEffect(() => {
+    const ids = upcomingMeetings.map(l => l.id);
+    if (ids.length === 0) { setEmailCounts(new Map()); return; }
+    supabase.from("lead_emails").select("lead_id").in("lead_id", ids).then(({ data }) => {
+      if (!data) return;
+      const counts = new Map<string, number>();
+      for (const row of data) counts.set(row.lead_id, (counts.get(row.lead_id) || 0) + 1);
+      setEmailCounts(counts);
+    });
+  }, [upcomingMeetings]);
 
   if (upcomingMeetings.length === 0) {
     return (
@@ -50,7 +63,7 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
       <p className="text-xs text-muted-foreground">{upcomingMeetings.length} meeting{upcomingMeetings.length !== 1 ? "s" : ""} in the next {meetingHorizon} days</p>
 
       {upcomingMeetings.map(lead => (
-        <IntelCard key={lead.id} lead={lead} onSelect={() => onSelectLead(lead.id)} />
+        <IntelCard key={lead.id} lead={lead} onSelect={() => onSelectLead(lead.id)} emailCount={emailCounts.get(lead.id) || 0} />
       ))}
     </div>
   );
