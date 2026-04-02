@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      business_cost_inputs: {
+        Row: {
+          ad_spend: number
+          brand: string
+          created_at: string
+          id: string
+          margin_pct: Json
+          month: string
+          sales_cost: number
+          tool_cost: number
+          updated_at: string
+        }
+        Insert: {
+          ad_spend?: number
+          brand: string
+          created_at?: string
+          id?: string
+          margin_pct?: Json
+          month: string
+          sales_cost?: number
+          tool_cost?: number
+          updated_at?: string
+        }
+        Update: {
+          ad_spend?: number
+          brand?: string
+          created_at?: string
+          id?: string
+          margin_pct?: Json
+          month?: string
+          sales_cost?: number
+          tool_cost?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_activity_log: {
         Row: {
           created_at: string

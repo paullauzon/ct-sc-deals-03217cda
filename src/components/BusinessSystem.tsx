@@ -7,12 +7,13 @@ import { LeadDetail } from "@/components/LeadsTable";
 import { Lead } from "@/types/lead";
 import { cn } from "@/lib/utils";
 import { Eye, DollarSign, Settings2, TrendingUp, Lock } from "lucide-react";
+import { DashboardEconomics } from "@/components/DashboardEconomics";
 
 type BizTab = "overview" | "economics" | "operations" | "forecast";
 
 const TABS: { key: BizTab; label: string; desc: string; icon: typeof Eye; ready: boolean }[] = [
   { key: "overview", label: "Overview", desc: "Brand Scorecards", icon: Eye, ready: true },
-  { key: "economics", label: "Economics", desc: "Unit Economics", icon: DollarSign, ready: false },
+  { key: "economics", label: "Economics", desc: "Unit Economics", icon: DollarSign, ready: true },
   { key: "operations", label: "Operations", desc: "Capacity & Health", icon: Settings2, ready: false },
   { key: "forecast", label: "Forecast", desc: "Revenue Projections", icon: TrendingUp, ready: false },
 ];
@@ -68,12 +69,15 @@ export function BusinessSystem() {
         <DashboardBusiness leads={filteredLeads} onDrillDown={handleDrillDown} />
       )}
 
-      {tab !== "overview" && (
+      {tab === "economics" && (
+        <DashboardEconomics leads={filteredLeads} />
+      )}
+
+      {(tab === "operations" || tab === "forecast") && (
         <div className="flex items-center justify-center h-64 border border-dashed border-border rounded-lg">
           <div className="text-center space-y-1">
             <p className="text-sm font-medium text-muted-foreground">Coming Soon</p>
             <p className="text-xs text-muted-foreground/60">
-              {tab === "economics" && "Unit Economics, CAC, LTV, and margin analysis"}
               {tab === "operations" && "Capacity utilization, pipeline aging, and health metrics"}
               {tab === "forecast" && "Revenue projections and retention tracking"}
             </p>
