@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BrandLogo } from "@/components/BrandLogo";
-import { ChevronDown, Save, DollarSign, Users, TrendingUp, AlertCircle } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Save, DollarSign, Users, TrendingUp, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { format, differenceInMonths, parseISO } from "date-fns";
+import { format, differenceInMonths, parseISO, addMonths, subMonths, parse } from "date-fns";
 
 const BRANDS: Brand[] = ["Captarget", "SourceCo"];
 
@@ -226,13 +226,34 @@ export function DashboardEconomics({ leads }: Props) {
                   Cost Configuration
                 </CardTitle>
                 <div className="flex items-center gap-2">
-                  <Input
-                    type="month"
-                    value={month}
-                    onChange={(e) => setMonth(e.target.value)}
-                    className="w-40 h-8 text-xs"
-                    onClick={(e) => e.stopPropagation()}
-                  />
+                  <div className="flex items-center gap-1 bg-secondary rounded-md px-1" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => {
+                        const d = subMonths(parse(month, "yyyy-MM", new Date()), 1);
+                        setMonth(format(d, "yyyy-MM"));
+                      }}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </Button>
+                    <span className="text-xs font-medium min-w-[90px] text-center">
+                      {format(parse(month, "yyyy-MM", new Date()), "MMMM yyyy")}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      disabled={month >= currentMonth()}
+                      onClick={() => {
+                        const d = addMonths(parse(month, "yyyy-MM", new Date()), 1);
+                        setMonth(format(d, "yyyy-MM"));
+                      }}
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                   <ChevronDown className={`h-4 w-4 transition-transform ${configOpen ? "rotate-180" : ""}`} />
                 </div>
               </div>
@@ -318,7 +339,7 @@ export function DashboardEconomics({ leads }: Props) {
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <BrandLogo brand={brand} size="sm" />
                   {brand} Unit Economics
-                  <span className="text-[10px] text-muted-foreground ml-auto">{month}</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">{format(parse(month, "yyyy-MM", new Date()), "MMM yyyy")}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
