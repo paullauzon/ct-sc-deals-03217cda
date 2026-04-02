@@ -207,7 +207,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   };
 
   const handleChangeStage = (leadId: string, stage: string) => {
-    updateLead(leadId, { stage, stageEnteredDate: format(now, "yyyy-MM-dd") });
+    updateLead(leadId, { stage: stage as Lead["stage"], stageEnteredDate: format(now, "yyyy-MM-dd") });
   };
 
   const totalItems = overdue.length + dueThisWeek.length + untouched.length + goingDark.length + unansweredEmails.length;
