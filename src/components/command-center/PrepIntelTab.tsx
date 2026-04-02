@@ -618,7 +618,7 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                     <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Opening</span>
                   </div>
                   <p className="text-[11px] text-foreground italic leading-relaxed">
-                    "{(briefBattleCard.openingHook || enrichment?.openingHook) as string}"
+                    "{stripQuotes((briefBattleCard.openingHook || enrichment?.openingHook) as string)}"
                   </p>
                 </div>
 
