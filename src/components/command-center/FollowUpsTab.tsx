@@ -168,8 +168,21 @@ function FollowUpRow({
           <CalendarCheck className="h-2.5 w-2.5 text-muted-foreground" />
         )}
 
-        {/* Action chip — always visible */}
+        {/* Action chip + snooze — always visible */}
         <div className="ml-auto flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+          {[3, 7, 14].map(d => (
+            <button
+              key={d}
+              onClick={() => {
+                const newDate = format(addDays(new Date(), d), "yyyy-MM-dd");
+                onUpdate(lead.id, { nextFollowUp: newDate });
+              }}
+              className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors opacity-0 group-hover:opacity-100"
+              title={`Snooze ${d} days`}
+            >
+              {d}d
+            </button>
+          ))}
           <button
             onClick={() => onAction(lead, action.type)}
             className="text-[10px] px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:bg-foreground hover:text-background hover:border-foreground transition-colors flex items-center gap-1.5 font-medium"
@@ -364,10 +377,13 @@ function ActionSheet({
           {/* Actions */}
           <div className="flex items-center gap-2 pt-2 border-t border-border">
             <button
-              onClick={handleApply}
+              onClick={() => {
+                if (content) navigator.clipboard.writeText(content);
+                handleApply();
+              }}
               className="flex-1 text-xs py-2.5 rounded-md bg-foreground text-background font-medium hover:bg-foreground/90 transition-colors"
             >
-              Mark Contacted & Update
+              {content ? "Copy & Mark Done" : "Mark Contacted & Update"}
             </button>
             <button
               onClick={generateDraft}
@@ -478,6 +494,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
       .from("lead_emails")
       .select("lead_id")
       .in("lead_id", ids)
+      .limit(5000)
       .then(({ data }) => {
         if (!data) return;
         const counts = new Map<string, number>();

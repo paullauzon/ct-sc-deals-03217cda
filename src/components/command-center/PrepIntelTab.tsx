@@ -42,7 +42,7 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
   useEffect(() => {
     const ids = upcomingMeetings.map(l => l.id);
     if (ids.length === 0) { setEmailCounts(new Map()); return; }
-    supabase.from("lead_emails").select("lead_id").in("lead_id", ids).then(({ data }) => {
+    supabase.from("lead_emails").select("lead_id").in("lead_id", ids).limit(5000).then(({ data }) => {
       if (!data) return;
       const counts = new Map<string, number>();
       for (const row of data) counts.set(row.lead_id, (counts.get(row.lead_id) || 0) + 1);
@@ -173,6 +173,13 @@ function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () =>
           </div>
         );
       })()}
+
+      {/* Lead message as prep context */}
+      {lead.message && lead.message.length > 0 && (
+        <div className="text-[10px] text-muted-foreground bg-secondary/30 rounded px-2.5 py-1.5 line-clamp-3">
+          <span className="font-medium text-foreground">Prospect said: </span>"{lead.message.slice(0, 200)}{lead.message.length > 200 ? "…" : ""}"
+        </div>
+      )}
 
       {/* Context Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5 text-[11px]">
