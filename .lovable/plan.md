@@ -1,34 +1,31 @@
 
 
-# Fix: Avg Deal Size Should Reflect Won Deals
+# Fix: Remove Fabricated Lead Response Time Metric
 
 ## The Problem
 
-The "Avg Deal Size" metric on the Brand Scorecards currently calculates from **all active deals** with a deal value. For SourceCo with 0 closed won deals, it shows $29,875 — which is just the average pipeline estimate, not actual realized deal sizes. This is misleading next to metrics like MRR and Win Rate which are based on actual outcomes.
+The "Lead Response Time" section shows 12d for Captarget and 5d for SourceCo. This metric is fabricated — it uses `lastContactDate` and `stageEnteredDate` as proxies for "time to first response," but neither field represents actual email response data. The system has no access to your inbox, so these numbers are meaningless and misleading.
+
+## What's Actually Legitimate (everything else)
+
+After auditing all 4 tabs, Lead Response Time is the **only** fabricated metric. Every other metric derives from real data:
+- Scorecards: actual lead counts, deal values, subscription data
+- P&L: from `business_cost_inputs` table + won deal revenue
+- Stage Waterfall: actual stage distribution of leads
+- Avg Cycle Days: `dateSubmitted` → `closedDate` on won deals
+- Deal Velocity: from `lead_activity_log` stage_change events (shows empty if no logs)
+- CAC/LTV/Payback: from cost inputs + won contracts
+- Pipeline metrics: from actual lead stages, values, dates
 
 ## The Fix
 
-Change the calculation to use **Closed Won deals only**. If no deals are won yet, show "N/A" (consistent with how Win Rate already handles this). This makes the metric honest — it answers "what do our won deals actually look like?" not "what are we hoping pipeline deals are worth?"
+**Remove the `LeadResponseTime` component entirely** from `DashboardBusiness.tsx`. It cannot produce accurate data without actual email integration (e.g., reading send/reply timestamps from `lead_emails` table or a connected inbox).
 
-```
-// Current (misleading):
-const activeWithValue = active.filter(l => l.dealValue > 0);
-const avgDealSize = activeWithValue.reduce(...) / activeWithValue.length;
-
-// Fixed:
-const wonWithValue = won.filter(l => l.dealValue > 0);
-const avgDealSize = wonWithValue.length > 0
-  ? Math.round(wonWithValue.reduce((s, l) => s + l.dealValue, 0) / wonWithValue.length)
-  : 0;
-```
-
-Captarget will show ~$6,543 (from 4 won deals). SourceCo will show "N/A" (0 won deals).
-
-Optionally, add a second metric "Avg Pipeline Deal" if you still want visibility into pipeline estimates — but the primary "Avg Deal Size" should always mean closed business.
+**Future option**: Once you have enough email data flowing through the Zapier→`ingest-email` pipeline, this metric could be rebuilt using actual email timestamps from the `lead_emails` table — measuring time between first inbound email and first outbound reply. But until that data exists, showing N/A or removing it is the honest approach.
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/DashboardBusiness.tsx` | Change `avgDealSize` calculation from active deals to won deals |
+| `src/components/DashboardBusiness.tsx` | Remove `LeadResponseTime` component and its usage (~45 lines) |
 
