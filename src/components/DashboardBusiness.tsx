@@ -342,8 +342,6 @@ export function DashboardBusiness({ leads, onDrillDown }: Props) {
       {/* ── Stage Conversion Waterfall ── */}
       <StageWaterfall leads={leads} />
 
-      {/* ── Lead Response Time ── */}
-      <LeadResponseTime leads={leads} />
 
       {/* ── Quick Insights ── */}
       <div>
