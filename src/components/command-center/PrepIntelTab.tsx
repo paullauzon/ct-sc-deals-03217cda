@@ -203,6 +203,17 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftContent, setDraftContent] = useState("");
 
+  const upcomingMeetingLeadIds = useMemo(() => {
+    const filtered = ownerFilter === "All" ? leads
+      : ownerFilter === "Unassigned" ? leads.filter(l => !l.assignedTo)
+      : leads.filter(l => l.assignedTo === ownerFilter);
+    return filtered
+      .filter(l => l.meetingDate && !isBefore(parseISO(l.meetingDate), now) && differenceInDays(parseISO(l.meetingDate), now) <= meetingHorizon)
+      .map(l => l.id);
+  }, [leads, ownerFilter, now, meetingHorizon]);
+
+  const { tasks: meetingTasks, completeTask, skipTask } = useLeadTasks(upcomingMeetingLeadIds);
+
   const upcomingMeetings = useMemo(() => {
     const filtered = ownerFilter === "All" ? leads
       : ownerFilter === "Unassigned" ? leads.filter(l => !l.assignedTo)
