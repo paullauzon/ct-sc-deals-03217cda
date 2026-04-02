@@ -1,67 +1,106 @@
 
 
-# Prep Intel Card Redesign
+# Prep Intel Redesign — From Information Dump to Battle Card
 
-## Problems with Current Layout
+## The Real Problem
 
-1. **No information hierarchy**: Company description, prospect quote, enrichment highlights, win strategy, psychological profile, open items, and context grid are all stacked vertically in a flat list — making each card a tall wall of text with no clear "read this first" signal.
+The current Prep Intel is a **reference sheet**, not a **battle card**. A 50-year sales veteran walking into a call in 2 hours doesn't want to read paragraphs about company descriptions and motivation. They want:
 
-2. **Action buttons buried in the middle**: Research Prospect / Draft Email / Deal Room sit between the signal strip and the actual intel content. A sales rep scanning before a call has to hunt for the actionable parts.
+1. **What do I say in the first 30 seconds?** — An opening hook personalized to this prospect
+2. **What's the ONE thing?** — The single insight that changes the call
+3. **What NOT to say** — Landmines that kill deals
+4. **What to ask** — 3 questions that unlock the next stage
+5. **What's my goal?** — Clear desired outcome for this specific meeting
 
-3. **Duplicate/scattered enrichment data**: Motivation and urgency appear at the bottom separated from company description and prospect message at the top. Related context is fragmented.
+The current card shows raw context (company description, prospect message, motivation, urgency) but never synthesizes it into **actionable guidance**. It's like giving a pilot weather data instead of a flight plan.
 
-4. **No distinction between "prep to DO" vs "background context"**: Open objections, action items, and risks (the most critical pre-call items) are buried at the very bottom in a 3-column grid that's easy to miss.
+## What Changes
 
-5. **For 0-meeting leads** (most common in Prep Intel), the card is mostly empty space with scattered enrichment snippets.
+### 1. Add "Battle Card" fields to the generate-meeting-prep edge function
 
-## Redesigned Layout
+Add 5 new fields to the tool schema that the AI already has context to generate:
+
+- `openingHook` — Personalized first sentence referencing something specific about their company/situation
+- `theOneInsight` — The single most important thing to know walking in (1 sentence)
+- `landmines` — 2-3 things to NOT say or avoid
+- `keyQuestions` — 3-5 strategic questions ranked by importance
+- `meetingGoal` — The specific outcome to achieve ("Get verbal agreement to proceed to LOI review")
+
+These are already implied by the existing prompt ("BATTLE-READY prep brief") but never explicitly extracted. The AI has all the context — we just need to ask for it.
+
+### 2. Add "Quick Prep" fields for 0-meeting leads (enrich-lead)
+
+For leads with no meetings (like Cody Mauri in the screenshot), the enrich-lead function already returns company description, motivation, urgency. Add:
+
+- `openingHook` — Personalized opener based on research
+- `discoveryQuestions` — 3-5 questions to ask in a first meeting
+- `valueAngle` — How to position our service for THIS specific prospect
+- `watchOuts` — Things to be careful about based on research
+
+### 3. Redesign the IntelCard layout
+
+Replace the current layout with a **battle card** format:
 
 ```text
-┌─────────────────────────────────────────────────────┐
-│ [Logo] Name [Owner] [Temp]    Thu, Apr 2 at 7:30 PM │
-│ Role · Company                                       │
-│ [Calendly badge] [meetings] [emails] [$value] [stage]│
-├─────────────────────────────────────────────────────┤
-│ ⚡ PREPARE                     │ ACTIONS              │
-│ • Objection: "Budget concerns" │ [Research Prospect]  │
-│ • We owe: Send pricing doc     │ [Draft Pre-Meeting]  │
-│ • Risk: Champion may leave     │ [Deal Room →]        │
-├─────────────────────────────────────────────────────┤
-│ 📋 CONTEXT                                           │
-│ Prospect said: "Need support with cold outreach..."  │
-│ Company: Dillard Door specializes in security...     │
-│ Motivation: Growth through new technologies...       │
-│ Urgency: Recent partnership suggests forward...      │
-├─────────────────────────────────────────────────────┤
-│ ▸ Deep Intel (collapsed: win strategy, psych, grid)  │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│ [Header: Name, Company, Meeting Time, Temp Badge]    │
+│ [Signal strip: Calendly, meetings, emails, $, stage] │
+├──────────────────────────────────────────────────────┤
+│ 🎯 BATTLE CARD                    │ ACTIONS          │
+│                                    │ [Prep Brief]     │
+│ Opening: "Cody, I saw Dillard Door │ [Draft Email]    │
+│ just partnered with Shore Capital— │ [Deal Room →]    │
+│ curious how that's changing your   │                  │
+│ approach to growth..."             │                  │
+│                                    │                  │
+│ #1 Insight: They're a security co  │                  │
+│ expanding via PE — position our    │                  │
+│ service as deal origination for    │                  │
+│ their bolt-on acquisition strategy │                  │
+│                                    │                  │
+│ Goal: Qualify budget + timeline,   │                  │
+│ get agreement to send target list  │                  │
+│                                    │                  │
+│ ⚠ Don't mention: [landmines]      │                  │
+│                                    │                  │
+│ Ask:                               │                  │
+│ 1. "What's your acquisition        │                  │
+│    criteria beyond security?"      │                  │
+│ 2. "Who else is involved in        │                  │
+│    evaluating origination firms?"  │                  │
+│ 3. "What's your timeline for the   │                  │
+│    next platform add-on?"          │                  │
+├──────────────────────────────────────────────────────┤
+│ ▸ Background (company, message, motivation, urgency) │
+│ ▸ Deep Intel (win strategy, psych, objections, risks)│
+└──────────────────────────────────────────────────────┘
 ```
 
-## Key Changes
+**Key differences from current:**
+- Battle card fields are the FIRST thing you see — not buried context paragraphs
+- Opening hook gives you an exact sentence to say
+- Goal tells you what "winning" this meeting looks like
+- Questions are numbered and ready to use verbatim
+- Landmines prevent catastrophic mistakes
+- Raw context (company desc, motivation) moves to a collapsed "Background" section
+- Objections/risks/action items stay in collapsed "Deep Intel"
 
-### 1. Split card into 3 clear zones
+### 4. Auto-generate battle card on card render
 
-**Zone 1 — "Prepare" + Actions (side by side)**: Left side shows the critical pre-call items (open objections, action items we owe, action items they owe, risks) as a compact checklist. Right side has the action buttons stacked vertically. This ensures a rep sees what matters AND can act on it without scrolling.
+For leads that already have enrichment data (like Cody Mauri who was already researched), the battle card fields won't exist yet. Two approaches:
 
-**Zone 2 — "Context"**: Prospect message, company description, motivation, urgency grouped together as background reading. No grid — just clean labeled paragraphs.
+- **For 0-meeting leads**: When `enrichmentUpdated` is true or enrichment exists but `openingHook` is missing, show a "Generate Battle Card" button that calls a lightweight AI function to synthesize the existing enrichment into battle card format
+- **For meeting leads**: The battle card fields come from `generate-meeting-prep` (which already runs on "Prep Brief" click)
 
-**Zone 3 — "Deep Intel" (collapsed by default)**: Win strategy, psychological profile, and the metadata grid (buyer type, geo, criteria, etc.) hidden behind a toggle. Only needed for complex deals with existing intel.
+### 5. Fix Deal Room link
 
-### 2. Smarter empty states
+Lines 578 and 609 still use `/deal/${lead.id}` — change to `/deal-room/${lead.id}`.
 
-For 0-meeting leads with no deal intelligence, skip the "Prepare" zone entirely and lead with the Context zone + prominent Research Prospect button. Don't show empty sections.
-
-### 3. Compact action buttons
-
-Move from full-width dashed-border buttons to a tight vertical button group on the right side of the Prepare zone, saving vertical space.
-
-### 4. Deal Room link fix
-
-Change `/deal/${lead.id}` to `/deal-room/${lead.id}` (still wrong in current code).
-
-### Files Changed
+## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/command-center/PrepIntelTab.tsx` | Restructure IntelCard into 3 zones (Prepare+Actions, Context, Deep Intel collapsed); reorder content by actionability; fix Deal Room route |
+| `supabase/functions/generate-meeting-prep/index.ts` | Add 5 battle card fields to tool schema: `openingHook`, `theOneInsight`, `landmines`, `keyQuestions`, `meetingGoal` |
+| `supabase/functions/enrich-lead/index.ts` | Add 4 quick-prep fields to enrichment tool schema: `openingHook`, `discoveryQuestions`, `valueAngle`, `watchOuts` |
+| `src/components/command-center/PrepIntelTab.tsx` | Redesign IntelCard to lead with battle card zone (opening hook, #1 insight, goal, landmines, questions); move context/deep intel to collapsed sections; fix Deal Room route |
 
