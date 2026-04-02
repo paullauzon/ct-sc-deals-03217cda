@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { BrandLogo } from "@/components/BrandLogo";
-import { TrendingUp, TrendingDown, Minus, Activity, DollarSign, Clock, CalendarCheck, AlertCircle, Flame, Snowflake, Thermometer, Gauge } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Activity, DollarSign, Clock, CalendarCheck, AlertCircle, Flame, Snowflake, Thermometer, Gauge, ArrowUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { format, parseISO, differenceInDays, addDays, isBefore } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -42,8 +43,12 @@ function daysInStageColor(days: number): string {
   return "text-red-600 dark:text-red-400";
 }
 
+type MomentumSort = "risk" | "value" | "days" | "name";
+
 export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void }) {
   const now = new Date();
+  const [momentumSort, setMomentumSort] = useState<MomentumSort>("risk");
+  const [momentumSortDir, setMomentumSortDir] = useState<"asc" | "desc">("desc");
 
   const filtered = useMemo(() => {
     if (ownerFilter === "All") return leads;
@@ -51,7 +56,7 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
     return leads.filter(l => l.assignedTo === ownerFilter);
   }, [leads, ownerFilter]);
 
-  const activeDeals = useMemo(() => filtered.filter(l => ACTIVE_STAGES.has(l.stage) || l.stage === "New Lead"), [filtered]);
+  const activeDeals = useMemo(() => filtered.filter(l => ACTIVE_STAGES.has(l.stage)), [filtered]);
 
   // Forecast KPIs
   const forecast = useMemo(() => {
@@ -71,17 +76,26 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   }, [activeDeals, filtered, now]);
 
   const sortedDeals = useMemo(() => {
-    return activeDeals
-      .map(l => {
-        const days = computeDaysInStage(l.stageEnteredDate);
-        const momentum = l.dealIntelligence?.momentumSignals?.momentum || "";
-        const dealTemp = l.dealIntelligence?.winStrategy?.dealTemperature || "";
-        const closingWindow = l.dealIntelligence?.winStrategy?.closingWindow || "";
-        const riskScore = (days > 14 ? 100 : days > 7 ? 50 : 0) + (momentum === "Stalled" ? 80 : momentum === "Stalling" ? 40 : 0);
-        return { lead: l, days, momentum, dealTemp, closingWindow, riskScore };
-      })
-      .sort((a, b) => b.riskScore - a.riskScore);
-  }, [activeDeals]);
+    const mapped = activeDeals.map(l => {
+      const days = computeDaysInStage(l.stageEnteredDate);
+      const momentum = l.dealIntelligence?.momentumSignals?.momentum || "";
+      const dealTemp = l.dealIntelligence?.winStrategy?.dealTemperature || "";
+      const closingWindow = l.dealIntelligence?.winStrategy?.closingWindow || "";
+      const riskScore = (days > 14 ? 100 : days > 7 ? 50 : 0) + (momentum === "Stalled" ? 80 : momentum === "Stalling" ? 40 : 0);
+      return { lead: l, days, momentum, dealTemp, closingWindow, riskScore };
+    });
+    const sorted = [...mapped].sort((a, b) => {
+      let cmp = 0;
+      switch (momentumSort) {
+        case "risk": cmp = a.riskScore - b.riskScore; break;
+        case "value": cmp = (a.lead.dealValue || 0) - (b.lead.dealValue || 0); break;
+        case "days": cmp = a.days - b.days; break;
+        case "name": cmp = a.lead.name.localeCompare(b.lead.name); break;
+      }
+      return momentumSortDir === "desc" ? -cmp : cmp;
+    });
+    return sorted;
+  }, [activeDeals, momentumSort, momentumSortDir]);
 
   // Pipeline velocity by stage
   const velocity = useMemo(() => {
@@ -140,7 +154,17 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
 
         {/* Momentum Board */}
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Momentum Board</h3>
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Momentum Board</h3>
+            <div className="flex items-center gap-1 ml-auto">
+              <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
+              {(["risk", "value", "days", "name"] as const).map(s => (
+                <button key={s} onClick={() => { if (momentumSort === s) setMomentumSortDir(d => d === "asc" ? "desc" : "asc"); else { setMomentumSort(s); setMomentumSortDir("desc"); } }} className={cn("text-[10px] px-2 py-0.5 rounded-full border transition-colors", momentumSort === s ? "bg-foreground text-background border-foreground" : "border-border text-muted-foreground hover:text-foreground")}>
+                  {s === "risk" ? "Risk" : s === "value" ? "Value" : s === "days" ? "Days" : "Name"}{momentumSort === s ? (momentumSortDir === "asc" ? " ↑" : " ↓") : ""}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="border border-border rounded-md overflow-hidden overflow-x-auto">
             <div className="grid grid-cols-[1fr_100px_70px_80px_50px_50px_80px] gap-0 px-4 py-2 bg-secondary/30 text-[10px] font-medium text-muted-foreground uppercase tracking-wider min-w-[600px]">
               <span>Deal</span>

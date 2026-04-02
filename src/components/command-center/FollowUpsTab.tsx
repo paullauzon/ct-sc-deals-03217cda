@@ -374,12 +374,28 @@ function ActionSheet({
 
           {/* Copy */}
           {content && (
-            <button
-              onClick={() => { navigator.clipboard.writeText(content); toast({ title: "Copied to clipboard" }); }}
-              className="w-full text-xs py-2 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Copy to Clipboard
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { navigator.clipboard.writeText(content); toast({ title: "Copied to clipboard" }); }}
+                className="flex-1 text-xs py-2 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Copy All
+              </button>
+              {content.includes("\n\n") && (
+                <button
+                  onClick={() => {
+                    const idx = content.indexOf("\n\n");
+                    const subject = content.slice(0, idx).replace(/^Subject:\s*/i, "");
+                    const body = content.slice(idx + 2);
+                    navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
+                    toast({ title: "Copied as email", description: `Subject: ${subject.slice(0, 50)}…` });
+                  }}
+                  className="flex-1 text-xs py-2 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Copy as Email
+                </button>
+              )}
+            </div>
           )}
         </div>
       </SheetContent>
@@ -563,8 +579,13 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">{totalItems} items needing action</p>
+      <div className="flex items-center gap-3 flex-wrap text-[11px] text-muted-foreground">
+        <span className="font-medium text-foreground">{totalItems} items</span>
+        {overdue.length > 0 && <span className="tabular-nums"><span className="text-red-600 dark:text-red-400 font-medium">{overdue.length}</span> Overdue</span>}
+        {dueThisWeek.length > 0 && <span className="tabular-nums"><span className="text-blue-600 dark:text-blue-400 font-medium">{dueThisWeek.length}</span> Due This Week</span>}
+        {unansweredLeads.length > 0 && <span className="tabular-nums"><span className="text-purple-600 dark:text-purple-400 font-medium">{unansweredLeads.length}</span> Unanswered</span>}
+        {untouched.length > 0 && <span className="tabular-nums"><span className="text-emerald-600 dark:text-emerald-400 font-medium">{untouched.length}</span> Untouched</span>}
+        {goingDark.length > 0 && <span className="tabular-nums"><span className="text-amber-600 dark:text-amber-400 font-medium">{goingDark.length}</span> Going Dark</span>}
       </div>
 
       <SortBar sortField={sortField} sortDir={sortDir} onSort={handleSort} />
