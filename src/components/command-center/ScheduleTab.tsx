@@ -310,6 +310,7 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
       <div className="flex gap-3 flex-wrap text-[11px] text-muted-foreground">
         {filteredCounts.dueToday > 0 && <span className="tabular-nums"><span className="font-medium text-foreground">{filteredCounts.dueToday}</span> Due Today</span>}
         {filteredCounts.meetings > 0 && <span className="tabular-nums"><span className="font-medium text-foreground">{filteredCounts.meetings}</span> Meetings</span>}
+        {filteredCounts.tasks > 0 && <span className="tabular-nums"><span className="font-medium text-foreground">{filteredCounts.tasks}</span> Playbook Tasks</span>}
         {filteredCounts.renewals > 0 && <span className="tabular-nums"><span className="font-medium text-foreground">{filteredCounts.renewals}</span> Renewals</span>}
       </div>
 
