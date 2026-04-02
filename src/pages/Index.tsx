@@ -90,38 +90,63 @@ function AppContent() {
     <div className="min-h-screen bg-background">
       <nav className="border-b border-border shadow-sm">
         <div className="max-w-7xl mx-auto px-6 flex items-center h-14 gap-8">
-          <span className="text-sm font-bold tracking-tight">CAPTARGET</span>
-          <div className="flex gap-1">
-            {NAV_ITEMS.map(({ key, label, desc, icon: Icon }) => (
-              <button
-                key={key}
-                onClick={() => setView(key)}
-                className={`relative flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors border-b-2 ${
-                  view === key
-                    ? "border-foreground text-foreground font-medium"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                <span>{label}</span>
-                <span className="hidden lg:inline text-[10px] text-muted-foreground/60 ml-0.5">· {desc}</span>
-                {key === "leads" && unseenCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1 animate-pulse">
-                    {unseenCount}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-          <div className="ml-auto">
-            <button
-              onClick={() => setCmdOpen(true)}
-              className="flex items-center gap-2 w-52 h-8 px-3 rounded-md border border-border bg-secondary/50 text-sm text-muted-foreground hover:bg-secondary transition-colors"
-            >
-              <Search className="h-3.5 w-3.5" />
-              <span className="flex-1 text-left">Search…</span>
-              <kbd className="text-[10px] font-mono bg-background border border-border rounded px-1.5 py-0.5">⌘K</kbd>
-            </button>
+          <SystemSwitcher current={system} onChange={setSystem} />
+          {system === "crm" && (
+            <>
+              <div className="flex gap-1">
+                {NAV_ITEMS.map(({ key, label, desc, icon: Icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => setView(key)}
+                    className={`relative flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors border-b-2 ${
+                      view === key
+                        ? "border-foreground text-foreground font-medium"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    <span>{label}</span>
+                    <span className="hidden lg:inline text-[10px] text-muted-foreground/60 ml-0.5">· {desc}</span>
+                    {key === "leads" && unseenCount > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1 animate-pulse">
+                        {unseenCount}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className="ml-auto">
+                <button
+                  onClick={() => setCmdOpen(true)}
+                  className="flex items-center gap-2 w-52 h-8 px-3 rounded-md border border-border bg-secondary/50 text-sm text-muted-foreground hover:bg-secondary transition-colors"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  <span className="flex-1 text-left">Search…</span>
+                  <kbd className="text-[10px] font-mono bg-background border border-border rounded px-1.5 py-0.5">⌘K</kbd>
+                </button>
+              </div>
+            </>
+          )}
+          {system === "business" && (
+            <span className="text-sm text-muted-foreground">Business Operations</span>
+          )}
+        </div>
+      </nav>
+
+      {system === "crm" && (
+        <>
+          {view === "today" && <ActionQueue />}
+          {view === "dashboard" && <Dashboard />}
+          {view === "leads" && <LeadsTable />}
+          {view === "pipeline" && <Pipeline />}
+        </>
+      )}
+
+      {system === "business" && <BusinessSystem />}
+
+      <CommandPalette onNavigate={handleCmdNavigate} onSelectLead={handleCmdSelectLead} externalOpen={cmdOpen} onExternalOpenChange={setCmdOpen} />
+      <LeadDetail leadId={cmdLeadId} open={!!cmdLeadId} onClose={() => setCmdLeadId(null)} />
+      <GlobalProcessingOverlay />
           </div>
         </div>
       </nav>
