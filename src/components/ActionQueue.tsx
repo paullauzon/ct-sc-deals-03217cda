@@ -44,6 +44,7 @@ export function ActionQueue() {
   const { leads } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [ownerFilter, setOwnerFilter] = useState<string>("All");
+  const [meetingHorizon, setMeetingHorizon] = useState<number>(7);
   const [commandTab, setCommandTab] = useState<CommandTab>(parseTabFromHash);
 
   const handleTabChange = useCallback((val: string) => {
