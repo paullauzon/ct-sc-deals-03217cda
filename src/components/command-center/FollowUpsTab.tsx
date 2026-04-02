@@ -1,11 +1,11 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Lead } from "@/types/lead";
 import { useLeads } from "@/contexts/LeadContext";
 import { BrandLogo } from "@/components/BrandLogo";
 import {
   ChevronDown, ChevronRight, Clock, AlertTriangle, UserX, Ghost,
   Mail, Mic, CalendarCheck, ArrowUpDown, Zap, Send, Phone, RotateCcw,
-  Reply, FileText, Loader2, ListChecks
+  Reply, FileText, Loader2, ListChecks, CheckCircle2, SkipForward
 } from "lucide-react";
 import { format, parseISO, differenceInDays, isToday, addDays, isBefore, startOfDay } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,7 +17,8 @@ import { CalendarIcon } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { useLeadTasks } from "@/hooks/useLeadTasks";
+import { useLeadTasks, LeadTask } from "@/hooks/useLeadTasks";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 const STAGE_OPTIONS = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"] as const;
@@ -106,9 +107,55 @@ function getRecommendation(lead: Lead): string | null {
   return null;
 }
 
+// ─── Inline Task Checklist ───
+function TaskChecklist({ tasks, onComplete, onSkip, onGenerateDraft }: {
+  tasks: LeadTask[];
+  onComplete: (id: string) => void;
+  onSkip: (id: string) => void;
+  onGenerateDraft: (task: LeadTask) => void;
+}) {
+  if (tasks.length === 0) return null;
+  const typeIcon = (t: string) => t === "email" ? "✉️" : t === "call" ? "📞" : t === "prep" ? "📋" : "📌";
+  return (
+    <div className="pl-6 pr-4 pb-2 space-y-1 bg-secondary/10">
+      {tasks.map(task => (
+        <div key={task.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-secondary/30 transition-colors group/task">
+          <span className="text-xs">{typeIcon(task.task_type)}</span>
+          <div className="flex-1 min-w-0">
+            <span className="text-[11px] font-medium truncate block">{task.title}</span>
+            <span className="text-[9px] text-muted-foreground">Due {task.due_date}</span>
+          </div>
+          <div className="flex items-center gap-1 opacity-0 group-hover/task:opacity-100 transition-opacity">
+            {(task.task_type === "email" || task.task_type === "call") && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onGenerateDraft(task); }}
+                className="text-[9px] px-1.5 py-0.5 rounded border border-border text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
+              >
+                AI Draft
+              </button>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); onComplete(task.id); }}
+              className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <CheckCircle2 className="h-3 w-3" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onSkip(task.id); }}
+              className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <SkipForward className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Rich row ───
 function FollowUpRow({
-  lead, label, labelStyle, onSelect, emailCount, onUpdate, isUnanswered, onAction, taskCount,
+  lead, label, labelStyle, onSelect, emailCount, onUpdate, isUnanswered, onAction, taskCount, tasks, onCompleteTask, onSkipTask, onGenerateTaskDraft, isActive, rowRef,
 }: {
   lead: Lead; label: string; labelStyle?: string; onSelect: (id: string) => void;
   emailCount: number;
@@ -116,7 +163,14 @@ function FollowUpRow({
   isUnanswered: boolean;
   onAction: (lead: Lead, actionType: ActionType) => void;
   taskCount?: number;
+  tasks?: LeadTask[];
+  onCompleteTask?: (id: string) => void;
+  onSkipTask?: (id: string) => void;
+  onGenerateTaskDraft?: (task: LeadTask) => void;
+  isActive?: boolean;
+  rowRef?: React.RefObject<HTMLDivElement>;
 }) {
+  const [tasksOpen, setTasksOpen] = useState(false);
   const meetingCount = lead.meetings?.length || 0;
   const hasCalendly = !!lead.calendlyBookedAt;
   const recommendation = getRecommendation(lead);
@@ -125,85 +179,99 @@ function FollowUpRow({
     : null;
   const action = getActionType(lead, isUnanswered);
   const ActionIcon = action.icon;
+  const hasTasks = tasks && tasks.length > 0;
 
   return (
-    <div
-      className="px-4 py-3.5 hover:bg-secondary/20 transition-all cursor-pointer group border-b border-border last:border-b-0 hover:border-l-2 hover:border-l-foreground/20 hover:pl-[14px]"
-      onClick={() => onSelect(lead.id)}
-    >
-      {/* Line 1: Identity */}
-      <div className="flex items-center gap-2 min-w-0">
-        <BrandLogo brand={lead.brand} size="xxs" />
-        <span className="text-sm font-medium truncate">{lead.name}</span>
-        <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">{lead.company}</span>
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hidden md:inline shrink-0">{lead.stage}</span>
-        {lead.assignedTo && (
-          <span className="w-4 h-4 rounded-full bg-foreground text-background flex items-center justify-center text-[9px] font-semibold shrink-0">{lead.assignedTo[0]}</span>
+    <div ref={rowRef}>
+      <div
+        className={cn(
+          "px-4 py-3.5 hover:bg-secondary/20 transition-all cursor-pointer group border-b border-border last:border-b-0 hover:border-l-2 hover:border-l-foreground/20 hover:pl-[14px]",
+          isActive && "bg-primary/5 border-l-2 border-l-primary pl-[14px]"
         )}
-        <div className="ml-auto flex items-center gap-2 shrink-0">
-          <span className={cn(
-            "text-[10px] font-medium px-2 py-0.5 rounded-full",
-            labelStyle || "bg-secondary text-muted-foreground"
-          )}>{label}</span>
+        onClick={() => onSelect(lead.id)}
+      >
+        {/* Line 1: Identity */}
+        <div className="flex items-center gap-2 min-w-0">
+          <BrandLogo brand={lead.brand} size="xxs" />
+          <span className="text-sm font-medium truncate">{lead.name}</span>
+          <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">{lead.company}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hidden md:inline shrink-0">{lead.stage}</span>
+          {lead.assignedTo && (
+            <span className="w-4 h-4 rounded-full bg-foreground text-background flex items-center justify-center text-[9px] font-semibold shrink-0">{lead.assignedTo[0]}</span>
+          )}
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            <span className={cn(
+              "text-[10px] font-medium px-2 py-0.5 rounded-full",
+              labelStyle || "bg-secondary text-muted-foreground"
+            )}>{label}</span>
+          </div>
         </div>
-      </div>
 
-      {/* Line 2: Context signals */}
-      <div className="flex items-center gap-3 mt-1.5 pl-6 min-w-0">
-        {lead.dealValue > 0 && (
-          <span className="text-[10px] text-muted-foreground tabular-nums">${lead.dealValue.toLocaleString()}</span>
-        )}
-        {lastContact && (
-          <span className="text-[10px] text-muted-foreground">Last: {lastContact}</span>
-        )}
-        {meetingCount > 0 && (
-          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-            <Mic className="h-2.5 w-2.5" />{meetingCount}
-          </span>
-        )}
-        {emailCount > 0 && (
-          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-            <Mail className="h-2.5 w-2.5" />{emailCount}
-          </span>
-        )}
-        {hasCalendly && (
-          <CalendarCheck className="h-2.5 w-2.5 text-muted-foreground" />
-        )}
-        {taskCount != null && taskCount > 0 && (
-          <span className="text-[10px] text-primary flex items-center gap-0.5 font-medium">
-            <ListChecks className="h-2.5 w-2.5" />{taskCount}
-          </span>
-        )}
-
-        {/* Action chip + snooze — always visible */}
-        <div className="ml-auto flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-          {[3, 7, 14].map(d => (
+        {/* Line 2: Context signals */}
+        <div className="flex items-center gap-3 mt-1.5 pl-6 min-w-0">
+          {lead.dealValue > 0 && (
+            <span className="text-[10px] text-muted-foreground tabular-nums">${lead.dealValue.toLocaleString()}</span>
+          )}
+          {lastContact && (
+            <span className="text-[10px] text-muted-foreground">Last: {lastContact}</span>
+          )}
+          {meetingCount > 0 && (
+            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+              <Mic className="h-2.5 w-2.5" />{meetingCount}
+            </span>
+          )}
+          {emailCount > 0 && (
+            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+              <Mail className="h-2.5 w-2.5" />{emailCount}
+            </span>
+          )}
+          {hasCalendly && (
+            <CalendarCheck className="h-2.5 w-2.5 text-muted-foreground" />
+          )}
+          {hasTasks && (
             <button
-              key={d}
-              onClick={() => {
-                const newDate = format(addDays(new Date(), d), "yyyy-MM-dd");
-                onUpdate(lead.id, { nextFollowUp: newDate });
-                toast({ title: `Snoozed ${lead.name} for ${d} days`, description: `Next follow-up: ${format(addDays(new Date(), d), "EEE, MMM d")}` });
-              }}
-              className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors opacity-0 group-hover:opacity-100"
-              title={`Snooze ${d} days`}
+              onClick={(e) => { e.stopPropagation(); setTasksOpen(!tasksOpen); }}
+              className="text-[10px] text-primary flex items-center gap-0.5 font-medium hover:underline"
             >
-              {d}d
+              <ListChecks className="h-2.5 w-2.5" />{tasks.length}
             </button>
-          ))}
-          <button
-            onClick={() => onAction(lead, action.type)}
-            className="text-[10px] px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:bg-foreground hover:text-background hover:border-foreground transition-colors flex items-center gap-1.5 font-medium"
-          >
-            <ActionIcon className="h-3 w-3" />
-            {action.label}
-          </button>
+          )}
+
+          {/* Action chip + snooze — always visible */}
+          <div className="ml-auto flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+            {[3, 7, 14].map(d => (
+              <button
+                key={d}
+                onClick={() => {
+                  const newDate = format(addDays(new Date(), d), "yyyy-MM-dd");
+                  onUpdate(lead.id, { nextFollowUp: newDate });
+                  toast({ title: `Snoozed ${lead.name} for ${d} days`, description: `Next follow-up: ${format(addDays(new Date(), d), "EEE, MMM d")}` });
+                }}
+                className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors opacity-0 group-hover:opacity-100"
+                title={`Snooze ${d} days`}
+              >
+                {d}d
+              </button>
+            ))}
+            <button
+              onClick={() => onAction(lead, action.type)}
+              className="text-[10px] px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:bg-foreground hover:text-background hover:border-foreground transition-colors flex items-center gap-1.5 font-medium"
+            >
+              <ActionIcon className="h-3 w-3" />
+              {action.label}
+            </button>
+          </div>
         </div>
+
+        {/* Line 3: AI recommendation */}
+        {recommendation && (
+          <p className="text-[10px] text-muted-foreground italic pl-6 mt-1 truncate">{recommendation}</p>
+        )}
       </div>
 
-      {/* Line 3: AI recommendation */}
-      {recommendation && (
-        <p className="text-[10px] text-muted-foreground italic pl-6 mt-1 truncate">{recommendation}</p>
+      {/* Expandable task checklist */}
+      {hasTasks && tasksOpen && onCompleteTask && onSkipTask && onGenerateTaskDraft && (
+        <TaskChecklist tasks={tasks} onComplete={onCompleteTask} onSkip={onSkipTask} onGenerateDraft={onGenerateTaskDraft} />
       )}
     </div>
   );
@@ -483,7 +551,18 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   const [sortField, setSortField] = useState<SortField>("default");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [openSections, setOpenSections] = useState({ overdue: true, dueThisWeek: true, unanswered: true, untouched: true, goingDark: true });
-  const { tasks: allTasks } = useLeadTasks();
+  const { tasks: allTasks, completeTask, skipTask, refetch: refetchTasks } = useLeadTasks();
+  const [activeRowIndex, setActiveRowIndex] = useState(-1);
+  const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  const tasksByLead = useMemo(() => {
+    const m = new Map<string, LeadTask[]>();
+    for (const t of allTasks) {
+      if (!m.has(t.lead_id)) m.set(t.lead_id, []);
+      m.get(t.lead_id)!.push(t);
+    }
+    return m;
+  }, [allTasks]);
 
   const taskCountMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -495,6 +574,37 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetLead, setSheetLead] = useState<Lead | null>(null);
   const [sheetActionType, setSheetActionType] = useState<ActionType | null>(null);
+
+  // AI draft for playbook task — opens the action sheet with task context
+  const handleGenerateTaskDraft = useCallback((task: LeadTask) => {
+    const lead = leads.find(l => l.id === task.lead_id);
+    if (!lead) return;
+    const actionTypeMap: Record<string, ActionType> = {
+      "email": "initial-outreach",
+      "call": "schedule-call",
+      "prep": "prep-brief",
+      "internal": "post-meeting",
+    };
+    setSheetLead(lead);
+    setSheetActionType(actionTypeMap[task.task_type] || "initial-outreach");
+    setSheetOpen(true);
+  }, [leads]);
+
+  const handleCompleteTask = useCallback(async (taskId: string) => {
+    const ok = await completeTask(taskId);
+    if (ok) {
+      toast({ title: "Task completed ✓" });
+      refetchTasks();
+    }
+  }, [completeTask, refetchTasks]);
+
+  const handleSkipTask = useCallback(async (taskId: string) => {
+    const ok = await skipTask(taskId);
+    if (ok) {
+      toast({ title: "Task skipped" });
+      refetchTasks();
+    }
+  }, [skipTask, refetchTasks]);
 
   const filtered = useMemo(() => {
     if (ownerFilter === "All") return leads;
@@ -620,6 +730,70 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
 
   const totalItems = overdue.length + dueThisWeek.length + unansweredLeads.length + untouched.length + goingDark.length;
 
+  // Flat list of all visible lead IDs for keyboard navigation
+  const flatLeadIds = useMemo(() => {
+    const ids: string[] = [];
+    if (openSections.overdue) overdue.forEach(i => ids.push(i.lead.id));
+    if (openSections.dueThisWeek) dueThisWeek.forEach(l => ids.push(l.id));
+    if (openSections.unanswered) unansweredLeads.forEach(l => ids.push(l.id));
+    if (openSections.untouched) untouched.forEach(i => ids.push(i.lead.id));
+    if (openSections.goingDark) goingDark.forEach(i => ids.push(i.lead.id));
+    return ids;
+  }, [overdue, dueThisWeek, unansweredLeads, untouched, goingDark, openSections]);
+
+  // Keyboard shortcuts: j/k navigation, Enter to open action sheet, Escape to close
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (sheetOpen) {
+        if (e.key === "Escape") { setSheetOpen(false); e.preventDefault(); }
+        return;
+      }
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT") return;
+
+      if (e.key === "j" || e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveRowIndex(prev => Math.min(prev + 1, flatLeadIds.length - 1));
+      } else if (e.key === "k" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveRowIndex(prev => Math.max(prev - 1, 0));
+      } else if (e.key === "Enter" && activeRowIndex >= 0 && activeRowIndex < flatLeadIds.length) {
+        e.preventDefault();
+        onSelectLead(flatLeadIds[activeRowIndex]);
+      } else if (e.key === "Escape") {
+        setActiveRowIndex(-1);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [sheetOpen, flatLeadIds, activeRowIndex, onSelectLead]);
+
+  // Scroll active row into view
+  useEffect(() => {
+    if (activeRowIndex >= 0) {
+      const el = rowRefs.current.get(activeRowIndex);
+      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [activeRowIndex]);
+
+  // Helper to build common row props
+  let rowIndex = 0;
+  const rowProps = (lead: Lead, label: string, labelStyle: string, isUnanswered: boolean) => {
+    const idx = rowIndex++;
+    return {
+      lead, label, labelStyle, onSelect: onSelectLead,
+      emailCount: emailCounts.get(lead.id) || 0,
+      onUpdate: handleUpdate, isUnanswered, onAction: handleAction,
+      taskCount: taskCountMap.get(lead.id),
+      tasks: tasksByLead.get(lead.id),
+      onCompleteTask: handleCompleteTask,
+      onSkipTask: handleSkipTask,
+      onGenerateTaskDraft: handleGenerateTaskDraft,
+      isActive: activeRowIndex === idx,
+      rowRef: { current: null } as React.RefObject<HTMLDivElement>,
+    };
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 flex-wrap text-[11px] text-muted-foreground">
@@ -631,7 +805,10 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
         {goingDark.length > 0 && <span className="tabular-nums"><span className="text-amber-600 dark:text-amber-400 font-medium">{goingDark.length}</span> Going Dark</span>}
       </div>
 
-      <SortBar sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+      <div className="flex items-center justify-between">
+        <SortBar sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+        <span className="text-[9px] text-muted-foreground hidden md:inline">j/k to navigate · Enter to open</span>
+      </div>
 
       <div className="border border-border rounded-md overflow-hidden">
         {/* Overdue */}
@@ -666,7 +843,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
           </div>
         )}
         {openSections.overdue && overdue.map(({ lead, daysOverdue }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={daysOverdue === 0 ? "Due today" : `${daysOverdue}d overdue`} labelStyle={daysOverdue === 0 ? "bg-foreground text-background" : "bg-red-500/10 text-red-600 dark:text-red-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} />
+          <FollowUpRow key={lead.id} lead={lead} label={daysOverdue === 0 ? "Due today" : `${daysOverdue}d overdue`} labelStyle={daysOverdue === 0 ? "bg-foreground text-background" : "bg-red-500/10 text-red-600 dark:text-red-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} tasks={tasksByLead.get(lead.id)} onCompleteTask={handleCompleteTask} onSkipTask={handleSkipTask} onGenerateTaskDraft={handleGenerateTaskDraft} />
         ))}
 
         {/* Due This Week */}
@@ -674,25 +851,25 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
         {openSections.dueThisWeek && dueThisWeek.map(lead => {
           const dueDate = parseISO(lead.nextFollowUp);
           const label = isToday(dueDate) ? "Today" : format(dueDate, "EEE, MMM d");
-          return <FollowUpRow key={lead.id} lead={lead} label={label} labelStyle={isToday(dueDate) ? "bg-foreground text-background" : "bg-blue-500/10 text-blue-600 dark:text-blue-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} />;
+          return <FollowUpRow key={lead.id} lead={lead} label={label} labelStyle={isToday(dueDate) ? "bg-foreground text-background" : "bg-blue-500/10 text-blue-600 dark:text-blue-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} tasks={tasksByLead.get(lead.id)} onCompleteTask={handleCompleteTask} onSkipTask={handleSkipTask} onGenerateTaskDraft={handleGenerateTaskDraft} />;
         })}
 
         {/* Unanswered Inbound */}
         <SectionHeader title="Unanswered Inbound" count={unansweredLeads.length} dotColor="bg-purple-500" open={openSections.unanswered} onToggle={() => toggleSection("unanswered")} />
         {openSections.unanswered && unansweredLeads.map(lead => (
-          <FollowUpRow key={lead.id} lead={lead} label="Awaiting reply" labelStyle="bg-purple-500/10 text-purple-600 dark:text-purple-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={true} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} />
+          <FollowUpRow key={lead.id} lead={lead} label="Awaiting reply" labelStyle="bg-purple-500/10 text-purple-600 dark:text-purple-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={true} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} tasks={tasksByLead.get(lead.id)} onCompleteTask={handleCompleteTask} onSkipTask={handleSkipTask} onGenerateTaskDraft={handleGenerateTaskDraft} />
         ))}
 
         {/* Untouched */}
         <SectionHeader title="Untouched New Leads" count={untouched.length} dotColor="bg-emerald-500" open={openSections.untouched} onToggle={() => toggleSection("untouched")} />
         {openSections.untouched && untouched.map(({ lead, daysOld }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={`${daysOld}d old`} labelStyle="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} />
+          <FollowUpRow key={lead.id} lead={lead} label={`${daysOld}d old`} labelStyle="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} tasks={tasksByLead.get(lead.id)} onCompleteTask={handleCompleteTask} onSkipTask={handleSkipTask} onGenerateTaskDraft={handleGenerateTaskDraft} />
         ))}
 
         {/* Going Dark */}
         <SectionHeader title="Going Dark" count={goingDark.length} dotColor="bg-amber-500" open={openSections.goingDark} onToggle={() => toggleSection("goingDark")} />
         {openSections.goingDark && goingDark.map(({ lead, daysSilent }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={`Silent ${daysSilent}d`} labelStyle="bg-amber-500/10 text-amber-600 dark:text-amber-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} />
+          <FollowUpRow key={lead.id} lead={lead} label={`Silent ${daysSilent}d`} labelStyle="bg-amber-500/10 text-amber-600 dark:text-amber-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} tasks={tasksByLead.get(lead.id)} onCompleteTask={handleCompleteTask} onSkipTask={handleSkipTask} onGenerateTaskDraft={handleGenerateTaskDraft} />
         ))}
 
         {totalItems === 0 && (
