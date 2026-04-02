@@ -236,6 +236,24 @@ CRITICAL RULES:
                   competitorTools: { type: "string", description: "Other sourcing services/platforms/advisors they may use." },
                   keyInsights: { type: "string", description: "5-7 bullet points of the most important intelligence for this deal. Each on new line starting with •. Mix external research with form/notes context. These are the 'if you read nothing else, read this' insights." },
                   dataSources: { type: "string", description: "List each data source actually used with URLs where applicable." },
+                  openingHook: {
+                    type: "string",
+                    description: "A personalized opening sentence the rep can say in the first 30 seconds of a call or meeting. Reference something specific about their company, recent news, or situation from the research. Write it as a direct quote they can use verbatim.",
+                  },
+                  discoveryQuestions: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "3-5 strategic discovery questions to ask in a first meeting with this prospect. Specific to their company/situation — not generic. Written as direct quotes.",
+                  },
+                  valueAngle: {
+                    type: "string",
+                    description: "How to position our M&A deal origination service for THIS specific prospect. What's our unique value proposition given their situation, industry, and acquisition strategy?",
+                  },
+                  watchOuts: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "2-3 things to be careful about or avoid based on research. Potential sensitivities, competitive landmines, or topics that could derail a conversation.",
+                  },
                   suggestedUpdates: {
                     type: "object",
                     description: "Suggested CRM field updates based on evidence. Only include fields where evidence supports a change from current values.",
@@ -288,6 +306,7 @@ CRITICAL RULES:
                   "companyDossier", "prospectProfile", "preMeetingAmmo", "competitivePositioning",
                   "companyDescription", "acquisitionCriteria", "buyerMotivation",
                   "urgency", "decisionMakers", "competitorTools", "keyInsights", "dataSources",
+                  "openingHook", "discoveryQuestions", "valueAngle", "watchOuts",
                 ],
                 additionalProperties: false,
               },

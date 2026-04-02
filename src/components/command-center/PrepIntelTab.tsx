@@ -38,6 +38,11 @@ interface PrepBrief {
   questionsToAsk?: string[];
   risksToWatch?: string[];
   desiredOutcomes?: string[];
+  openingHook?: string;
+  theOneInsight?: string;
+  landmines?: string[];
+  keyQuestions?: string[];
+  meetingGoal?: string;
 }
 
 function BriefSection({ title, icon: Icon, iconColor, children, defaultOpen = true }: { title: string; icon: typeof Target; iconColor: string; children: React.ReactNode; defaultOpen?: boolean }) {
@@ -373,6 +378,7 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
   const [generatingPrep, setGeneratingPrep] = useState(false);
   const [enrichmentUpdated, setEnrichmentUpdated] = useState(false);
   const [deepIntelOpen, setDeepIntelOpen] = useState(false);
+  const [briefBattleCard, setBriefBattleCard] = useState<Partial<PrepBrief>>({});
   const enrichment = lead.enrichment;
   const di = lead.dealIntelligence;
   const latestMeeting = lead.meetings?.length > 0 ? lead.meetings[lead.meetings.length - 1] : null;
@@ -442,15 +448,22 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
       const { data, error } = await supabase.functions.invoke(fnName, { body });
       if (error) throw error;
       if (data?.brief) {
+        setBriefBattleCard({
+          openingHook: data.brief.openingHook,
+          theOneInsight: data.brief.theOneInsight,
+          landmines: data.brief.landmines,
+          keyQuestions: data.brief.keyQuestions,
+          meetingGoal: data.brief.meetingGoal,
+        });
         onBriefGenerated(lead.id, lead.name, data.brief);
-        toast({ title: "Prep brief ready", description: `Intelligence generated for ${lead.name}` });
+        toast({ title: "Prep brief ready", description: `Battle card generated for ${lead.name}` });
       } else if (!hasMeetings && data?.enrichment) {
         await supabase.from("leads").update({
           enrichment: data.enrichment,
           enrichment_status: "complete",
         }).eq("id", lead.id);
         setEnrichmentUpdated(true);
-        toast({ title: "Prospect researched", description: `Research saved for ${lead.name}` });
+        toast({ title: "Prospect researched", description: `Battle card saved for ${lead.name}` });
       } else if (data?.error) {
         toast({ title: "Could not generate brief", description: data.error, variant: "destructive" });
       }
@@ -510,110 +523,153 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
         </div>
       </div>
 
-      {/* ─── ZONE 1: PREPARE + ACTIONS ─── */}
-      {(hasPrepItems || latestMeeting) && (
-        <div className="border-t border-border bg-secondary/20 px-4 py-3">
-          <div className="flex gap-4">
-            {/* Left: Prep checklist */}
-            <div className="flex-1 min-w-0 space-y-1.5">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Zap className="h-3 w-3 text-amber-500" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-foreground">Prepare</span>
+      {/* ─── ZONE 1: BATTLE CARD + ACTIONS ─── */}
+      <div className="border-t border-border bg-secondary/20 px-4 py-3">
+        <div className="flex gap-4">
+          {/* Left: Battle card content */}
+          <div className="flex-1 min-w-0 space-y-2.5">
+            {/* Battle card fields from AI (meeting prep or enrichment) */}
+            {(briefBattleCard.openingHook || enrichment?.openingHook) ? (
+              <>
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Target className="h-3 w-3 text-emerald-500" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Opening</span>
+                  </div>
+                  <p className="text-[11px] text-foreground italic leading-relaxed">
+                    "{(briefBattleCard.openingHook || enrichment?.openingHook) as string}"
+                  </p>
+                </div>
+
+                {(briefBattleCard.theOneInsight || enrichment?.valueAngle) && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <Lightbulb className="h-3 w-3 text-amber-500" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                        {briefBattleCard.theOneInsight ? "#1 Insight" : "Value Angle"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      {(briefBattleCard.theOneInsight || enrichment?.valueAngle) as string}
+                    </p>
+                  </div>
+                )}
+
+                {briefBattleCard.meetingGoal && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <Crown className="h-3 w-3 text-primary" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Goal</span>
+                    </div>
+                    <p className="text-[11px] font-medium text-foreground">{briefBattleCard.meetingGoal}</p>
+                  </div>
+                )}
+
+                {((briefBattleCard.landmines && briefBattleCard.landmines.length > 0) || (enrichment?.watchOuts && (enrichment.watchOuts as string[]).length > 0)) && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <AlertTriangle className="h-3 w-3 text-red-500" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">Don't Mention</span>
+                    </div>
+                    <ul className="space-y-0.5">
+                      {(briefBattleCard.landmines || (enrichment?.watchOuts as string[]) || []).map((item: string, i: number) => (
+                        <li key={i} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+                          <span className="text-red-500 shrink-0">⚠</span>{item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {((briefBattleCard.keyQuestions && briefBattleCard.keyQuestions.length > 0) || (enrichment?.discoveryQuestions && (enrichment.discoveryQuestions as string[]).length > 0)) && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <Brain className="h-3 w-3 text-purple-500" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">Ask</span>
+                    </div>
+                    <ol className="space-y-0.5">
+                      {(briefBattleCard.keyQuestions || (enrichment?.discoveryQuestions as string[]) || []).slice(0, 5).map((q: string, i: number) => (
+                        <li key={i} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+                          <span className="text-purple-500 font-semibold shrink-0">{i + 1}.</span>
+                          <span>"{q}"</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </>
+            ) : hasPrepItems ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Zap className="h-3 w-3 text-amber-500" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-foreground">Prepare</span>
+                </div>
+                {openObjections.slice(0, 3).map((o, i) => (
+                  <div key={`obj-${i}`} className="flex items-start gap-1.5 text-[11px]">
+                    <MessageSquare className="h-3 w-3 text-amber-500 shrink-0 mt-0.5" />
+                    <span className="text-muted-foreground"><span className="font-medium text-foreground">Objection:</span> "{o.objection}"</span>
+                  </div>
+                ))}
+                {weOwe.slice(0, 3).map((a, i) => (
+                  <div key={`we-${i}`} className="flex items-start gap-1.5 text-[11px]">
+                    <AlertTriangle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />
+                    <span className="text-muted-foreground"><span className="font-medium text-foreground">We owe:</span> {a.item}</span>
+                  </div>
+                ))}
+                {theyOwe.slice(0, 2).map((a, i) => (
+                  <div key={`they-${i}`} className="flex items-start gap-1.5 text-[11px]">
+                    <Target className="h-3 w-3 text-blue-500 shrink-0 mt-0.5" />
+                    <span className="text-muted-foreground"><span className="font-medium text-foreground">They owe:</span> {a.item}</span>
+                  </div>
+                ))}
+                {risks.slice(0, 2).map((r, i) => (
+                  <div key={`risk-${i}`} className="flex items-start gap-1.5 text-[11px]">
+                    <Shield className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />
+                    <span className="text-muted-foreground"><span className="font-medium text-foreground">Risk:</span> {r.risk}</span>
+                  </div>
+                ))}
               </div>
-
-              {openObjections.slice(0, 3).map((o, i) => (
-                <div key={`obj-${i}`} className="flex items-start gap-1.5 text-[11px]">
-                  <MessageSquare className="h-3 w-3 text-amber-500 shrink-0 mt-0.5" />
-                  <span className="text-muted-foreground truncate"><span className="font-medium text-foreground">Objection:</span> "{o.objection}"</span>
-                </div>
-              ))}
-              {weOwe.slice(0, 3).map((a, i) => (
-                <div key={`we-${i}`} className="flex items-start gap-1.5 text-[11px]">
-                  <AlertTriangle className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />
-                  <span className="text-muted-foreground truncate"><span className="font-medium text-foreground">We owe:</span> {a.item}</span>
-                </div>
-              ))}
-              {theyOwe.slice(0, 2).map((a, i) => (
-                <div key={`they-${i}`} className="flex items-start gap-1.5 text-[11px]">
-                  <Target className="h-3 w-3 text-blue-500 shrink-0 mt-0.5" />
-                  <span className="text-muted-foreground truncate"><span className="font-medium text-foreground">They owe:</span> {a.item}</span>
-                </div>
-              ))}
-              {risks.slice(0, 2).map((r, i) => (
-                <div key={`risk-${i}`} className="flex items-start gap-1.5 text-[11px]">
-                  <Shield className="h-3 w-3 text-red-500 shrink-0 mt-0.5" />
-                  <span className="text-muted-foreground truncate"><span className="font-medium text-foreground">Risk:</span> {r.risk}</span>
-                </div>
-              ))}
-
-              {/* Last meeting snippet if no prep items */}
-              {!hasPrepItems && latestMeeting && (() => {
+            ) : latestMeeting ? (
+              (() => {
                 const summary = (latestMeeting as any)?.intelligence?.summary || latestMeeting?.summary;
                 return summary ? (
-                  <p className="text-[10px] text-muted-foreground line-clamp-2 italic mt-1">
+                  <p className="text-[10px] text-muted-foreground line-clamp-2 italic">
                     <span className="font-medium text-foreground not-italic">Last meeting: </span>{summary}
                   </p>
-                ) : null;
-              })()}
-            </div>
-
-            {/* Right: Action buttons */}
-            <div className="flex flex-col gap-1.5 shrink-0 w-[140px]">
-              <button
-                onClick={handleGeneratePrep}
-                disabled={generatingPrep}
-                className="text-[11px] py-1.5 px-2.5 rounded-md border border-border bg-background text-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-1.5 font-medium"
-              >
-                {generatingPrep ? <Loader2 className="h-3 w-3 animate-spin" /> : meetingCount > 0 ? <Zap className="h-3 w-3" /> : enrichmentUpdated ? <Zap className="h-3 w-3 text-emerald-500" /> : <Target className="h-3 w-3" />}
-                {generatingPrep ? "Working..." : meetingCount > 0 ? (hasIntel ? "Regen Brief" : "Prep Brief") : enrichmentUpdated ? "✓ Enriched" : "Research"}
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDraftEmail(lead); }}
-                className="text-[11px] py-1.5 px-2.5 rounded-md border border-border bg-background text-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-1.5 font-medium"
-              >
-                <Send className="h-3 w-3" />
-                {meetingCount > 0 ? "Draft Follow-Up" : "Draft Email"}
-              </button>
-              <a
-                href={`/deal/${lead.id}`}
-                onClick={(e) => e.stopPropagation()}
-                className="text-[11px] py-1.5 px-2.5 rounded-md border border-border bg-background text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-1.5"
-              >
-                Deal Room →
-              </a>
-            </div>
+                ) : <p className="text-[11px] text-muted-foreground italic">Click Prep Brief to generate your battle card</p>;
+              })()
+            ) : (
+              <p className="text-[11px] text-muted-foreground italic">No intel yet — click Research to generate a battle card</p>
+            )}
           </div>
-        </div>
-      )}
 
-      {/* For 0-meeting leads with no prep items — show actions prominently */}
-      {!hasPrepItems && !latestMeeting && (
-        <div className="border-t border-border px-4 py-3">
-          <div className="flex gap-2">
+          {/* Right: Action buttons */}
+          <div className="flex flex-col gap-1.5 shrink-0 w-[140px]">
             <button
               onClick={handleGeneratePrep}
               disabled={generatingPrep}
-              className="flex-1 text-xs py-2 rounded-md bg-foreground text-background font-medium hover:bg-foreground/90 transition-colors flex items-center justify-center gap-2"
+              className="text-[11px] py-1.5 px-2.5 rounded-md border border-border bg-background text-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-1.5 font-medium"
             >
-              {generatingPrep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : enrichmentUpdated ? <Zap className="h-3.5 w-3.5 text-emerald-500" /> : <Target className="h-3.5 w-3.5" />}
-              {generatingPrep ? "Researching..." : enrichmentUpdated ? "✓ Enriched — Refresh to View" : "Research Prospect"}
+              {generatingPrep ? <Loader2 className="h-3 w-3 animate-spin" /> : meetingCount > 0 ? <Zap className="h-3 w-3" /> : enrichmentUpdated ? <Zap className="h-3 w-3 text-emerald-500" /> : <Target className="h-3 w-3" />}
+              {generatingPrep ? "Working..." : meetingCount > 0 ? (hasIntel ? "Regen Brief" : "Prep Brief") : enrichmentUpdated ? "✓ Enriched" : "Research"}
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); onDraftEmail(lead); }}
-              className="text-xs px-3 py-2 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+              className="text-[11px] py-1.5 px-2.5 rounded-md border border-border bg-background text-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-1.5 font-medium"
             >
-              <Send className="h-3.5 w-3.5" />Draft Email
+              <Send className="h-3 w-3" />
+              {meetingCount > 0 ? "Draft Follow-Up" : "Draft Email"}
             </button>
             <a
-              href={`/deal/${lead.id}`}
+              href={`/deal-room/${lead.id}`}
               onClick={(e) => e.stopPropagation()}
-              className="text-xs px-3 py-2 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+              className="text-[11px] py-1.5 px-2.5 rounded-md border border-border bg-background text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-1.5"
             >
               Deal Room →
             </a>
           </div>
         </div>
-      )}
+      </div>
 
       {/* ─── ZONE 2: CONTEXT ─── */}
       {hasContext && (

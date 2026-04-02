@@ -101,11 +101,34 @@ const PREP_TOOL = {
           items: { type: "string" },
           description: "What specific outcomes should we aim to achieve in this meeting?",
         },
+        openingHook: {
+          type: "string",
+          description: "A personalized opening sentence the rep can say in the first 30 seconds. Reference something specific about the prospect's company, recent news, or situation. Write it as a direct quote they can use verbatim. Example: 'Cody, I saw Dillard Door just partnered with Shore Capital — curious how that's changing your approach to growth.'",
+        },
+        theOneInsight: {
+          type: "string",
+          description: "The single most important thing to know walking into this meeting. One sentence that changes how the rep approaches the call. This is the 'if you read nothing else' insight.",
+        },
+        landmines: {
+          type: "array",
+          items: { type: "string" },
+          description: "2-3 things to absolutely NOT say or topics to avoid in this meeting. These are deal-killers based on what you know about the prospect, their objections, sensitivities, or competitive situation.",
+        },
+        keyQuestions: {
+          type: "array",
+          items: { type: "string" },
+          description: "3-5 strategic questions ranked by importance that unlock the next stage. These should be specific to this deal — not generic discovery questions. Write them as direct quotes the rep can ask verbatim.",
+        },
+        meetingGoal: {
+          type: "string",
+          description: "The specific outcome to achieve in this meeting. Be concrete: 'Get verbal agreement to proceed to LOI review' not 'Advance the deal'. What does winning this meeting look like?",
+        },
       },
       required: [
         "executiveSummary", "openActionItemsWeOwe", "openActionItemsTheyOwe",
         "unresolvedObjections", "stakeholderBriefing", "competitiveThreats",
         "talkingPoints", "questionsToAsk", "risksToWatch", "desiredOutcomes",
+        "openingHook", "theOneInsight", "landmines", "keyQuestions", "meetingGoal",
       ],
       additionalProperties: false,
     },
