@@ -76,17 +76,26 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   }, [activeDeals, filtered, now]);
 
   const sortedDeals = useMemo(() => {
-    return activeDeals
-      .map(l => {
-        const days = computeDaysInStage(l.stageEnteredDate);
-        const momentum = l.dealIntelligence?.momentumSignals?.momentum || "";
-        const dealTemp = l.dealIntelligence?.winStrategy?.dealTemperature || "";
-        const closingWindow = l.dealIntelligence?.winStrategy?.closingWindow || "";
-        const riskScore = (days > 14 ? 100 : days > 7 ? 50 : 0) + (momentum === "Stalled" ? 80 : momentum === "Stalling" ? 40 : 0);
-        return { lead: l, days, momentum, dealTemp, closingWindow, riskScore };
-      })
-      .sort((a, b) => b.riskScore - a.riskScore);
-  }, [activeDeals]);
+    const mapped = activeDeals.map(l => {
+      const days = computeDaysInStage(l.stageEnteredDate);
+      const momentum = l.dealIntelligence?.momentumSignals?.momentum || "";
+      const dealTemp = l.dealIntelligence?.winStrategy?.dealTemperature || "";
+      const closingWindow = l.dealIntelligence?.winStrategy?.closingWindow || "";
+      const riskScore = (days > 14 ? 100 : days > 7 ? 50 : 0) + (momentum === "Stalled" ? 80 : momentum === "Stalling" ? 40 : 0);
+      return { lead: l, days, momentum, dealTemp, closingWindow, riskScore };
+    });
+    const sorted = [...mapped].sort((a, b) => {
+      let cmp = 0;
+      switch (momentumSort) {
+        case "risk": cmp = a.riskScore - b.riskScore; break;
+        case "value": cmp = (a.lead.dealValue || 0) - (b.lead.dealValue || 0); break;
+        case "days": cmp = a.days - b.days; break;
+        case "name": cmp = a.lead.name.localeCompare(b.lead.name); break;
+      }
+      return momentumSortDir === "desc" ? -cmp : cmp;
+    });
+    return sorted;
+  }, [activeDeals, momentumSort, momentumSortDir]);
 
   // Pipeline velocity by stage
   const velocity = useMemo(() => {
