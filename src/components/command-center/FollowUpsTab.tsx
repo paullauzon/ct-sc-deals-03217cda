@@ -242,8 +242,6 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   useEffect(() => {
     const ids = active.map(l => l.id);
     if (ids.length === 0) { setEmailCounts(new Map()); return; }
-    supabase.rpc("", {}).then(() => {}); // no-op placeholder
-    // Use a raw query approach via select + grouping client-side
     supabase
       .from("lead_emails")
       .select("lead_id")
