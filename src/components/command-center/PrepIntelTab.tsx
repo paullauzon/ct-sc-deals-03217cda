@@ -4,6 +4,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight, Send, CheckCircle2, SkipForward, ListChecks } from "lucide-react";
 import { format, parseISO, differenceInDays, isBefore } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { useLeads } from "@/contexts/LeadContext";
 import { toast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { useLeadTasks } from "@/hooks/useLeadTasks";
@@ -201,6 +202,7 @@ function PrepBriefSheet({ open, onClose, brief, leadName }: { open: boolean; onC
 }
 
 export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon = 7 }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void; meetingHorizon?: number }) {
+  const { updateLead } = useLeads();
   const now = new Date();
   const [emailCounts, setEmailCounts] = useState<Map<string, number>>(new Map());
   const [briefData, setBriefData] = useState<{ leadId: string; leadName: string; brief: PrepBrief } | null>(null);
@@ -282,7 +284,7 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
       <p className="text-xs text-muted-foreground">{upcomingMeetings.length} meeting{upcomingMeetings.length !== 1 ? "s" : ""} in the next {meetingHorizon} days</p>
 
       {upcomingMeetings.map(lead => (
-        <IntelCard key={lead.id} lead={lead} onSelect={() => onSelectLead(lead.id)} emailCount={emailCounts.get(lead.id) || 0} onBriefGenerated={handleBriefGenerated} onDraftEmail={handleDraftEmail} />
+        <IntelCard key={lead.id} lead={lead} onSelect={() => onSelectLead(lead.id)} emailCount={emailCounts.get(lead.id) || 0} onBriefGenerated={handleBriefGenerated} onDraftEmail={handleDraftEmail} onUpdateLead={updateLead} />
       ))}
 
       {/* Playbook Tasks for upcoming meetings */}
