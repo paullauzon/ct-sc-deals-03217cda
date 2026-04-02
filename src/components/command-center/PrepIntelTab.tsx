@@ -599,7 +599,6 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
                 )}
               </>
             ) : hasPrepItems ? (
-              /* Fallback: Prepare checklist */}
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 mb-1">
                   <Zap className="h-3 w-3 text-amber-500" />
