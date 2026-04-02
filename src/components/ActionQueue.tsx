@@ -7,7 +7,6 @@ import { ScheduleTab } from "@/components/command-center/ScheduleTab";
 import { FollowUpsTab } from "@/components/command-center/FollowUpsTab";
 import { DealPulseTab } from "@/components/command-center/DealPulseTab";
 import { PrepIntelTab } from "@/components/command-center/PrepIntelTab";
-import { buildActionItems } from "@/components/command-center/ScheduleTab";
 import { isBefore, parseISO, differenceInDays } from "date-fns";
 
 const OWNERS = ["All", "Malik", "Valeria", "Tomos", "Unassigned"] as const;
