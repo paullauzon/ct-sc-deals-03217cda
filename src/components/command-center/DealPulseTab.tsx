@@ -43,8 +43,12 @@ function daysInStageColor(days: number): string {
   return "text-red-600 dark:text-red-400";
 }
 
+type MomentumSort = "risk" | "value" | "days" | "name";
+
 export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void }) {
   const now = new Date();
+  const [momentumSort, setMomentumSort] = useState<MomentumSort>("risk");
+  const [momentumSortDir, setMomentumSortDir] = useState<"asc" | "desc">("desc");
 
   const filtered = useMemo(() => {
     if (ownerFilter === "All") return leads;
