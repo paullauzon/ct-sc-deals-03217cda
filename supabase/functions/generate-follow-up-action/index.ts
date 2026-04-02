@@ -14,7 +14,12 @@ BANNED PHRASES (never use any of these — if you catch yourself writing one, de
 "Let me know if you have any questions", "Happy to discuss further", "Quick question",
 "I noticed that", "It was great to", "Thank you for your time", "I hope you're doing well",
 "I hope you had a great weekend", "Just wanted to", "Reach out", "Touch base",
-"Best regards", "Kind regards", "Warm regards", "Looking forward to hearing from you"`;
+"Best regards", "Kind regards", "Warm regards", "Looking forward to hearing from you",
+"leveraging", "synergies", "alignment", "opportunities", "solutions", "offerings",
+"capabilities", "value proposition", "strategic fit", "growth trajectory",
+"aggressive acquisitions", "primes you for", "positions you to",
+"our pipeline includes", "our team can", "our services", "our platform",
+"discuss how we can", "explore ways", "mutually beneficial"`;
 
 type ActionType = "post-meeting" | "initial-outreach" | "meeting-nudge" | "proposal-followup" | "re-engagement" | "reply-inbound" | "schedule-call" | "prep-brief";
 
