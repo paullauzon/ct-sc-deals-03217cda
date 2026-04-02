@@ -1014,7 +1014,11 @@ export function Dashboard() {
         <IntelligenceCenter />
       )}
 
-      {/* Drill-Down Sheet */}
+      {/* ═══════════════════ BUSINESS TAB ═══════════════════ */}
+      {activeTab === "business" && (
+        <DashboardBusiness leads={filteredLeads} onDrillDown={handleDrillDown} />
+      )}
+
       <Sheet open={!!drillDown} onOpenChange={(open) => !open && setDrillDown(null)}>
         <SheetContent className="overflow-y-auto">
           <SheetHeader>
