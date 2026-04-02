@@ -381,12 +381,15 @@ export function Pipeline() {
                             </a>
                           )}
                           {lead.calendlyBookedAt && lead.meetingDate && (
-                            <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium">
-                              <CalendarCheck className="h-3 w-3 shrink-0" />
-                              <span className="whitespace-nowrap">
-                                {lead.calendlyEventName || "Calendly"}{lead.calendlyEventDuration ? ` · ${lead.calendlyEventDuration}m` : ""} · {(() => { try { return format(new Date(lead.meetingDate), "MMM d"); } catch { return ""; } })()}
+                            <div className="flex flex-col text-[10px] text-primary font-medium">
+                              <span className="flex items-center gap-0.5">
+                                <CalendarCheck className="h-3 w-3 shrink-0" />
+                                <span className="whitespace-nowrap">{lead.calendlyEventName || "Calendly"}</span>
                               </span>
-                            </span>
+                              <span className="text-[9px] text-muted-foreground pl-3.5 whitespace-nowrap">
+                                {lead.calendlyEventDuration ? `${lead.calendlyEventDuration} min` : ""}{lead.meetingDate ? ` · ${(() => { try { return format(new Date(lead.meetingDate), "MMM d, h:mm a"); } catch { return ""; } })()}` : ""}
+                              </span>
+                            </div>
                           )}
                           {lead.meetings?.length > 0 && (
                             <div className="flex items-center gap-1">
