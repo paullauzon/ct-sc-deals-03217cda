@@ -555,7 +555,7 @@ function SignalToCloseMatrix({ leads, onDrillDown }: { leads: Lead[]; onDrillDow
 
   if (!matrix) return null;
 
-  const renderTable = (title: string, rows: typeof matrix.intentRows) => (
+  const renderTable = (title: string, rows: { signal: string; meetings: number; leads: number; won: number; lost: number; conv: number | null; drillLeads: Lead[] }[]) => (
     <div className="border border-border rounded-lg overflow-hidden">
       <div className="px-4 py-2 bg-secondary/20">
         <span className="text-xs font-medium">{title}</span>

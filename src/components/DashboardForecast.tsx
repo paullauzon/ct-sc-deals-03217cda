@@ -320,6 +320,112 @@ export function DashboardForecast({ leads, onDrillDown }: Props) {
   );
 }
 
+// ── Objection & Competitor Heatmap ──
+function ObjectionCompetitorHeatmap({ leads }: { leads: Lead[] }) {
+  const data = useMemo(() => {
+    const objectionMap: Record<string, { count: number; stages: Set<string>; brands: Set<string> }> = {};
+    const competitorMap: Record<string, number> = {};
+
+    for (const lead of leads) {
+      for (const m of lead.meetings || []) {
+        if (!m.intelligence?.dealSignals) continue;
+        const ds = m.intelligence.dealSignals;
+
+        for (const obj of ds.objections || []) {
+          if (!obj || obj.length < 3) continue;
+          const normalized = obj.length > 60 ? obj.slice(0, 60) + "…" : obj;
+          if (!objectionMap[normalized]) objectionMap[normalized] = { count: 0, stages: new Set(), brands: new Set() };
+          objectionMap[normalized].count++;
+          objectionMap[normalized].stages.add(lead.stage);
+          objectionMap[normalized].brands.add(lead.brand);
+        }
+
+        for (const comp of ds.competitors || []) {
+          if (!comp || comp.length < 2) continue;
+          competitorMap[comp] = (competitorMap[comp] || 0) + 1;
+        }
+
+        for (const cd of ds.competitorDetails || []) {
+          if (cd.name && !competitorMap[cd.name]) competitorMap[cd.name] = 0;
+          if (cd.name) competitorMap[cd.name]++;
+        }
+      }
+    }
+
+    const objections = Object.entries(objectionMap)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 8)
+      .map(([obj, d]) => ({
+        objection: obj,
+        count: d.count,
+        stages: Array.from(d.stages).slice(0, 3).join(", "),
+        brands: Array.from(d.brands).join(", "),
+      }));
+
+    const competitors = Object.entries(competitorMap)
+      .filter(([, c]) => c > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([name, count]) => ({ name, count }));
+
+    return { objections, competitors };
+  }, [leads]);
+
+  if (data.objections.length === 0 && data.competitors.length === 0) return null;
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {data.objections.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-orange-500" />
+              <CardTitle className="text-sm font-medium">Top Objections (from transcripts)</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {data.objections.map((o, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs">
+                  <span className="text-muted-foreground w-4 shrink-0 pt-0.5">{i + 1}.</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between gap-2">
+                      <span className="truncate">{o.objection}</span>
+                      <span className="font-medium tabular-nums shrink-0">{o.count}×</span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">{o.brands} · {o.stages}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {data.competitors.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Competitor Mentions</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {data.competitors.map(c => (
+                <Badge key={c.name} variant="secondary" className="text-xs gap-1.5">
+                  {c.name}
+                  <span className="text-[10px] font-semibold tabular-nums opacity-70">{c.count}</span>
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ── Win/Loss Analysis ──
 function WinLossAnalysis({ leads }: { leads: Lead[] }) {
   const analysis = useMemo(() => {
