@@ -32,7 +32,8 @@ function getActionType(lead: Lead, isUnanswered: boolean): { type: ActionType; l
   if (lead.stage === "Contacted" && !lead.calendlyBookedAt) return { type: "meeting-nudge", label: "Nudge Meeting", icon: Phone };
   if (lead.stage === "Meeting Set") return { type: "initial-outreach", label: "Pre-Meeting Email", icon: Send };
   if (lead.stage === "Meeting Held") {
-    const openItems = lead.dealIntelligence?.actionItemTracker?.openItems;
+    const tracker = lead.dealIntelligence?.actionItemTracker;
+    const openItems = tracker && typeof tracker === 'object' && 'openItems' in tracker ? (tracker as any).openItems : null;
     if (openItems && Array.isArray(openItems) && openItems.length > 0) return { type: "post-meeting", label: "Complete Actions", icon: Zap };
     if (lead.dealValue > 0) return { type: "post-meeting", label: "Send Proposal", icon: FileText };
     return { type: "post-meeting", label: "Follow Up", icon: Send };
