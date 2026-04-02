@@ -75,10 +75,12 @@ TASK: Draft a post-meeting follow-up email.
       return `${base}
 
 TASK: Draft an initial outreach email to a prospect who has NOT been contacted yet.
-- First sentence: lead with a SPECIFIC insight from their enrichment data — a deal they did, a market shift in their sector, a portfolio gap. Not "I noticed your company is growing."
-- Second sentence: one line of value — what you bring that's specific to their situation.
-- Third sentence: ONE CTA — suggest a specific time frame.
-- That's it. Three sentences. Maybe four if the insight needs a sentence of context.`;
+- First sentence: state a SPECIFIC fact — a deal count, a market data point, a target you're tracking. Not about THEM, about what YOU have that's relevant to them.
+- Second sentence: connect it to their situation in ONE line. Be specific — name EBITDA ranges, geographies, sectors, company count.
+- Third sentence: ONE CTA with a specific deliverable. Not "let's discuss" but "I'll send profiles Thursday" or "15 min to compare target lists."
+- That's it. Three sentences. Maybe four if the data needs a sentence of context.
+- NEVER tell them what their own fund/strategy/portfolio means. They know.
+- NEVER say "our pipeline includes" or "our team has identified." Say "tracking 3 targets" or "2 off-market companies match."`;
 
     case "meeting-nudge":
       return `${base}
