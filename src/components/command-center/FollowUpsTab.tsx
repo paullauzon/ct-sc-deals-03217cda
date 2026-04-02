@@ -107,9 +107,55 @@ function getRecommendation(lead: Lead): string | null {
   return null;
 }
 
+// ─── Inline Task Checklist ───
+function TaskChecklist({ tasks, onComplete, onSkip, onGenerateDraft }: {
+  tasks: LeadTask[];
+  onComplete: (id: string) => void;
+  onSkip: (id: string) => void;
+  onGenerateDraft: (task: LeadTask) => void;
+}) {
+  if (tasks.length === 0) return null;
+  const typeIcon = (t: string) => t === "email" ? "✉️" : t === "call" ? "📞" : t === "prep" ? "📋" : "📌";
+  return (
+    <div className="pl-6 pr-4 pb-2 space-y-1 bg-secondary/10">
+      {tasks.map(task => (
+        <div key={task.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-secondary/30 transition-colors group/task">
+          <span className="text-xs">{typeIcon(task.task_type)}</span>
+          <div className="flex-1 min-w-0">
+            <span className="text-[11px] font-medium truncate block">{task.title}</span>
+            <span className="text-[9px] text-muted-foreground">Due {task.due_date}</span>
+          </div>
+          <div className="flex items-center gap-1 opacity-0 group-hover/task:opacity-100 transition-opacity">
+            {(task.task_type === "email" || task.task_type === "call") && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onGenerateDraft(task); }}
+                className="text-[9px] px-1.5 py-0.5 rounded border border-border text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
+              >
+                AI Draft
+              </button>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); onComplete(task.id); }}
+              className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <CheckCircle2 className="h-3 w-3" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onSkip(task.id); }}
+              className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <SkipForward className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Rich row ───
 function FollowUpRow({
-  lead, label, labelStyle, onSelect, emailCount, onUpdate, isUnanswered, onAction, taskCount,
+  lead, label, labelStyle, onSelect, emailCount, onUpdate, isUnanswered, onAction, taskCount, tasks, onCompleteTask, onSkipTask, onGenerateTaskDraft, isActive, rowRef,
 }: {
   lead: Lead; label: string; labelStyle?: string; onSelect: (id: string) => void;
   emailCount: number;
@@ -117,7 +163,14 @@ function FollowUpRow({
   isUnanswered: boolean;
   onAction: (lead: Lead, actionType: ActionType) => void;
   taskCount?: number;
+  tasks?: LeadTask[];
+  onCompleteTask?: (id: string) => void;
+  onSkipTask?: (id: string) => void;
+  onGenerateTaskDraft?: (task: LeadTask) => void;
+  isActive?: boolean;
+  rowRef?: React.RefObject<HTMLDivElement>;
 }) {
+  const [tasksOpen, setTasksOpen] = useState(false);
   const meetingCount = lead.meetings?.length || 0;
   const hasCalendly = !!lead.calendlyBookedAt;
   const recommendation = getRecommendation(lead);
@@ -126,85 +179,99 @@ function FollowUpRow({
     : null;
   const action = getActionType(lead, isUnanswered);
   const ActionIcon = action.icon;
+  const hasTasks = tasks && tasks.length > 0;
 
   return (
-    <div
-      className="px-4 py-3.5 hover:bg-secondary/20 transition-all cursor-pointer group border-b border-border last:border-b-0 hover:border-l-2 hover:border-l-foreground/20 hover:pl-[14px]"
-      onClick={() => onSelect(lead.id)}
-    >
-      {/* Line 1: Identity */}
-      <div className="flex items-center gap-2 min-w-0">
-        <BrandLogo brand={lead.brand} size="xxs" />
-        <span className="text-sm font-medium truncate">{lead.name}</span>
-        <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">{lead.company}</span>
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hidden md:inline shrink-0">{lead.stage}</span>
-        {lead.assignedTo && (
-          <span className="w-4 h-4 rounded-full bg-foreground text-background flex items-center justify-center text-[9px] font-semibold shrink-0">{lead.assignedTo[0]}</span>
+    <div ref={rowRef}>
+      <div
+        className={cn(
+          "px-4 py-3.5 hover:bg-secondary/20 transition-all cursor-pointer group border-b border-border last:border-b-0 hover:border-l-2 hover:border-l-foreground/20 hover:pl-[14px]",
+          isActive && "bg-primary/5 border-l-2 border-l-primary pl-[14px]"
         )}
-        <div className="ml-auto flex items-center gap-2 shrink-0">
-          <span className={cn(
-            "text-[10px] font-medium px-2 py-0.5 rounded-full",
-            labelStyle || "bg-secondary text-muted-foreground"
-          )}>{label}</span>
+        onClick={() => onSelect(lead.id)}
+      >
+        {/* Line 1: Identity */}
+        <div className="flex items-center gap-2 min-w-0">
+          <BrandLogo brand={lead.brand} size="xxs" />
+          <span className="text-sm font-medium truncate">{lead.name}</span>
+          <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">{lead.company}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hidden md:inline shrink-0">{lead.stage}</span>
+          {lead.assignedTo && (
+            <span className="w-4 h-4 rounded-full bg-foreground text-background flex items-center justify-center text-[9px] font-semibold shrink-0">{lead.assignedTo[0]}</span>
+          )}
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            <span className={cn(
+              "text-[10px] font-medium px-2 py-0.5 rounded-full",
+              labelStyle || "bg-secondary text-muted-foreground"
+            )}>{label}</span>
+          </div>
         </div>
-      </div>
 
-      {/* Line 2: Context signals */}
-      <div className="flex items-center gap-3 mt-1.5 pl-6 min-w-0">
-        {lead.dealValue > 0 && (
-          <span className="text-[10px] text-muted-foreground tabular-nums">${lead.dealValue.toLocaleString()}</span>
-        )}
-        {lastContact && (
-          <span className="text-[10px] text-muted-foreground">Last: {lastContact}</span>
-        )}
-        {meetingCount > 0 && (
-          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-            <Mic className="h-2.5 w-2.5" />{meetingCount}
-          </span>
-        )}
-        {emailCount > 0 && (
-          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-            <Mail className="h-2.5 w-2.5" />{emailCount}
-          </span>
-        )}
-        {hasCalendly && (
-          <CalendarCheck className="h-2.5 w-2.5 text-muted-foreground" />
-        )}
-        {taskCount != null && taskCount > 0 && (
-          <span className="text-[10px] text-primary flex items-center gap-0.5 font-medium">
-            <ListChecks className="h-2.5 w-2.5" />{taskCount}
-          </span>
-        )}
-
-        {/* Action chip + snooze — always visible */}
-        <div className="ml-auto flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-          {[3, 7, 14].map(d => (
+        {/* Line 2: Context signals */}
+        <div className="flex items-center gap-3 mt-1.5 pl-6 min-w-0">
+          {lead.dealValue > 0 && (
+            <span className="text-[10px] text-muted-foreground tabular-nums">${lead.dealValue.toLocaleString()}</span>
+          )}
+          {lastContact && (
+            <span className="text-[10px] text-muted-foreground">Last: {lastContact}</span>
+          )}
+          {meetingCount > 0 && (
+            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+              <Mic className="h-2.5 w-2.5" />{meetingCount}
+            </span>
+          )}
+          {emailCount > 0 && (
+            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+              <Mail className="h-2.5 w-2.5" />{emailCount}
+            </span>
+          )}
+          {hasCalendly && (
+            <CalendarCheck className="h-2.5 w-2.5 text-muted-foreground" />
+          )}
+          {hasTasks && (
             <button
-              key={d}
-              onClick={() => {
-                const newDate = format(addDays(new Date(), d), "yyyy-MM-dd");
-                onUpdate(lead.id, { nextFollowUp: newDate });
-                toast({ title: `Snoozed ${lead.name} for ${d} days`, description: `Next follow-up: ${format(addDays(new Date(), d), "EEE, MMM d")}` });
-              }}
-              className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors opacity-0 group-hover:opacity-100"
-              title={`Snooze ${d} days`}
+              onClick={(e) => { e.stopPropagation(); setTasksOpen(!tasksOpen); }}
+              className="text-[10px] text-primary flex items-center gap-0.5 font-medium hover:underline"
             >
-              {d}d
+              <ListChecks className="h-2.5 w-2.5" />{tasks.length}
             </button>
-          ))}
-          <button
-            onClick={() => onAction(lead, action.type)}
-            className="text-[10px] px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:bg-foreground hover:text-background hover:border-foreground transition-colors flex items-center gap-1.5 font-medium"
-          >
-            <ActionIcon className="h-3 w-3" />
-            {action.label}
-          </button>
+          )}
+
+          {/* Action chip + snooze — always visible */}
+          <div className="ml-auto flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+            {[3, 7, 14].map(d => (
+              <button
+                key={d}
+                onClick={() => {
+                  const newDate = format(addDays(new Date(), d), "yyyy-MM-dd");
+                  onUpdate(lead.id, { nextFollowUp: newDate });
+                  toast({ title: `Snoozed ${lead.name} for ${d} days`, description: `Next follow-up: ${format(addDays(new Date(), d), "EEE, MMM d")}` });
+                }}
+                className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors opacity-0 group-hover:opacity-100"
+                title={`Snooze ${d} days`}
+              >
+                {d}d
+              </button>
+            ))}
+            <button
+              onClick={() => onAction(lead, action.type)}
+              className="text-[10px] px-2.5 py-1 rounded-full border border-border text-muted-foreground hover:bg-foreground hover:text-background hover:border-foreground transition-colors flex items-center gap-1.5 font-medium"
+            >
+              <ActionIcon className="h-3 w-3" />
+              {action.label}
+            </button>
+          </div>
         </div>
+
+        {/* Line 3: AI recommendation */}
+        {recommendation && (
+          <p className="text-[10px] text-muted-foreground italic pl-6 mt-1 truncate">{recommendation}</p>
+        )}
       </div>
 
-      {/* Line 3: AI recommendation */}
-      {recommendation && (
-        <p className="text-[10px] text-muted-foreground italic pl-6 mt-1 truncate">{recommendation}</p>
+      {/* Expandable task checklist */}
+      {hasTasks && tasksOpen && onCompleteTask && onSkipTask && onGenerateTaskDraft && (
+        <TaskChecklist tasks={tasks} onComplete={onCompleteTask} onSkip={onSkipTask} onGenerateDraft={onGenerateTaskDraft} />
       )}
     </div>
   );
