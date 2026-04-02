@@ -225,6 +225,18 @@ export default function DealRoom() {
           )}
 
           {/* Deal Narrative */}
+          {winLose && (
+            <div className="border-t border-border pt-3">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1"><Crown className="h-3 w-3" /> Win / Lose</p>
+              <div className="space-y-1.5 text-xs">
+                <p className="text-emerald-600 dark:text-emerald-400">✓ {winLose.win}</p>
+                <p className="text-red-600 dark:text-red-400">✗ {winLose.lose}</p>
+                <p className="font-medium text-foreground">→ {winLose.doNext}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Deal Narrative */}
           {lead.dealIntelligence?.dealNarrative && (
             <div className="border-t border-border pt-3">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Deal Narrative</p>
