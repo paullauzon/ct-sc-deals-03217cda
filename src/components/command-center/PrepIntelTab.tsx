@@ -354,15 +354,35 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated }: { lead: Lea
         )}
       </div>
 
-      {/* Generate Prep button */}
-      <button
-        onClick={handleGeneratePrep}
-        disabled={generatingPrep}
-        className="w-full text-xs py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center justify-center gap-2"
-      >
-        {generatingPrep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-        {generatingPrep ? "Generating prep brief..." : hasIntel ? "Regenerate Prep Brief" : "Generate Prep Brief"}
-      </button>
+      {/* Action buttons */}
+      <div className="flex gap-2">
+        {meetingCount > 0 ? (
+          <button
+            onClick={handleGeneratePrep}
+            disabled={generatingPrep}
+            className="flex-1 text-xs py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center justify-center gap-2"
+          >
+            {generatingPrep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+            {generatingPrep ? "Generating..." : hasIntel ? "Regenerate Prep Brief" : "Generate Prep Brief"}
+          </button>
+        ) : (
+          <button
+            onClick={handleGeneratePrep}
+            disabled={generatingPrep}
+            className="flex-1 text-xs py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center justify-center gap-2"
+          >
+            {generatingPrep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Target className="h-3.5 w-3.5" />}
+            {generatingPrep ? "Researching..." : "Research Prospect"}
+          </button>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onDraftEmail(lead); }}
+          className="text-xs px-3 py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center gap-1.5"
+        >
+          <Send className="h-3.5 w-3.5" />
+          {meetingCount > 0 ? "Draft Follow-Up" : "Draft Pre-Meeting Email"}
+        </button>
+      </div>
 
       {/* Prior meeting summary */}
       {meetingCount > 0 && (() => {
