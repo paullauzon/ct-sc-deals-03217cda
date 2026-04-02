@@ -343,6 +343,9 @@ export function DashboardBusiness({ leads, onDrillDown }: Props) {
       <StageWaterfall leads={leads} />
 
 
+      {/* ── Signal-to-Close Conversion Matrix ── */}
+      <SignalToCloseMatrix leads={leads} onDrillDown={onDrillDown} />
+
       {/* ── Quick Insights ── */}
       <div>
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Key Observations</h2>
@@ -490,6 +493,114 @@ function BrandPnL({ leads }: { leads: Lead[] }) {
             </Card>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ── Signal-to-Close Conversion Matrix ──
+function SignalToCloseMatrix({ leads, onDrillDown }: { leads: Lead[]; onDrillDown: (title: string, leads: Lead[]) => void }) {
+  const matrix = useMemo(() => {
+    // Extract all meetings with intelligence
+    const meetingLeadPairs: { lead: Lead; intel: any }[] = [];
+    for (const lead of leads) {
+      for (const m of lead.meetings || []) {
+        if (m.intelligence) {
+          meetingLeadPairs.push({ lead, intel: m.intelligence });
+        }
+      }
+    }
+    if (meetingLeadPairs.length === 0) return null;
+
+    // Group by buying intent
+    const intentLevels = ["Strong", "Moderate", "Low", "None detected"] as const;
+    const intentRows = intentLevels.map(level => {
+      const matching = meetingLeadPairs.filter(p => p.intel.dealSignals?.buyingIntent === level);
+      const uniqueLeadIds = new Set(matching.map(p => p.lead.id));
+      const wonIds = new Set(matching.filter(p => p.lead.stage === "Closed Won").map(p => p.lead.id));
+      const lostIds = new Set(matching.filter(p => ["Closed Lost", "Went Dark"].includes(p.lead.stage)).map(p => p.lead.id));
+      const uniqueLeads = Array.from(uniqueLeadIds).map(id => leads.find(l => l.id === id)!).filter(Boolean);
+      return {
+        signal: level,
+        meetings: matching.length,
+        leads: uniqueLeadIds.size,
+        won: wonIds.size,
+        lost: lostIds.size,
+        conv: wonIds.size + lostIds.size > 0 ? Math.round((wonIds.size / (wonIds.size + lostIds.size)) * 100) : null,
+        drillLeads: uniqueLeads,
+      };
+    }).filter(r => r.meetings > 0);
+
+    // Group by engagement level
+    const engLevels = ["Highly Engaged", "Engaged", "Passive", "Disengaged"] as const;
+    const engRows = engLevels.map(level => {
+      const matching = meetingLeadPairs.filter(p => p.intel.engagementLevel === level);
+      const uniqueLeadIds = new Set(matching.map(p => p.lead.id));
+      const wonIds = new Set(matching.filter(p => p.lead.stage === "Closed Won").map(p => p.lead.id));
+      const lostIds = new Set(matching.filter(p => ["Closed Lost", "Went Dark"].includes(p.lead.stage)).map(p => p.lead.id));
+      const uniqueLeads = Array.from(uniqueLeadIds).map(id => leads.find(l => l.id === id)!).filter(Boolean);
+      return {
+        signal: level,
+        meetings: matching.length,
+        leads: uniqueLeadIds.size,
+        won: wonIds.size,
+        lost: lostIds.size,
+        conv: wonIds.size + lostIds.size > 0 ? Math.round((wonIds.size / (wonIds.size + lostIds.size)) * 100) : null,
+        drillLeads: uniqueLeads,
+      };
+    }).filter(r => r.meetings > 0);
+
+    return { intentRows, engRows, totalMeetings: meetingLeadPairs.length };
+  }, [leads]);
+
+  if (!matrix) return null;
+
+  const renderTable = (title: string, rows: { signal: string; meetings: number; leads: number; won: number; lost: number; conv: number | null; drillLeads: Lead[] }[]) => (
+    <div className="border border-border rounded-lg overflow-hidden">
+      <div className="px-4 py-2 bg-secondary/20">
+        <span className="text-xs font-medium">{title}</span>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-border">
+            <th className="text-left px-4 py-2 font-medium text-muted-foreground">Signal</th>
+            <th className="text-right px-3 py-2 font-medium text-muted-foreground">Meetings</th>
+            <th className="text-right px-3 py-2 font-medium text-muted-foreground">Leads</th>
+            <th className="text-right px-3 py-2 font-medium text-muted-foreground">Won</th>
+            <th className="text-right px-3 py-2 font-medium text-muted-foreground">Lost</th>
+            <th className="text-right px-4 py-2 font-medium text-muted-foreground">Conv%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr
+              key={r.signal}
+              className={`border-b border-border last:border-0 cursor-pointer hover:bg-muted/50 ${i % 2 ? "bg-secondary/10" : ""}`}
+              onClick={() => onDrillDown(`${title}: ${r.signal}`, r.drillLeads)}
+            >
+              <td className="px-4 py-2 font-medium">{r.signal}</td>
+              <td className="text-right px-3 py-2 tabular-nums">{r.meetings}</td>
+              <td className="text-right px-3 py-2 tabular-nums">{r.leads}</td>
+              <td className="text-right px-3 py-2 tabular-nums text-emerald-500 font-medium">{r.won}</td>
+              <td className="text-right px-3 py-2 tabular-nums text-destructive">{r.lost}</td>
+              <td className="text-right px-4 py-2 tabular-nums font-semibold">
+                {r.conv !== null ? `${r.conv}%` : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  return (
+    <div>
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+        Signal-to-Close Conversion ({matrix.totalMeetings} meetings analyzed)
+      </h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {renderTable("Buying Intent", matrix.intentRows)}
+        {renderTable("Engagement Level", matrix.engRows)}
       </div>
     </div>
   );
