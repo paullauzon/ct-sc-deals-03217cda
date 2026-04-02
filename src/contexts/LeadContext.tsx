@@ -5,6 +5,7 @@ import { getInitialLeads } from "@/data/leadData";
 import { supabase } from "@/integrations/supabase/client";
 import { leadToRow, rowToLead, leadUpdatesToRow } from "@/lib/leadDbMapping";
 import { detectFieldChanges, logActivity } from "@/lib/activityLog";
+import { getPlaybookForStage, generateTasksFromPlaybook } from "@/lib/playbooks";
 import { toast } from "sonner";
 
 const SEEN_LEADS_KEY = "captarget_seen_leads";
