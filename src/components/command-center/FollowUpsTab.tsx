@@ -622,6 +622,31 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
       <div className="border border-border rounded-md overflow-hidden">
         {/* Overdue */}
         <SectionHeader title="Overdue" count={overdue.length} dotColor="bg-red-500" open={openSections.overdue} onToggle={() => toggleSection("overdue")} />
+        {openSections.overdue && overdue.length > 10 && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-secondary/20 border-b border-border">
+            <span className="text-[10px] text-muted-foreground">Batch:</span>
+            <button
+              onClick={() => {
+                const targets = overdue.filter(({ daysOverdue }) => daysOverdue > 30);
+                targets.forEach(({ lead }) => handleUpdate(lead.id, { nextFollowUp: format(addDays(new Date(), 7), "yyyy-MM-dd") }));
+                toast({ title: `Snoozed ${targets.length} leads (>30d overdue)`, description: "Next follow-up set to 7 days from now" });
+              }}
+              className="text-[10px] px-2 py-0.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors"
+            >
+              Snooze &gt;30d ({overdue.filter(i => i.daysOverdue > 30).length})
+            </button>
+            <button
+              onClick={() => {
+                const targets = overdue.filter(({ daysOverdue }) => daysOverdue > 14);
+                targets.forEach(({ lead }) => handleUpdate(lead.id, { nextFollowUp: format(addDays(new Date(), 7), "yyyy-MM-dd") }));
+                toast({ title: `Snoozed ${targets.length} leads (>14d overdue)`, description: "Next follow-up set to 7 days from now" });
+              }}
+              className="text-[10px] px-2 py-0.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors"
+            >
+              Snooze &gt;14d ({overdue.filter(i => i.daysOverdue > 14).length})
+            </button>
+          </div>
+        )}
         {openSections.overdue && overdue.map(({ lead, daysOverdue }) => (
           <FollowUpRow key={lead.id} lead={lead} label={daysOverdue === 0 ? "Due today" : `${daysOverdue}d overdue`} labelStyle={daysOverdue === 0 ? "bg-foreground text-background" : "bg-red-500/10 text-red-600 dark:text-red-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />
         ))}
