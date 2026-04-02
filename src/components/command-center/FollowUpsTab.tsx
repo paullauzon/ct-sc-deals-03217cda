@@ -569,7 +569,8 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
       .filter(l => {
         if (!l.nextFollowUp) return false;
         const d = parseISO(l.nextFollowUp);
-        return !isBefore(d, now) && isBefore(d, weekEnd);
+        const todayStart = startOfDay(now);
+        return !isBefore(d, todayStart) && isBefore(d, weekEnd);
       });
     return applySortToLeadsDirect(items, sortField, sortDir);
   }, [active, now, sortField, sortDir]);

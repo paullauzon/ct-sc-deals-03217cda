@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { BrandLogo } from "@/components/BrandLogo";
-import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2 } from "lucide-react";
+import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight } from "lucide-react";
 import { format, parseISO, differenceInDays, isBefore } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 function DealTempBadge({ temp }: { temp?: string }) {
   if (!temp) return null;
@@ -24,9 +25,179 @@ function DealTempBadge({ temp }: { temp?: string }) {
   );
 }
 
+// ─── Prep Brief Sheet ───
+interface PrepBrief {
+  executiveSummary?: string;
+  openActionItemsWeOwe?: { item: string; deadline: string; context: string }[];
+  openActionItemsTheyOwe?: { item: string; followUpApproach: string }[];
+  unresolvedObjections?: { objection: string; recommendedApproach: string; evidence: string }[];
+  stakeholderBriefing?: { name: string; role: string; stance: string; keyInterests: string; approachTips: string }[];
+  competitiveThreats?: { competitor: string; threat: string; counterStrategy: string }[];
+  talkingPoints?: string[];
+  questionsToAsk?: string[];
+  risksToWatch?: string[];
+  desiredOutcomes?: string[];
+}
+
+function BriefSection({ title, icon: Icon, iconColor, children, defaultOpen = true }: { title: string; icon: typeof Target; iconColor: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border-b border-border last:border-b-0">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-2 py-2.5 text-left hover:bg-secondary/20 transition-colors">
+        <Icon className={`h-3.5 w-3.5 ${iconColor} shrink-0`} />
+        <span className="text-xs font-semibold uppercase tracking-wider">{title}</span>
+        {open ? <ChevronDown className="h-3 w-3 text-muted-foreground ml-auto" /> : <ChevronRight className="h-3 w-3 text-muted-foreground ml-auto" />}
+      </button>
+      {open && <div className="pb-3">{children}</div>}
+    </div>
+  );
+}
+
+function PrepBriefSheet({ open, onClose, brief, leadName }: { open: boolean; onClose: () => void; brief: PrepBrief | null; leadName: string }) {
+  if (!brief) return null;
+  return (
+    <Sheet open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      <SheetContent className="w-[520px] sm:max-w-[520px] overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="text-sm">Prep Brief — {leadName}</SheetTitle>
+          <SheetDescription className="sr-only">AI-generated meeting preparation brief for {leadName}</SheetDescription>
+        </SheetHeader>
+
+        <div className="mt-4 space-y-0">
+          {/* Executive Summary */}
+          {brief.executiveSummary && (
+            <div className="bg-secondary/30 rounded-lg p-3 mb-4">
+              <p className="text-xs leading-relaxed">{brief.executiveSummary}</p>
+            </div>
+          )}
+
+          {/* Our Open Items */}
+          {brief.openActionItemsWeOwe && brief.openActionItemsWeOwe.length > 0 && (
+            <BriefSection title={`We Owe (${brief.openActionItemsWeOwe.length})`} icon={AlertTriangle} iconColor="text-red-500">
+              <ul className="space-y-2">
+                {brief.openActionItemsWeOwe.map((a, i) => (
+                  <li key={i} className="text-xs pl-5">
+                    <span className="font-medium">{a.item}</span>
+                    {a.deadline && <span className="text-muted-foreground"> — by {a.deadline}</span>}
+                    <p className="text-muted-foreground mt-0.5">{a.context}</p>
+                  </li>
+                ))}
+              </ul>
+            </BriefSection>
+          )}
+
+          {/* They Owe */}
+          {brief.openActionItemsTheyOwe && brief.openActionItemsTheyOwe.length > 0 && (
+            <BriefSection title={`They Owe (${brief.openActionItemsTheyOwe.length})`} icon={Target} iconColor="text-blue-500">
+              <ul className="space-y-2">
+                {brief.openActionItemsTheyOwe.map((a, i) => (
+                  <li key={i} className="text-xs pl-5">
+                    <span className="font-medium">{a.item}</span>
+                    <p className="text-muted-foreground mt-0.5 italic">{a.followUpApproach}</p>
+                  </li>
+                ))}
+              </ul>
+            </BriefSection>
+          )}
+
+          {/* Objections */}
+          {brief.unresolvedObjections && brief.unresolvedObjections.length > 0 && (
+            <BriefSection title={`Objections (${brief.unresolvedObjections.length})`} icon={MessageSquare} iconColor="text-amber-500">
+              <ul className="space-y-2">
+                {brief.unresolvedObjections.map((o, i) => (
+                  <li key={i} className="text-xs pl-5">
+                    <span className="font-medium">"{o.objection}"</span>
+                    <p className="text-muted-foreground mt-0.5">→ {o.recommendedApproach}</p>
+                    {o.evidence && <p className="text-muted-foreground/70 mt-0.5 text-[10px]">Evidence: {o.evidence}</p>}
+                  </li>
+                ))}
+              </ul>
+            </BriefSection>
+          )}
+
+          {/* Stakeholders */}
+          {brief.stakeholderBriefing && brief.stakeholderBriefing.length > 0 && (
+            <BriefSection title={`Stakeholders (${brief.stakeholderBriefing.length})`} icon={Users} iconColor="text-emerald-500">
+              <ul className="space-y-2">
+                {brief.stakeholderBriefing.map((s, i) => (
+                  <li key={i} className="text-xs pl-5">
+                    <span className="font-medium">{s.name}</span> <span className="text-muted-foreground">({s.role}) — {s.stance}</span>
+                    <p className="text-muted-foreground mt-0.5">{s.approachTips}</p>
+                  </li>
+                ))}
+              </ul>
+            </BriefSection>
+          )}
+
+          {/* Competitive Threats */}
+          {brief.competitiveThreats && brief.competitiveThreats.length > 0 && (
+            <BriefSection title={`Competitive Threats (${brief.competitiveThreats.length})`} icon={Shield} iconColor="text-red-500">
+              <ul className="space-y-2">
+                {brief.competitiveThreats.map((c, i) => (
+                  <li key={i} className="text-xs pl-5">
+                    <span className="font-medium">{c.competitor}</span>: {c.threat}
+                    <p className="text-muted-foreground mt-0.5 italic">Counter: {c.counterStrategy}</p>
+                  </li>
+                ))}
+              </ul>
+            </BriefSection>
+          )}
+
+          {/* Talking Points */}
+          {brief.talkingPoints && brief.talkingPoints.length > 0 && (
+            <BriefSection title="Talking Points" icon={Lightbulb} iconColor="text-amber-500">
+              <ol className="space-y-1 list-decimal list-inside">
+                {brief.talkingPoints.map((p, i) => (
+                  <li key={i} className="text-xs pl-3">{p}</li>
+                ))}
+              </ol>
+            </BriefSection>
+          )}
+
+          {/* Questions to Ask */}
+          {brief.questionsToAsk && brief.questionsToAsk.length > 0 && (
+            <BriefSection title="Questions to Ask" icon={Brain} iconColor="text-purple-500">
+              <ol className="space-y-1 list-decimal list-inside">
+                {brief.questionsToAsk.map((q, i) => (
+                  <li key={i} className="text-xs pl-3">{q}</li>
+                ))}
+              </ol>
+            </BriefSection>
+          )}
+
+          {/* Risks */}
+          {brief.risksToWatch && brief.risksToWatch.length > 0 && (
+            <BriefSection title="Risks to Watch" icon={AlertTriangle} iconColor="text-red-500" defaultOpen={false}>
+              <ul className="space-y-1">
+                {brief.risksToWatch.map((r, i) => (
+                  <li key={i} className="text-xs pl-5">• {r}</li>
+                ))}
+              </ul>
+            </BriefSection>
+          )}
+
+          {/* Desired Outcomes */}
+          {brief.desiredOutcomes && brief.desiredOutcomes.length > 0 && (
+            <BriefSection title="Desired Outcomes" icon={Crown} iconColor="text-amber-500">
+              <ul className="space-y-1">
+                {brief.desiredOutcomes.map((d, i) => (
+                  <li key={i} className="text-xs pl-5 flex items-start gap-1.5">
+                    <span className="text-emerald-500 mt-0.5">✓</span> {d}
+                  </li>
+                ))}
+              </ul>
+            </BriefSection>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon = 7 }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void; meetingHorizon?: number }) {
   const now = new Date();
   const [emailCounts, setEmailCounts] = useState<Map<string, number>>(new Map());
+  const [briefData, setBriefData] = useState<{ leadId: string; leadName: string; brief: PrepBrief } | null>(null);
 
   const upcomingMeetings = useMemo(() => {
     const filtered = ownerFilter === "All" ? leads
@@ -50,6 +221,10 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
     });
   }, [upcomingMeetings]);
 
+  const handleBriefGenerated = (leadId: string, leadName: string, brief: PrepBrief) => {
+    setBriefData({ leadId, leadName, brief });
+  };
+
   if (upcomingMeetings.length === 0) {
     return (
       <div className="px-6 py-12 text-center">
@@ -63,13 +238,20 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
       <p className="text-xs text-muted-foreground">{upcomingMeetings.length} meeting{upcomingMeetings.length !== 1 ? "s" : ""} in the next {meetingHorizon} days</p>
 
       {upcomingMeetings.map(lead => (
-        <IntelCard key={lead.id} lead={lead} onSelect={() => onSelectLead(lead.id)} emailCount={emailCounts.get(lead.id) || 0} />
+        <IntelCard key={lead.id} lead={lead} onSelect={() => onSelectLead(lead.id)} emailCount={emailCounts.get(lead.id) || 0} onBriefGenerated={handleBriefGenerated} />
       ))}
+
+      <PrepBriefSheet
+        open={!!briefData}
+        onClose={() => setBriefData(null)}
+        brief={briefData?.brief || null}
+        leadName={briefData?.leadName || ""}
+      />
     </div>
   );
 }
 
-function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () => void; emailCount: number }) {
+function IntelCard({ lead, onSelect, emailCount, onBriefGenerated }: { lead: Lead; onSelect: () => void; emailCount: number; onBriefGenerated: (leadId: string, leadName: string, brief: PrepBrief) => void }) {
   const [generatingPrep, setGeneratingPrep] = useState(false);
   const enrichment = lead.enrichment;
   const di = lead.dealIntelligence;
@@ -90,15 +272,36 @@ function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () =>
     e.stopPropagation();
     setGeneratingPrep(true);
     try {
-      const { error } = await supabase.functions.invoke("generate-meeting-prep", {
-        body: { leadId: lead.id },
+      const { data, error } = await supabase.functions.invoke("generate-meeting-prep", {
+        body: {
+          meetings: lead.meetings || [],
+          leadFields: {
+            name: lead.name,
+            company: lead.company,
+            role: lead.role,
+            stage: lead.stage,
+            priority: lead.priority,
+            dealValue: lead.dealValue,
+            serviceInterest: lead.serviceInterest,
+          },
+          dealIntelligence: lead.dealIntelligence || null,
+        },
       });
       if (error) throw error;
-      toast({ title: "Prep brief queued", description: `Generating intelligence for ${lead.name}...` });
+      if (data?.brief) {
+        onBriefGenerated(lead.id, lead.name, data.brief);
+        toast({ title: "Prep brief ready", description: `Intelligence generated for ${lead.name}` });
+      } else if (data?.error) {
+        toast({ title: "Could not generate brief", description: data.error, variant: "destructive" });
+      }
     } catch (err) {
       console.error(err);
       const msg = err instanceof Error ? err.message : "Try again later";
-      toast({ title: "Failed to generate prep", description: msg, variant: "destructive" });
+      if (msg.includes("No meetings")) {
+        toast({ title: "No meeting data yet", description: "Schedule a meeting first or process an existing one.", variant: "destructive" });
+      } else {
+        toast({ title: "Failed to generate prep", description: msg, variant: "destructive" });
+      }
     } finally {
       setGeneratingPrep(false);
     }
@@ -151,17 +354,15 @@ function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () =>
         )}
       </div>
 
-      {/* Generate Prep button when no intel exists */}
-      {!hasIntel && (
-        <button
-          onClick={handleGeneratePrep}
-          disabled={generatingPrep}
-          className="w-full text-xs py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center justify-center gap-2"
-        >
-          {generatingPrep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-          {generatingPrep ? "Generating prep brief..." : "Generate Prep Brief"}
-        </button>
-      )}
+      {/* Generate Prep button */}
+      <button
+        onClick={handleGeneratePrep}
+        disabled={generatingPrep}
+        className="w-full text-xs py-2 rounded-md border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors flex items-center justify-center gap-2"
+      >
+        {generatingPrep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+        {generatingPrep ? "Generating prep brief..." : hasIntel ? "Regenerate Prep Brief" : "Generate Prep Brief"}
+      </button>
 
       {/* Prior meeting summary */}
       {meetingCount > 0 && (() => {
