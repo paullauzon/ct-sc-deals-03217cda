@@ -273,8 +273,8 @@ export function DashboardBusiness({ leads, onDrillDown }: Props) {
       <div>
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Brand Comparison</h2>
         <div className="grid grid-cols-2 gap-4">
-          <BrandScorecard metrics={ctMetrics} />
-          <BrandScorecard metrics={scMetrics} />
+          <BrandScorecard metrics={ctMetrics} leads={leads} />
+          <BrandScorecard metrics={scMetrics} leads={leads} />
         </div>
       </div>
 
