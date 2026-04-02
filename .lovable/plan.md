@@ -1,27 +1,34 @@
 
 
-# Response 2: Deal Velocity Timeline + Monthly Trend Sparklines
+# Fix: Avg Deal Size Should Reflect Won Deals
 
-## What Gets Built
+## The Problem
 
-### 1. Deal Velocity Timeline (Operations tab)
-Average days between each sequential stage transition, per brand. Uses `lead_activity_log` stage_change events to compute real transition times. Falls back to computing from `dateSubmitted` → `closedDate` spread across stages when activity log data is sparse.
+The "Avg Deal Size" metric on the Brand Scorecards currently calculates from **all active deals** with a deal value. For SourceCo with 0 closed won deals, it shows $29,875 — which is just the average pipeline estimate, not actual realized deal sizes. This is misleading next to metrics like MRR and Win Rate which are based on actual outcomes.
 
-Layout: A table with rows for each transition (New Lead → Qualified, Qualified → Contacted, etc.) and columns for CT avg days, CT count, SC avg days, SC count. Cells color-coded: green (<7d), yellow (7-14d), orange (14-21d), red (21d+). Placed below Pipeline Momentum, above Rep Capacity.
+## The Fix
 
-Data source: Query `lead_activity_log` where `event_type = 'stage_change'`, parse old_value/new_value to extract "from → to" transitions with timestamps. Group by brand (join back to leads table by lead_id).
+Change the calculation to use **Closed Won deals only**. If no deals are won yet, show "N/A" (consistent with how Win Rate already handles this). This makes the metric honest — it answers "what do our won deals actually look like?" not "what are we hoping pipeline deals are worth?"
 
-### 2. Monthly Trend Sparklines (Overview tab scorecards)
-Add tiny inline sparklines (last 4 months) to each metric in the Brand Scorecards. For each brand, compute monthly snapshots of: Total Leads (by dateSubmitted month), Pipeline Value, MRR (by closedDate month), Win Rate (by closedDate month).
+```
+// Current (misleading):
+const activeWithValue = active.filter(l => l.dealValue > 0);
+const avgDealSize = activeWithValue.reduce(...) / activeWithValue.length;
 
-Each sparkline is a simple 4-dot SVG line rendered inline next to the metric value. Uses the leads array grouped by month — no new DB queries needed.
+// Fixed:
+const wonWithValue = won.filter(l => l.dealValue > 0);
+const avgDealSize = wonWithValue.length > 0
+  ? Math.round(wonWithValue.reduce((s, l) => s + l.dealValue, 0) / wonWithValue.length)
+  : 0;
+```
 
-Implementation: Create a small `Sparkline` component (inline SVG, ~20 lines) that takes an array of numbers and renders a mini line chart. Modify `BrandScorecard` to compute per-month metrics and pass them to sparklines.
+Captarget will show ~$6,543 (from 4 won deals). SourceCo will show "N/A" (0 won deals).
+
+Optionally, add a second metric "Avg Pipeline Deal" if you still want visibility into pipeline estimates — but the primary "Avg Deal Size" should always mean closed business.
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/DashboardOperations.tsx` | Add Deal Velocity Timeline section: fetch activity log stage_change events, compute avg days per transition per brand, render as color-coded table |
-| `src/components/DashboardBusiness.tsx` | Add `Sparkline` SVG component. Modify `BrandScorecard` to compute last-4-month values for each metric and render sparklines inline |
+| `src/components/DashboardBusiness.tsx` | Change `avgDealSize` calculation from active deals to won deals |
 
