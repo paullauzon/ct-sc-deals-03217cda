@@ -194,7 +194,9 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
               {(() => {
                 const filtered = showIntelOnly ? sortedDeals.filter(d => {
                   const di = d.lead.dealIntelligence as any;
-                  return di?.winStrategy?.dealTemperature || di?.momentumSignals?.momentum;
+                  const temp = di?.winStrategy?.dealTemperature;
+                  const mom = di?.momentumSignals?.momentum;
+                  return (typeof temp === "string" && temp.length > 0) || (typeof mom === "string" && mom.length > 0);
                 }) : sortedDeals;
                 if (filtered.length === 0) return (
                   <div className="px-6 py-8 text-center">
