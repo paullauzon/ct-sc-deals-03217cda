@@ -263,19 +263,23 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
     return groups;
   }, [meetings]);
 
+  const leadMap = useMemo(() => new Map(leads.map(l => [l.id, l])), [leads]);
+
+  const todaysTasks = useMemo(() => {
+    const today = new Date().toISOString().split("T")[0];
+    return playbookTasks.filter(t => t.due_date <= today);
+  }, [playbookTasks]);
+
   const tierItems = useMemo(() => {
     const now = new Date();
     const nonMeeting = items.filter(i => {
       if (i.type === "meeting") return false;
-      // Only show today's overdue items (not the full historical backlog)
       if (i.type === "overdue") {
         const nf = i.lead.nextFollowUp;
         if (!nf) return false;
         return differenceInDays(now, parseISO(nf)) <= 1;
       }
-      // Exclude dark/untouched/stale — they belong in Follow-Ups
       if (["dark", "untouched", "stale"].includes(i.type)) return false;
-      // Keep renewals expiring within 7 days
       if (i.type === "renewal") {
         const ce = i.lead.contractEnd;
         if (!ce) return false;
@@ -294,7 +298,8 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
     dueToday: tierItems.urgent.length,
     meetings: meetings.length,
     renewals: tierItems.monitor.filter(i => i.type === "renewal").length,
-  }), [tierItems, meetings]);
+    tasks: todaysTasks.length,
+  }), [tierItems, meetings, todaysTasks]);
 
   return (
     <div className="space-y-5">
