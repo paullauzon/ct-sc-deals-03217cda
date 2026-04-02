@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { BrandLogo } from "@/components/BrandLogo";
-import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight } from "lucide-react";
+import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight, Send } from "lucide-react";
 import { format, parseISO, differenceInDays, isBefore } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
