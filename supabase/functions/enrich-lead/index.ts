@@ -247,12 +247,12 @@ CRITICAL RULES:
                   dataSources: { type: "string", description: "List each data source actually used with URLs where applicable." },
                   openingHook: {
                     type: "string",
-                    description: "A personalized opening sentence the rep can say in the first 30 seconds of a call or meeting. Reference something specific about their company, recent news, or situation from the research. Write it as a direct quote they can use verbatim.",
+                    description: "A personalized opening sentence the rep can say in the first 30 seconds of a call or meeting. Do NOT start with 'I noticed' or 'I saw' or 'I came across'. Start with the insight itself as a statement or question — e.g. 'Your 3rd bolt-on this year signals a platform play in HVAC distribution' or 'The Southeast HVAC market just lost 2 independents — that changes your geography.' Write it as a direct quote they can use verbatim. Must contain a specific name, number, date, or event.",
                   },
                   discoveryQuestions: {
                     type: "array",
                     items: { type: "string" },
-                    description: "3-5 strategic discovery questions to ask in a first meeting with this prospect. Specific to their company/situation — not generic. Written as direct quotes.",
+                    description: "3-5 strategic discovery questions specific to this prospect's company and situation. Each question must be IMPOSSIBLE to answer with 'yes' or 'no'. Each must surface strategic intent, timeline, or decision criteria — e.g. 'What does your ideal acquisition pipeline look like 18 months from now?' not 'Are you looking to acquire?' Written as direct quotes.",
                   },
                   valueAngle: {
                     type: "string",
