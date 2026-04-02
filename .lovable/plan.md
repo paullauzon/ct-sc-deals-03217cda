@@ -1,86 +1,53 @@
 
 
-# Command Center — Final Audit & Remaining Fixes
+# Command Center Final Fixes (5 Changes)
 
-## Current State Summary
-All 4 tabs render cleanly. Follow-Ups has rich rows with action chips, sort controls, summary strip, and AI Action Sheet. Deal Pulse has KPIs, forecast, momentum board with sort, and velocity. Prep Intel shows cards with Calendly details and "Generate Prep Brief". Schedule has morning briefing, meeting cards, and priority tiers.
-
----
-
-## Issues Still Remaining
-
-### 1. Edge Function Missing from config.toml
-`generate-follow-up-action` is not registered in `supabase/config.toml` with `verify_jwt = false`. This means clicking any action chip on Follow-Ups will fail with a 401 JWT error.
-
-**Fix**: Add `[functions.generate-follow-up-action]` with `verify_jwt = false` to `config.toml`.
-
-### 2. Schedule Tab: Duplicate Horizon Toggle Still Present
-The Schedule tab has its own internal `meetingHorizon` state (line 247) and its own 7d/14d/30d toggle (lines 300-306). The ActionQueue also shows a horizon toggle for the intel tab (line 131). These are independent — the Schedule tab ignores the parent. This was flagged in prior audits but not fixed.
-
-**Fix**: Remove the internal `meetingHorizon` from `ScheduleTab`, accept it as a prop from `ActionQueue`, and show the horizon toggle in the ActionQueue header for both schedule and intel tabs.
-
-### 3. Prep Intel: Context Grid Shows Redundant Data
-The "Context Grid" (lines 168-190) duplicates info already shown in the signal strip above it. Stage appears twice, deal value appears twice. This wastes space on cards that need to maximize useful intel.
-
-**Fix**: Remove duplicate fields from the context grid (stage, value) that are already in the signal strip. Keep only fields that add new information (interest, intent, sentiment, momentum, window).
-
-### 4. Prep Intel: Cards Show "Stage: Meeting Set" Twice
-In the signal strip (line 150-152) AND in the context grid (line 169-171), the stage badge appears. Redundant.
-
-**Fix**: Remove stage from context grid since it's in the signal strip.
-
-### 5. Schedule Tab: Summary Stats Show "66 Going Dark" — Alarming Without Context
-The stats strip shows "66 Going Dark" which is an enormous number and dominates the Schedule tab (which is about today's agenda, not re-engagement). These stats duplicate what Follow-Ups already shows better.
-
-**Fix**: On the Schedule tab, only show meeting-relevant stats (Overdue, Meetings, Renewals). Move Going Dark/Untouched/Stale to Follow-Ups only (which already has them).
-
-### 6. Schedule Tab: "Urgent" Tier Conflates Overdue Follow-Ups with Schedule
-The Schedule tab mixes overdue follow-ups (78 items) with today's meetings (3 items). A user coming to "Schedule" wants to see their agenda, not be overwhelmed by 78 overdue items that belong in Follow-Ups.
-
-**Fix**: On the Schedule tab, limit the priority tiers to only TODAY's items — today's meetings plus today's overdue. Move the full overdue list to Follow-Ups (which already has it).
-
-### 7. Deal Pulse: "Avg Days in Stage: 14d" KPI Has No Color Coding
-14 days in stage is borderline concerning but the KPI shows it in neutral styling.
-
-**Fix**: Apply `daysInStageColor` to the avg days KPI number.
-
-### 8. Follow-Ups: "0d overdue" Label for Peter Wylie
-If a lead's follow-up is today, showing "0d overdue" is confusing — it's due today, not overdue.
-
-**Fix**: If `daysOverdue === 0`, show "Due today" instead of "0d overdue" and use the blue "due today" styling instead of red overdue.
-
-### 9. Follow-Ups: No "Unanswered" Count in Summary Strip
-The summary strip shows "78 Overdue, 4 Due This Week, 10 Untouched, 6 Going Dark" but I don't see an "Unanswered" count even though it's coded at line 586. This means either no unanswered emails exist in the data, or the query has an issue.
-
-**Status**: Not a code bug — just no inbound-last emails in current dataset. Working as designed.
-
-### 10. Prep Intel: No Prior Meeting Summaries Shown
-For leads with `meetingCount > 0`, the card shows "1 meeting" but doesn't show what was discussed. Prior meeting summaries would be invaluable for prep.
-
-**Fix**: If `latestMeeting?.intelligence?.summary` exists, show a truncated summary in the card.
+Excludes OpenAI→Lovable AI migration per your instruction. Config.toml already has the edge function registered.
 
 ---
 
-## Implementation Plan
+## 1. Smarter Action Chips (FollowUpsTab.tsx)
 
-| Priority | Fix | File |
-|----------|-----|------|
-| 1 | Add `generate-follow-up-action` to config.toml | `supabase/config.toml` |
-| 2 | Fix "0d overdue" → "Due today" | `FollowUpsTab.tsx` |
-| 3 | Lift `meetingHorizon` out of ScheduleTab, accept as prop | `ScheduleTab.tsx` + `ActionQueue.tsx` |
-| 4 | Remove duplicate stage/value from Prep Intel context grid | `PrepIntelTab.tsx` |
-| 5 | Add prior meeting summary to Prep Intel cards | `PrepIntelTab.tsx` |
-| 6 | Apply color coding to Deal Pulse avg days KPI | `DealPulseTab.tsx` |
-| 7 | Slim Schedule tab stats to meeting-relevant only | `ScheduleTab.tsx` |
+**Problem**: "Meeting Held" always shows "Follow Up", "Meeting Set" always shows "Prep Brief".
 
-### Files Changed
+**Fix** in `getActionType()` (lines 33-34):
+- Meeting Set → change to `initial-outreach` with label "Pre-Meeting Email"
+- Meeting Held → if deal intelligence has open action items, show "Complete Actions"; if `dealValue > 0` and no open items, show "Send Proposal"; else default "Follow Up"
+
+## 2. Schedule Tab: Today-Only Priority Tiers (ScheduleTab.tsx)
+
+**Problem**: Schedule shows 78+ overdue items that belong in Follow-Ups.
+
+**Fix** in `tierItems` memo (lines 262-269): Filter `nonMeeting` items to only include those where the trigger date is **today** (e.g., overdue items with `nextFollowUp` = today, not the full historical backlog). Specifically:
+- Overdue: only where `differenceInDays(now, parseISO(nextFollowUp)) === 0`
+- Dark/untouched/stale: exclude entirely (they belong in Follow-Ups)
+- Renewals: keep those expiring within 7 days
+
+## 3. Prep Intel: Show Enrichment + Always Show Deal Value (PrepIntelTab.tsx)
+
+**Problem**: Cards are bare for leads without deep intelligence; $0 value is hidden.
+
+**Fix**:
+- In the signal strip (line 147-149): Always show deal value — if 0, show "$0" with muted styling
+- In context grid (line 180-196): Add enrichment fields when available: `companyDescription` (truncated), `acquisitionStrategy`, `buyerType`, `geography`, `targetCriteria`
+
+## 4. Deal Pulse: Velocity Benchmark Labels (DealPulseTab.tsx)
+
+**Problem**: Velocity cards show avg days but no health indicator.
+
+**Fix** in velocity section (lines 230-239): Below each velocity card's avg days, add a small benchmark label:
+- `avgDays <= 7` → "on track" in green
+- `avgDays <= 14` → "watch" in amber  
+- `avgDays > 14` → "above target" in red
+
+---
+
+## Files Changed
 
 | File | Changes |
 |------|---------|
-| `supabase/config.toml` | Add `[functions.generate-follow-up-action]` with `verify_jwt = false` |
-| `src/components/command-center/FollowUpsTab.tsx` | "0d overdue" → "Due today" with blue styling |
-| `src/components/command-center/ScheduleTab.tsx` | Accept `meetingHorizon` as prop, remove internal state + duplicate toggle. Slim stats strip. |
-| `src/components/ActionQueue.tsx` | Show horizon toggle for both schedule + intel tabs. Pass `meetingHorizon` to ScheduleTab. |
-| `src/components/command-center/PrepIntelTab.tsx` | Remove duplicate fields from context grid. Add latest meeting summary snippet. |
-| `src/components/command-center/DealPulseTab.tsx` | Color-code avg days KPI |
+| `src/components/command-center/FollowUpsTab.tsx` | Smarter action chips for Meeting Held (context-aware) and Meeting Set (pre-meeting email) |
+| `src/components/command-center/ScheduleTab.tsx` | Filter priority tiers to today-only items |
+| `src/components/command-center/PrepIntelTab.tsx` | Show enrichment fields in context grid; always show deal value |
+| `src/components/command-center/DealPulseTab.tsx` | Add benchmark labels to velocity cards |
 
