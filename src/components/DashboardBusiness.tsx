@@ -5,7 +5,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { differenceInDays, parseISO, format, subMonths } from "date-fns";
-import { DollarSign, TrendingUp, TrendingDown, Clock } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
@@ -342,8 +342,6 @@ export function DashboardBusiness({ leads, onDrillDown }: Props) {
       {/* ── Stage Conversion Waterfall ── */}
       <StageWaterfall leads={leads} />
 
-      {/* ── Lead Response Time ── */}
-      <LeadResponseTime leads={leads} />
 
       {/* ── Quick Insights ── */}
       <div>
@@ -569,48 +567,3 @@ function StageWaterfall({ leads }: { leads: Lead[] }) {
   );
 }
 
-// ── Lead Response Time ──
-function LeadResponseTime({ leads }: { leads: Lead[] }) {
-  const data = useMemo(() => {
-    return BRANDS_LIST.map(brand => {
-      const brandLeads = leads.filter(l => l.brand === brand && l.dateSubmitted);
-      const withResponse = brandLeads.filter(l => l.lastContactDate || l.stageEnteredDate);
-      if (withResponse.length === 0) return { brand, avg: null, count: 0 };
-
-      const total = withResponse.reduce((s, l) => {
-        const submitted = new Date(l.dateSubmitted).getTime();
-        const responded = l.lastContactDate
-          ? new Date(l.lastContactDate).getTime()
-          : l.stageEnteredDate
-            ? new Date(l.stageEnteredDate).getTime()
-            : submitted;
-        return s + Math.max(0, Math.floor((responded - submitted) / 86400000));
-      }, 0);
-      return { brand, avg: Math.round(total / withResponse.length), count: withResponse.length };
-    });
-  }, [leads]);
-
-  return (
-    <div>
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Lead Response Time</h2>
-      <div className="grid grid-cols-2 gap-4">
-        {data.map(d => {
-          const borderColor = d.brand === "Captarget" ? "border-t-red-500" : "border-t-amber-500";
-          return (
-            <Card key={d.brand} className={`border-t-2 ${borderColor}`}>
-              <CardContent className="pt-4 text-center">
-                <Clock className="h-4 w-4 text-muted-foreground mx-auto mb-1" />
-                <p className="text-2xl font-bold tabular-nums">
-                  {d.avg != null ? `${d.avg}d` : "N/A"}
-                </p>
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  {d.brand} avg response ({d.count} leads)
-                </p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
