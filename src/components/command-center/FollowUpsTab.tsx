@@ -364,10 +364,13 @@ function ActionSheet({
           {/* Actions */}
           <div className="flex items-center gap-2 pt-2 border-t border-border">
             <button
-              onClick={handleApply}
+              onClick={() => {
+                if (content) navigator.clipboard.writeText(content);
+                handleApply();
+              }}
               className="flex-1 text-xs py-2.5 rounded-md bg-foreground text-background font-medium hover:bg-foreground/90 transition-colors"
             >
-              Mark Contacted & Update
+              {content ? "Copy & Mark Done" : "Mark Contacted & Update"}
             </button>
             <button
               onClick={generateDraft}
