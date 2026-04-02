@@ -1,0 +1,1 @@
+UPDATE leads SET enrichment = NULL, enrichment_status = NULL;
