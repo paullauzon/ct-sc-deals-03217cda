@@ -1,33 +1,38 @@
 
 
-# Add Undo for Stage Changes
+# Ban Em Dashes, En Dashes, and Double Hyphens from All AI Copy
 
 ## Problem
 
-Accidentally changing a lead's stage (e.g., marking Brian Steel as "Contacted") triggers irreversible side effects: stageEnteredDate resets, playbook tasks get superseded and new ones created, lastContactDate auto-sets. There's no way to reverse it.
+All three email-generating edge functions have GOOD examples that use em dashes (`—`) as separators (e.g., `"John — your 3rd bolt-on..."`, `"— Mike"`). The AI mimics these and produces copy full of dashes.
 
-## Solution
+## Changes
 
-Add an **undo toast** pattern. When any stage change happens via `updateLead`, show a toast with an "Undo" button that restores the previous stage and all affected fields within a 5-second window.
+### 1. `generate-follow-up-action/index.ts`
 
-## How It Works
+- Add rule to base prompt: `"NEVER use em dashes (—), en dashes (–), or double hyphens (--). Use periods, commas, or line breaks instead."`
+- Rewrite all 6 GOOD examples to replace `—` with commas/periods/line breaks:
+  - `"John — your 3rd bolt-on..."` → `"John, your 3rd bolt-on..."`
+  - `"— Mike"` → `"\n\nMike"`
+  - Same for Cody, Sarah examples
+- Add `"—"`, `"–"`, `"--"` to `BANNED_PHRASES`
 
-1. Before applying a stage change in `updateLead`, snapshot the fields that will be modified: `stage`, `stageEnteredDate`, `daysInCurrentStage`, `lastContactDate`, `closedDate`, `hoursToMeetingSet`, `meetingSetDate`
-2. Apply the change as normal (DB write, playbook tasks, etc.)
-3. Show a toast: `"Stage changed to Contacted"` with an **Undo** button
-4. If Undo is clicked within 5 seconds: call `updateLead` with the snapshot values, and restore superseded playbook tasks
+### 2. `draft-followup/index.ts`
 
-For the immediate fix (Brian Steel): the plan also includes a manual stage selector in the lead detail panel so you can set any lead back to any stage at any time.
+- Add same dash ban rule to system prompt
+- Rewrite GOOD example: `"John — you mentioned..."` → `"John, you mentioned..."`
+- Change `"— Mike"` → `"\n\nMike"`
+- Add dashes to banned phrases list
 
-## Technical Details
+### 3. `generate-meeting-prep/index.ts`
 
-- The undo toast uses Sonner's `action` prop (already installed)
-- Playbook task restoration: when undoing, re-query `lead_tasks` where `status = 'superseded'` and `lead_id` matches, update back to `pending`
-- The snapshot is stored in a closure within the toast callback
+- Add dash ban to system prompt so opening hooks and other generated text avoid dashes
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/contexts/LeadContext.tsx` | Add undo toast with 5-second window on stage changes; snapshot pre-change fields; restore on undo including superseded tasks |
+| `supabase/functions/generate-follow-up-action/index.ts` | Add dash ban rule; rewrite all GOOD examples to use commas/periods; add dash characters to BANNED_PHRASES |
+| `supabase/functions/draft-followup/index.ts` | Add dash ban rule; rewrite GOOD example; add dash characters to banned list |
+| `supabase/functions/generate-meeting-prep/index.ts` | Add dash ban to system prompt |
 
