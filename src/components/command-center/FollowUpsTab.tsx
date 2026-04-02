@@ -674,7 +674,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
         {openSections.dueThisWeek && dueThisWeek.map(lead => {
           const dueDate = parseISO(lead.nextFollowUp);
           const label = isToday(dueDate) ? "Today" : format(dueDate, "EEE, MMM d");
-          return <FollowUpRow key={lead.id} lead={lead} label={label} labelStyle={isToday(dueDate) ? "bg-foreground text-background" : "bg-blue-500/10 text-blue-600 dark:text-blue-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />;
+          return <FollowUpRow key={lead.id} lead={lead} label={label} labelStyle={isToday(dueDate) ? "bg-foreground text-background" : "bg-blue-500/10 text-blue-600 dark:text-blue-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} />;
         })}
 
         {/* Unanswered Inbound */}
