@@ -1,50 +1,44 @@
 
 
-# Phase 3: Operations Tab (Capacity and Pipeline Health)
+# Phase 4: Forecast Tab (Revenue Projections & Retention)
 
 ## What Gets Built
 
-The **Operations** tab becomes fully functional with four sections:
+The **Forecast** tab becomes fully functional with four sections:
 
-1. **Rep Capacity Utilization** — Per-rep gauge showing active deals vs a configurable healthy threshold (default 25). Color-coded: green (under), yellow (at), red (over). Grouped by brand.
+1. **Bottoms-Up 3-Month Revenue Projection** — Each active deal multiplied by its stage probability weight, grouped by expected close month (derived from avg cycle time per stage). Displayed as a stacked bar chart (Captarget vs SourceCo) for current month + next 2 months.
 
-2. **Pipeline Aging by Brand** — Average days in stage for each active stage, split by Captarget and SourceCo. Highlights stages where avg age exceeds thresholds (7d yellow, 14d orange, 21d+ red).
+2. **Monthly Bookings vs Target** — Running chart of new MRR booked (deals that moved to Closed Won) per month, with a configurable target line. Uses `closedDate` to determine booking month.
 
-3. **Pipeline Coverage Ratio** — Weighted pipeline value (deal value x stage probability) vs a configurable quarterly revenue target. Shows coverage multiplier with health indicator (green >3x, yellow 1-3x, red <1x). One card per brand.
+3. **Net Revenue Retention (NRR)** — For won deals with contract data populated: starting MRR vs current MRR accounting for churn (expired contracts). Shows NRR % with health indicator. Placeholder state if contract dates aren't populated.
 
-4. **Stale Pipeline & Dark Pipeline** — Deals with no contact >30 days, grouped by brand. Shows count, total value at risk, and a clickable list that triggers the drill-down sheet. Separate section for leads approaching "dark" status (14-30 days no contact).
+4. **Revenue Concentration Risk** — Top customers by MRR as a percentage of total. Flags if any single customer represents >25% of revenue. Clickable for drill-down.
 
-## Stage Probability Weights
+## Stage-to-Close Estimation
 
-Used for weighted pipeline and coverage ratio:
+For the projection chart, estimate months-to-close from current stage using average cycle days from existing won deals. Fallback defaults if insufficient data:
 
 ```text
-New Lead: 5%, Qualified: 15%, Contacted: 20%, Meeting Set: 30%,
-Meeting Held: 40%, Proposal Sent: 60%, Negotiation: 75%, Contract Sent: 90%
+New Lead: 90d, Qualified: 75d, Contacted: 60d, Meeting Set: 45d,
+Meeting Held: 30d, Proposal Sent: 21d, Negotiation: 14d, Contract Sent: 7d
 ```
 
 ## UI Layout
 
 ```text
 ┌─────────────────────────────────────────────────┐
-│  Rep Capacity (gauges per rep, 2-col grid)       │
+│  3-Month Revenue Projection (stacked bar chart)  │
 ├─────────────────────┬───────────────────────────┤
-│  Coverage Ratio CT  │  Coverage Ratio SC        │
+│  Monthly Bookings   │  NRR / Retention          │
 ├─────────────────────┴───────────────────────────┤
-│  Pipeline Aging (table: stage x brand, avg days) │
-├─────────────────────────────────────────────────┤
-│  At-Risk Pipeline (stale + going dark cards)     │
+│  Revenue Concentration Risk (table + warning)    │
 └─────────────────────────────────────────────────┘
 ```
-
-## Drill-Down Support
-
-The Operations tab needs access to `onDrillDown` from BusinessSystem. Update the component interface to accept `onDrillDown` callback. Clicking stale/dark pipeline cards opens the sheet with the relevant leads.
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/DashboardOperations.tsx` | New component with all 4 sections: capacity gauges, coverage ratio cards, aging table, at-risk pipeline |
-| `src/components/BusinessSystem.tsx` | Mark operations tab `ready: true`, render `DashboardOperations` with `leads` and `onDrillDown` props |
+| `src/components/DashboardForecast.tsx` | New component with all 4 sections: projection bar chart (using Recharts via existing chart.tsx), bookings tracker, NRR card, concentration risk table |
+| `src/components/BusinessSystem.tsx` | Mark forecast tab `ready: true`, render `DashboardForecast` with `leads` and `onDrillDown` props |
 
