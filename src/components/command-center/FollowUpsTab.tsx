@@ -168,7 +168,7 @@ function FollowUpRow({
   onSkipTask?: (id: string) => void;
   onGenerateTaskDraft?: (task: LeadTask) => void;
   isActive?: boolean;
-  rowRef?: React.RefObject<HTMLDivElement>;
+  rowRef?: React.RefObject<HTMLDivElement> | ((el: HTMLDivElement | null) => void);
 }) {
   const [tasksOpen, setTasksOpen] = useState(false);
   const meetingCount = lead.meetings?.length || 0;
@@ -182,7 +182,7 @@ function FollowUpRow({
   const hasTasks = tasks && tasks.length > 0;
 
   return (
-    <div ref={rowRef}>
+    <div ref={typeof rowRef === "function" ? rowRef : rowRef || undefined}>
       <div
         className={cn(
           "px-4 py-3.5 hover:bg-secondary/20 transition-all cursor-pointer group border-b border-border last:border-b-0 hover:border-l-2 hover:border-l-foreground/20 hover:pl-[14px]",
@@ -776,23 +776,33 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
     }
   }, [activeRowIndex]);
 
-  // Helper to build common row props
-  let rowIndex = 0;
-  const rowProps = (lead: Lead, label: string, labelStyle: string, isUnanswered: boolean) => {
-    const idx = rowIndex++;
+  // Build a leadId→flatIndex map for keyboard nav
+  const leadIdToIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    flatLeadIds.forEach((id, i) => m.set(id, i));
+    return m;
+  }, [flatLeadIds]);
+
+  // Common row props factory
+  const commonRowProps = useCallback((lead: Lead) => {
+    const idx = leadIdToIndex.get(lead.id) ?? -1;
     return {
-      lead, label, labelStyle, onSelect: onSelectLead,
+      onSelect: onSelectLead,
       emailCount: emailCounts.get(lead.id) || 0,
-      onUpdate: handleUpdate, isUnanswered, onAction: handleAction,
+      onUpdate: handleUpdate,
+      onAction: handleAction,
       taskCount: taskCountMap.get(lead.id),
       tasks: tasksByLead.get(lead.id),
       onCompleteTask: handleCompleteTask,
       onSkipTask: handleSkipTask,
       onGenerateTaskDraft: handleGenerateTaskDraft,
       isActive: activeRowIndex === idx,
-      rowRef: { current: null } as React.RefObject<HTMLDivElement>,
+      rowRef: (el: HTMLDivElement | null) => {
+        if (el) rowRefs.current.set(idx, el);
+        else rowRefs.current.delete(idx);
+      },
     };
-  };
+  }, [leadIdToIndex, onSelectLead, emailCounts, handleUpdate, handleAction, taskCountMap, tasksByLead, handleCompleteTask, handleSkipTask, handleGenerateTaskDraft, activeRowIndex]);
 
   return (
     <div className="space-y-3">
@@ -842,34 +852,35 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
             )}
           </div>
         )}
-        {openSections.overdue && overdue.map(({ lead, daysOverdue }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={daysOverdue === 0 ? "Due today" : `${daysOverdue}d overdue`} labelStyle={daysOverdue === 0 ? "bg-foreground text-background" : "bg-red-500/10 text-red-600 dark:text-red-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} tasks={tasksByLead.get(lead.id)} onCompleteTask={handleCompleteTask} onSkipTask={handleSkipTask} onGenerateTaskDraft={handleGenerateTaskDraft} />
-        ))}
+        {openSections.overdue && overdue.map(({ lead, daysOverdue }) => {
+          const d = Math.max(1, daysOverdue);
+          return <FollowUpRow key={lead.id} lead={lead} label={`${d}d overdue`} labelStyle="bg-red-500/10 text-red-600 dark:text-red-400" isUnanswered={unansweredLeadIds.has(lead.id)} {...commonRowProps(lead)} />;
+        })}
 
         {/* Due This Week */}
         <SectionHeader title="Due This Week" count={dueThisWeek.length} dotColor="bg-blue-500" open={openSections.dueThisWeek} onToggle={() => toggleSection("dueThisWeek")} />
         {openSections.dueThisWeek && dueThisWeek.map(lead => {
           const dueDate = parseISO(lead.nextFollowUp);
           const label = isToday(dueDate) ? "Today" : format(dueDate, "EEE, MMM d");
-          return <FollowUpRow key={lead.id} lead={lead} label={label} labelStyle={isToday(dueDate) ? "bg-foreground text-background" : "bg-blue-500/10 text-blue-600 dark:text-blue-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} tasks={tasksByLead.get(lead.id)} onCompleteTask={handleCompleteTask} onSkipTask={handleSkipTask} onGenerateTaskDraft={handleGenerateTaskDraft} />;
+          return <FollowUpRow key={lead.id} lead={lead} label={label} labelStyle={isToday(dueDate) ? "bg-foreground text-background" : "bg-blue-500/10 text-blue-600 dark:text-blue-400"} isUnanswered={unansweredLeadIds.has(lead.id)} {...commonRowProps(lead)} />;
         })}
 
         {/* Unanswered Inbound */}
         <SectionHeader title="Unanswered Inbound" count={unansweredLeads.length} dotColor="bg-purple-500" open={openSections.unanswered} onToggle={() => toggleSection("unanswered")} />
         {openSections.unanswered && unansweredLeads.map(lead => (
-          <FollowUpRow key={lead.id} lead={lead} label="Awaiting reply" labelStyle="bg-purple-500/10 text-purple-600 dark:text-purple-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={true} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} tasks={tasksByLead.get(lead.id)} onCompleteTask={handleCompleteTask} onSkipTask={handleSkipTask} onGenerateTaskDraft={handleGenerateTaskDraft} />
+          <FollowUpRow key={lead.id} lead={lead} label="Awaiting reply" labelStyle="bg-purple-500/10 text-purple-600 dark:text-purple-400" isUnanswered={true} {...commonRowProps(lead)} />
         ))}
 
         {/* Untouched */}
         <SectionHeader title="Untouched New Leads" count={untouched.length} dotColor="bg-emerald-500" open={openSections.untouched} onToggle={() => toggleSection("untouched")} />
         {openSections.untouched && untouched.map(({ lead, daysOld }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={`${daysOld}d old`} labelStyle="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} tasks={tasksByLead.get(lead.id)} onCompleteTask={handleCompleteTask} onSkipTask={handleSkipTask} onGenerateTaskDraft={handleGenerateTaskDraft} />
+          <FollowUpRow key={lead.id} lead={lead} label={`${daysOld}d old`} labelStyle="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" isUnanswered={unansweredLeadIds.has(lead.id)} {...commonRowProps(lead)} />
         ))}
 
         {/* Going Dark */}
         <SectionHeader title="Going Dark" count={goingDark.length} dotColor="bg-amber-500" open={openSections.goingDark} onToggle={() => toggleSection("goingDark")} />
         {openSections.goingDark && goingDark.map(({ lead, daysSilent }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={`Silent ${daysSilent}d`} labelStyle="bg-amber-500/10 text-amber-600 dark:text-amber-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} tasks={tasksByLead.get(lead.id)} onCompleteTask={handleCompleteTask} onSkipTask={handleSkipTask} onGenerateTaskDraft={handleGenerateTaskDraft} />
+          <FollowUpRow key={lead.id} lead={lead} label={`Silent ${daysSilent}d`} labelStyle="bg-amber-500/10 text-amber-600 dark:text-amber-400" isUnanswered={unansweredLeadIds.has(lead.id)} {...commonRowProps(lead)} />
         ))}
 
         {totalItems === 0 && (
