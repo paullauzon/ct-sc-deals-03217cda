@@ -551,7 +551,18 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   const [sortField, setSortField] = useState<SortField>("default");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [openSections, setOpenSections] = useState({ overdue: true, dueThisWeek: true, unanswered: true, untouched: true, goingDark: true });
-  const { tasks: allTasks } = useLeadTasks();
+  const { tasks: allTasks, completeTask, skipTask, refetch: refetchTasks } = useLeadTasks();
+  const [activeRowIndex, setActiveRowIndex] = useState(-1);
+  const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  const tasksByLead = useMemo(() => {
+    const m = new Map<string, LeadTask[]>();
+    for (const t of allTasks) {
+      if (!m.has(t.lead_id)) m.set(t.lead_id, []);
+      m.get(t.lead_id)!.push(t);
+    }
+    return m;
+  }, [allTasks]);
 
   const taskCountMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -563,6 +574,37 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetLead, setSheetLead] = useState<Lead | null>(null);
   const [sheetActionType, setSheetActionType] = useState<ActionType | null>(null);
+
+  // AI draft for playbook task — opens the action sheet with task context
+  const handleGenerateTaskDraft = useCallback((task: LeadTask) => {
+    const lead = leads.find(l => l.id === task.lead_id);
+    if (!lead) return;
+    const actionTypeMap: Record<string, ActionType> = {
+      "email": "initial-outreach",
+      "call": "schedule-call",
+      "prep": "prep-brief",
+      "internal": "post-meeting",
+    };
+    setSheetLead(lead);
+    setSheetActionType(actionTypeMap[task.task_type] || "initial-outreach");
+    setSheetOpen(true);
+  }, [leads]);
+
+  const handleCompleteTask = useCallback(async (taskId: string) => {
+    const ok = await completeTask(taskId);
+    if (ok) {
+      toast({ title: "Task completed ✓" });
+      refetchTasks();
+    }
+  }, [completeTask, refetchTasks]);
+
+  const handleSkipTask = useCallback(async (taskId: string) => {
+    const ok = await skipTask(taskId);
+    if (ok) {
+      toast({ title: "Task skipped" });
+      refetchTasks();
+    }
+  }, [skipTask, refetchTasks]);
 
   const filtered = useMemo(() => {
     if (ownerFilter === "All") return leads;
