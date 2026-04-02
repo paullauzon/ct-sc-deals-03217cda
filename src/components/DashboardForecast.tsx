@@ -251,6 +251,9 @@ export function DashboardForecast({ leads, onDrillDown }: Props) {
       {/* Win/Loss Analysis */}
       <WinLossAnalysis leads={leads} />
 
+      {/* Objection & Competitor Heatmap */}
+      <ObjectionCompetitorHeatmap leads={leads} />
+
       {/* Revenue Concentration Risk */}
       <Card>
         <CardHeader className="pb-2">

@@ -441,6 +441,12 @@ export function DashboardOperations({ leads, onDrillDown }: Props) {
         </CardContent>
       </Card>
 
+      {/* Sales Coaching Scorecard */}
+      <SalesCoachingScorecard leads={leads} />
+
+      {/* Stuck Pipeline Alert */}
+      <StuckPipelineAlert leads={leads} onDrillDown={onDrillDown} />
+
       {/* At-Risk Pipeline */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card
@@ -486,5 +492,227 @@ export function DashboardOperations({ leads, onDrillDown }: Props) {
         </Card>
       </div>
     </div>
+  );
+}
+
+// ── Sales Coaching Scorecard ──
+function SalesCoachingScorecard({ leads }: { leads: Lead[] }) {
+  const scorecard = useMemo(() => {
+    const repStats: Record<string, {
+      rep: string;
+      talkRatios: number[];
+      qStrong: number; qAdequate: number; qWeak: number; qTotal: number;
+      oEffective: number; oPartial: number; oMissed: number; oTotal: number;
+      meetingCount: number;
+    }> = {};
+
+    // Won deal benchmarks
+    const wonTalkRatios: number[] = [];
+
+    for (const lead of leads) {
+      for (const m of lead.meetings || []) {
+        if (!m.intelligence) continue;
+        const intel = m.intelligence;
+        const rep = lead.assignedTo || "Unassigned";
+
+        if (!repStats[rep]) {
+          repStats[rep] = { rep, talkRatios: [], qStrong: 0, qAdequate: 0, qWeak: 0, qTotal: 0, oEffective: 0, oPartial: 0, oMissed: 0, oTotal: 0, meetingCount: 0 };
+        }
+        const s = repStats[rep];
+        s.meetingCount++;
+
+        if (typeof intel.talkRatio === "number") {
+          s.talkRatios.push(intel.talkRatio);
+          if (lead.stage === "Closed Won") wonTalkRatios.push(intel.talkRatio);
+        }
+        if (intel.questionQuality) {
+          s.qTotal++;
+          if (intel.questionQuality === "Strong") s.qStrong++;
+          else if (intel.questionQuality === "Adequate") s.qAdequate++;
+          else s.qWeak++;
+        }
+        if (intel.objectionHandling) {
+          s.oTotal++;
+          if (intel.objectionHandling === "Effective") s.oEffective++;
+          else if (intel.objectionHandling === "Partial") s.oPartial++;
+          else s.oMissed++;
+        }
+      }
+    }
+
+    const reps = Object.values(repStats).filter(r => r.meetingCount > 0).sort((a, b) => b.meetingCount - a.meetingCount);
+    const wonBenchmark = wonTalkRatios.length > 0
+      ? Math.round(wonTalkRatios.reduce((a, b) => a + b, 0) / wonTalkRatios.length * 10) / 10
+      : null;
+
+    // Count flagged meetings (Weak questions or Missed objections)
+    let flaggedCount = 0;
+    for (const r of reps) {
+      flaggedCount += r.qWeak + r.oMissed;
+    }
+
+    return { reps, wonBenchmark, flaggedCount };
+  }, [leads]);
+
+  if (scorecard.reps.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Users className="h-4 w-4" /> Sales Coaching Scorecard
+          </CardTitle>
+          {scorecard.flaggedCount > 0 && (
+            <span className="text-[10px] text-destructive font-medium">
+              ⚠ {scorecard.flaggedCount} meetings flagged Weak/Missed
+            </span>
+          )}
+        </div>
+        {scorecard.wonBenchmark !== null && (
+          <p className="text-[10px] text-muted-foreground">
+            Won deal benchmark: {scorecard.wonBenchmark}% talk ratio
+          </p>
+        )}
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-xs">Rep</TableHead>
+              <TableHead className="text-xs text-right">Meetings</TableHead>
+              <TableHead className="text-xs text-right">Avg Talk%</TableHead>
+              <TableHead className="text-xs text-right">Q.Quality</TableHead>
+              <TableHead className="text-xs text-right">Obj.Handling</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {scorecard.reps.map(r => {
+              const avgTalk = r.talkRatios.length > 0
+                ? Math.round(r.talkRatios.reduce((a, b) => a + b, 0) / r.talkRatios.length * 10) / 10
+                : null;
+              const talkColor = avgTalk !== null
+                ? (avgTalk <= 30 ? "text-emerald-500" : avgTalk <= 40 ? "text-yellow-600" : "text-destructive")
+                : "text-muted-foreground";
+              const qPct = r.qTotal > 0 ? Math.round((r.qStrong / r.qTotal) * 100) : null;
+              const oPct = r.oTotal > 0 ? Math.round((r.oEffective / r.oTotal) * 100) : null;
+
+              return (
+                <TableRow key={r.rep}>
+                  <TableCell className="text-xs font-medium">{r.rep}</TableCell>
+                  <TableCell className="text-xs text-right tabular-nums">{r.meetingCount}</TableCell>
+                  <TableCell className={`text-xs text-right tabular-nums font-medium ${talkColor}`}>
+                    {avgTalk !== null ? `${avgTalk}%` : "N/A"}
+                  </TableCell>
+                  <TableCell className="text-xs text-right tabular-nums">
+                    {qPct !== null ? (
+                      <span className={qPct >= 80 ? "text-emerald-500" : qPct >= 60 ? "text-yellow-600" : "text-destructive"}>
+                        {qPct}% Strong
+                      </span>
+                    ) : "N/A"}
+                  </TableCell>
+                  <TableCell className="text-xs text-right tabular-nums">
+                    {oPct !== null ? (
+                      <span className={oPct >= 80 ? "text-emerald-500" : oPct >= 60 ? "text-yellow-600" : "text-destructive"}>
+                        {oPct}% Eff
+                      </span>
+                    ) : "N/A"}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Stuck Pipeline Alert ──
+function StuckPipelineAlert({ leads, onDrillDown }: { leads: Lead[]; onDrillDown: (title: string, leads: Lead[]) => void }) {
+  const stuckDeals = useMemo(() => {
+    const now = new Date();
+    return leads.filter(lead => {
+      if (!["Meeting Held", "Proposal Sent"].includes(lead.stage)) return false;
+      const daysInStage = lead.stageEnteredDate
+        ? differenceInDays(now, parseISO(lead.stageEnteredDate))
+        : 0;
+      if (daysInStage < 14) return false;
+
+      // Check if any meeting showed Strong intent or Highly Engaged
+      const hasStrongSignal = (lead.meetings || []).some(m => {
+        if (!m.intelligence) return false;
+        return m.intelligence.dealSignals?.buyingIntent === "Strong" ||
+               m.intelligence.engagementLevel === "Highly Engaged";
+      });
+      return hasStrongSignal;
+    }).sort((a, b) => (b.dealValue || 0) - (a.dealValue || 0));
+  }, [leads]);
+
+  if (stuckDeals.length === 0) return null;
+
+  const totalValue = stuckDeals.reduce((s, l) => s + l.dealValue, 0);
+
+  return (
+    <Card className="border-orange-500/30">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Zap className="h-4 w-4 text-orange-500" /> High-Intent Stuck Deals
+          </CardTitle>
+          <span className="text-xs text-muted-foreground">
+            {stuckDeals.length} deals · ${totalValue.toLocaleString()} at risk
+          </span>
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Strong intent / Highly Engaged but stuck in Meeting Held or Proposal Sent for 14+ days
+        </p>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-xs">Name</TableHead>
+              <TableHead className="text-xs">Company</TableHead>
+              <TableHead className="text-xs">Stage</TableHead>
+              <TableHead className="text-xs text-right">Days</TableHead>
+              <TableHead className="text-xs text-right">Value</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {stuckDeals.slice(0, 10).map(l => {
+              const days = l.stageEnteredDate
+                ? differenceInDays(new Date(), parseISO(l.stageEnteredDate))
+                : 0;
+              return (
+                <TableRow
+                  key={l.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => onDrillDown(l.name, [l])}
+                >
+                  <TableCell className="text-xs font-medium">{l.name}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{l.company}</TableCell>
+                  <TableCell className="text-xs">{l.stage}</TableCell>
+                  <TableCell className={`text-xs text-right tabular-nums ${days >= 30 ? "text-destructive font-semibold" : "text-orange-500"}`}>
+                    {days}d
+                  </TableCell>
+                  <TableCell className="text-xs text-right tabular-nums font-medium">
+                    ${l.dealValue.toLocaleString()}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+        {stuckDeals.length > 10 && (
+          <button
+            className="text-xs text-primary hover:underline mt-2"
+            onClick={() => onDrillDown("All High-Intent Stuck Deals", stuckDeals)}
+          >
+            View all {stuckDeals.length} deals →
+          </button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
