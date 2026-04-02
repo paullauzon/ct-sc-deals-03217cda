@@ -305,7 +305,7 @@ export function PrepIntelTab({ leads, ownerFilter, onSelectLead, meetingHorizon 
                   Copy to Clipboard
                 </button>
                 <button
-                  onClick={() => { setDraftContent(""); setDraftLoading(true); handleDraftEmail(draftLead!).finally(() => setDraftLoading(false)); }}
+                  onClick={() => { setDraftContent(""); handleDraftEmail(draftLead!); }}
                   className="text-xs px-3 py-2.5 rounded-md border border-border text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Regenerate
