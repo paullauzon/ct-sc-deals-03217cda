@@ -169,6 +169,11 @@ function FollowUpRow({
         {hasCalendly && (
           <CalendarCheck className="h-2.5 w-2.5 text-muted-foreground" />
         )}
+        {taskCount != null && taskCount > 0 && (
+          <span className="text-[10px] text-primary flex items-center gap-0.5 font-medium">
+            <ListChecks className="h-2.5 w-2.5" />{taskCount}
+          </span>
+        )}
 
         {/* Action chip + snooze — always visible */}
         <div className="ml-auto flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
