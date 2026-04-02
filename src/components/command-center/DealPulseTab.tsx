@@ -237,7 +237,8 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
                     </span>
                   </div>
                 );
-              })}
+              });
+              })()}
             </div>
           </div>
         </div>
