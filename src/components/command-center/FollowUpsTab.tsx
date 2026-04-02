@@ -108,13 +108,14 @@ function getRecommendation(lead: Lead): string | null {
 
 // ─── Rich row ───
 function FollowUpRow({
-  lead, label, labelStyle, onSelect, emailCount, onUpdate, isUnanswered, onAction,
+  lead, label, labelStyle, onSelect, emailCount, onUpdate, isUnanswered, onAction, taskCount,
 }: {
   lead: Lead; label: string; labelStyle?: string; onSelect: (id: string) => void;
   emailCount: number;
   onUpdate: (id: string, data: Partial<Lead>) => void;
   isUnanswered: boolean;
   onAction: (lead: Lead, actionType: ActionType) => void;
+  taskCount?: number;
 }) {
   const meetingCount = lead.meetings?.length || 0;
   const hasCalendly = !!lead.calendlyBookedAt;
