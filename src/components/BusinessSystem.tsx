@@ -74,14 +74,15 @@ export function BusinessSystem() {
         <DashboardEconomics leads={filteredLeads} />
       )}
 
-      {(tab === "operations" || tab === "forecast") && (
+      {tab === "operations" && (
+        <DashboardOperations leads={filteredLeads} onDrillDown={handleDrillDown} />
+      )}
+
+      {tab === "forecast" && (
         <div className="flex items-center justify-center h-64 border border-dashed border-border rounded-lg">
           <div className="text-center space-y-1">
             <p className="text-sm font-medium text-muted-foreground">Coming Soon</p>
-            <p className="text-xs text-muted-foreground/60">
-              {tab === "operations" && "Capacity utilization, pipeline aging, and health metrics"}
-              {tab === "forecast" && "Revenue projections and retention tracking"}
-            </p>
+            <p className="text-xs text-muted-foreground/60">Revenue projections and retention tracking</p>
           </div>
         </div>
       )}
