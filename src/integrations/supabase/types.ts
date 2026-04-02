@@ -95,6 +95,51 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_tasks: {
+        Row: {
+          ai_content: string | null
+          completed_at: string | null
+          created_at: string | null
+          description: string | null
+          due_date: string
+          id: string
+          lead_id: string
+          playbook: string
+          sequence_order: number
+          status: string
+          task_type: string
+          title: string
+        }
+        Insert: {
+          ai_content?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          due_date: string
+          id?: string
+          lead_id: string
+          playbook: string
+          sequence_order: number
+          status?: string
+          task_type: string
+          title: string
+        }
+        Update: {
+          ai_content?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          due_date?: string
+          id?: string
+          lead_id?: string
+          playbook?: string
+          sequence_order?: number
+          status?: string
+          task_type?: string
+          title?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           acquisition_strategy: string
