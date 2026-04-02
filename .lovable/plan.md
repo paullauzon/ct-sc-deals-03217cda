@@ -1,72 +1,81 @@
 
 
-# Redesign Follow-Ups Tab into an Actionable Intelligence List
+# Follow-Ups Tab: Design Polish + AI-Powered Action Playbook
 
-## Problem
-The Follow-Ups tab is a flat wall of names with no context. A sales veteran looking at 78 overdue leads can't tell: Who has a meeting history? Who responded to outreach? Who's worth chasing vs. writing off? There's no way to sort or prioritize. The "Stage" dropdown and "Contacted" button feel generic. The design uses colored text that clashes with the minimal black-and-white aesthetic.
+## Part 1: Row Design Fix
 
-## Design Philosophy
-Every row must answer 3 questions in under 2 seconds:
-1. **Who is this?** (name, company, brand, deal value)
-2. **What's our history?** (stage, has meetings, has emails, last contact)
-3. **What should I do next?** (the recommended action)
+**Problem**: Rows blend together — no visual separation, everything is the same flat `px-4 py-2.5` with identical styling.
 
-## Changes
+**Fix**: Add clear row separation with:
+- Bottom border between rows (`border-b border-border`)
+- Slightly more vertical padding (`py-3.5` instead of `py-2.5`)
+- Left accent bar on hover (2px left border on hover, matching section color)
+- Subtle alternating background on even rows (`even:bg-secondary/5`)
+- Make the status label (e.g., "30d overdue") more prominent with a badge-style treatment instead of plain text
 
-### 1. Richer Follow-Up Rows — Context at a Glance
-Replace the current sparse row with a two-line layout per lead:
+## Part 2: AI-Powered Follow-Up Action System
+
+This is the real game-changer. A veteran doesn't just "follow up" — they execute a **specific playbook** based on where each deal stands. The system should auto-determine the right action type and generate AI-personalized content.
+
+### Stage-Based Action Playbook
+
+The system determines the **recommended action type** based on the lead's current state:
 
 ```text
-┌─────────────────────────────────────────────────────────────────────┐
-│ [CT] Ben Williams    Treatyoakequity    Meeting Held   [M]         │
-│      $6,000 · Last contact: Mar 3 · 🎤 2 meetings · ✉ 4 emails   │
-│                                              30d overdue  [⚡][▾] │
-└─────────────────────────────────────────────────────────────────────┘
+STATE                          → ACTION TYPE
+─────────────────────────────────────────────
+New Lead, no contact           → Initial outreach email
+Contacted, no meeting booked   → Meeting booking nudge
+Meeting Set (upcoming)         → Pre-meeting prep reminder
+Meeting Held, no follow-up     → Post-meeting follow-up email
+Proposal Sent, no response     → Proposal check-in
+Going Dark (21+ days silent)   → Re-engagement attempt
+Unanswered inbound email       → Reply to their message
+Has open action items          → Complete action items first
 ```
 
-**Line 1**: Brand logo, name, company, stage badge, owner avatar
-**Line 2**: Deal value, last contact date, meeting count icon (microphone), email count icon (envelope), Calendly indicator if meeting scheduled
-**Right side**: Overdue/status label + compact action buttons
+### What Each Action Generates (AI-Powered)
 
-The key signals added per row:
-- **Meeting count** (`lead.meetings.length`) — shows `🎤 2` if they have Fireflies meetings
-- **Has Calendly** — small calendar icon if `calendlyBookedAt` exists
-- **Email count** — fetched from `lead_emails` table, shown as `✉ 4`
-- **Last contact** — formatted date, not just days
-- **Deal value** — always visible, not hidden behind conditions
+Each action type produces a **draft** using the existing `draft-followup` edge function pattern, customized with:
+- Lead's enrichment data (company, motivation, urgency)
+- Meeting intelligence (what was discussed, pain points, objections)
+- Deal intelligence (action items, stakeholder info, win strategy)
+- Psychological profile (communication style, real motivations)
 
-### 2. Sort Controls — Prioritize What Matters
-Add a sort bar above the list with toggle buttons:
+**Action Types:**
 
-**Sort by**: `Overdue` (default) | `Deal Value` | `Last Contact` | `Stage` | `Name`
+1. **Draft Email** — AI generates a contextual follow-up email based on stage + meeting history. Uses existing `draft-followup` edge function, extended with a `template` parameter for different email types (post-meeting, proposal follow-up, re-engagement, initial outreach).
 
-Each button toggles ascending/descending. This lets the veteran immediately surface:
-- Highest-value stale deals (sort by Deal Value desc)
-- Longest-silent contacts (sort by Last Contact asc)
-- Stage-based workflow (sort by Stage to batch-process)
+2. **Schedule Call** — Shows a one-click "Schedule Follow-Up Call" that sets `nextFollowUp` to a suggested date and adds a note about what to discuss (pulled from open action items / objections).
 
-### 3. Section Redesign — Cleaner Visual Hierarchy
-- Remove colored section text (red, amber, emerald, purple) — replace with monochrome section headers using subtle left borders and dot indicators per the design system
-- Section headers become: `● OVERDUE (78)` with a subtle red dot, all text in foreground/muted
-- Collapse "Going Dark" items that overlap with "Overdue" — if a lead is both overdue AND going dark, show only in Overdue with a "silent Xd" sub-label
+3. **Prep Brief** — For leads with upcoming meetings, links to the existing meeting prep brief or triggers generation.
 
-### 4. Quick Actions Refinement
-Replace the cramped Stage dropdown + Contacted button with a single action menu:
-- **Primary action**: "Set Next Step" — opens a small popover with: date picker + stage selector + a "Mark Contacted" checkbox, all in one compact form
-- This reduces 3 separate controls to 1 clean button per row
+### UI: Action Chip on Each Row
 
-### 5. "Recommended Next Action" Intelligence
-For leads with `dealIntelligence` or `enrichment`, show a one-line AI recommendation:
-- If `dealIntelligence.actionItemTracker` has open items → show the top one
-- If `enrichment.suggestedUpdates.nextFollowUp` exists → show "AI suggests follow-up by [date]"
-- If lead has meetings but stage is still "Meeting Held" → show "Advance stage?"
-- Displayed as a subtle italic line under the stats row
+Replace the generic "Next Step" popover button with a **contextual action chip** that shows the specific recommended action:
 
-### 6. Fetch Email Counts in Bulk
-Instead of only checking unanswered emails, fetch total email counts per lead in one query to show the `✉ N` indicator on every row. Use a single aggregated query:
-```sql
-SELECT lead_id, COUNT(*) as count FROM lead_emails WHERE lead_id IN (...) GROUP BY lead_id
+```text
+[✉ Draft Follow-Up]  — for post-meeting leads
+[✉ Send Proposal]    — for Meeting Held leads ready to advance
+[📞 Schedule Call]    — for leads needing a call
+[↩ Reply]            — for unanswered inbound
+[🔄 Re-engage]       — for going dark leads
 ```
+
+Clicking the chip opens a **slide-out panel** (not a tiny popover) with:
+- The AI-generated draft email (editable)
+- Suggested follow-up date
+- Suggested stage change
+- "Mark Done" button that updates the lead + sets next follow-up
+
+### New Edge Function: `generate-follow-up-action`
+
+Extends the existing `draft-followup` function to handle multiple action types via a `type` parameter:
+- `post-meeting` — current behavior
+- `initial-outreach` — intro email based on enrichment
+- `proposal-followup` — check-in after proposal sent
+- `re-engagement` — win-back email for dark leads
+- `reply-inbound` — suggested reply to their last email
 
 ## Technical Details
 
@@ -74,17 +83,24 @@ SELECT lead_id, COUNT(*) as count FROM lead_emails WHERE lead_id IN (...) GROUP 
 
 | File | Change |
 |------|--------|
-| `src/components/command-center/FollowUpsTab.tsx` | Complete rewrite: two-line rows with meeting/email/calendly signals, sort controls, bulk email count fetch, recommended actions, refined section headers, single "Next Step" action popover |
+| `src/components/command-center/FollowUpsTab.tsx` | Row design upgrade (borders, padding, badges). Replace "Next Step" popover with contextual action chip. Add action panel slide-out with AI draft, suggested date, stage change. |
+| `supabase/functions/generate-follow-up-action/index.ts` | New edge function extending draft-followup pattern with multi-type support (post-meeting, outreach, re-engage, reply, proposal). Uses existing OPENAI_API_KEY. |
 
-### Data Sources
-- Meeting count: `lead.meetings.length` (already on Lead object)
-- Calendly: `lead.calendlyBookedAt` (already on Lead)
-- Email counts: single query to `lead_emails` grouped by `lead_id`
-- AI recommendations: `lead.dealIntelligence?.actionItemTracker`, `lead.enrichment?.suggestedUpdates`
-- All sort fields already exist on the Lead type
+### Action Type Determination Logic (client-side)
+```typescript
+function getActionType(lead: Lead): ActionType {
+  if (unansweredInbound) return "reply-inbound";
+  if (stage === "New Lead" && !lastContactDate) return "initial-outreach";
+  if (stage === "Meeting Held" && hasRecentMeeting) return "post-meeting";
+  if (stage === "Proposal Sent") return "proposal-followup";
+  if (daysSilent > 21) return "re-engagement";
+  return "schedule-call"; // default
+}
+```
 
-### Sort State
-- `sortField`: `"overdue" | "dealValue" | "lastContact" | "stage" | "name"`
-- `sortDir`: `"asc" | "desc"`
-- Applied within each section independently (overdue sorted by chosen field, due this week by chosen field, etc.)
+### Data Flow
+1. User clicks action chip → opens Sheet (slide-out panel)
+2. Sheet calls `generate-follow-up-action` edge function with lead data + action type
+3. AI returns draft email + suggested next steps
+4. User edits, then clicks "Send & Update" which updates lead fields
 
