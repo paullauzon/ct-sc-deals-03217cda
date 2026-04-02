@@ -509,17 +509,15 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   const toggleSection = (key: keyof typeof openSections) => setOpenSections(s => ({ ...s, [key]: !s[key] }));
 
   // Build sections — dedup: overdue takes priority over goingDark
-  const overdueSet = useMemo(() => new Set<string>(), []);
-
   const overdue = useMemo(() => {
     const items = active
       .filter(l => l.nextFollowUp && isBefore(parseISO(l.nextFollowUp), now))
       .map(l => ({ lead: l, daysOverdue: differenceInDays(now, parseISO(l.nextFollowUp)) }))
       .sort((a, b) => b.daysOverdue - a.daysOverdue);
-    overdueSet.clear();
-    items.forEach(i => overdueSet.add(i.lead.id));
     return applySortToLeads(items, sortField, sortDir, (a, b) => b.daysOverdue - a.daysOverdue);
   }, [active, now, sortField, sortDir]);
+
+  const overdueSet = useMemo(() => new Set(overdue.map(i => i.lead.id)), [overdue]);
 
   const dueThisWeek = useMemo(() => {
     const weekEnd = addDays(now, 7);
