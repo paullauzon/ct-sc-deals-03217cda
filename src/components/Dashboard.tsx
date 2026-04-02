@@ -8,6 +8,7 @@ import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics"
 import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
 import { DashboardTrends } from "@/components/DashboardTrends";
 import { IntelligenceCenter } from "@/components/IntelligenceCenter";
+import { DashboardBusiness } from "@/components/DashboardBusiness";
 import { getBrandBorderClass, getBrandDotClass } from "@/lib/brandColors";
 import { BrandLogo } from "@/components/BrandLogo";
 import { cn } from "@/lib/utils";
@@ -33,7 +34,7 @@ const ACTIVE_STAGES = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Mee
 
 const ALL_SERVICES = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"] as const;
 
-type DashboardTab = "overview" | "pipeline" | "team" | "buyers" | "intel";
+type DashboardTab = "overview" | "pipeline" | "team" | "buyers" | "intel" | "business";
 
 const TABS: { key: DashboardTab; label: string; desc: string }[] = [
   { key: "overview", label: "Overview", desc: "Executive summary" },
@@ -41,6 +42,7 @@ const TABS: { key: DashboardTab; label: string; desc: string }[] = [
   { key: "team", label: "Team", desc: "Management" },
   { key: "buyers", label: "Buyers", desc: "Strategy" },
   { key: "intel", label: "Intel", desc: "Signal Center" },
+  { key: "business", label: "Business", desc: "Operations" },
 ];
 
 interface DrillDown {
@@ -55,7 +57,7 @@ export function Dashboard() {
     const hash = window.location.hash.replace("#", "");
     const params = new URLSearchParams(hash);
     const t = params.get("tab");
-    const valid: DashboardTab[] = ["overview", "pipeline", "team", "buyers", "intel"];
+    const valid: DashboardTab[] = ["overview", "pipeline", "team", "buyers", "intel", "business"];
     return t && valid.includes(t as DashboardTab) ? (t as DashboardTab) : "overview";
   });
 
