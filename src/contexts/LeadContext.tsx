@@ -267,14 +267,28 @@ export function LeadProvider({ children }: { children: ReactNode }) {
             updated.closedDate = "";
             dbPayload.closedDate = "";
         }
-          // Auto-generate playbook tasks for the new stage
+          // Archive stale playbook tasks then generate new ones
           const playbook = getPlaybookForStage(updates.stage);
           if (playbook) {
-            const tasks = generateTasksFromPlaybook(playbook, id);
-            supabase.from("lead_tasks").insert(tasks as any).then(({ error: taskErr }) => {
-              if (taskErr) console.error("Playbook task insert error:", taskErr);
-              else toast(`📋 ${playbook.steps.length} playbook tasks created for ${updated.name}`);
-            });
+            // First archive any pending tasks from previous playbooks
+            supabase.from("lead_tasks")
+              .update({ status: "superseded" } as any)
+              .eq("lead_id", id)
+              .eq("status", "pending")
+              .then(() => {
+                const tasks = generateTasksFromPlaybook(playbook, id);
+                supabase.from("lead_tasks").insert(tasks as any).then(({ error: taskErr }) => {
+                  if (taskErr) console.error("Playbook task insert error:", taskErr);
+                  else toast(`📋 ${playbook.steps.length} playbook tasks created for ${updated.name}`);
+                });
+              });
+          } else {
+            // No playbook for this stage — still archive old pending tasks
+            supabase.from("lead_tasks")
+              .update({ status: "superseded" } as any)
+              .eq("lead_id", id)
+              .eq("status", "pending")
+              .then(() => {});
           }
         }
         if (updates.meetingSetDate && !l.meetingSetDate) {

@@ -1,11 +1,11 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Lead } from "@/types/lead";
 import { useLeads } from "@/contexts/LeadContext";
 import { BrandLogo } from "@/components/BrandLogo";
 import {
   ChevronDown, ChevronRight, Clock, AlertTriangle, UserX, Ghost,
   Mail, Mic, CalendarCheck, ArrowUpDown, Zap, Send, Phone, RotateCcw,
-  Reply, FileText, Loader2, ListChecks
+  Reply, FileText, Loader2, ListChecks, CheckCircle2, SkipForward
 } from "lucide-react";
 import { format, parseISO, differenceInDays, isToday, addDays, isBefore, startOfDay } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,7 +17,8 @@ import { CalendarIcon } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { useLeadTasks } from "@/hooks/useLeadTasks";
+import { useLeadTasks, LeadTask } from "@/hooks/useLeadTasks";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 const STAGE_OPTIONS = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"] as const;
