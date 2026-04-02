@@ -1,10 +1,13 @@
 import { useState, useMemo, useEffect } from "react";
 import { Lead } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
-import { CalendarCheck, ChevronDown, ChevronRight, Sparkles, Users, Mail, ArrowUpRight } from "lucide-react";
+import { CalendarCheck, ChevronDown, ChevronRight, Sparkles, Users, Mail, ArrowUpRight, CheckCircle2, SkipForward, ListChecks } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
-import { format, parseISO, differenceInDays, subHours } from "date-fns";
+import { format, parseISO, differenceInDays, subHours, isToday as isTodayFn } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { useLeadTasks, LeadTask } from "@/hooks/useLeadTasks";
+import { toast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 
