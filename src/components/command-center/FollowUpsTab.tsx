@@ -280,15 +280,21 @@ function ActionSheet({
 
   const handleApply = () => {
     if (!lead) return;
-    const updates: Partial<Lead> = { lastContactDate: format(new Date(), "yyyy-MM-dd") };
-    if (suggestedFollowUp) updates.nextFollowUp = suggestedFollowUp;
-    if (selectedStage) {
-      updates.stage = selectedStage as Lead["stage"];
-      updates.stageEnteredDate = format(new Date(), "yyyy-MM-dd");
+    try {
+      const updates: Partial<Lead> = { lastContactDate: format(new Date(), "yyyy-MM-dd") };
+      if (suggestedFollowUp) updates.nextFollowUp = suggestedFollowUp;
+      if (selectedStage) {
+        updates.stage = selectedStage as Lead["stage"];
+        updates.stageEnteredDate = format(new Date(), "yyyy-MM-dd");
+      }
+      if (content) navigator.clipboard.writeText(content);
+      onUpdate(lead.id, updates);
+      toast({ title: content ? "Copied & lead updated" : "Lead updated", description: `${lead.name} marked as contacted.` });
+      onClose();
+    } catch (err) {
+      console.error("Failed to update lead:", err);
+      toast({ title: "Update failed", description: "Please try again.", variant: "destructive" });
     }
-    onUpdate(lead.id, updates);
-    toast({ title: "Lead updated", description: `${lead.name} marked as contacted.` });
-    onClose();
   };
 
   const actionLabels: Record<string, string> = {
