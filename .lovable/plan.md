@@ -1,49 +1,81 @@
 
 
-# Prep Intel: Source Citations + LinkedIn Data Gap
+# Prep Intel Upgrade — Sources as Links + Surface Hidden Intelligence
 
-## Two Issues Found
+## Two Problems
 
-### Issue 1: Claims have no visible source citations
+### 1. Sources display is wrong
+Currently sources are in a collapsible numbered list. User wants: URLs as inline hyperlinks throughout the content, and non-URL sources (like "form submission", "website content") in a small dropdown.
 
-The `enrich-lead` edge function already instructs the AI to cite sources inline (e.g., "(web search: URL)", "(website)", "(form submission)"). The `dataSources` field is returned listing all URLs used. However, **the UI never displays these citations**. The opening hook, value angle, watch outs, and discovery questions show raw text with no indication of where claims originated. This is why "partnership with Shore Capital Partners" appears without verification.
+### 2. The AI generates 15+ fields but the UI only shows 5
+The `enrich-lead` function returns all of these that are **never displayed**:
+- `companyDossier` — full company intelligence briefing
+- `prospectProfile` — career trajectory, communication style, what motivates them
+- `preMeetingAmmo` — 3-5 specific talking points with "why it matters"
+- `competitivePositioning` — competitive landscape analysis
+- `keyInsights` — 5-7 "read nothing else but this" bullet points
+- `decisionMakers` — key people and roles
+- `competitorTools` — other services they may use
+- `acquisitionCriteria` — target sectors/deal size/geo
+- `suggestedUpdates` — AI-recommended CRM field changes (stage, priority, ICP fit)
 
-**Fix**: Display the `dataSources` field from enrichment as a collapsible "Sources" section at the bottom of the battle card. Additionally, ensure inline source markers (already in the AI output like "(web search: URL)") are rendered as clickable links rather than stripped.
+The current battle card shows only: `openingHook`, `valueAngle`, `watchOuts`, `discoveryQuestions`, and `dataSources`. That's a fraction of the intelligence.
 
-### Issue 2: LinkedIn data is NOT passed to the enrichment function
+Also: double-quote wrapping bug (AI returns quotes, UI adds more quotes = `""text""`).
 
-The lead object has `linkedinUrl` and `linkedinTitle` fields (populated by the LinkedIn backfill agent). But `PrepIntelTab.tsx` never sends these to `enrich-lead`. The enrichment function does a separate web search for the prospect, but it doesn't have the LinkedIn profile data we already collected. This means:
+## Changes
 
-- The AI is working without the prospect's LinkedIn title, company confirmation, or career context
-- We're doing redundant searches when we already have a LinkedIn URL
-- The prospect profile and opening hook could be much more specific with LinkedIn data
+### 1. Inline source citations (SourcesCitation redesign)
 
-**Fix**: Pass `leadLinkedinUrl` and `leadLinkedinTitle` to `enrich-lead`. Update the edge function to scrape the LinkedIn profile URL (via Firecrawl) if available, adding it as a high-priority data source for the prospect profile, opening hook, and discovery questions.
+- Parse `dataSources` string: extract items with URLs vs items without
+- Items WITH URLs → render as small hyperlink pills inline below the battle card (e.g., `🔗 dillarddoor.com`, `🔗 bloomberg.com/article...`)
+- Items WITHOUT URLs (e.g., "Form submission", "LinkedIn title") → show in a small "(+2 more)" dropdown
+- Remove the current collapsible list approach
 
-## Plan
+### 2. Surface hidden enrichment fields in the battle card
 
-### 1. Pass LinkedIn data to enrich-lead (PrepIntelTab.tsx)
+Restructure the card into a tighter, more complete layout:
 
-Add `leadLinkedinUrl: lead.linkedinUrl` and `leadLinkedinTitle: lead.linkedinTitle` to the enrichment payload body (the else branch at line 431).
+```text
+┌──────────────────────────────────────────────────────┐
+│ HEADER (name, company, meeting, signals)             │
+├──────────────────────────────────────────────────────┤
+│ 🎯 OPENING HOOK                   │ ACTIONS          │
+│ "I saw Dillard Door..."           │ [Research/Brief]  │
+│                                    │ [Draft Email]    │
+│ 💡 VALUE ANGLE                     │ [Deal Room →]    │
+│ Our M&A service can...             │                  │
+│                                    │                  │
+│ 🔑 KEY INSIGHTS (new!)             │                  │
+│ • Most critical signal...          │                  │
+│ • Second insight...                │                  │
+│                                    │                  │
+│ ⚠ WATCH OUTS                      │                  │
+│ • Don't assume...                  │                  │
+│                                    │                  │
+│ 🧠 ASK                             │                  │
+│ 1. "How does..."                   │                  │
+│                                    │                  │
+│ 🔗 dillarddoor.com · bloomberg.com │                  │
+│    (+2 non-link sources)           │                  │
+├──────────────────────────────────────────────────────┤
+│ ▸ Prospect Profile (career, style, motivations)      │
+│ ▸ Company Intel (dossier, decision makers, criteria)  │
+│ ▸ Competitive Landscape (positioning, competitor tools)│
+│ ▸ Suggested CRM Updates (stage→X, priority→Y) [Apply]│
+│ ▸ Deep Intel (win strategy, psychology — if meetings) │
+└──────────────────────────────────────────────────────┘
+```
 
-### 2. Use LinkedIn in the edge function (enrich-lead/index.ts)
+### 3. Fix double-quote bug
+Strip leading/trailing `"` from `openingHook` and `discoveryQuestions` before rendering, since the UI already wraps in quotes.
 
-- Accept `leadLinkedinUrl` and `leadLinkedinTitle` from the request body
-- If `leadLinkedinUrl` exists, scrape it via Firecrawl as a priority data source
-- Add it to the source inventory and context: `LINKEDIN PROFILE CONTENT: ...`
-- Update the source inventory line: `- LinkedIn profile: YES/NO`
+### 4. Add "Apply" buttons for suggested CRM updates
+When `enrichment.suggestedUpdates` exists with recommendations (e.g., `{ stage: { value: "Qualified", reason: "..." } }`), show them in a collapsed section with one-click "Apply" buttons that call `updateLead`.
 
-### 3. Show source citations in the UI (PrepIntelTab.tsx)
-
-- After the battle card content (below the ASK section), add a small "Sources" toggle
-- When expanded, show `enrichment.dataSources` as a bulleted list of clickable links
-- Parse inline citations like `(web search: https://...)` into clickable `<a>` tags throughout the displayed text
-- Style sources with muted text and external link icons
-
-### Files Changed
+## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/command-center/PrepIntelTab.tsx` | Pass `leadLinkedinUrl` and `leadLinkedinTitle` to enrich-lead body; add Sources section below battle card showing `enrichment.dataSources`; parse inline citation URLs into clickable links |
-| `supabase/functions/enrich-lead/index.ts` | Accept `leadLinkedinUrl`/`leadLinkedinTitle`; scrape LinkedIn profile via Firecrawl if URL available; add to source inventory and AI context |
+| `src/components/command-center/PrepIntelTab.tsx` | Redesign SourcesCitation to hyperlink pills + dropdown; add Key Insights section; add collapsed Prospect Profile, Company Intel, Competitive Landscape, Suggested Updates sections; fix double-quote stripping; add Apply buttons for CRM suggestions |
 
