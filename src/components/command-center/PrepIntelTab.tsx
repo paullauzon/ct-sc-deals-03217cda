@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Lead } from "@/types/lead";
 import { BrandLogo } from "@/components/BrandLogo";
 import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users, Mic, Mail, Loader2, X, ChevronDown, ChevronRight, Send, CheckCircle2, SkipForward, ListChecks } from "lucide-react";
@@ -458,12 +458,18 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
         onBriefGenerated(lead.id, lead.name, data.brief);
         toast({ title: "Prep brief ready", description: `Battle card generated for ${lead.name}` });
       } else if (!hasMeetings && data?.enrichment) {
-        await supabase.from("leads").update({
+        const { error: dbErr } = await supabase.from("leads").update({
           enrichment: data.enrichment,
           enrichment_status: "complete",
         }).eq("id", lead.id);
-        setEnrichmentUpdated(true);
-        toast({ title: "Prospect researched", description: `Battle card saved for ${lead.name}` });
+        if (dbErr) {
+          toast({ title: "Failed to save research", description: dbErr.message, variant: "destructive" });
+        } else {
+          // Push enrichment into local React state so the card re-renders immediately
+          onUpdateLead(lead.id, { enrichment: data.enrichment, enrichmentStatus: "complete" });
+          setEnrichmentUpdated(true);
+          toast({ title: "Prospect researched", description: `Battle card saved for ${lead.name}` });
+        }
       } else if (data?.error) {
         toast({ title: "Could not generate brief", description: data.error, variant: "destructive" });
       }
