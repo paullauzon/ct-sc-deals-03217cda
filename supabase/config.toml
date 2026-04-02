@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.register-calendly-webhook]
 verify_jwt = false
+
+[functions.generate-follow-up-action]
+verify_jwt = false

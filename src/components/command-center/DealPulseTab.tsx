@@ -130,7 +130,7 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
         <div className="flex gap-3 flex-wrap">
           <KpiCard label="Active Deals" value={String(kpis.activeCount)} icon={Activity} accent="text-primary" />
           <KpiCard label="Pipeline Value" value={`$${kpis.totalValue.toLocaleString()}`} icon={DollarSign} accent="text-emerald-500" />
-          <KpiCard label="Avg Days in Stage" value={`${kpis.avgDays}d`} icon={Clock} accent="text-amber-500" />
+          <KpiCard label="Avg Days in Stage" value={`${kpis.avgDays}d`} icon={Clock} accent={daysInStageColor(kpis.avgDays)} />
           <KpiCard label="Meetings This Week" value={String(kpis.meetingsThisWeek)} icon={CalendarCheck} accent="text-blue-500" />
         </div>
 

@@ -164,14 +164,20 @@ function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () =>
         </button>
       )}
 
+      {/* Prior meeting summary */}
+      {meetingCount > 0 && (() => {
+        const latestMeeting = lead.meetings[lead.meetings.length - 1] as any;
+        const summary = latestMeeting?.intelligence?.summary || latestMeeting?.summary;
+        if (!summary) return null;
+        return (
+          <div className="text-[10px] text-muted-foreground bg-secondary/30 rounded px-2.5 py-1.5 line-clamp-2 italic">
+            <span className="font-medium text-foreground not-italic">Last meeting: </span>{summary}
+          </div>
+        );
+      })()}
+
       {/* Context Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5 text-[11px]">
-        {lead.stage && (
-          <div><span className="text-muted-foreground">Stage: </span><span className="font-medium">{lead.stage}</span></div>
-        )}
-        {lead.dealValue > 0 && (
-          <div><span className="text-muted-foreground">Value: </span><span className="font-medium">${lead.dealValue.toLocaleString()}</span></div>
-        )}
         {lead.serviceInterest && lead.serviceInterest !== "TBD" && (
           <div><span className="text-muted-foreground">Interest: </span><span className="font-medium">{lead.serviceInterest}</span></div>
         )}

@@ -243,8 +243,7 @@ function TierSection({ tier, items, onSelect }: { tier: PriorityTier; items: Act
 }
 
 /* ─── Schedule Tab ─── */
-export function ScheduleTab({ leads, ownerFilter, onSelectLead }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void }) {
-  const [meetingHorizon, setMeetingHorizon] = useState<number>(14);
+export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void; meetingHorizon: number }) {
   const items = useMemo(() => buildActionItems(leads, ownerFilter, meetingHorizon), [leads, ownerFilter, meetingHorizon]);
   const meetings = useMemo(() => items.filter(i => i.type === "meeting"), [items]);
 
@@ -282,7 +281,7 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead }: { leads: Lead[
 
       {/* Summary Stats */}
       <div className="flex gap-3 flex-wrap text-[11px] text-muted-foreground">
-        {(["overdue", "meeting", "dark", "untouched", "renewal", "stale"] as const).map(type => {
+        {(["overdue", "meeting", "renewal"] as const).map(type => {
           const count = typeCounts[type] || 0;
           if (count === 0) return null;
           const labels: Record<string, string> = { overdue: "Overdue", meeting: "Meetings", dark: "Going Dark", untouched: "Untouched", renewal: "Renewals", stale: "Stale" };
@@ -297,13 +296,7 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead }: { leads: Lead[
             <CalendarCheck className="h-3.5 w-3.5 text-blue-500" />
             <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">Upcoming Meetings</span>
             <span className="text-[10px] text-muted-foreground">({meetings.length})</span>
-            <div className="flex items-center gap-0.5 ml-auto border border-border rounded-md overflow-hidden">
-              {([7, 14, 30] as const).map(d => (
-                <button key={d} onClick={() => setMeetingHorizon(d)} className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${meetingHorizon === d ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary"}`}>
-                  {d}d
-                </button>
-              ))}
-            </div>
+            <span className="text-[10px] text-muted-foreground ml-auto">next {meetingHorizon}d</span>
           </div>
           <div className="space-y-3">
             {groupedMeetings.map(group => (
