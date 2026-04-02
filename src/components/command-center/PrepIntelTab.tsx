@@ -1,8 +1,26 @@
 import { useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { BrandLogo } from "@/components/BrandLogo";
-import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb } from "lucide-react";
+import { CalendarCheck, AlertTriangle, Target, MessageSquare, Shield, Lightbulb, Flame, Snowflake, Thermometer, Crown, Brain, Zap, Users } from "lucide-react";
 import { format, parseISO, differenceInDays, isBefore } from "date-fns";
+
+function DealTempBadge({ temp }: { temp?: string }) {
+  if (!temp) return null;
+  const config: Record<string, { icon: typeof Flame; color: string }> = {
+    "On Fire": { icon: Flame, color: "text-red-500 bg-red-500/10" },
+    "Warm": { icon: Thermometer, color: "text-amber-500 bg-amber-500/10" },
+    "Lukewarm": { icon: Thermometer, color: "text-muted-foreground bg-secondary" },
+    "Cold": { icon: Snowflake, color: "text-blue-500 bg-blue-500/10" },
+    "Ice Cold": { icon: Snowflake, color: "text-blue-600 bg-blue-500/10" },
+  };
+  const c = config[temp] || config["Lukewarm"]!;
+  const Icon = c.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${c.color}`}>
+      <Icon className="h-3 w-3" />{temp}
+    </span>
+  );
+}
 
 export function PrepIntelTab({ leads, ownerFilter, onSelectLead }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void }) {
   const now = new Date();
@@ -41,14 +59,13 @@ function IntelCard({ lead, onSelect }: { lead: Lead; onSelect: () => void }) {
   const di = lead.dealIntelligence;
   const latestMeeting = lead.meetings?.length > 0 ? lead.meetings[lead.meetings.length - 1] : null;
   const signals = latestMeeting?.intelligence?.dealSignals;
+  const winStrategy = di?.winStrategy;
+  const psych = di?.psychologicalProfile;
+  const buyingCommittee = di?.buyingCommittee;
 
   const openActions = di?.actionItemTracker?.filter(a => a.status === "Open") || [];
   const openObjections = di?.objectionTracker?.filter(o => o.status === "Open" || o.status === "Recurring") || [];
   const risks = di?.riskRegister?.filter(r => r.mitigationStatus !== "Mitigated") || [];
-
-  // Prep brief from most recent meeting
-  const meetings = lead.meetings || [];
-  const prepBrief = meetings.length > 0 ? (meetings[meetings.length - 1] as any)?.prepBrief : null;
 
   return (
     <div onClick={onSelect} className="border border-border rounded-lg p-4 cursor-pointer hover:bg-secondary/20 transition-colors space-y-3">
@@ -62,6 +79,7 @@ function IntelCard({ lead, onSelect }: { lead: Lead; onSelect: () => void }) {
               {lead.assignedTo && (
                 <span className="w-4 h-4 rounded-full bg-foreground text-background flex items-center justify-center text-[9px] font-semibold shrink-0">{lead.assignedTo[0]}</span>
               )}
+              {winStrategy?.dealTemperature && <DealTempBadge temp={winStrategy.dealTemperature} />}
             </div>
             <p className="text-[11px] text-muted-foreground">{lead.role && `${lead.role} · `}{lead.company}</p>
           </div>
@@ -92,7 +110,56 @@ function IntelCard({ lead, onSelect }: { lead: Lead; onSelect: () => void }) {
         {di?.momentumSignals?.momentum && (
           <div><span className="text-muted-foreground">Momentum: </span><span className="font-medium">{di.momentumSignals.momentum}</span></div>
         )}
+        {winStrategy?.closingWindow && (
+          <div><span className="text-muted-foreground">Window: </span><span className="font-medium">{winStrategy.closingWindow}</span></div>
+        )}
       </div>
+
+      {/* Win Strategy Section */}
+      {winStrategy && (winStrategy.numberOneCloser || winStrategy.powerMove || buyingCommittee?.champion) && (
+        <div className="border-t border-border pt-2 space-y-1.5">
+          <div className="flex items-center gap-1 mb-1">
+            <Crown className="h-3 w-3 text-amber-500" />
+            <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Win Strategy</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+            {winStrategy.numberOneCloser && (
+              <div><span className="text-muted-foreground">#1 Closer: </span><span className="font-medium">{winStrategy.numberOneCloser}</span></div>
+            )}
+            {winStrategy.powerMove && (
+              <div><span className="text-muted-foreground">Power Move: </span><span className="font-medium">{winStrategy.powerMove}</span></div>
+            )}
+            {buyingCommittee?.champion && (
+              <div className="flex items-center gap-1">
+                <Users className="h-3 w-3 text-emerald-500 shrink-0" />
+                <span className="text-muted-foreground">Champion: </span><span className="font-medium">{buyingCommittee.champion}</span>
+              </div>
+            )}
+            {winStrategy.negotiationStyle && (
+              <div><span className="text-muted-foreground">Negotiation: </span><span className="font-medium">{winStrategy.negotiationStyle}</span></div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Psychological Profile */}
+      {psych && (psych.realWhy || psych.unspokenAsk) && (
+        <div className="border-t border-border pt-2 space-y-1">
+          <div className="flex items-center gap-1 mb-1">
+            <Brain className="h-3 w-3 text-purple-500" />
+            <span className="text-[10px] font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider">The Real Why</span>
+          </div>
+          {psych.realWhy && (
+            <p className="text-[11px] text-muted-foreground"><span className="font-medium text-foreground">Core motivation:</span> {psych.realWhy}</p>
+          )}
+          {psych.unspokenAsk && (
+            <p className="text-[11px] text-muted-foreground"><span className="font-medium text-foreground">Unspoken ask:</span> {psych.unspokenAsk}</p>
+          )}
+          {psych.fearFactor && (
+            <p className="text-[11px] text-muted-foreground"><span className="font-medium text-foreground">Fear factor:</span> {psych.fearFactor}</p>
+          )}
+        </div>
+      )}
 
       {/* Enrichment Highlights */}
       {enrichment && (enrichment.buyerMotivation || enrichment.urgency) && (

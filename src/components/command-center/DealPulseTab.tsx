@@ -2,13 +2,14 @@ import { useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { BrandLogo } from "@/components/BrandLogo";
-import { TrendingUp, TrendingDown, Minus, Activity, DollarSign, Clock, CalendarCheck, AlertCircle } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Activity, DollarSign, Clock, CalendarCheck, AlertCircle, Flame, Snowflake, Thermometer, Gauge } from "lucide-react";
 import { format, parseISO, differenceInDays, addDays, isBefore } from "date-fns";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 const ACTIVE_STAGES = new Set(["Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"]);
 
-function KpiCard({ label, value, icon: Icon, accent }: { label: string; value: string; icon: typeof Activity; accent?: string }) {
+function KpiCard({ label, value, subValue, icon: Icon, accent }: { label: string; value: string; subValue?: string; icon: typeof Activity; accent?: string }) {
   return (
     <div className="border border-border rounded-lg p-3 flex-1 min-w-[130px]">
       <div className="flex items-center gap-1.5 mb-1">
@@ -16,6 +17,7 @@ function KpiCard({ label, value, icon: Icon, accent }: { label: string; value: s
         <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</span>
       </div>
       <span className="text-xl font-semibold tabular-nums">{value}</span>
+      {subValue && <span className="text-[10px] text-muted-foreground ml-1">{subValue}</span>}
     </div>
   );
 }
@@ -24,6 +26,14 @@ function MomentumIcon({ momentum }: { momentum?: string }) {
   if (momentum === "Accelerating") return <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />;
   if (momentum === "Stalling" || momentum === "Stalled") return <TrendingDown className="h-3.5 w-3.5 text-red-500" />;
   return <Minus className="h-3.5 w-3.5 text-muted-foreground" />;
+}
+
+function DealTempIcon({ temp }: { temp?: string }) {
+  if (temp === "On Fire") return <Flame className="h-3.5 w-3.5 text-red-500" />;
+  if (temp === "Warm") return <Thermometer className="h-3.5 w-3.5 text-amber-500" />;
+  if (temp === "Lukewarm") return <Thermometer className="h-3.5 w-3.5 text-muted-foreground" />;
+  if (temp === "Cold" || temp === "Ice Cold") return <Snowflake className="h-3.5 w-3.5 text-blue-500" />;
+  return null;
 }
 
 function daysInStageColor(days: number): string {
@@ -43,6 +53,14 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
 
   const activeDeals = useMemo(() => filtered.filter(l => ACTIVE_STAGES.has(l.stage) || l.stage === "New Lead"), [filtered]);
 
+  // Forecast KPIs
+  const forecast = useMemo(() => {
+    const commit = filtered.filter(l => l.forecastCategory === "Commit").reduce((s, l) => s + (l.dealValue || 0), 0);
+    const bestCase = filtered.filter(l => l.forecastCategory === "Best Case").reduce((s, l) => s + (l.dealValue || 0), 0);
+    const pipeline = filtered.filter(l => l.forecastCategory === "Pipeline").reduce((s, l) => s + (l.dealValue || 0), 0);
+    return { commit, bestCase, pipeline };
+  }, [filtered]);
+
   const kpis = useMemo(() => {
     const totalValue = activeDeals.reduce((s, l) => s + (l.dealValue || 0), 0);
     const daysArr = activeDeals.map(l => computeDaysInStage(l.stageEnteredDate)).filter(d => d > 0);
@@ -57,10 +75,28 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
       .map(l => {
         const days = computeDaysInStage(l.stageEnteredDate);
         const momentum = l.dealIntelligence?.momentumSignals?.momentum || "";
+        const dealTemp = l.dealIntelligence?.winStrategy?.dealTemperature || "";
+        const closingWindow = l.dealIntelligence?.winStrategy?.closingWindow || "";
         const riskScore = (days > 14 ? 100 : days > 7 ? 50 : 0) + (momentum === "Stalled" ? 80 : momentum === "Stalling" ? 40 : 0);
-        return { lead: l, days, momentum, riskScore };
+        return { lead: l, days, momentum, dealTemp, closingWindow, riskScore };
       })
       .sort((a, b) => b.riskScore - a.riskScore);
+  }, [activeDeals]);
+
+  // Pipeline velocity by stage
+  const velocity = useMemo(() => {
+    const stageMap = new Map<string, { total: number; count: number }>();
+    for (const l of activeDeals) {
+      if (!ACTIVE_STAGES.has(l.stage)) continue;
+      const days = computeDaysInStage(l.stageEnteredDate);
+      const entry = stageMap.get(l.stage) || { total: 0, count: 0 };
+      entry.total += days;
+      entry.count += 1;
+      stageMap.set(l.stage, entry);
+    }
+    return Array.from(stageMap.entries())
+      .map(([stage, { total, count }]) => ({ stage, avgDays: Math.round(total / count), count }))
+      .sort((a, b) => b.avgDays - a.avgDays);
   }, [activeDeals]);
 
   const renewals = useMemo(() => {
@@ -71,86 +107,142 @@ export function DealPulseTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
       .sort((a, b) => a.daysUntil - b.daysUntil);
   }, [filtered, now]);
 
+  const hasForecast = forecast.commit > 0 || forecast.bestCase > 0 || forecast.pipeline > 0;
+
   return (
-    <div className="space-y-5">
-      {/* KPIs */}
-      <div className="flex gap-3 flex-wrap">
-        <KpiCard label="Active Deals" value={String(kpis.activeCount)} icon={Activity} accent="text-primary" />
-        <KpiCard label="Pipeline Value" value={`$${kpis.totalValue.toLocaleString()}`} icon={DollarSign} accent="text-emerald-500" />
-        <KpiCard label="Avg Days in Stage" value={`${kpis.avgDays}d`} icon={Clock} accent="text-amber-500" />
-        <KpiCard label="Meetings This Week" value={String(kpis.meetingsThisWeek)} icon={CalendarCheck} accent="text-blue-500" />
-      </div>
-
-      {/* Momentum Board */}
-      <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Momentum Board</h3>
-        <div className="border border-border rounded-md overflow-hidden">
-          <div className="grid grid-cols-[1fr_100px_70px_80px_80px_80px] gap-0 px-4 py-2 bg-secondary/30 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-            <span>Deal</span>
-            <span>Stage</span>
-            <span className="text-center">Days</span>
-            <span className="text-right">Value</span>
-            <span className="text-center">Momentum</span>
-            <span className="text-right">Last Contact</span>
-          </div>
-          <div className="divide-y divide-border max-h-[400px] overflow-y-auto">
-            {sortedDeals.map(({ lead, days, momentum }) => {
-              const isStalled = days > 14;
-              const lastDate = lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate;
-              return (
-                <div
-                  key={lead.id}
-                  onClick={() => onSelectLead(lead.id)}
-                  className={`grid grid-cols-[1fr_100px_70px_80px_80px_80px] gap-0 px-4 py-2 cursor-pointer hover:bg-secondary/30 transition-colors ${isStalled ? "bg-red-500/5" : ""}`}
-                >
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <BrandLogo brand={lead.brand} size="xxs" />
-                    <span className="text-sm font-medium truncate">{lead.name}</span>
-                    {lead.assignedTo && (
-                      <span className="w-4 h-4 rounded-full bg-foreground text-background flex items-center justify-center text-[9px] font-semibold shrink-0">{lead.assignedTo[0]}</span>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-muted-foreground self-center truncate">{lead.stage}</span>
-                  <span className={`text-xs font-medium text-center self-center tabular-nums ${daysInStageColor(days)}`}>{days}d</span>
-                  <span className="text-[10px] text-muted-foreground text-right self-center tabular-nums">
-                    {lead.dealValue > 0 ? `$${lead.dealValue.toLocaleString()}` : "—"}
-                  </span>
-                  <div className="flex items-center justify-center"><MomentumIcon momentum={momentum} /></div>
-                  <span className="text-[10px] text-muted-foreground text-right self-center tabular-nums">
-                    {lastDate ? format(parseISO(lastDate), "MMM d") : "—"}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+    <TooltipProvider>
+      <div className="space-y-5">
+        {/* KPIs */}
+        <div className="flex gap-3 flex-wrap">
+          <KpiCard label="Active Deals" value={String(kpis.activeCount)} icon={Activity} accent="text-primary" />
+          <KpiCard label="Pipeline Value" value={`$${kpis.totalValue.toLocaleString()}`} icon={DollarSign} accent="text-emerald-500" />
+          <KpiCard label="Avg Days in Stage" value={`${kpis.avgDays}d`} icon={Clock} accent="text-amber-500" />
+          <KpiCard label="Meetings This Week" value={String(kpis.meetingsThisWeek)} icon={CalendarCheck} accent="text-blue-500" />
         </div>
-      </div>
 
-      {/* Renewals */}
-      {renewals.length > 0 && (
+        {/* Forecast Strip */}
+        {hasForecast && (
+          <div className="flex gap-3 flex-wrap">
+            <div className="border border-border rounded-lg p-2.5 flex-1 min-w-[110px] bg-emerald-500/5">
+              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase tracking-wider font-semibold">Commit</span>
+              <p className="text-lg font-semibold tabular-nums">${forecast.commit.toLocaleString()}</p>
+            </div>
+            <div className="border border-border rounded-lg p-2.5 flex-1 min-w-[110px] bg-blue-500/5">
+              <span className="text-[10px] text-blue-600 dark:text-blue-400 uppercase tracking-wider font-semibold">Best Case</span>
+              <p className="text-lg font-semibold tabular-nums">${forecast.bestCase.toLocaleString()}</p>
+            </div>
+            <div className="border border-border rounded-lg p-2.5 flex-1 min-w-[110px] bg-amber-500/5">
+              <span className="text-[10px] text-amber-600 dark:text-amber-400 uppercase tracking-wider font-semibold">Pipeline</span>
+              <p className="text-lg font-semibold tabular-nums">${forecast.pipeline.toLocaleString()}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Momentum Board */}
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <AlertCircle className="h-3.5 w-3.5 text-purple-500" />
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-purple-600 dark:text-purple-400">Renewals Coming Up</h3>
-            <span className="text-[10px] text-muted-foreground">({renewals.length})</span>
-          </div>
-          <div className="border border-border rounded-md overflow-hidden divide-y divide-border">
-            {renewals.map(({ lead, daysUntil }) => (
-              <div key={lead.id} onClick={() => onSelectLead(lead.id)} className="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-secondary/30 transition-colors">
-                <BrandLogo brand={lead.brand} size="xxs" />
-                <span className="text-sm font-medium truncate">{lead.name}</span>
-                <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">{lead.company}</span>
-                <span className={`text-xs font-medium ml-auto whitespace-nowrap ${daysUntil <= 14 ? "text-red-600 dark:text-red-400" : "text-purple-600 dark:text-purple-400"}`}>
-                  {daysUntil}d left
-                </span>
-                {lead.subscriptionValue > 0 && (
-                  <span className="text-[10px] text-muted-foreground tabular-nums">${lead.subscriptionValue.toLocaleString()}/mo</span>
-                )}
-              </div>
-            ))}
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Momentum Board</h3>
+          <div className="border border-border rounded-md overflow-hidden">
+            <div className="grid grid-cols-[1fr_100px_70px_80px_50px_50px_80px] gap-0 px-4 py-2 bg-secondary/30 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+              <span>Deal</span>
+              <span>Stage</span>
+              <span className="text-center">Days</span>
+              <span className="text-right">Value</span>
+              <span className="text-center">Temp</span>
+              <span className="text-center">Mom.</span>
+              <span className="text-right">Last Contact</span>
+            </div>
+            <div className="divide-y divide-border max-h-[400px] overflow-y-auto">
+              {sortedDeals.map(({ lead, days, momentum, dealTemp, closingWindow }) => {
+                const isStalled = days > 14;
+                const lastDate = lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate;
+                return (
+                  <div
+                    key={lead.id}
+                    onClick={() => onSelectLead(lead.id)}
+                    className={`grid grid-cols-[1fr_100px_70px_80px_50px_50px_80px] gap-0 px-4 py-2 cursor-pointer hover:bg-secondary/30 transition-colors ${isStalled ? "bg-red-500/5" : ""}`}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <BrandLogo brand={lead.brand} size="xxs" />
+                      <span className="text-sm font-medium truncate">{lead.name}</span>
+                      {lead.assignedTo && (
+                        <span className="w-4 h-4 rounded-full bg-foreground text-background flex items-center justify-center text-[9px] font-semibold shrink-0">{lead.assignedTo[0]}</span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground self-center truncate">{lead.stage}</span>
+                    <span className={`text-xs font-medium text-center self-center tabular-nums ${daysInStageColor(days)}`}>{days}d</span>
+                    <span className="text-[10px] text-muted-foreground text-right self-center tabular-nums">
+                      {lead.dealValue > 0 ? `$${lead.dealValue.toLocaleString()}` : "—"}
+                    </span>
+                    <div className="flex items-center justify-center">
+                      {dealTemp ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild><span><DealTempIcon temp={dealTemp} /></span></TooltipTrigger>
+                          <TooltipContent className="text-xs">
+                            <p className="font-medium">{dealTemp}</p>
+                            {closingWindow && <p className="text-muted-foreground">{closingWindow}</p>}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : <span className="text-[10px] text-muted-foreground">—</span>}
+                    </div>
+                    <div className="flex items-center justify-center"><MomentumIcon momentum={momentum} /></div>
+                    <span className="text-[10px] text-muted-foreground text-right self-center tabular-nums">
+                      {lastDate ? format(parseISO(lastDate), "MMM d") : "—"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
-      )}
-    </div>
+
+        {/* Pipeline Velocity */}
+        {velocity.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Gauge className="h-3.5 w-3.5 text-primary" />
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pipeline Velocity</h3>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {velocity.map(({ stage, avgDays, count }) => (
+                <div key={stage} className="border border-border rounded-md px-3 py-2 min-w-[120px]">
+                  <p className="text-[10px] text-muted-foreground truncate">{stage}</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className={`text-sm font-semibold tabular-nums ${daysInStageColor(avgDays)}`}>{avgDays}d</span>
+                    <span className="text-[9px] text-muted-foreground">avg</span>
+                  </div>
+                  <span className="text-[9px] text-muted-foreground">{count} deal{count !== 1 ? "s" : ""}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Renewals */}
+        {renewals.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle className="h-3.5 w-3.5 text-purple-500" />
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-purple-600 dark:text-purple-400">Renewals Coming Up</h3>
+              <span className="text-[10px] text-muted-foreground">({renewals.length})</span>
+            </div>
+            <div className="border border-border rounded-md overflow-hidden divide-y divide-border">
+              {renewals.map(({ lead, daysUntil }) => (
+                <div key={lead.id} onClick={() => onSelectLead(lead.id)} className="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-secondary/30 transition-colors">
+                  <BrandLogo brand={lead.brand} size="xxs" />
+                  <span className="text-sm font-medium truncate">{lead.name}</span>
+                  <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">{lead.company}</span>
+                  <span className={`text-xs font-medium ml-auto whitespace-nowrap ${daysUntil <= 14 ? "text-red-600 dark:text-red-400" : "text-purple-600 dark:text-purple-400"}`}>
+                    {daysUntil}d left
+                  </span>
+                  {lead.subscriptionValue > 0 && (
+                    <span className="text-[10px] text-muted-foreground tabular-nums">${lead.subscriptionValue.toLocaleString()}/mo</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </TooltipProvider>
   );
 }
