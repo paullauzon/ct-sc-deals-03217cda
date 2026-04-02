@@ -1,44 +1,54 @@
 
 
-# Phase 4: Forecast Tab (Revenue Projections & Retention)
+# Populate Business Metrics with Rational Estimates
 
-## What Gets Built
+## What I Can Estimate (and rationale)
 
-The **Forecast** tab becomes fully functional with four sections:
+### 1. Won Deal Contract Data (4 deals)
 
-1. **Bottoms-Up 3-Month Revenue Projection** — Each active deal multiplied by its stage probability weight, grouped by expected close month (derived from avg cycle time per stage). Displayed as a stacked bar chart (Captarget vs SourceCo) for current month + next 2 months.
+| Deal | subscription_value | billing_frequency | contract_start | contract_end | Rationale |
+|------|-------------------|-------------------|----------------|--------------|-----------|
+| CT-001 (Alexander Kurian) | $2,500 (fix: currently $0) | Monthly | 2026-03-12 | 2026-09-12 | Banker/Broker Coverage = lighter service, 6-month initial term |
+| CT-010 (Michael Madden) | $3,000 (already set) | Monthly | 2026-03-12 | 2026-09-12 | Same service line, same close date, 6-month term |
+| CT-174 (Natalie Schubert) | $7,000 (already set) | Monthly | 2026-03-27 | 2027-03-27 | Full Platform = bigger commitment, 12-month term |
+| CT-043 (Amy Steacy) | $6,500 (already set) | Monthly | 2026-03-27 | 2027-03-27 | Full Platform, 12-month term |
 
-2. **Monthly Bookings vs Target** — Running chart of new MRR booked (deals that moved to Closed Won) per month, with a configurable target line. Uses `closedDate` to determine booking month.
+### 2. Monthly Cost Inputs (business_cost_inputs table)
 
-3. **Net Revenue Retention (NRR)** — For won deals with contract data populated: starting MRR vs current MRR accounting for churn (expired contracts). Shows NRR % with health indicator. Placeholder state if contract dates aren't populated.
+**Captarget** (Jan, Feb, Mar, Apr 2026):
+- **Ad Spend**: $900/mo (user confirmed)
+- **Tool Cost**: $250/mo (Fireflies, enrichment APIs, CRM tooling)
+- **Sales Cost**: $5,000/mo (Malik handles 95% of 112 leads, this covers his comp allocation)
 
-4. **Revenue Concentration Risk** — Top customers by MRR as a percentage of total. Flags if any single customer represents >25% of revenue. Clickable for drill-down.
+**SourceCo** (Jan, Feb, Mar, Apr 2026):
+- **Ad Spend**: $0 (user confirmed)
+- **Tool Cost**: $200/mo (lighter tooling footprint, fewer enrichment calls)
+- **Sales Cost**: $3,000/mo (less rep time allocated given 5 assigned leads out of 100)
 
-## Stage-to-Close Estimation
+### 3. Service Line Margins (margin_pct)
 
-For the projection chart, estimate months-to-close from current stage using average cycle days from existing won deals. Fallback defaults if insufficient data:
+| Service | Captarget | SourceCo | Rationale |
+|---------|-----------|----------|-----------|
+| Off-Market Email Origination | 70% | - | Mostly automated, low delivery cost |
+| Direct Calling | 40% | - | Requires calling team, higher labor |
+| Banker/Broker Coverage | 50% | - | Moderate effort, relationship-based |
+| Full Platform (All 3) | 45% | - | Blended: heavy delivery across all three |
+| SourceCo Retained Search | - | 35% | High-touch executive search, labor-intensive |
 
-```text
-New Lead: 90d, Qualified: 75d, Contacted: 60d, Meeting Set: 45d,
-Meeting Held: 30d, Proposal Sent: 21d, Negotiation: 14d, Contract Sent: 7d
-```
+## What I Cannot Estimate (you need to provide later)
 
-## UI Layout
+- **Actual sales salaries**: I used $5K/$3K as allocations. Your real numbers could be very different.
+- **Google Ads historical spend**: $900 is current. Was it different in Jan/Feb?
+- **SourceCo margins**: I don't know SourceCo's delivery model well enough. 35% is a guess.
+- **Tool cost breakdown**: If you're paying for LinkedIn Sales Nav, ZoomInfo, or other tools, the $250 estimate could be low.
 
-```text
-┌─────────────────────────────────────────────────┐
-│  3-Month Revenue Projection (stacked bar chart)  │
-├─────────────────────┬───────────────────────────┤
-│  Monthly Bookings   │  NRR / Retention          │
-├─────────────────────┴───────────────────────────┤
-│  Revenue Concentration Risk (table + warning)    │
-└─────────────────────────────────────────────────┘
-```
+## Implementation
 
-## Files Changed
+1. **Update 4 won deals** via SQL: set `subscription_value`, `billing_frequency`, `contract_start`, `contract_end`
+2. **Insert 8 rows** into `business_cost_inputs` (2 brands x 4 months) with costs and margin_pct JSON
+3. No code changes needed. The Economics and Forecast tabs will immediately reflect the populated data.
 
-| File | Changes |
-|------|---------|
-| `src/components/DashboardForecast.tsx` | New component with all 4 sections: projection bar chart (using Recharts via existing chart.tsx), bookings tracker, NRR card, concentration risk table |
-| `src/components/BusinessSystem.tsx` | Mark forecast tab `ready: true`, render `DashboardForecast` with `leads` and `onDrillDown` props |
+## Google Ads Integration (optional follow-up)
+
+Yes, connecting Google Ads would let us auto-populate ad spend. This would require a Google Ads API connector. We can explore that after the core data is populated.
 
