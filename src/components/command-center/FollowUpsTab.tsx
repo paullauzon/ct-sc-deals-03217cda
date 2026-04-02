@@ -550,8 +550,9 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
 
   // Build sections — dedup: overdue takes priority over goingDark
   const overdue = useMemo(() => {
+    const todayStart = startOfDay(now);
     const items = active
-      .filter(l => l.nextFollowUp && isBefore(parseISO(l.nextFollowUp), now))
+      .filter(l => l.nextFollowUp && isBefore(parseISO(l.nextFollowUp), todayStart))
       .map(l => ({ lead: l, daysOverdue: differenceInDays(now, parseISO(l.nextFollowUp)) }))
       .sort((a, b) => b.daysOverdue - a.daysOverdue);
     return applySortToLeads(items, sortField, sortDir, (a, b) => b.daysOverdue - a.daysOverdue);
