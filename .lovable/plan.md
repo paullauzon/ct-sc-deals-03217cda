@@ -1,53 +1,59 @@
 
 
-# System Switcher: Separate Sales CRM from Business Operations
+# Phase 2: Unit Economics Tab
 
-## What Changes
+## What Gets Built
 
-The CAPTARGET logo in the nav becomes a system switcher. Clicking it opens a dropdown with two options:
-- **Sales CRM** (current system: Dashboard, Pipeline, Leads, Command)
-- **Business Operations** (new system: the Business metrics dashboard, expanded to full-page)
+The **Economics** tab in the Business Operations system becomes fully functional with three sections:
 
-Each system has its own nav bar and views. They share the same data (LeadContext) but are completely independent UIs.
+1. **Cost Configuration Panel** — Editable monthly cost inputs per brand (sales salaries, tool costs, ad spend) stored in a new `business_cost_inputs` database table
+2. **CAC & LTV Cards** — Per-brand Customer Acquisition Cost (total costs / new customers) and Lifetime Value (avg subscription x avg contract months). LTV shows "Populate contract dates" placeholder until contract fields are filled on won deals
+3. **Gross Margin by Service Line** — Configurable cost-to-deliver assumptions per service type, showing margin % against actual deal values in pipeline
 
-## Architecture
+## Database
 
-### 1. System state in Index.tsx
+New table: `business_cost_inputs`
 
-Add a `system` state: `"crm" | "business"`. Persist in hash as `sys=crm` or `sys=business`. The CAPTARGET logo gets an onClick that toggles a small popover/dropdown with the two system options.
+```text
+id              uuid (PK, default gen_random_uuid())
+brand           text NOT NULL ('Captarget' or 'SourceCo')
+month           text NOT NULL (e.g. '2026-04')
+sales_cost      numeric DEFAULT 0
+tool_cost       numeric DEFAULT 0
+ad_spend        numeric DEFAULT 0
+margin_pct      jsonb DEFAULT '{}'  (e.g. {"Off-Market Email Origination": 70, "Full Platform (All 3)": 30})
+created_at      timestamptz DEFAULT now()
+updated_at      timestamptz DEFAULT now()
+UNIQUE(brand, month)
+```
 
-### 2. Logo Switcher Component
+RLS: Allow all (matches existing pattern, no auth).
 
-A small `SystemSwitcher` component rendered where the logo currently is. Shows "CAPTARGET" text. On click, shows a dropdown with two rows:
-- **Sales CRM** with a brief descriptor, highlighted if active
-- **Business Ops** with a brief descriptor, highlighted if active
+## UI Components
 
-Clicking switches the `system` state. Clean, minimal UI (similar to Notion workspace switcher or Linear team switcher).
+### Cost Config (collapsible panel at top of Economics tab)
+- Month selector (defaults to current month)
+- Two columns (Captarget / SourceCo), each with 3 number inputs: Sales Cost, Tool Cost, Ad Spend
+- Service margin inputs: one row per service type with a % input
+- Save button persists to `business_cost_inputs` via Supabase
 
-### 3. CRM System (existing)
+### CAC Cards (per brand)
+- Total Monthly Cost (sum of sales + tools + ad)
+- New Customers This Month (count of leads moved to Closed Won in selected month)
+- **CAC = Total Cost / New Customers** (or "No closes this month" if 0)
+- LTV: avg subscription value x avg contract duration in months (or placeholder if no contract dates)
+- LTV:CAC ratio with color coding (green >3, yellow 1-3, red <1)
 
-When `system === "crm"`: render the current nav (Dashboard, Pipeline, Leads, Command) and current views. No changes to existing functionality.
-
-### 4. Business System (new)
-
-When `system === "business"`: render a different nav bar with its own tabs. The `DashboardBusiness` component gets promoted from a Dashboard sub-tab to the main content of this system. The Business system nav will have tabs for the sections we're building across responses 2-4:
-- **Overview** (Brand Scorecards + Source Funnels, already built)
-- **Economics** (Unit Economics, response 2)
-- **Operations** (Capacity + Pipeline Health, response 3)
-- **Forecast** (Revenue projections, response 4)
-
-For now (this response), only Overview exists. The other tabs will be placeholder/coming-soon until built.
-
-### 5. Remove "Business" tab from Dashboard.tsx
-
-Since Business is now its own system, remove it from the `TABS` array and the `DashboardTab` type in Dashboard.tsx.
+### Gross Margin Table
+- Rows: each ServiceInterest value that has active deals
+- Columns: Deal Count, Total Value, Margin % (from config), Estimated Gross Profit
+- Subtotals per brand
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/pages/Index.tsx` | Add `system` state with hash persistence. Replace logo `<span>` with `SystemSwitcher`. Conditionally render CRM views or Business system based on `system` state. |
-| `src/components/SystemSwitcher.tsx` | New component: dropdown on the CAPTARGET logo with two system options (Sales CRM, Business Ops). Uses Popover from shadcn. |
-| `src/components/BusinessSystem.tsx` | New component: full-page layout for Business Operations with its own nav tabs (Overview, Economics, Operations, Forecast). Renders `DashboardBusiness` for Overview, placeholder cards for the rest. |
-| `src/components/Dashboard.tsx` | Remove "business" from `TABS` array and `DashboardTab` type. Remove `DashboardBusiness` import and rendering. |
+| Migration | Create `business_cost_inputs` table with RLS |
+| `src/components/DashboardEconomics.tsx` | New component: cost config panel, CAC/LTV cards, margin table |
+| `src/components/BusinessSystem.tsx` | Mark economics tab as `ready: true`, render `DashboardEconomics` when selected |
 
