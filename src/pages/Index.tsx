@@ -146,19 +146,6 @@ function AppContent() {
 
       <CommandPalette onNavigate={handleCmdNavigate} onSelectLead={handleCmdSelectLead} externalOpen={cmdOpen} onExternalOpenChange={setCmdOpen} />
       <LeadDetail leadId={cmdLeadId} open={!!cmdLeadId} onClose={() => setCmdLeadId(null)} />
-      <GlobalProcessingOverlay />
-          </div>
-        </div>
-      </nav>
-
-      {view === "today" && <ActionQueue />}
-      {view === "dashboard" && <Dashboard />}
-      {view === "leads" && <LeadsTable />}
-      {view === "pipeline" && <Pipeline />}
-
-      <CommandPalette onNavigate={handleCmdNavigate} onSelectLead={handleCmdSelectLead} externalOpen={cmdOpen} onExternalOpenChange={setCmdOpen} />
-      <LeadDetail leadId={cmdLeadId} open={!!cmdLeadId} onClose={() => setCmdLeadId(null)} />
-      <GlobalProcessingOverlay />
     </div>
   );
 }
