@@ -78,6 +78,7 @@ serve(async (req) => {
       leadLostReason, leadNotes, leadTargetCriteria, leadTargetRevenue,
       leadGeography, leadAcquisitionStrategy, leadBuyerType,
       leadDaysInStage, leadStageEnteredDate,
+      leadLinkedinUrl, leadLinkedinTitle,
       meetingIntelligence,
       dealIntelligence,
     } = body;
@@ -86,10 +87,11 @@ serve(async (req) => {
     if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
     const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
 
-    // Step 1: External research — scrape company + web search for company + prospect separately
+    // Step 1: External research — scrape company + web search for company + prospect + LinkedIn
     let websiteContent = "";
     let companySearchContent = "";
     let prospectSearchContent = "";
+    let linkedinContent = "";
     let companySearchUrls: string[] = [];
     let prospectSearchUrls: string[] = [];
     const tasks: Promise<void>[] = [];
@@ -110,6 +112,10 @@ serve(async (req) => {
         prospectSearchContent = r.content;
         prospectSearchUrls = r.urls;
       }));
+    }
+    // Scrape LinkedIn profile if URL available
+    if (FIRECRAWL_API_KEY && leadLinkedinUrl) {
+      tasks.push(scrapeWebsite(leadLinkedinUrl, FIRECRAWL_API_KEY).then(c => { linkedinContent = c; }));
     }
     await Promise.all(tasks);
 
