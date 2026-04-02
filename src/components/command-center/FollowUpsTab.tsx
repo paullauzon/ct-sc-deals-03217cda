@@ -168,7 +168,7 @@ function FollowUpRow({
   onSkipTask?: (id: string) => void;
   onGenerateTaskDraft?: (task: LeadTask) => void;
   isActive?: boolean;
-  rowRef?: React.RefObject<HTMLDivElement>;
+  rowRef?: React.RefObject<HTMLDivElement> | ((el: HTMLDivElement | null) => void);
 }) {
   const [tasksOpen, setTasksOpen] = useState(false);
   const meetingCount = lead.meetings?.length || 0;
@@ -182,7 +182,7 @@ function FollowUpRow({
   const hasTasks = tasks && tasks.length > 0;
 
   return (
-    <div ref={rowRef}>
+    <div ref={typeof rowRef === "function" ? rowRef : rowRef || undefined}>
       <div
         className={cn(
           "px-4 py-3.5 hover:bg-secondary/20 transition-all cursor-pointer group border-b border-border last:border-b-0 hover:border-l-2 hover:border-l-foreground/20 hover:pl-[14px]",
