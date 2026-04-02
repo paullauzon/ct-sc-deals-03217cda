@@ -209,6 +209,19 @@ function ActionSheet({
       // Find most recent meeting for context
       const recentMeeting = lead.meetings?.length > 0 ? lead.meetings[lead.meetings.length - 1] : null;
 
+      // Fetch last inbound email for reply-inbound
+      let lastEmail: any = undefined;
+      if (actionType === "reply-inbound") {
+        const { data: emailData } = await supabase
+          .from("lead_emails")
+          .select("from_address, from_name, subject, body_preview")
+          .eq("lead_id", lead.id)
+          .eq("direction", "inbound")
+          .order("email_date", { ascending: false })
+          .limit(1);
+        if (emailData?.[0]) lastEmail = emailData[0];
+      }
+
       const { data, error } = await supabase.functions.invoke("generate-follow-up-action", {
         body: {
           actionType,
@@ -223,6 +236,7 @@ function ActionSheet({
             enrichment: lead.enrichment,
             dealIntelligence: lead.dealIntelligence,
           },
+          lastEmail,
           meetingContext: recentMeeting ? {
             title: recentMeeting.title,
             date: recentMeeting.date,
