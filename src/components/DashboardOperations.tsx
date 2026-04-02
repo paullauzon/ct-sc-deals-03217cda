@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { Lead, LeadStage } from "@/types/lead";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertTriangle, Clock, Users, Shield, TrendingUp } from "lucide-react";
+import { AlertTriangle, Clock, Users, Shield, TrendingUp, Zap } from "lucide-react";
 import { differenceInDays, parseISO } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
 
 const STAGE_WEIGHTS: Record<string, number> = {
   "New Lead": 0.05,
@@ -151,6 +152,101 @@ export function DashboardOperations({ leads, onDrillDown }: Props) {
     return { addedValue, lostValue, wonValue, net, newCount: newDeals.length, lostCount: closedOut.length, wonCount: closedWon.length };
   }, [leads]);
 
+  // --- Deal Velocity Timeline ---
+  const TRANSITIONS = ACTIVE_STAGES.slice(0, -1).map((s, i) => ({
+    from: s,
+    to: ACTIVE_STAGES[i + 1],
+    label: `${s} → ${ACTIVE_STAGES[i + 1]}`,
+  }));
+
+  const [velocityData, setVelocityData] = useState<
+    { label: string; ct: { avg: number; count: number }; sc: { avg: number; count: number } }[]
+  >([]);
+
+  useEffect(() => {
+    async function fetchVelocity() {
+      const { data: logs } = await supabase
+        .from("lead_activity_log" as any)
+        .select("*")
+        .eq("event_type", "stage_change")
+        .order("created_at", { ascending: true })
+        .limit(5000);
+
+      if (!logs || logs.length === 0) {
+        setVelocityData([]);
+        return;
+      }
+
+      // Build lead→brand map
+      const brandMap: Record<string, string> = {};
+      for (const l of leads) brandMap[l.id] = l.brand;
+
+      // Group logs by lead_id, sorted by time
+      const byLead: Record<string, any[]> = {};
+      for (const log of logs as any[]) {
+        if (!byLead[log.lead_id]) byLead[log.lead_id] = [];
+        byLead[log.lead_id].push(log);
+      }
+
+      // For each transition, collect durations
+      const transMap: Record<string, Record<string, number[]>> = {};
+      for (const t of TRANSITIONS) {
+        transMap[t.label] = { Captarget: [], SourceCo: [] };
+      }
+
+      for (const [leadId, entries] of Object.entries(byLead)) {
+        const brand = brandMap[leadId];
+        if (!brand || (brand !== "Captarget" && brand !== "SourceCo")) continue;
+
+        for (let i = 0; i < entries.length; i++) {
+          const entry = entries[i];
+          const oldVal = entry.old_value?.replace(/^"|"$/g, "") || "";
+          const newVal = entry.new_value?.replace(/^"|"$/g, "") || "";
+          const transLabel = `${oldVal} → ${newVal}`;
+          if (transMap[transLabel]?.[brand] !== undefined) {
+            // Find previous stage_change to this old_value to compute time delta
+            // Use time from when old stage was entered to when new stage was entered
+            let prevTime: string | null = null;
+            for (let j = i - 1; j >= 0; j--) {
+              if ((entries[j].new_value?.replace(/^"|"$/g, "") || "") === oldVal) {
+                prevTime = entries[j].created_at;
+                break;
+              }
+            }
+            if (!prevTime) {
+              // First transition — use lead's dateSubmitted
+              const lead = leads.find(l => l.id === leadId);
+              if (lead?.dateSubmitted) prevTime = lead.dateSubmitted;
+            }
+            if (prevTime) {
+              const days = Math.max(0, differenceInDays(parseISO(entry.created_at), parseISO(prevTime)));
+              transMap[transLabel][brand].push(days);
+            }
+          }
+        }
+      }
+
+      const result = TRANSITIONS.map(t => {
+        const ctDays = transMap[t.label].Captarget;
+        const scDays = transMap[t.label].SourceCo;
+        return {
+          label: t.label,
+          ct: { avg: ctDays.length > 0 ? Math.round(ctDays.reduce((a, b) => a + b, 0) / ctDays.length) : 0, count: ctDays.length },
+          sc: { avg: scDays.length > 0 ? Math.round(scDays.reduce((a, b) => a + b, 0) / scDays.length) : 0, count: scDays.length },
+        };
+      });
+      setVelocityData(result);
+    }
+    fetchVelocity();
+  }, [leads]);
+
+  const velocityColor = (days: number) => {
+    if (days >= 21) return "text-destructive font-semibold";
+    if (days >= 14) return "text-orange-500 font-medium";
+    if (days >= 7) return "text-yellow-600";
+    return "text-emerald-500 font-medium";
+  };
+
   return (
     <div className="space-y-6">
       {/* Pipeline Momentum */}
@@ -181,6 +277,54 @@ export function DashboardOperations({ leads, onDrillDown }: Props) {
               <p className="text-[10px] text-muted-foreground">Net Change</p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Deal Velocity Timeline */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Zap className="h-4 w-4" /> Deal Velocity Timeline
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {velocityData.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No stage transition data in activity log yet</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Transition</TableHead>
+                  <TableHead className="text-xs text-right">CT Avg Days</TableHead>
+                  <TableHead className="text-xs text-right">CT Count</TableHead>
+                  <TableHead className="text-xs text-right">SC Avg Days</TableHead>
+                  <TableHead className="text-xs text-right">SC Count</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {velocityData.filter(r => r.ct.count > 0 || r.sc.count > 0).map(r => (
+                  <TableRow key={r.label}>
+                    <TableCell className="text-xs font-medium">{r.label}</TableCell>
+                    <TableCell className={`text-xs text-right ${r.ct.count ? velocityColor(r.ct.avg) : "text-muted-foreground/40"}`}>
+                      {r.ct.count ? `${r.ct.avg}d` : "-"}
+                    </TableCell>
+                    <TableCell className="text-xs text-right text-muted-foreground">{r.ct.count || "-"}</TableCell>
+                    <TableCell className={`text-xs text-right ${r.sc.count ? velocityColor(r.sc.avg) : "text-muted-foreground/40"}`}>
+                      {r.sc.count ? `${r.sc.avg}d` : "-"}
+                    </TableCell>
+                    <TableCell className="text-xs text-right text-muted-foreground">{r.sc.count || "-"}</TableCell>
+                  </TableRow>
+                ))}
+                {velocityData.every(r => r.ct.count === 0 && r.sc.count === 0) && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-xs text-center text-muted-foreground py-4">
+                      No transitions recorded yet — data populates as deals move through stages
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 

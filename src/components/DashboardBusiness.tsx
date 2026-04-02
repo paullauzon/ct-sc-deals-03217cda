@@ -4,7 +4,7 @@ import { computeDaysInStage } from "@/lib/leadUtils";
 import { BrandLogo } from "@/components/BrandLogo";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { differenceInDays, parseISO, format } from "date-fns";
+import { differenceInDays, parseISO, format, subMonths } from "date-fns";
 import { DollarSign, TrendingUp, TrendingDown, Clock } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -78,8 +78,85 @@ function computeBrandMetrics(leads: Lead[], brand: Brand): BrandMetrics {
   };
 }
 
-function BrandScorecard({ metrics }: { metrics: BrandMetrics }) {
+// ── Sparkline SVG Component ──
+function Sparkline({ data, color = "currentColor" }: { data: number[]; color?: string }) {
+  if (data.length < 2) return null;
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const w = 48;
+  const h = 16;
+  const pad = 2;
+  const points = data.map((v, i) => {
+    const x = pad + (i / (data.length - 1)) * (w - pad * 2);
+    const y = h - pad - ((v - min) / range) * (h - pad * 2);
+    return `${x},${y}`;
+  });
+  const trend = data[data.length - 1] >= data[0];
+  const strokeColor = color !== "currentColor" ? color : trend ? "hsl(var(--success, 142 71% 45%))" : "hsl(var(--destructive))";
+
+  return (
+    <svg width={w} height={h} className="inline-block ml-1.5 align-middle">
+      <polyline
+        points={points.join(" ")}
+        fill="none"
+        stroke={strokeColor}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {data.map((v, i) => {
+        const x = pad + (i / (data.length - 1)) * (w - pad * 2);
+        const y = h - pad - ((v - min) / range) * (h - pad * 2);
+        return <circle key={i} cx={x} cy={y} r="1.5" fill={strokeColor} />;
+      })}
+    </svg>
+  );
+}
+
+// ── Compute monthly snapshots for sparklines ──
+function computeMonthlySnapshots(leads: Lead[], brand: Brand) {
+  const now = new Date();
+  const months: string[] = [];
+  for (let i = 3; i >= 0; i--) {
+    months.push(format(subMonths(now, i), "yyyy-MM"));
+  }
+
+  return months.map(month => {
+    const brandLeads = leads.filter(l => l.brand === brand);
+    const leadsThisMonth = brandLeads.filter(l => l.dateSubmitted?.startsWith(month));
+    const wonThisMonth = brandLeads.filter(l => l.stage === "Closed Won" && l.closedDate?.startsWith(month));
+    const lostThisMonth = brandLeads.filter(l => l.stage === "Closed Lost" && l.closedDate?.startsWith(month));
+    const totalClosed = wonThisMonth.length + lostThisMonth.length;
+    const pipelineLeads = brandLeads.filter(l => l.dateSubmitted && l.dateSubmitted <= `${month}-31` && !["Closed Won", "Closed Lost", "Went Dark", "Duplicate", "Disqualified"].includes(l.stage));
+
+    const mrr = wonThisMonth.reduce((s, l) => {
+      if (!l.subscriptionValue) return s;
+      if (l.billingFrequency === "Quarterly") return s + l.subscriptionValue / 3;
+      if (l.billingFrequency === "Annually") return s + l.subscriptionValue / 12;
+      return s + l.subscriptionValue;
+    }, 0);
+
+    return {
+      month,
+      leads: leadsThisMonth.length,
+      pipeline: pipelineLeads.reduce((s, l) => s + l.dealValue, 0),
+      mrr: Math.round(mrr),
+      winRate: totalClosed > 0 ? Math.round((wonThisMonth.length / totalClosed) * 100) : 0,
+    };
+  });
+}
+
+function BrandScorecard({ metrics, leads }: { metrics: BrandMetrics; leads: Lead[] }) {
   const borderColor = metrics.brand === "Captarget" ? "border-t-red-500" : "border-t-amber-500";
+  const snapshots = useMemo(() => computeMonthlySnapshots(leads, metrics.brand), [leads, metrics.brand]);
+
+  const sparkData: Record<string, number[]> = {
+    "Total Leads": snapshots.map(s => s.leads),
+    "Active Pipeline": snapshots.map(s => s.pipeline),
+    "MRR (Won)": snapshots.map(s => s.mrr),
+    "Win Rate": snapshots.map(s => s.winRate),
+  };
 
   return (
     <div className={`border border-border border-t-2 ${borderColor} rounded-lg p-5 space-y-4`}>
@@ -99,7 +176,12 @@ function BrandScorecard({ metrics }: { metrics: BrandMetrics }) {
         ].map(stat => (
           <div key={stat.label}>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-            <p className="text-lg font-semibold tabular-nums">{stat.value}</p>
+            <div className="flex items-center">
+              <p className="text-lg font-semibold tabular-nums">{stat.value}</p>
+              {sparkData[stat.label] && sparkData[stat.label].some(v => v > 0) && (
+                <Sparkline data={sparkData[stat.label]} />
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -191,8 +273,8 @@ export function DashboardBusiness({ leads, onDrillDown }: Props) {
       <div>
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Brand Comparison</h2>
         <div className="grid grid-cols-2 gap-4">
-          <BrandScorecard metrics={ctMetrics} />
-          <BrandScorecard metrics={scMetrics} />
+          <BrandScorecard metrics={ctMetrics} leads={leads} />
+          <BrandScorecard metrics={scMetrics} leads={leads} />
         </div>
       </div>
 
