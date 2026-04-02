@@ -1,136 +1,177 @@
 
 
-# Transcript-Derived Metrics for Business Operations Dashboard
+# Complete Transcript Intelligence Extraction Strategy
 
-## What the Data Reveals (133 meetings, 127 with intelligence)
+## Current Floor (What's Already Surfaced)
 
-After analyzing all meeting transcripts, here's what's extractable and actionable:
+The Business Operations dashboard currently surfaces these transcript-derived metrics:
+- Signal-to-Close Conversion Matrix (intent + engagement vs outcomes)
+- Sales Coaching Scorecard (talk ratio, question quality, objection handling per rep)
+- Stuck Pipeline Alert (high-intent deals stuck 14+ days)
+- Objection & Competitor Heatmap (objection frequency + competitor mentions)
 
-### Available Intelligence Signals (real data, not fabricated)
-
-| Signal | Data Points | Coverage |
-|--------|------------|----------|
-| Buying Intent (Strong/Moderate/Low/None) | 127 meetings | 100% |
-| Sentiment (Very Positive → Negative) | 127 meetings | 100% |
-| Engagement Level (Highly Engaged → Disengaged) | 115 meetings | 91% |
-| Talk Ratio (rep vs prospect %) | 113 meetings | 89% |
-| Question Quality (Strong/Adequate/Weak) | 115 meetings | 91% |
-| Objection Handling (Effective/Partial/Missed) | 115 meetings | 91% |
-| Pain Points extracted | 89 unique across meetings | ~70% |
-| Objections raised | 29 specific objections | ~23% |
-| Competitors mentioned | 20 unique competitors | ~15% |
-| Budget/pricing discussed | ~50 meetings with real pricing data | ~40% |
-| Buyer Journey stage | 6 meetings (sparse — newer field) | 5% |
-| Champion Strength | 6 meetings (sparse — newer field) | 5% |
-| Current Solution (incumbent) | 7 meetings with specific tools | 6% |
-| Evaluation Criteria | 15 criteria extracted | ~10% |
-
-### Key Findings That Should Be Surfaced
-
-1. **Intent-to-Outcome Correlation**: 6/6 Closed Won had "Strong" intent. 3/4 Closed Lost had "Moderate." Meanwhile, 42 "Strong" intent meetings are stuck in Meeting Held — massive conversion gap.
-
-2. **Coaching Metrics by Outcome**: Won deals average 23.5% talk ratio vs 29% for Meeting Held stage. Lower talk ratio correlates with closing. Question Quality is "Strong" + Objection Handling "Effective" for 100% of won deals, but "Weak"/"Missed" appears in 4 active deals and the 1 Went Dark.
-
-3. **Pricing Intelligence**: Actual price points discussed in ~50 meetings. Range: $2,300–$8,000/mo for Captarget, $3,800–$6,500/mo for SourceCo. Won deals clustered at $2,500–$7,000/mo.
-
-4. **Objection Patterns**: Budget/pricing objections dominate (8/29). "Previous teams not delivering" and "preference against retainers" are recurring themes. SourceCo faces unique "no finder's fee model" and "retainer resistance."
-
-5. **Competitor Landscape**: Grata (4 mentions), Axial (4), Source Scrub (2), Apollo (2), BizBuySell (2). These are tools prospects currently use — not direct competitors.
+The Intel tab separately covers: signal distributions, competitive radar, loss intelligence, coaching, and GTM insights.
 
 ---
 
-## Proposed New Sections (4 additions across 2 tabs)
+## The Ceiling: What's Buried in the Data (and Not Yet Surfaced)
 
-### 1. Signal-to-Close Conversion Matrix (Overview tab)
-Shows the relationship between transcript signals and deal outcomes.
+### Tier 1: High Coverage, High Impact (100+ data points)
 
-```text
-┌─────────────────────────────────────────────┐
-│  Signal-to-Close Conversion                 │
-│                                             │
-│  Intent    │ Meetings │ Won │ Lost │ Conv%   │
-│  Strong    │   62     │  6  │  1   │ 86%     │
-│  Moderate  │   57     │  0  │  3   │  0%     │
-│  Low/None  │    5     │  0  │  0   │  -      │
-│                                             │
-│  Engagement│ Meetings │ Won │ Lost │ Conv%   │
-│  Highly E. │   68     │  4  │  1   │ 80%     │
-│  Engaged   │   42     │  2  │  2   │ 50%     │
-│  Passive   │    5     │  0  │  1   │  0%     │
-└─────────────────────────────────────────────┘
-```
+**1. Pricing Intelligence Dashboard** (123 meetings with pricing data, 65 with explicit budgets)
+- Actual price points discussed: $2,000-$8,000/mo for Captarget, $3,300-$6,500/mo for SourceCo
+- Won deals clustered at $2,500-$7,000/mo range
+- Budget-to-close correlation: prospects who stated specific budgets vs those who didn't — what's the conversion difference?
+- Price sensitivity mapping: which price points get pushback vs acceptance, by service tier
+- **COO value**: Answers "are we pricing correctly?" and "where are we leaving money on the table?"
 
-This answers: "Which transcript signals actually predict closing?" Clickable rows drill down to the leads.
+**2. Urgency Driver Taxonomy** (149 urgency drivers extracted)
+- Top themes: "need systematic M&A process," "current sourcing partner underperforming," "deal flow increase needed"
+- Currently invisible — buried in individual meeting records
+- Can categorize into: Competitive Pressure, Resource Constraints, Market Timing, Incumbent Failure, Growth Mandate
+- Correlate urgency categories with close rates
+- **COO value**: Tells marketing which pain narratives to lead with in ads/content
 
-### 2. Sales Coaching Scorecard (Operations tab)
-Aggregates rep-level coaching metrics from transcripts.
+**3. Value Proposition Effectiveness** (120 meetings with value_prop data)
+- What Captarget/SourceCo value prop resonated in won vs lost deals
+- Won: "outsourced BD approach relieving bandwidth burden," "no success fee model," "both on/off market strategies"
+- Lost: "customized outreach with transparent pricing" — same messaging, different outcome
+- **COO value**: Refine sales pitch. Know which value angles close and which don't.
 
-```text
-┌─────────────────────────────────────────────┐
-│  Sales Coaching Scorecard                   │
-│                                             │
-│  Rep     │ Avg Talk% │ Q.Quality │ Obj.Hand │
-│  Malik   │   27%     │ 95% Strong│ 92% Eff  │
-│  Valeria │   31%     │ 88% Strong│ 85% Eff  │
-│  Tomos   │   24%     │ 100%      │ 100%     │
-│                                             │
-│  Benchmark: Won deals avg 23.5% talk ratio  │
-│  ⚠ 4 meetings flagged Weak/Missed          │
-└─────────────────────────────────────────────┘
-```
+**4. Sentiment Trajectory Analysis** (127 meetings with sentiment)
+- Won deals: 83% Positive, 17% Very Positive, 0% Neutral/Cautious
+- Lost deals: 75% Positive, 25% Very Positive (counterintuitive — sentiment alone doesn't predict losses)
+- Neutral sentiment = 0 wins across 7 meetings (strong negative predictor)
+- **COO value**: Sentiment is a necessary-but-not-sufficient condition. Combine with action item completion for true predictive power.
 
-Uses `talkRatio`, `questionQuality`, `objectionHandling` from meeting intelligence, grouped by `assignedTo`. Shows which reps are closest to the "winning formula."
+**5. Action Item Completion Crisis** (169 action items tracked, 131 still "Open")
+- Only 10 completed out of 169 (5.9% completion rate)
+- This is a massive operational red flag — promises being made in meetings and not followed through
+- Can break down by rep: who's dropping the ball?
+- Correlate completion rates with deal outcomes
+- **COO value**: Single biggest controllable factor in deal conversion. Fix this, close more deals.
 
-### 3. Objection & Competitor Heatmap (Forecast tab)
-Groups extracted objections into categories and shows frequency + which stages they appear in.
+### Tier 2: Moderate Coverage, Strategic Value (20-85 data points)
 
-```text
-┌─────────────────────────────────────────────┐
-│  Top Objections (from transcripts)          │
-│                                             │
-│  Category        │ Count │ Stages           │
-│  Budget/Pricing  │   8   │ MH, PS, CL       │
-│  Past Failures   │   3   │ MS, MH            │
-│  Retainer Resist │   3   │ MH (SC only)      │
-│  Data Quality    │   2   │ MH                │
-│                                             │
-│  Competitor Mentions                        │
-│  Grata: 4 │ Axial: 4 │ SourceScrub: 2     │
-│  Apollo: 2 │ BizBuySell: 2               │
-└─────────────────────────────────────────────┘
-```
+**6. Deal Temperature + Momentum Matrix** (85 deals with deal intelligence)
+- 74 deals rated "Warm," 6 "Lukewarm," 2 "Cold," 2 "On Fire"
+- 66 "Steady" momentum, 17 "Accelerating," 2 "Stalling/Stalled"
+- Cross-reference: "Warm + Steady" = 60+ deals sitting in neutral. "Warm + Accelerating" = 17 deals actively progressing
+- **COO value**: Dashboard showing which deals need a push (Warm+Steady for too long) vs which are self-propelling
 
-### 4. Stuck Pipeline Alert — Intent vs Stage (Operations tab)
-Highlights deals with "Strong" intent + "Highly Engaged" that are stuck in Meeting Held for 14+ days. These are the highest-ROI follow-ups.
+**7. Stakeholder Influence Map Aggregation** (195 stakeholders mapped across 85 deals)
+- 39 Champions who are Decision Makers
+- 16 Neutral Decision Makers (deals at risk — no internal advocate)
+- 40 "Supporter/Medium" — passive goodwill but no power
+- **COO value**: Deals with Neutral Decision Makers and no Champion = systematically at risk. Flag these for executive-level engagement.
 
-```text
-┌─────────────────────────────────────────────┐
-│  ⚡ High-Intent Stuck Deals (42 flagged)    │
-│                                             │
-│  Name           │ Company    │ Days │ Value │
-│  Adam Berman    │ Pos. Sum   │  28  │ $60K  │
-│  Timothy Dolan  │ Woody Crk  │  35  │ $42K  │
-│  August Meinerz │ Maxus Ops  │  22  │ $24K  │
-│  ...clickable to drill down               │
-└─────────────────────────────────────────────┘
-```
+**8. Risk Register Aggregation** (85 deals with risk registers, 23 total risk factors)
+- Risk severity distribution across active pipeline
+- Unmitigated vs Partially Mitigated vs Mitigated — what percentage of pipeline risk is addressed?
+- Common risk patterns: budget constraints, CEO approval dependency, competitor engagement, internal team capacity
+- **COO value**: Portfolio-level risk view. "How much of our pipeline has unmitigated critical risks?"
+
+**9. Win Strategy Intelligence** (83 deals with win strategies)
+- Closing windows: most say "30 days" or "next quarter" — are they actually closing in that window?
+- Number One Closer themes: "demonstrate ROI," "case studies," "trial/pilot program" — which closing tactics correlate with wins?
+- Power Moves: what types of power moves were recommended vs executed?
+- **COO value**: Build a playbook from what actually works, not theory.
+
+**10. Multi-Meeting Deal Patterns** (20+ leads with 2+ meetings)
+- Rish Sharma: 5 meetings, $40K deal, still in Meeting Held — meeting fatigue or genuine complexity?
+- Won deals averaged how many meetings before close?
+- Is there a "meeting count sweet spot"? (too few = not enough trust, too many = stalling)
+- **COO value**: Optimal meeting cadence per deal size. "After 3 meetings with no advancement, change strategy."
+
+**11. Decision Process Intelligence** (120 meetings with decision process data)
+- Patterns: "internal review by committee," "sole decision maker," "board approval required," "pending partner discussion"
+- Correlate decision complexity with cycle time and win rate
+- Solo decision makers close faster? Committee deals need different strategy?
+- **COO value**: Adjust sales approach based on decision structure. Prioritize solo-DM deals for speed.
+
+### Tier 3: Emerging Data, Future Value (5-27 data points)
+
+**12. Competitive Displacement Intelligence** (11 structured competitor details, 50 total mentions)
+- Current solutions being used: Apollo, Source Scrub, RADA, PitchBook, Clay, Pod, internal teams
+- Prospect sentiment toward incumbents: 3 "Unfavorable" (opportunity), 5 "Neutral" (need differentiation), 3 "Mixed" (risk)
+- Switching barriers: 14 unique barriers identified (existing relationships, regulatory, self-sufficiency)
+- **COO value**: Displacement playbooks per competitor. "When they use Apollo, lead with X."
+
+**13. Evaluation Criteria Mapping** (27 criteria extracted)
+- Top: Price (2x), Lead Quality (2x), Service Flexibility, Industry Expertise
+- Can map which criteria won deals prioritized vs lost deals
+- **COO value**: Adjust pitch emphasis. If "Lead Quality" wins deals but "Price" loses them, lead with quality.
+
+**14. Speed-to-Meeting Correlation** (42 leads with hours_to_meeting_set)
+- Captarget Meeting Held: avg 210 hours (8.75 days), range 3-1342 hours
+- Won deals: avg 438 hours but high variance (6 to 1194 hours) — small sample
+- SourceCo: faster at avg 153 hours for Meeting Held
+- **COO value**: Response time benchmarking. Not yet enough data to be definitive but trending.
+
+**15. Buyer Journey & Champion Strength** (6 data points each — too sparse for dashboard)
+- Worth tracking but need 30+ data points before surfacing
+- Recommendation: keep extracting, build dashboard widget when coverage hits 20%
 
 ---
 
-## Why These 4 (and not others)
+## What Should Be Built (Prioritized)
 
-- **Signal-to-Close**: Only metric that tells you *which meeting signals predict revenue*. Currently nowhere in the system.
-- **Coaching Scorecard**: Talk ratio data exists for 113 meetings but is only visible per-meeting. Aggregating it per-rep creates an actionable coaching tool.
-- **Objection Heatmap**: 29 objections extracted but buried in individual meeting records. Aggregating them reveals *systemic* sales barriers.
-- **Stuck Pipeline Alert**: 42 deals showed "Strong" intent but never advanced past Meeting Held. This is your biggest revenue leak and it's invisible today.
+### Must-Build (Data exists, high COO impact, not surfaced anywhere)
 
-**Not included** (too sparse): Buyer Journey (6 data points), Champion Strength (6), Evaluation Criteria (15) — these fields were added recently and don't have enough coverage yet. They'll become useful as more meetings are processed.
+| # | Section | Tab | Why |
+|---|---------|-----|-----|
+| 1 | **Action Item Completion Tracker** | Operations | 5.9% completion rate is a crisis. Show per-rep completion rates, overdue items, and dropped promises. This is the single most actionable metric. |
+| 2 | **Pricing Intelligence** | Economics | Price ranges discussed vs won price points. Shows optimal pricing corridors per brand and service type. |
+| 3 | **Deal Temperature & Momentum Grid** | Operations | 60+ deals sitting "Warm + Steady" — surface which need intervention vs which are progressing |
+| 4 | **Stakeholder Risk Heatmap** | Forecast | 16 deals with Neutral Decision Makers and no Champion = highest risk. Flag for executive engagement. |
+| 5 | **Urgency Driver Taxonomy** | Overview | Categorized urgency drivers with frequency. Tells marketing and sales what language resonates. |
 
-## Files Changed
+### Should-Build (Strategic but lower urgency)
 
-| File | Changes |
-|------|---------|
-| `src/components/DashboardBusiness.tsx` | Add Signal-to-Close Conversion Matrix section below Stage Waterfall |
-| `src/components/DashboardOperations.tsx` | Add Sales Coaching Scorecard section and Stuck Pipeline Alert section |
-| `src/components/DashboardForecast.tsx` | Add Objection & Competitor Heatmap section below Win/Loss Analysis |
+| # | Section | Tab | Why |
+|---|---------|-----|-----|
+| 6 | **Meeting Count vs Outcome** | Operations | Optimal meeting cadence analysis. "After N meetings, convert or deprioritize." |
+| 7 | **Decision Process Complexity** | Forecast | Solo DM vs committee deals — different strategies needed |
+| 8 | **Value Prop Effectiveness** | Overview | Which pitch angles close vs which don't |
+| 9 | **Risk Portfolio View** | Forecast | Aggregate unmitigated risks across pipeline |
+| 10 | **Competitive Displacement Playbook** | Overview | Per-incumbent displacement strategies |
+
+### Not Yet (Insufficient data)
+
+- Buyer Journey Distribution (6 data points)
+- Champion Strength Overview (6 data points)
+- Speed-to-meeting causation (42 points, high variance)
+
+---
+
+## Data Sources Summary
+
+All metrics above use data already in the database. No fabrication required:
+
+| Source | Field Path | Coverage |
+|--------|-----------|----------|
+| Meeting intelligence | `meetings[].intelligence.*` | 127/133 meetings |
+| Deal intelligence | `deal_intelligence.*` | 85/94 leads with meetings |
+| Pricing discussions | `meetings[].intelligence.pricingDiscussion` | 123 meetings |
+| Budget mentioned | `meetings[].intelligence.dealSignals.budgetMentioned` | 65 meetings |
+| Action items | `deal_intelligence.actionItemTracker[]` | 85 leads, 169 items |
+| Stakeholder map | `deal_intelligence.stakeholderMap[]` | 85 leads, 195 stakeholders |
+| Win strategy | `deal_intelligence.winStrategy` | 83 leads |
+| Momentum signals | `deal_intelligence.momentumSignals` | 85 leads |
+| Risk register | `deal_intelligence.riskRegister[]` | 85 leads |
+| Urgency drivers | `meetings[].intelligence.dealSignals.urgencyDrivers[]` | 149 items |
+| Decision process | `meetings[].intelligence.dealSignals.decisionProcess` | 120 meetings |
+| Current solution | `meetings[].intelligence.dealSignals.currentSolution` | 7 specific tools |
+| Evaluation criteria | `meetings[].intelligence.dealSignals.evaluationCriteria[]` | 27 criteria |
+| Switching barriers | `meetings[].intelligence.dealSignals.switchingBarriers[]` | 14 barriers |
+
+---
+
+## The One Metric That Matters Most
+
+**Action item completion rate: 5.9%.**
+
+131 out of 169 action items are still "Open." This means promises made in sales meetings — "I'll send you the proposal," "We'll schedule a follow-up," "I'll share case studies" — are systematically not being tracked or executed. This is almost certainly the primary reason 42 "Strong Intent" deals are stuck in Meeting Held. The intelligence exists. The follow-through doesn't.
+
+Building an Action Item Completion dashboard per rep with overdue alerts would likely have more revenue impact than any other single feature in this system.
 
