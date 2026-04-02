@@ -291,6 +291,7 @@ function ActionSheet({
             <span>{lead?.name}</span>
             <span className="text-muted-foreground font-normal">· {actionType && actionLabels[actionType]}</span>
           </SheetTitle>
+          <SheetDescription className="sr-only">AI-generated action draft for {lead?.name}</SheetDescription>
         </SheetHeader>
 
         <div className="mt-6 space-y-4">
