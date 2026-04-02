@@ -355,21 +355,37 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail 
             dealIntelligence: lead.dealIntelligence || null,
           }
         : {
-            record: {
-              id: lead.id, name: lead.name, email: lead.email,
-              company: lead.company, company_url: lead.companyUrl,
-              role: lead.role, buyer_type: lead.buyerType,
-              message: lead.message, source: lead.source,
-            },
+            companyUrl: lead.companyUrl,
+            leadName: lead.name,
+            leadMessage: lead.message,
+            leadRole: lead.role,
+            leadCompany: lead.company,
+            leadStage: lead.stage,
+            leadPriority: lead.priority,
+            leadDealValue: lead.dealValue,
+            leadServiceInterest: lead.serviceInterest,
+            leadBuyerType: lead.buyerType,
+            leadTargetCriteria: lead.targetCriteria,
+            leadTargetRevenue: lead.targetRevenue,
+            leadGeography: lead.geography,
+            leadAcquisitionStrategy: lead.acquisitionStrategy,
+            leadNotes: lead.notes,
+            meetings: lead.meetings || [],
+            dealIntelligence: lead.dealIntelligence || null,
           };
       const { data, error } = await supabase.functions.invoke(fnName, { body });
       if (error) throw error;
       if (data?.brief) {
         onBriefGenerated(lead.id, lead.name, data.brief);
         toast({ title: "Prep brief ready", description: `Intelligence generated for ${lead.name}` });
-      } else if (!hasMeetings && data) {
+      } else if (!hasMeetings && data?.enrichment) {
+        // Persist enrichment to database
+        await supabase.from("leads").update({
+          enrichment: data.enrichment,
+          enrichment_status: "complete",
+        }).eq("id", lead.id);
         setEnrichmentUpdated(true);
-        toast({ title: "Prospect researched", description: `Enrichment data updated for ${lead.name}. Refresh to see full details.` });
+        toast({ title: "Prospect researched", description: `Research saved for ${lead.name}` });
       } else if (data?.error) {
         toast({ title: "Could not generate brief", description: data.error, variant: "destructive" });
       }
