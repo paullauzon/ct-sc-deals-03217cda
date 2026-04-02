@@ -653,6 +653,7 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                   </div>
                 )}
 
+                {briefBattleCard.meetingGoal && (
                   <div>
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <Crown className="h-3 w-3 text-primary" />
