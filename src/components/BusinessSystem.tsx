@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Eye, DollarSign, Settings2, TrendingUp, Lock } from "lucide-react";
 import { DashboardEconomics } from "@/components/DashboardEconomics";
 import { DashboardOperations } from "@/components/DashboardOperations";
+import { DashboardForecast } from "@/components/DashboardForecast";
 
 type BizTab = "overview" | "economics" | "operations" | "forecast";
 
@@ -16,7 +17,7 @@ const TABS: { key: BizTab; label: string; desc: string; icon: typeof Eye; ready:
   { key: "overview", label: "Overview", desc: "Brand Scorecards", icon: Eye, ready: true },
   { key: "economics", label: "Economics", desc: "Unit Economics", icon: DollarSign, ready: true },
   { key: "operations", label: "Operations", desc: "Capacity & Health", icon: Settings2, ready: true },
-  { key: "forecast", label: "Forecast", desc: "Revenue Projections", icon: TrendingUp, ready: false },
+  { key: "forecast", label: "Forecast", desc: "Revenue Projections", icon: TrendingUp, ready: true },
 ];
 
 interface DrillDown {
@@ -79,12 +80,7 @@ export function BusinessSystem() {
       )}
 
       {tab === "forecast" && (
-        <div className="flex items-center justify-center h-64 border border-dashed border-border rounded-lg">
-          <div className="text-center space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">Coming Soon</p>
-            <p className="text-xs text-muted-foreground/60">Revenue projections and retention tracking</p>
-          </div>
-        </div>
+        <DashboardForecast leads={filteredLeads} onDrillDown={handleDrillDown} />
       )}
 
       {/* Drill-down sheet */}
