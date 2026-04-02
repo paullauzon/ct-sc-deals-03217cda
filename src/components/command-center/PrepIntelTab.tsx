@@ -480,11 +480,11 @@ function EnrichmentSections({ enrichment, lead, onUpdateLead }: { enrichment: an
 
   const handleApplySuggestion = (field: string, value: string) => {
     const updates: Partial<Lead> = {};
-    if (field === "stage") updates.stage = value;
-    else if (field === "priority") updates.priority = value;
-    else if (field === "icp_fit" || field === "icpFit") updates.icpFit = value;
-    else if (field === "buyer_type" || field === "buyerType") updates.buyerType = value;
-    else if (field === "service_interest" || field === "serviceInterest") updates.serviceInterest = value;
+    if (field === "stage") updates.stage = value as Lead["stage"];
+    else if (field === "priority") updates.priority = value as Lead["priority"];
+    else if (field === "icp_fit" || field === "icpFit") updates.icpFit = value as Lead["icpFit"];
+    else if (field === "buyer_type" || field === "buyerType") updates.buyerType = value as Lead["buyerType"];
+    else if (field === "service_interest" || field === "serviceInterest") updates.serviceInterest = value as Lead["serviceInterest"];
     else return;
     onUpdateLead(lead.id, updates);
     toast({ title: `Updated ${field}`, description: `Set to "${value}"` });
