@@ -144,9 +144,7 @@ function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () =>
             <Mail className="h-2.5 w-2.5" />{emailCount} email{emailCount !== 1 ? "s" : ""}
           </span>
         )}
-        {lead.dealValue > 0 && (
-          <span className="tabular-nums font-medium">${lead.dealValue.toLocaleString()}</span>
-        )}
+        <span className={`tabular-nums font-medium ${lead.dealValue === 0 ? "text-muted-foreground" : ""}`}>${lead.dealValue.toLocaleString()}</span>
         {lead.stage && (
           <span className="px-1.5 py-0.5 rounded bg-secondary">{lead.stage}</span>
         )}
@@ -192,6 +190,19 @@ function IntelCard({ lead, onSelect, emailCount }: { lead: Lead; onSelect: () =>
         )}
         {winStrategy?.closingWindow && (
           <div><span className="text-muted-foreground">Window: </span><span className="font-medium">{winStrategy.closingWindow}</span></div>
+        )}
+        {/* Enrichment fields */}
+        {lead.acquisitionStrategy && lead.acquisitionStrategy !== "TBD" && (
+          <div><span className="text-muted-foreground">Strategy: </span><span className="font-medium">{lead.acquisitionStrategy}</span></div>
+        )}
+        {lead.buyerType && lead.buyerType !== "TBD" && (
+          <div><span className="text-muted-foreground">Buyer: </span><span className="font-medium">{lead.buyerType}</span></div>
+        )}
+        {lead.geography && lead.geography !== "TBD" && (
+          <div><span className="text-muted-foreground">Geo: </span><span className="font-medium">{lead.geography}</span></div>
+        )}
+        {lead.targetCriteria && lead.targetCriteria !== "TBD" && (
+          <div className="col-span-2"><span className="text-muted-foreground">Criteria: </span><span className="font-medium">{lead.targetCriteria}</span></div>
         )}
       </div>
 
