@@ -5,7 +5,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import {
   ChevronDown, ChevronRight, Clock, AlertTriangle, UserX, Ghost,
   Mail, Mic, CalendarCheck, ArrowUpDown, Zap, Send, Phone, RotateCcw,
-  Reply, FileText, Loader2
+  Reply, FileText, Loader2, ListChecks
 } from "lucide-react";
 import { format, parseISO, differenceInDays, isToday, addDays, isBefore, startOfDay } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,6 +17,7 @@ import { CalendarIcon } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { useLeadTasks } from "@/hooks/useLeadTasks";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 const STAGE_OPTIONS = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"] as const;
@@ -107,13 +108,14 @@ function getRecommendation(lead: Lead): string | null {
 
 // ─── Rich row ───
 function FollowUpRow({
-  lead, label, labelStyle, onSelect, emailCount, onUpdate, isUnanswered, onAction,
+  lead, label, labelStyle, onSelect, emailCount, onUpdate, isUnanswered, onAction, taskCount,
 }: {
   lead: Lead; label: string; labelStyle?: string; onSelect: (id: string) => void;
   emailCount: number;
   onUpdate: (id: string, data: Partial<Lead>) => void;
   isUnanswered: boolean;
   onAction: (lead: Lead, actionType: ActionType) => void;
+  taskCount?: number;
 }) {
   const meetingCount = lead.meetings?.length || 0;
   const hasCalendly = !!lead.calendlyBookedAt;
@@ -166,6 +168,11 @@ function FollowUpRow({
         )}
         {hasCalendly && (
           <CalendarCheck className="h-2.5 w-2.5 text-muted-foreground" />
+        )}
+        {taskCount != null && taskCount > 0 && (
+          <span className="text-[10px] text-primary flex items-center gap-0.5 font-medium">
+            <ListChecks className="h-2.5 w-2.5" />{taskCount}
+          </span>
         )}
 
         {/* Action chip + snooze — always visible */}
@@ -476,6 +483,13 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
   const [sortField, setSortField] = useState<SortField>("default");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [openSections, setOpenSections] = useState({ overdue: true, dueThisWeek: true, unanswered: true, untouched: true, goingDark: true });
+  const { tasks: allTasks } = useLeadTasks();
+
+  const taskCountMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of allTasks) m.set(t.lead_id, (m.get(t.lead_id) || 0) + 1);
+    return m;
+  }, [allTasks]);
 
   // Action sheet state
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -652,7 +666,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
           </div>
         )}
         {openSections.overdue && overdue.map(({ lead, daysOverdue }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={daysOverdue === 0 ? "Due today" : `${daysOverdue}d overdue`} labelStyle={daysOverdue === 0 ? "bg-foreground text-background" : "bg-red-500/10 text-red-600 dark:text-red-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />
+          <FollowUpRow key={lead.id} lead={lead} label={daysOverdue === 0 ? "Due today" : `${daysOverdue}d overdue`} labelStyle={daysOverdue === 0 ? "bg-foreground text-background" : "bg-red-500/10 text-red-600 dark:text-red-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} />
         ))}
 
         {/* Due This Week */}
@@ -660,25 +674,25 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
         {openSections.dueThisWeek && dueThisWeek.map(lead => {
           const dueDate = parseISO(lead.nextFollowUp);
           const label = isToday(dueDate) ? "Today" : format(dueDate, "EEE, MMM d");
-          return <FollowUpRow key={lead.id} lead={lead} label={label} labelStyle={isToday(dueDate) ? "bg-foreground text-background" : "bg-blue-500/10 text-blue-600 dark:text-blue-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />;
+          return <FollowUpRow key={lead.id} lead={lead} label={label} labelStyle={isToday(dueDate) ? "bg-foreground text-background" : "bg-blue-500/10 text-blue-600 dark:text-blue-400"} onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} />;
         })}
 
         {/* Unanswered Inbound */}
         <SectionHeader title="Unanswered Inbound" count={unansweredLeads.length} dotColor="bg-purple-500" open={openSections.unanswered} onToggle={() => toggleSection("unanswered")} />
         {openSections.unanswered && unansweredLeads.map(lead => (
-          <FollowUpRow key={lead.id} lead={lead} label="Awaiting reply" labelStyle="bg-purple-500/10 text-purple-600 dark:text-purple-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={true} onAction={handleAction} />
+          <FollowUpRow key={lead.id} lead={lead} label="Awaiting reply" labelStyle="bg-purple-500/10 text-purple-600 dark:text-purple-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={true} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} />
         ))}
 
         {/* Untouched */}
         <SectionHeader title="Untouched New Leads" count={untouched.length} dotColor="bg-emerald-500" open={openSections.untouched} onToggle={() => toggleSection("untouched")} />
         {openSections.untouched && untouched.map(({ lead, daysOld }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={`${daysOld}d old`} labelStyle="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />
+          <FollowUpRow key={lead.id} lead={lead} label={`${daysOld}d old`} labelStyle="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} />
         ))}
 
         {/* Going Dark */}
         <SectionHeader title="Going Dark" count={goingDark.length} dotColor="bg-amber-500" open={openSections.goingDark} onToggle={() => toggleSection("goingDark")} />
         {openSections.goingDark && goingDark.map(({ lead, daysSilent }) => (
-          <FollowUpRow key={lead.id} lead={lead} label={`Silent ${daysSilent}d`} labelStyle="bg-amber-500/10 text-amber-600 dark:text-amber-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} />
+          <FollowUpRow key={lead.id} lead={lead} label={`Silent ${daysSilent}d`} labelStyle="bg-amber-500/10 text-amber-600 dark:text-amber-400" onSelect={onSelectLead} emailCount={emailCounts.get(lead.id) || 0} onUpdate={handleUpdate} isUnanswered={unansweredLeadIds.has(lead.id)} onAction={handleAction} taskCount={taskCountMap.get(lead.id)} />
         ))}
 
         {totalItems === 0 && (

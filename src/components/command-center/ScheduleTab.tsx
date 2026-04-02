@@ -1,10 +1,13 @@
 import { useState, useMemo, useEffect } from "react";
 import { Lead } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
-import { CalendarCheck, ChevronDown, ChevronRight, Sparkles, Users, Mail, ArrowUpRight } from "lucide-react";
+import { CalendarCheck, ChevronDown, ChevronRight, Sparkles, Users, Mail, ArrowUpRight, CheckCircle2, SkipForward, ListChecks } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
-import { format, parseISO, differenceInDays, subHours } from "date-fns";
+import { format, parseISO, differenceInDays, subHours, isToday as isTodayFn } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { useLeadTasks, LeadTask } from "@/hooks/useLeadTasks";
+import { toast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
 
@@ -245,6 +248,7 @@ function TierSection({ tier, items, onSelect }: { tier: PriorityTier; items: Act
 /* ─── Schedule Tab ─── */
 export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }: { leads: Lead[]; ownerFilter: string; onSelectLead: (id: string) => void; meetingHorizon: number }) {
   const items = useMemo(() => buildActionItems(leads, ownerFilter, meetingHorizon), [leads, ownerFilter, meetingHorizon]);
+  const { tasks: playbookTasks, completeTask, skipTask } = useLeadTasks();
   const meetings = useMemo(() => items.filter(i => i.type === "meeting"), [items]);
 
   const groupedMeetings = useMemo(() => {
@@ -259,19 +263,23 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
     return groups;
   }, [meetings]);
 
+  const leadMap = useMemo(() => new Map(leads.map(l => [l.id, l])), [leads]);
+
+  const todaysTasks = useMemo(() => {
+    const today = new Date().toISOString().split("T")[0];
+    return playbookTasks.filter(t => t.due_date <= today);
+  }, [playbookTasks]);
+
   const tierItems = useMemo(() => {
     const now = new Date();
     const nonMeeting = items.filter(i => {
       if (i.type === "meeting") return false;
-      // Only show today's overdue items (not the full historical backlog)
       if (i.type === "overdue") {
         const nf = i.lead.nextFollowUp;
         if (!nf) return false;
         return differenceInDays(now, parseISO(nf)) <= 1;
       }
-      // Exclude dark/untouched/stale — they belong in Follow-Ups
       if (["dark", "untouched", "stale"].includes(i.type)) return false;
-      // Keep renewals expiring within 7 days
       if (i.type === "renewal") {
         const ce = i.lead.contractEnd;
         if (!ce) return false;
@@ -290,7 +298,8 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
     dueToday: tierItems.urgent.length,
     meetings: meetings.length,
     renewals: tierItems.monitor.filter(i => i.type === "renewal").length,
-  }), [tierItems, meetings]);
+    tasks: todaysTasks.length,
+  }), [tierItems, meetings, todaysTasks]);
 
   return (
     <div className="space-y-5">
@@ -301,6 +310,7 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
       <div className="flex gap-3 flex-wrap text-[11px] text-muted-foreground">
         {filteredCounts.dueToday > 0 && <span className="tabular-nums"><span className="font-medium text-foreground">{filteredCounts.dueToday}</span> Due Today</span>}
         {filteredCounts.meetings > 0 && <span className="tabular-nums"><span className="font-medium text-foreground">{filteredCounts.meetings}</span> Meetings</span>}
+        {filteredCounts.tasks > 0 && <span className="tabular-nums"><span className="font-medium text-foreground">{filteredCounts.tasks}</span> Playbook Tasks</span>}
         {filteredCounts.renewals > 0 && <span className="tabular-nums"><span className="font-medium text-foreground">{filteredCounts.renewals}</span> Renewals</span>}
       </div>
 
@@ -322,6 +332,52 @@ export function ScheduleTab({ leads, ownerFilter, onSelectLead, meetingHorizon }
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Playbook Tasks Due Today */}
+      {todaysTasks.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <ListChecks className="h-3.5 w-3.5 text-primary" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-primary">Playbook Tasks</span>
+            <span className="text-[10px] text-muted-foreground">({todaysTasks.length})</span>
+          </div>
+          <div className="border border-border rounded-md overflow-hidden divide-y divide-border">
+            {todaysTasks.map(task => {
+              const lead = leadMap.get(task.lead_id);
+              const typeIcon = task.task_type === "email" ? "✉️" : task.task_type === "call" ? "📞" : task.task_type === "prep" ? "📋" : "📌";
+              return (
+                <div key={task.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/20 transition-colors">
+                  <span className="text-sm">{typeIcon}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      {lead && <BrandLogo brand={lead.brand} size="xxs" />}
+                      <span className="text-xs font-medium truncate">{lead?.name || task.lead_id}</span>
+                      <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">{lead?.company}</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground truncate mt-0.5">{task.title}</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={() => { completeTask(task.id); toast({ title: `✓ ${task.title}`, description: `Completed for ${lead?.name}` }); }}
+                      className="p-1 rounded hover:bg-primary/10 text-primary transition-colors"
+                      title="Complete"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => { skipTask(task.id); toast({ title: `Skipped: ${task.title}` }); }}
+                      className="p-1 rounded hover:bg-secondary text-muted-foreground transition-colors"
+                      title="Skip"
+                    >
+                      <SkipForward className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
