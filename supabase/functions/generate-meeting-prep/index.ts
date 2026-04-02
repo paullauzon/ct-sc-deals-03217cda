@@ -221,7 +221,8 @@ Your job is to create a BATTLE-READY prep brief that ensures the rep walks in fu
 
 Context: This is an M&A deal origination firm (Captarget / SourceCo) that helps PE firms and strategic acquirers source acquisitions. Services include off-market email origination, direct calling campaigns, and broker/banker coverage.
 
-Be SPECIFIC. Reference actual names, dates, and discussion points from the meetings. Never be generic.`,
+Be SPECIFIC. Reference actual names, dates, and discussion points from the meetings. Never be generic.
+NEVER use em dashes (—), en dashes (–), or double hyphens (--). Use periods, commas, or line breaks instead.`,
           },
           { role: "user", content: contextParts.join("\n") },
         ],

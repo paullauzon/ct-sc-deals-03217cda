@@ -19,7 +19,8 @@ BANNED PHRASES (never use any of these — if you catch yourself writing one, de
 "capabilities", "value proposition", "strategic fit", "growth trajectory",
 "aggressive acquisitions", "primes you for", "positions you to",
 "our pipeline includes", "our team can", "our services", "our platform",
-"discuss how we can", "explore ways", "mutually beneficial"`;
+"discuss how we can", "explore ways", "mutually beneficial",
+"—", "–", "--"`;
 
 type ActionType = "post-meeting" | "initial-outreach" | "meeting-nudge" | "proposal-followup" | "re-engagement" | "reply-inbound" | "schedule-call" | "prep-brief";
 
@@ -36,7 +37,8 @@ RULES:
 - If brand is SourceCo: tone is direct, research-heavy, executive search vernacular.
 - If brand is Captarget: tone is market-intelligence-forward, deal-flow focused.
 - Match seniority: Managing Partners/CEOs get 3-4 sentences max. VPs/Directors can get slightly more context.
-- Use the enrichment data and deal intelligence to make EVERY claim specific. Don't say "your industry" — name the industry. Don't say "companies like yours" — name the company.
+- Use the enrichment data and deal intelligence to make EVERY claim specific. Don't say "your industry", name the industry. Don't say "companies like yours", name the company.
+- NEVER use em dashes (—), en dashes (–), or double hyphens (--). Use periods, commas, or line breaks instead.
 - NEVER explain to the prospect what their own situation means. They know their fund size, their strategy, their portfolio. State what YOU have, not what THEY are.
 - NEVER use "our pipeline", "our team", "our services", "our platform" — these are vendor phrases. Say what you HAVE, not what you ARE. "3 off-market targets" not "our pipeline includes targets."
 - Every noun must be specific. Not "security firms" but "$8-12M commercial security companies in the Southeast." Not "tech-enhanced" but "IoT-enabled access control."
@@ -50,15 +52,15 @@ BAD vs GOOD examples:
 
 BAD: "Hi John, I hope this email finds you well. I wanted to follow up on our recent conversation about your acquisition strategy. I'd love to schedule a call to discuss how our services might align with your goals. Please let me know what works for your schedule. Best regards, The Team"
 
-GOOD: "John — your 3rd bolt-on this year puts you ahead of most platforms in building density. We have 2 off-market targets in your core geography, both $8-12M EBITDA. Worth a 15-min look Thursday? — Mike"
+GOOD: "John, your 3rd bolt-on this year puts you ahead of most platforms in building density. We have 2 off-market targets in your core geography, both $8-12M EBITDA. Worth a 15-min look Thursday?\n\nMike"
 
 BAD: "Cody — Shore Capital's $850M fund closure primes Dillard Door for aggressive acquisitions. Our pipeline includes five tech-enhanced security firms. Can we discuss alignment opportunities next Tuesday?"
 
-GOOD: "Cody — 3 commercial security companies in TX, $8-12M revenue, all off-market. One overlaps with Dillard Door's locksmith vertical. Profiles by Thursday if useful. — Mike"
+GOOD: "Cody, 3 commercial security companies in TX, $8-12M revenue, all off-market. One overlaps with Dillard Door's locksmith vertical. Profiles by Thursday if useful.\n\nMike"
 
 BAD: "Hi Sarah, I noticed your company has been growing recently. I wanted to reach out because I think our services could be a great fit. Would you be open to a quick call this week?"
 
-GOOD: "Sarah — 14 HVAC distributors traded hands in the Southeast this quarter, 9 off-market. Your criteria matches 3 we're tracking. 15 minutes to compare notes? — Mike"`;
+GOOD: "Sarah, 14 HVAC distributors traded hands in the Southeast this quarter, 9 off-market. Your criteria matches 3 we're tracking. 15 minutes to compare notes?\n\nMike"`;
 
   switch (actionType) {
     case "post-meeting":

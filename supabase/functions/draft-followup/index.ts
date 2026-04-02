@@ -101,8 +101,9 @@ RULES:
 - NEVER use "our pipeline", "our team", "our services", "our platform" — vendor phrases. Say what you HAVE.
 - Every noun must be specific. Not "security firms" but "$8-12M commercial security companies in TX."
 - The CTA must name a specific deliverable. Not "discuss next steps" but "send profiles by Friday."
+- NEVER use em dashes (—), en dashes (–), or double hyphens (--). Use periods, commas, or line breaks instead.
 
-BANNED PHRASES (never use any of these — rewrite if you catch yourself):
+BANNED PHRASES (never use any of these, rewrite if you catch yourself):
 "I hope this finds you well", "I wanted to reach out", "I'd love to", "Just checking in",
 "Following up", "Circling back", "Touching base", "Per our conversation", "As discussed",
 "At your earliest convenience", "Please don't hesitate", "I look forward to hearing from you",
@@ -112,11 +113,12 @@ BANNED PHRASES (never use any of these — rewrite if you catch yourself):
 "leveraging", "synergies", "alignment", "opportunities", "solutions", "offerings",
 "capabilities", "value proposition", "strategic fit", "growth trajectory",
 "aggressive acquisitions", "our pipeline includes", "our team can", "our services",
-"discuss how we can", "explore ways", "mutually beneficial"
+"discuss how we can", "explore ways", "mutually beneficial",
+"—", "–", "--"
 
 BAD: "Hi John, thank you for taking the time to meet with us today. It was great to learn about your acquisition strategy. As discussed, we'll follow up with some target recommendations. Please let me know if you have any questions. Best regards, The Team"
 
-GOOD: "John — you mentioned needing HVAC targets in the $8-12M range by Q3. We're tracking 4 that fit. I'll send profiles by Friday. If one clicks, we move fast. — Mike"
+GOOD: "John, you mentioned needing HVAC targets in the $8-12M range by Q3. We're tracking 4 that fit. I'll send profiles by Friday. If one clicks, we move fast.\n\nMike"
 
 Return ONLY the email text — subject line on first line, then blank line, then body. No markdown formatting.`,
           },
