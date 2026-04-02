@@ -672,7 +672,7 @@ function IntelCard({ lead, onSelect, emailCount, onBriefGenerated, onDraftEmail,
                       {(briefBattleCard.keyQuestions || (enrichment?.discoveryQuestions as string[]) || []).slice(0, 5).map((q: string, i: number) => (
                         <li key={i} className="text-[11px] text-muted-foreground flex items-start gap-1.5">
                           <span className="text-purple-500 font-semibold shrink-0">{i + 1}.</span>
-                          <span>"{q}"</span>
+                          <span>"{stripQuotes(q)}"</span>
                         </li>
                       ))}
                     </ol>
