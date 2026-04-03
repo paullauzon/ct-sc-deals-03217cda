@@ -152,8 +152,9 @@ export function getDroppedPromises(lead: Lead): DroppedPromise[] {
   if (!actions) return [];
 
   const now = new Date();
+  const leadNameLower = lead.name?.toLowerCase() || "";
   return actions
-    .filter(a => a.status === "Open" || a.status === "Overdue")
+    .filter(a => (a.status === "Open" || a.status === "Overdue") && a.owner?.toLowerCase() !== leadNameLower)
     .map(a => {
       let daysOverdue = 0;
       if (a.deadline) {
