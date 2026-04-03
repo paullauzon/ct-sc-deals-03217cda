@@ -403,7 +403,7 @@ export function Pipeline() {
                       {(() => {
                         const insight = getClosingInsight(lead);
                         return insight ? (
-                          <p className="text-[10px] text-muted-foreground/70 italic truncate" title={insight.text}>
+                          <p className="text-[10px] text-muted-foreground/70 italic truncate mt-0.5" title={insight.text}>
                             "{insight.text}"
                           </p>
                         ) : null;
