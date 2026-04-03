@@ -23,7 +23,8 @@ import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
 import { BrandLogo } from "@/components/BrandLogo";
 import { CompanyAvatar } from "@/components/CompanyAvatar";
-import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, markActionItemDone } from "@/lib/dealHealthUtils";
+import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, getUnifiedActionCount, getNextBestAction, markActionItemDone } from "@/lib/dealHealthUtils";
+import { useLeadTasks } from "@/hooks/useLeadTasks";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
