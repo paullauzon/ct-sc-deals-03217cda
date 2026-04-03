@@ -453,7 +453,7 @@ export default function DealRoom() {
               </TabsContent>
             )}
 
-
+            <TabsContent value="timeline" className="p-4 space-y-2">
               {activityLog.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">No activity recorded yet</p>
               ) : (
