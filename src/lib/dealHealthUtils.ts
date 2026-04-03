@@ -128,14 +128,15 @@ export function getWinLoseCard(lead: Lead): WinLoseCard | null {
 
 export type StakeholderCoverage = "multi-threaded" | "single-threaded" | "no-champion";
 
-export function getStakeholderCoverage(lead: Lead): { coverage: StakeholderCoverage; label: string; colorClass: string } | null {
+export function getStakeholderCoverage(lead: Lead): { coverage: StakeholderCoverage; label: string; colorClass: string; count: number } | null {
   const stakeholders = lead.dealIntelligence?.stakeholderMap;
   if (!stakeholders || stakeholders.length === 0) return null;
 
+  const count = stakeholders.length;
   const hasChampion = stakeholders.some(s => s.stance === "Champion");
-  if (!hasChampion) return { coverage: "no-champion", label: "No Champion", colorClass: "text-red-600 dark:text-red-400 bg-red-500/10" };
-  if (stakeholders.length === 1) return { coverage: "single-threaded", label: "Single-threaded", colorClass: "text-amber-600 dark:text-amber-400 bg-amber-500/10" };
-  return { coverage: "multi-threaded", label: "Multi-threaded", colorClass: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10" };
+  if (!hasChampion) return { coverage: "no-champion", label: "No advocate", colorClass: "text-muted-foreground bg-secondary", count };
+  if (count === 1) return { coverage: "single-threaded", label: `${count} contact`, colorClass: "text-muted-foreground bg-secondary", count };
+  return { coverage: "multi-threaded", label: `${count} stakeholders`, colorClass: "text-muted-foreground bg-secondary", count };
 }
 
 // ─── Dropped Promises ───

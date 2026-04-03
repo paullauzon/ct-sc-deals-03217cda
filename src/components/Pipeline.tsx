@@ -369,17 +369,9 @@ export function Pipeline() {
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className={`tabular-nums ${days > 14 ? "text-foreground font-medium" : ""}`}>{days}d in stage</span>
                         <div className="flex items-center gap-1.5">
-                          {(() => {
-                            const insight = getClosingInsight(lead);
-                            return insight ? (
-                              <span className="text-[10px] text-muted-foreground/70 max-w-[100px] truncate" title={insight.text}>
-                                {insight.text}
-                              </span>
-                            ) : null;
-                          })()}
                           {lead.linkedinUrl && (
                             <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn"}>
-                              <Linkedin className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+                              <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] hover:opacity-80 transition-colors" />
                             </a>
                           )}
                           {lead.calendlyBookedAt && lead.meetingDate && (
