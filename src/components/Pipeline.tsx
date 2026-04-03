@@ -369,26 +369,29 @@ export function Pipeline() {
                           <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.priority === "High" ? "bg-foreground/10 font-medium" : ""}`}>{lead.priority}</span>
                         </div>
                       </div>
-                      {/* Row 4: Days in stage + meetings + insight inline */}
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      {/* Row 4a: Days in stage + LinkedIn + Outcome */}
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <span className={`tabular-nums ${days > 14 ? "text-foreground font-medium" : ""}`}>{days}d in stage</span>
-                        <div className="flex items-center gap-1.5">
-                          {lead.linkedinUrl && (
-                            <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn"}>
-                              <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] hover:opacity-80 transition-colors" />
-                            </a>
-                          )}
-                          {lead.calendlyBookedAt && lead.meetingDate && (
-                            <div className="flex flex-col text-[10px] text-primary font-medium">
-                              <span className="flex items-center gap-0.5">
-                                <CalendarCheck className="h-3 w-3 shrink-0" />
-                                <span className="whitespace-nowrap">{lead.calendlyEventName || "Calendly"}</span>
+                        {lead.linkedinUrl && (
+                          <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn"}>
+                            <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] hover:opacity-80 transition-colors" />
+                          </a>
+                        )}
+                        {lead.meetingOutcome && <span className="ml-auto">{lead.meetingOutcome}</span>}
+                      </div>
+                      {/* Row 4b: Meeting details (Calendly + Fireflies) */}
+                      {(lead.calendlyBookedAt && lead.meetingDate || lead.meetings?.length > 0) && (
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          {lead.calendlyBookedAt && lead.meetingDate ? (
+                            <span className="flex items-center gap-1 text-primary font-medium">
+                              <CalendarCheck className="h-3 w-3 shrink-0" />
+                              <span className="whitespace-nowrap">{lead.calendlyEventName || "Calendly"}</span>
+                              <span className="text-muted-foreground font-normal">
+                                {lead.calendlyEventDuration ? `${lead.calendlyEventDuration} min` : ""}
+                                {lead.meetingDate ? ` · ${(() => { try { return format(new Date(lead.meetingDate), "MMM d, h:mm a"); } catch { return ""; } })()}` : ""}
                               </span>
-                              <span className="text-[9px] text-muted-foreground pl-3.5 whitespace-nowrap">
-                                {lead.calendlyEventDuration ? `${lead.calendlyEventDuration} min` : ""}{lead.meetingDate ? ` · ${(() => { try { return format(new Date(lead.meetingDate), "MMM d, h:mm a"); } catch { return ""; } })()}` : ""}
-                              </span>
-                            </div>
-                          )}
+                            </span>
+                          ) : <span />}
                           {lead.meetings?.length > 0 && (
                             <div className="flex items-center gap-1">
                               <BrandLogo brand={lead.brand} size="xxs" />
@@ -396,9 +399,8 @@ export function Pipeline() {
                               <span className="text-[10px] tabular-nums font-medium">{lead.meetings.length}</span>
                             </div>
                           )}
-                          {lead.meetingOutcome && <span>{lead.meetingOutcome}</span>}
                         </div>
-                      </div>
+                      )}
                       {/* Row 4b: Closing insight — own full-width row */}
                       {(() => {
                         const insight = getClosingInsight(lead);
