@@ -189,22 +189,25 @@ serve(async (req) => {
       }
     }
 
-    // All meeting summaries
-    const sorted = [...meetings].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    contextParts.push(`\nMEETING HISTORY (${sorted.length} meetings):`);
-    for (const m of sorted) {
-      contextParts.push(`\n--- ${m.title} (${m.date}) ---`);
-      if (m.intelligence) {
-        contextParts.push(`Summary: ${m.intelligence.summary}`);
-        if (m.intelligence.nextSteps?.length) {
-          contextParts.push(`Next Steps: ${m.intelligence.nextSteps.map((ns: any) => `${ns.action} (${ns.owner})`).join("; ")}`);
+    if (hasMeetings) {
+      const sorted = [...meetings].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      contextParts.push(`\nMEETING HISTORY (${sorted.length} meetings):`);
+      for (const m of sorted) {
+        contextParts.push(`\n--- ${m.title} (${m.date}) ---`);
+        if (m.intelligence) {
+          contextParts.push(`Summary: ${m.intelligence.summary}`);
+          if (m.intelligence.nextSteps?.length) {
+            contextParts.push(`Next Steps: ${m.intelligence.nextSteps.map((ns: any) => `${ns.action} (${ns.owner})`).join("; ")}`);
+          }
+          if (m.intelligence.dealSignals) {
+            contextParts.push(`Signals: Intent=${m.intelligence.dealSignals.buyingIntent}, Sentiment=${m.intelligence.dealSignals.sentiment}`);
+          }
+        } else if (m.summary) {
+          contextParts.push(`Summary: ${m.summary}`);
         }
-        if (m.intelligence.dealSignals) {
-          contextParts.push(`Signals: Intent=${m.intelligence.dealSignals.buyingIntent}, Sentiment=${m.intelligence.dealSignals.sentiment}`);
-        }
-      } else if (m.summary) {
-        contextParts.push(`Summary: ${m.summary}`);
       }
+    } else {
+      contextParts.push(`\nNO PRIOR MEETINGS — This is the FIRST meeting. Focus the brief on research-based preparation, discovery questions, and opening strategy.`);
     }
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
