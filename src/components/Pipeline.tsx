@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 
-import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3, Check, Linkedin, CalendarCheck, Heart, ShieldAlert, ChevronRight } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, Check, Linkedin, CalendarCheck, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
@@ -37,7 +37,7 @@ const OWNER_COLORS: Record<string, string> = {
   Tomos: "bg-foreground/40 text-background",
 };
 
-function getClosingInsight(lead: Lead): { icon: React.ReactNode; text: string } | null {
+function getClosingInsight(lead: Lead): { text: string } | null {
   const meetingsWithIntel = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const latest = meetingsWithIntel?.[0]?.intelligence;
   if (!latest) return null;
@@ -45,16 +45,16 @@ function getClosingInsight(lead: Lead): { icon: React.ReactNode; text: string } 
   const trunc = (s: string) => s.length > 60 ? s.slice(0, 57) + "…" : s;
 
   if (latest.dealSignals?.objections?.length > 0) {
-    return { icon: <Zap className="h-2.5 w-2.5 shrink-0" />, text: trunc(latest.dealSignals.objections[0]) };
+    return { text: trunc(latest.dealSignals.objections[0]) };
   }
   if (latest.painPoints?.length > 0) {
-    return { icon: <Target className="h-2.5 w-2.5 shrink-0" />, text: trunc(latest.painPoints[0]) };
+    return { text: trunc(latest.painPoints[0]) };
   }
   if (latest.dealSignals?.timeline && latest.dealSignals.timeline !== "Not mentioned" && latest.dealSignals.timeline !== "None mentioned") {
-    return { icon: <Timer className="h-2.5 w-2.5 shrink-0" />, text: trunc(latest.dealSignals.timeline) };
+    return { text: trunc(latest.dealSignals.timeline) };
   }
   if (latest.dealSignals?.sentiment && latest.dealSignals?.buyingIntent) {
-    return { icon: <BarChart3 className="h-2.5 w-2.5 shrink-0" />, text: trunc(`${latest.dealSignals.sentiment} · ${latest.dealSignals.buyingIntent} intent`) };
+    return { text: trunc(`${latest.dealSignals.sentiment} · ${latest.dealSignals.buyingIntent} intent`) };
   }
   return null;
 }
@@ -80,9 +80,7 @@ function OwnerBadge({ owner }: { owner: string }) {
 }
 
 function getAgingClass(days: number): string {
-  if (days >= 21) return "border-red-500 dark:border-red-400 animate-pulse";
-  if (days >= 14) return "border-orange-400 dark:border-orange-500";
-  if (days >= 7) return "border-yellow-400 dark:border-yellow-500";
+  if (days >= 21) return "border-foreground/30";
   return "border-border";
 }
 
@@ -374,14 +372,14 @@ export function Pipeline() {
                           {(() => {
                             const insight = getClosingInsight(lead);
                             return insight ? (
-                              <span className="text-[10px] text-muted-foreground/70 flex items-center gap-0.5 max-w-[100px] truncate" title={insight.text}>
-                                {insight.icon}
+                              <span className="text-[10px] text-muted-foreground/70 max-w-[100px] truncate" title={insight.text}>
+                                {insight.text}
                               </span>
                             ) : null;
                           })()}
                           {lead.linkedinUrl && (
                             <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn"}>
-                              <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] hover:opacity-70 transition-opacity" />
+                              <Linkedin className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
                             </a>
                           )}
                           {lead.calendlyBookedAt && lead.meetingDate && (
@@ -419,25 +417,27 @@ export function Pipeline() {
                               {health && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <span className={cn("px-1.5 py-0.5 rounded flex items-center gap-0.5 font-medium",
-                                      health.color === "emerald" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
-                                      health.color === "amber" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" :
-                                      "bg-red-500/10 text-red-600 dark:text-red-400"
-                                    )}>
-                                      <Heart className="h-2.5 w-2.5" /> {health.score}
+                                    <span className="px-1.5 py-0.5 rounded bg-secondary text-foreground/70 font-medium tabular-nums">
+                                      {health.score}
                                     </span>
                                   </TooltipTrigger>
-                                  <TooltipContent className="text-xs max-w-[200px]">
-                                    <p className="font-medium mb-1">Deal Health: {health.label}</p>
-                                    {health.factors.map((f, i) => (
-                                      <p key={i} className="text-muted-foreground">{f.impact > 0 ? "+" : ""}{f.impact} {f.label}</p>
-                                    ))}
+                                  <TooltipContent className="max-w-[220px] p-3">
+                                    <div className="flex items-baseline gap-2 mb-2">
+                                      <span className="text-lg font-semibold font-mono">{health.score}</span>
+                                      <span className="text-xs text-muted-foreground">{health.label}</span>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      {health.factors.map((f, i) => (
+                                        <p key={i} className="text-xs text-muted-foreground font-mono">
+                                          <span className="inline-block w-8 text-right">{f.impact > 0 ? "+" : ""}{f.impact}</span> {f.label}
+                                        </p>
+                                      ))}
+                                    </div>
                                   </TooltipContent>
                                 </Tooltip>
                               )}
                               {coverage && (
-                                <span className={cn("px-1.5 py-0.5 rounded flex items-center gap-0.5", coverage.colorClass)}>
-                                  {coverage.coverage === "no-champion" ? <ShieldAlert className="h-2.5 w-2.5" /> : <Users className="h-2.5 w-2.5" />}
+                                <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                                   {coverage.label}
                                 </span>
                               )}
@@ -479,8 +479,8 @@ export function Pipeline() {
                           </div>
                         ) : lead.dealIntelligence?.riskRegister?.filter(r => r.mitigationStatus !== "Mitigated").length ? (
                           <div className="flex items-center gap-1.5 text-[10px]">
-                            <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground flex items-center gap-0.5">
-                              <AlertTriangle className="h-2.5 w-2.5" /> {lead.dealIntelligence.riskRegister!.filter(r => r.mitigationStatus !== "Mitigated").length} risks
+                            <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                              {lead.dealIntelligence.riskRegister!.filter(r => r.mitigationStatus !== "Mitigated").length} risks
                             </span>
                           </div>
                         ) : null;
