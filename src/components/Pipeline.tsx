@@ -38,7 +38,7 @@ const OWNER_COLORS: Record<string, string> = {
   Tomos: "bg-foreground/40 text-background",
 };
 
-function getClosingInsight(lead: Lead): { text: string } | null {
+function getClosingInsight(lead: Lead): { label: string; text: string } | null {
   const meetingsWithIntel = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const latest = meetingsWithIntel?.[0]?.intelligence;
   if (!latest) return null;
@@ -46,16 +46,16 @@ function getClosingInsight(lead: Lead): { text: string } | null {
   const trunc = (s: string) => s.length > 60 ? s.slice(0, 57) + "…" : s;
 
   if (latest.dealSignals?.objections?.length > 0) {
-    return { text: trunc(latest.dealSignals.objections[0]) };
+    return { label: "Objection", text: trunc(latest.dealSignals.objections[0]) };
   }
   if (latest.painPoints?.length > 0) {
-    return { text: trunc(latest.painPoints[0]) };
+    return { label: "Pain point", text: trunc(latest.painPoints[0]) };
   }
   if (latest.dealSignals?.timeline && latest.dealSignals.timeline !== "Not mentioned" && latest.dealSignals.timeline !== "None mentioned") {
-    return { text: trunc(latest.dealSignals.timeline) };
+    return { label: "Timeline", text: trunc(latest.dealSignals.timeline) };
   }
   if (latest.dealSignals?.sentiment && latest.dealSignals?.buyingIntent) {
-    return { text: trunc(`${latest.dealSignals.sentiment} · ${latest.dealSignals.buyingIntent} intent`) };
+    return { label: "Signal", text: trunc(`${latest.dealSignals.sentiment} · ${latest.dealSignals.buyingIntent} intent`) };
   }
   return null;
 }
@@ -383,14 +383,16 @@ export function Pipeline() {
                       {(lead.calendlyBookedAt && lead.meetingDate || lead.meetings?.length > 0) && (
                         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                           {lead.calendlyBookedAt && lead.meetingDate ? (
-                            <span className="flex items-center gap-1 text-primary font-medium">
-                              <CalendarCheck className="h-3 w-3 shrink-0" />
-                              <span className="whitespace-nowrap">{lead.calendlyEventName || "Calendly"}</span>
-                              <span className="text-muted-foreground font-normal">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="flex items-center gap-1 text-primary font-medium">
+                                <CalendarCheck className="h-3 w-3 shrink-0" />
+                                <span className="whitespace-nowrap">{lead.calendlyEventName || "Calendly"}</span>
+                              </span>
+                              <span className="text-muted-foreground font-normal pl-4">
                                 {lead.calendlyEventDuration ? `${lead.calendlyEventDuration} min` : ""}
                                 {lead.meetingDate ? ` · ${(() => { try { return format(new Date(lead.meetingDate), "MMM d, h:mm a"); } catch { return ""; } })()}` : ""}
                               </span>
-                            </span>
+                            </div>
                           ) : <span />}
                           {lead.meetings?.length > 0 && (
                             <div className="flex items-center gap-1">
@@ -405,8 +407,9 @@ export function Pipeline() {
                       {(() => {
                         const insight = getClosingInsight(lead);
                         return insight ? (
-                          <p className="text-[10px] text-muted-foreground/70 italic truncate mt-0.5" title={insight.text}>
-                            "{insight.text}"
+                          <p className="text-[10px] text-muted-foreground/70 truncate mt-0.5" title={`${insight.label}: ${insight.text}`}>
+                            <span className="font-medium text-muted-foreground">{insight.label}:</span>{" "}
+                            <span className="italic">"{insight.text}"</span>
                           </p>
                         ) : null;
                       })()}
