@@ -9,12 +9,15 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
-import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle, Zap, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Textarea } from "@/components/ui/textarea";
-import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals } from "@/lib/dealHealthUtils";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { toast } from "sonner";
+import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals, getNextBestAction, markActionItemDone } from "@/lib/dealHealthUtils";
 
 const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 
