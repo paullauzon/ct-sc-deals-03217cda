@@ -835,13 +835,45 @@ export default function DealRoom() {
                     <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5">
                       <UserCheck className="h-3.5 w-3.5" /> Strategic Actions
                     </h3>
-                    <div className="space-y-1.5">
-                      {strategicActions.map((sa, i) => (
-                        <div key={i} className="rounded-lg border border-border bg-secondary/10 p-3">
-                          <p className="text-sm font-medium">{sa.title}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{sa.subtitle}</p>
-                        </div>
-                      ))}
+                    <div className="space-y-2">
+                      {strategicActions.map((sa, i) => {
+                        const stratKey = `strategic-${i}`;
+                        const isDrafting = draftingPriority === stratKey;
+                        const draftedEmail = draftedPriorityEmails[stratKey];
+                        const contextMap: Record<string, string> = {
+                          "Find a champion": `We need to identify and cultivate an internal champion at ${lead.company}. Draft an email to a potential ally inside the organization who could advocate for this deal internally. Reference shared goals and mutual benefit.`,
+                          "Sentiment declining": `Sentiment is declining across recent meetings with ${lead.name}. Draft an email that resets the tone, acknowledges any concerns indirectly, and re-anchors on the value we deliver. Don't be defensive.`,
+                          "Log meeting outcome": `Meeting was held but outcome wasn't recorded. This is an internal reminder — no email needed.`,
+                        };
+                        const defaultCtx = `Strategic action: "${sa.title}" — ${sa.subtitle}. Draft an email to ${lead.name} at ${lead.company} that advances this strategic goal.`;
+                        const isInternal = sa.title === "Log meeting outcome";
+                        return (
+                          <div key={i} className="space-y-2">
+                            <div className="rounded-lg border border-border bg-secondary/10 p-3 flex items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-medium">{sa.title}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{sa.subtitle}</p>
+                              </div>
+                              {!isInternal && (
+                                <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={() => handleDraftPriorityAction(stratKey, contextMap[sa.title] || defaultCtx)} disabled={isDrafting}>
+                                  {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Draft"}
+                                </Button>
+                              )}
+                            </div>
+                            {draftedEmail && (
+                              <div className="ml-4 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
+                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
+                                    <Copy className="h-3 w-3" /> Copy
+                                  </Button>
+                                </div>
+                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
