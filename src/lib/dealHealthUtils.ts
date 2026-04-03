@@ -291,6 +291,10 @@ export interface UnifiedActionCount {
     noChampion: boolean;
     overdueFollowUp: boolean;
     staleNewLead: boolean;
+    contractRenewal: boolean;
+    logMeetingOutcome: boolean;
+    sentimentDeclining: boolean;
+    highIntent: boolean;
     nextBest: boolean;
   };
   /** Single-item display text when total === 1 */
