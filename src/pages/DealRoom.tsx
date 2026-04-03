@@ -682,28 +682,11 @@ export default function DealRoom() {
                         if (a.deadline) {
                           try { daysOverdue = Math.max(0, Math.floor((now.getTime() - new Date(a.deadline).getTime()) / 86400000)); } catch {}
                         }
-                        const isDrafting = draftingIdx === origIdx;
-                        const draftedEmail = draftedEmails[origIdx];
+                        const commitKey = `commitment-${origIdx}`;
+                        const isDrafting = draftingPriority === commitKey;
+                        const draftedEmail = draftedPriorityEmails[commitKey];
 
-                        const handleDraft = async () => {
-                          setDraftingIdx(origIdx);
-                          try {
-                            const latestMeeting = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())?.[0];
-                            const { data, error } = await supabase.functions.invoke("draft-followup", {
-                              body: {
-                                meeting: latestMeeting || { title: "Follow-up", date: new Date().toISOString().split("T")[0], intelligence: { summary: a.item, nextSteps: [{ action: a.item, owner: a.owner || lead.assignedTo }] } },
-                                leadFields: { name: lead.name, role: lead.role, company: lead.company, brand: lead.brand },
-                                dealIntelligence: lead.dealIntelligence,
-                              },
-                            });
-                            if (error) throw error;
-                            setDraftedEmails(prev => ({ ...prev, [origIdx]: data.email }));
-                          } catch (err) {
-                            toast.error("Failed to generate draft");
-                          } finally {
-                            setDraftingIdx(null);
-                          }
-                        };
+                        const handleDraft = () => handleDraftPriorityAction(commitKey, `We committed to "${a.item}" for ${lead.name}${a.deadline ? ` by ${a.deadline}` : ""}. Draft an email that fulfills or addresses this commitment directly.`);
 
                         return (
                           <div key={i} className="space-y-2">
@@ -744,22 +727,14 @@ export default function DealRoom() {
                               </Button>
                             </div>
                             {draftedEmail && (
-                              <div className="ml-9 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 text-xs gap-1"
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(draftedEmail);
-                                      toast.success("Copied to clipboard");
-                                    }}
-                                  >
-                                    <Copy className="h-3 w-3" /> Copy
-                                  </Button>
-                                </div>
-                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              <div className="ml-9">
+                                <DraftCard
+                                  content={draftedEmail}
+                                  onSave={(text) => { setDraftedPriorityEmails(prev => ({ ...prev, [commitKey]: text })); saveDraftToDb(commitKey, text, "commitment", a.item.slice(0, 100)); }}
+                                  onRegenerate={handleDraft}
+                                  onDiscard={() => discardDraft(commitKey)}
+                                  isRegenerating={isDrafting}
+                                />
                               </div>
                             )}
                           </div>
