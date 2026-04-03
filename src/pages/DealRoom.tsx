@@ -61,6 +61,13 @@ export default function DealRoom() {
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [draftingIdx, setDraftingIdx] = useState<number | null>(null);
   const [draftedEmails, setDraftedEmails] = useState<Record<number, string>>({});
+  
+  // Priority action states
+  const [showPrepDialog, setShowPrepDialog] = useState(false);
+  const [prepBrief, setPrepBrief] = useState<MeetingPrepBrief | null>(null);
+  const [generatingPrep, setGeneratingPrep] = useState(false);
+  const [draftingPriority, setDraftingPriority] = useState<string | null>(null);
+  const [draftedPriorityEmails, setDraftedPriorityEmails] = useState<Record<string, string>>({});
 
   // Hooks must be called before any early returns
   const leadIdArray = useMemo(() => id ? [id] : [], [id]);
