@@ -9,7 +9,7 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
-import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle, Zap, Check, Loader2, Copy } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle, Zap, Check, Loader2, Copy, Mail, AlertCircle, UserCheck, FileText, BarChart3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals, getNextBestAction, markActionItemDone } from "@/lib/dealHealthUtils";
+import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals, getNextBestAction, getUnifiedActionCount, markActionItemDone } from "@/lib/dealHealthUtils";
+import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
+import { useLeadTasks } from "@/hooks/useLeadTasks";
 
 const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 
@@ -58,6 +60,11 @@ export default function DealRoom() {
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [draftingIdx, setDraftingIdx] = useState<number | null>(null);
   const [draftedEmails, setDraftedEmails] = useState<Record<number, string>>({});
+
+  // Hooks must be called before any early returns
+  const leadIdArray = useMemo(() => id ? [id] : [], [id]);
+  const { unansweredIds } = useUnansweredEmails(leadIdArray);
+  const { tasks: playbookTasks } = useLeadTasks(leadIdArray);
 
   useEffect(() => {
     if (id) {
@@ -107,6 +114,63 @@ export default function DealRoom() {
   const droppedPromises = getDroppedPromises(lead);
   const nextBestAction = isClosed ? null : getNextBestAction(lead);
   const completedActions = actionItems.filter(a => a.status === "Completed");
+
+  // Compute unified action count
+  const hasUnansweredEmail = id ? unansweredIds.has(id) : false;
+  const hasMeetingPrep = !!(lead.meetingDate && (() => {
+    try {
+      const d = new Date(lead.meetingDate);
+      const now = new Date();
+      const diff = Math.floor((d.getTime() - now.getTime()) / 86400000);
+      return diff >= 0 && diff <= 7;
+    } catch { return false; }
+  })());
+  const unifiedCount = getUnifiedActionCount(lead, playbookTasks.length, { hasUnansweredEmail, hasMeetingPrep });
+
+  // Build structured action sections for the Actions tab
+  const theyOweItems = (lead.dealIntelligence?.actionItemTracker || []).filter(
+    (a: any) => (a.status === "Open" || a.status === "Overdue") && a.owner?.toLowerCase() === lead.name?.toLowerCase()
+  );
+  const openObjections = (lead.dealIntelligence?.objectionTracker || []).filter(
+    (o: any) => o.status === "Open" || o.status === "Recurring"
+  );
+
+  // Priority actions: contextual signals that need immediate attention
+  const priorityActions: { icon: any; title: string; subtitle: string; type: string }[] = [];
+  if (hasUnansweredEmail) priorityActions.push({ icon: Mail, title: `Reply to ${lead.name}'s email`, subtitle: "They reached out and are awaiting your reply", type: "email" });
+  if (unifiedCount.breakdown.goingDark) {
+    const daysSilent = lead.lastContactDate ? Math.floor((new Date().getTime() - new Date(lead.lastContactDate).getTime()) / 86400000) : 0;
+    priorityActions.push({ icon: AlertCircle, title: `Re-engage — ${daysSilent}d since last contact`, subtitle: "Deal is going dark in active stage", type: "dark" });
+  }
+  if (hasMeetingPrep) {
+    let dateStr = "upcoming";
+    try { const d = new Date(lead.meetingDate); dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); } catch {}
+    priorityActions.push({ icon: FileText, title: `Prep for meeting ${dateStr}`, subtitle: "No prep brief generated yet", type: "prep" });
+  }
+  if (unifiedCount.breakdown.overdueFollowUp) {
+    priorityActions.push({ icon: Clock, title: "Follow-up overdue", subtitle: `Was due ${lead.nextFollowUp}`, type: "followup" });
+  }
+  if (unifiedCount.breakdown.staleNewLead) {
+    priorityActions.push({ icon: Zap, title: "Make first contact", subtitle: "New lead with no outreach yet — 2+ days old", type: "stale" });
+  }
+  if (unifiedCount.breakdown.contractRenewal) {
+    let daysToRenewal = 0;
+    try { daysToRenewal = Math.floor((new Date(lead.contractEnd).getTime() - new Date().getTime()) / 86400000); } catch {}
+    priorityActions.push({ icon: Calendar, title: `Renewal in ${daysToRenewal}d — start conversation`, subtitle: "Contract ending soon", type: "renewal" });
+  }
+
+  // Strategic actions
+  const strategicActions: { title: string; subtitle: string }[] = [];
+  if (unifiedCount.breakdown.noChampion) strategicActions.push({ title: "Find a champion", subtitle: "No internal advocate identified among stakeholders" });
+  if (unifiedCount.breakdown.logMeetingOutcome) strategicActions.push({ title: "Log meeting outcome", subtitle: "Meeting held but outcome not recorded — data hygiene" });
+  if (unifiedCount.breakdown.sentimentDeclining) {
+    const traj = lead.dealIntelligence?.momentumSignals?.sentimentTrajectory;
+    strategicActions.push({ title: `Sentiment declining`, subtitle: traj ? `Was ${traj[0]}, now ${traj[traj.length - 1]}` : "Trend is downward across meetings" });
+  }
+  if (unifiedCount.breakdown.highIntent) {
+    const subCount = Array.isArray((lead as any).submissions) ? (lead as any).submissions.length : 0;
+    strategicActions.push({ title: `High intent — submitted ${subCount} times`, subtitle: "Prioritize outreach for this engaged prospect" });
+  }
 
   // Prev/Next navigation
   const currentIdx = leads.findIndex(l => l.id === id);
@@ -287,11 +351,11 @@ export default function DealRoom() {
 
         {/* Center: Tabbed Workspace */}
         <div className="flex-1 min-w-0 overflow-y-auto">
-          <Tabs defaultValue={searchParams.get("tab") || (isClosed ? "debrief" : openActions.length > 0 ? "actions" : "timeline")} className="h-full">
+          <Tabs defaultValue={searchParams.get("tab") || (isClosed ? "debrief" : unifiedCount.total > 0 ? "actions" : "timeline")} className="h-full">
             <div className="border-b border-border px-4">
               <TabsList className="bg-transparent h-10">
                 {isClosed && <TabsTrigger value="debrief" className="text-xs">Debrief</TabsTrigger>}
-                {!isClosed && <TabsTrigger value="actions" className="text-xs">Actions {openActions.length > 0 ? `(${openActions.length})` : ""}</TabsTrigger>}
+                {!isClosed && <TabsTrigger value="actions" className="text-xs">Actions {unifiedCount.total > 0 ? `(${unifiedCount.total})` : ""}</TabsTrigger>}
                 <TabsTrigger value="timeline" className="text-xs">Timeline</TabsTrigger>
                 <TabsTrigger value="meetings" className="text-xs">Meetings ({lead.meetings?.length || 0})</TabsTrigger>
                 <TabsTrigger value="intelligence" className="text-xs">Intelligence</TabsTrigger>
@@ -355,48 +419,56 @@ export default function DealRoom() {
 
             {/* Actions Tab */}
             {!isClosed && (
-              <TabsContent value="actions" className="p-4 space-y-4">
-                {/* Next Best Action */}
-                {nextBestAction && (
-                  <div className={cn("rounded-lg border p-4",
-                    nextBestAction.urgency === "critical" ? "border-red-500/30 bg-red-500/5" :
-                    nextBestAction.urgency === "high" ? "border-amber-500/30 bg-amber-500/5" :
-                    "border-border bg-secondary/30"
-                  )}>
+              <TabsContent value="actions" className="p-4 space-y-5">
+                {/* Next Best Action highlight */}
+                {nextBestAction && priorityActions.length === 0 && droppedPromises.length === 0 && (
+                  <div className="rounded-lg border border-border bg-secondary/30 p-4">
                     <div className="flex items-start gap-3">
-                      <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-                        nextBestAction.urgency === "critical" ? "bg-red-500/10 text-red-600 dark:text-red-400" :
-                        nextBestAction.urgency === "high" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" :
-                        "bg-primary/10 text-primary"
-                      )}>
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-primary/10 text-primary">
                         <Zap className="h-4 w-4" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Next Best Action</span>
-                          <Badge variant="outline" className={cn("text-[9px]",
-                            nextBestAction.urgency === "critical" ? "border-red-500/50 text-red-600 dark:text-red-400" :
-                            nextBestAction.urgency === "high" ? "border-amber-500/50 text-amber-600 dark:text-amber-400" :
-                            ""
-                          )}>
-                            {nextBestAction.urgency}
-                          </Badge>
-                        </div>
-                        <p className="text-sm font-medium">{nextBestAction.action}</p>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Next Best Action</span>
+                        <p className="text-sm font-medium mt-0.5">{nextBestAction.action}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">{nextBestAction.reason}</p>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Open Action Items */}
-                <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-                    <Target className="h-3.5 w-3.5" /> Open Actions ({openActions.length})
-                  </h3>
-                  {openActions.length > 0 ? (
+                {/* Priority Actions */}
+                {priorityActions.length > 0 && (
+                  <div>
+                    <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5" /> Priority Actions
+                    </h3>
                     <div className="space-y-2">
-                      {openActions.map((a, i) => {
+                      {priorityActions.map((pa, i) => {
+                        const Icon = pa.icon;
+                        return (
+                          <div key={i} className="rounded-lg border border-border bg-secondary/20 p-3 flex items-start gap-3">
+                            <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-secondary text-muted-foreground">
+                              <Icon className="h-3.5 w-3.5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{pa.title}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{pa.subtitle}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Open Commitments (our action items from transcripts) */}
+                {droppedPromises.length > 0 && (
+                  <div>
+                    <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5">
+                      <Target className="h-3.5 w-3.5" /> Open Commitments ({droppedPromises.length})
+                    </h3>
+                    <div className="space-y-2">
+                      {openActions.filter(a => a.owner?.toLowerCase() !== lead.name?.toLowerCase()).map((a, i) => {
                         const origIdx = actionItems.indexOf(a);
                         const now = new Date();
                         let daysOverdue = 0;
@@ -429,7 +501,7 @@ export default function DealRoom() {
                         return (
                           <div key={i} className="space-y-2">
                             <div className={cn("rounded-lg border p-3 flex items-start gap-3 group",
-                              a.status === "Overdue" || daysOverdue > 0 ? "border-destructive/30 bg-destructive/5" : "border-border"
+                              daysOverdue > 0 ? "border-destructive/30 bg-destructive/5" : "border-border"
                             )}>
                               <button
                                 onClick={() => {
@@ -452,11 +524,6 @@ export default function DealRoom() {
                                   {daysOverdue > 0 && (
                                     <span className="text-destructive font-medium">{daysOverdue}d overdue</span>
                                   )}
-                                  <Badge variant="outline" className={cn("text-[9px]",
-                                    a.status === "Overdue" ? "border-destructive/50 text-destructive" : ""
-                                  )}>
-                                    {a.status}
-                                  </Badge>
                                 </div>
                               </div>
                               <Button
@@ -492,13 +559,93 @@ export default function DealRoom() {
                         );
                       })}
                     </div>
-                  ) : (
-                    <div className="text-center py-6 text-sm text-muted-foreground">
-                      <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-emerald-500/40" />
-                      <p>All actions completed</p>
+                  </div>
+                )}
+
+                {/* Playbook Tasks */}
+                {playbookTasks.length > 0 && (
+                  <div>
+                    <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5">
+                      <BarChart3 className="h-3.5 w-3.5" /> Playbook Tasks ({playbookTasks.length})
+                    </h3>
+                    <div className="space-y-1.5">
+                      {playbookTasks.map((task) => (
+                        <div key={task.id} className="rounded-lg border border-border p-3 flex items-start gap-3">
+                          <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{task.title}</p>
+                            <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                              <span>{task.playbook}</span>
+                              <span>Due: {task.due_date}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {/* Waiting on Them */}
+                {theyOweItems.length > 0 && (
+                  <div>
+                    <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5" /> Waiting on Them ({theyOweItems.length})
+                    </h3>
+                    <div className="space-y-1.5">
+                      {theyOweItems.map((a, i) => (
+                        <div key={i} className="rounded-lg border border-border bg-secondary/10 p-3">
+                          <p className="text-sm"><span className="font-medium">{lead.name}</span> <span className="text-muted-foreground">owes:</span> "{a.item}"</p>
+                          {a.deadline && <p className="text-xs text-muted-foreground mt-0.5">Due: {a.deadline}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Objections to Address */}
+                {openObjections.length > 0 && (
+                  <div>
+                    <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5">
+                      <Shield className="h-3.5 w-3.5" /> Objections to Address ({openObjections.length})
+                    </h3>
+                    <div className="space-y-1.5">
+                      {openObjections.map((o: any, i: number) => (
+                        <div key={i} className="rounded-lg border border-border p-3">
+                          <p className="text-sm font-medium">{o.objection}</p>
+                          <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                            <Badge variant="outline" className="text-[9px]">{o.status}</Badge>
+                            {o.raisedBy && <span>Raised by: {o.raisedBy}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Strategic Actions */}
+                {strategicActions.length > 0 && (
+                  <div>
+                    <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5">
+                      <UserCheck className="h-3.5 w-3.5" /> Strategic Actions
+                    </h3>
+                    <div className="space-y-1.5">
+                      {strategicActions.map((sa, i) => (
+                        <div key={i} className="rounded-lg border border-border bg-secondary/10 p-3">
+                          <p className="text-sm font-medium">{sa.title}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{sa.subtitle}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {unifiedCount.total === 0 && (
+                  <div className="text-center py-8 text-sm text-muted-foreground">
+                    <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-emerald-500/40" />
+                    <p>All actions completed — deal is on track</p>
+                  </div>
+                )}
 
                 {/* Completed Items */}
                 {completedActions.length > 0 && (
