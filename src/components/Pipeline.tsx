@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, DragEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { useLeads } from "@/contexts/LeadContext";
