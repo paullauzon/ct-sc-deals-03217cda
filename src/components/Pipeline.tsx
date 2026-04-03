@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, DragEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { useLeads } from "@/contexts/LeadContext";
@@ -145,6 +146,7 @@ function QuickNote({ lead, onSave, onFollowUp }: { lead: Lead; onSave: (id: stri
 
 export function Pipeline() {
   const { getLeadsByStage, updateLead, leads, isLeadNew, markLeadSeen } = useLeads();
+  const pipelineNavigate = useNavigate();
   const { leadJobs } = useProcessing();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
@@ -451,23 +453,28 @@ export function Pipeline() {
                             </div>
                             {/* Action summary — clean clickable line */}
                             {dropped.length > 0 && !closed && (
-                              <a
-                                href={`/deal/${lead.id}?tab=actions`}
-                                onClick={(e) => { e.stopPropagation(); e.preventDefault(); window.location.href = `/deal/${lead.id}?tab=actions`; }}
-                                className="flex items-center gap-1 text-[10px] text-destructive hover:underline cursor-pointer"
+                              <div
+                                onClick={(e) => { e.stopPropagation(); pipelineNavigate(`/deal/${lead.id}?tab=actions`); }}
+                                className="group/action flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
                               >
-                                <span className="font-medium">{dropped.length} action{dropped.length > 1 ? "s" : ""} overdue</span>
-                                {lead.nextFollowUp && <span className="text-muted-foreground">· Follow-up {lead.nextFollowUp}</span>}
-                              </a>
+                                <span className="font-medium">{dropped.length} pending action{dropped.length > 1 ? "s" : ""}</span>
+                                {lead.nextFollowUp && (() => {
+                                  try {
+                                    const d = new Date(lead.nextFollowUp);
+                                    return <span>· Follow-up {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>;
+                                  } catch { return null; }
+                                })()}
+                                <span className="opacity-0 group-hover/action:opacity-100 transition-opacity">→</span>
+                              </div>
                             )}
                             {!dropped.length && winLose && winLose.doNext !== "—" && !closed && (
-                              <a
-                                href={`/deal/${lead.id}?tab=actions`}
-                                onClick={(e) => { e.stopPropagation(); e.preventDefault(); window.location.href = `/deal/${lead.id}?tab=actions`; }}
-                                className="text-[10px] text-muted-foreground hover:underline cursor-pointer truncate block"
+                              <div
+                                onClick={(e) => { e.stopPropagation(); pipelineNavigate(`/deal/${lead.id}?tab=actions`); }}
+                                className="group/action text-[10px] text-muted-foreground hover:text-foreground cursor-pointer truncate flex items-center gap-1 transition-colors"
                               >
-                                {winLose.doNext}
-                              </a>
+                                <span className="truncate">{winLose.doNext}</span>
+                                <span className="opacity-0 group-hover/action:opacity-100 transition-opacity shrink-0">→</span>
+                              </div>
                             )}
                           </div>
                         ) : lead.dealIntelligence?.riskRegister?.filter(r => r.mitigationStatus !== "Mitigated").length ? (

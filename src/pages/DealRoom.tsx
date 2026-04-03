@@ -52,7 +52,7 @@ export default function DealRoom() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { leads, updateLead, addMeeting } = useLeads();
+  const { leads, loading, updateLead, addMeeting } = useLeads();
   const lead = leads.find(l => l.id === id);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [draftingIdx, setDraftingIdx] = useState<number | null>(null);
@@ -63,6 +63,17 @@ export default function DealRoom() {
       fetchActivityLog(id).then(setActivityLog);
     }
   }, [id]);
+
+  if (!lead && loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm">Loading deal…</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!lead) {
     return (
