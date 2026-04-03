@@ -449,67 +449,25 @@ export function Pipeline() {
                                 <span className="px-1 py-0.5 rounded bg-secondary text-muted-foreground">AI</span>
                               )}
                             </div>
-                            {/* Dropped promises — collapsible */}
+                            {/* Action summary — clean clickable line */}
                             {dropped.length > 0 && !closed && (
-                              <Collapsible>
-                                <CollapsibleTrigger
-                                  className="flex items-center gap-1 text-[9px] text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 w-full group"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <AlertTriangle className="h-2.5 w-2.5 shrink-0" />
-                                  <span className="font-medium">⚠ {dropped.length} overdue action{dropped.length > 1 ? "s" : ""}</span>
-                                  <ChevronDown className="h-2.5 w-2.5 shrink-0 ml-auto transition-transform group-data-[state=open]:rotate-180" />
-                                </CollapsibleTrigger>
-                                <CollapsibleContent>
-                                  <div className="mt-1 space-y-1 pl-3.5">
-                                    {dropped.map((d, di) => {
-                                      const origIdx = (lead.dealIntelligence?.actionItemTracker || []).findIndex(a => a.item === d.item);
-                                      return (
-                                        <div key={di} className="flex items-start gap-1 text-[9px] group/item">
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              if (origIdx >= 0) {
-                                                const updates = markActionItemDone(lead, origIdx);
-                                                if (Object.keys(updates).length) {
-                                                  updateLead(lead.id, updates);
-                                                  toast.success(`Marked "${d.item.slice(0, 30)}…" done`);
-                                                }
-                                              }
-                                            }}
-                                            className="w-3.5 h-3.5 rounded border border-red-400 dark:border-red-600 flex items-center justify-center shrink-0 mt-0.5 hover:bg-red-500/20 transition-colors"
-                                            title="Mark done"
-                                          >
-                                            <Check className="h-2 w-2 opacity-0 group-hover/item:opacity-100 transition-opacity" />
-                                          </button>
-                                          <div className="min-w-0 flex-1">
-                                            <span className="text-red-600 dark:text-red-400">{d.item}</span>
-                                            <span className="text-muted-foreground ml-1">
-                                              {d.daysOverdue > 0 ? `${d.daysOverdue}d overdue` : ""}{d.owner ? ` · ${d.owner}` : ""}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </CollapsibleContent>
-                              </Collapsible>
+                              <a
+                                href={`/deal/${lead.id}?tab=actions`}
+                                onClick={(e) => { e.stopPropagation(); e.preventDefault(); window.location.href = `/deal/${lead.id}?tab=actions`; }}
+                                className="flex items-center gap-1 text-[10px] text-destructive hover:underline cursor-pointer"
+                              >
+                                <span className="font-medium">{dropped.length} action{dropped.length > 1 ? "s" : ""} overdue</span>
+                                {lead.nextFollowUp && <span className="text-muted-foreground">· Follow-up {lead.nextFollowUp}</span>}
+                              </a>
                             )}
-                            {/* Win/Lose micro-card on hover would be tooltip */}
-                            {winLose && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-1 text-[9px] text-muted-foreground cursor-help">
-                                    <Crown className="h-2.5 w-2.5 shrink-0" />
-                                    <span className="truncate">{winLose.doNext !== "—" ? winLose.doNext : winLose.win}</span>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent className="text-xs max-w-[250px] space-y-1">
-                                  <p className="text-emerald-600 dark:text-emerald-400">✓ Win: {winLose.win}</p>
-                                  <p className="text-red-600 dark:text-red-400">✗ Lose: {winLose.lose}</p>
-                                  <p className="font-medium">→ Do next: {winLose.doNext}</p>
-                                </TooltipContent>
-                              </Tooltip>
+                            {!dropped.length && winLose && winLose.doNext !== "—" && !closed && (
+                              <a
+                                href={`/deal/${lead.id}?tab=actions`}
+                                onClick={(e) => { e.stopPropagation(); e.preventDefault(); window.location.href = `/deal/${lead.id}?tab=actions`; }}
+                                className="text-[10px] text-muted-foreground hover:underline cursor-pointer truncate block"
+                              >
+                                {winLose.doNext}
+                              </a>
                             )}
                           </div>
                         ) : lead.dealIntelligence?.riskRegister?.filter(r => r.mitigationStatus !== "Mitigated").length ? (
