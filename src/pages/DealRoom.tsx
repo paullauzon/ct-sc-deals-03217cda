@@ -2,9 +2,10 @@ import { useState, useMemo, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
-import { Lead, LeadStage } from "@/types/lead";
+import { Lead, LeadStage, MeetingPrepBrief } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { MeetingsSection } from "@/components/MeetingsSection";
+import { PrepBriefDialog } from "@/components/MeetingsSection";
 import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -60,6 +61,13 @@ export default function DealRoom() {
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [draftingIdx, setDraftingIdx] = useState<number | null>(null);
   const [draftedEmails, setDraftedEmails] = useState<Record<number, string>>({});
+  
+  // Priority action states
+  const [showPrepDialog, setShowPrepDialog] = useState(false);
+  const [prepBrief, setPrepBrief] = useState<MeetingPrepBrief | null>(null);
+  const [generatingPrep, setGeneratingPrep] = useState(false);
+  const [draftingPriority, setDraftingPriority] = useState<string | null>(null);
+  const [draftedPriorityEmails, setDraftedPriorityEmails] = useState<Record<string, string>>({});
 
   // Hooks must be called before any early returns
   const leadIdArray = useMemo(() => id ? [id] : [], [id]);
@@ -96,6 +104,63 @@ export default function DealRoom() {
 
   const days = computeDaysInStage(lead.stageEnteredDate);
   const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
+
+  const handleGeneratePrep = async () => {
+    setGeneratingPrep(true);
+    setPrepBrief(null);
+    setShowPrepDialog(true);
+    try {
+      const meetings = lead.meetings || [];
+      const { data, error } = await supabase.functions.invoke("generate-meeting-prep", {
+        body: {
+          meetings,
+          leadFields: {
+            name: lead.name, company: lead.company, role: lead.role,
+            stage: lead.stage, priority: lead.priority, dealValue: lead.dealValue,
+            serviceInterest: lead.serviceInterest, brand: lead.brand,
+          },
+          dealIntelligence: lead.dealIntelligence || null,
+        },
+      });
+      if (error) throw error;
+      if (data?.brief) setPrepBrief(data.brief);
+      else throw new Error("No brief generated");
+    } catch (e: any) {
+      console.error("Prep brief error:", e);
+      toast.error(e.message || "Failed to generate prep brief");
+      setShowPrepDialog(false);
+    } finally {
+      setGeneratingPrep(false);
+    }
+  };
+
+  const handleDraftPriorityAction = async (actionType: string, contextOverride?: string) => {
+    setDraftingPriority(actionType);
+    try {
+      const latestMeeting = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())?.[0];
+      const contextMap: Record<string, string> = {
+        email: `Reply to their unanswered email. Be direct and reference the conversation.`,
+        dark: `Re-engage a prospect who has gone dark for ${lead.lastContactDate ? Math.floor((new Date().getTime() - new Date(lead.lastContactDate).getTime()) / 86400000) : "several"}+ days. Provide new value, not a check-in.`,
+        followup: `Overdue follow-up was due ${lead.nextFollowUp}. Deliver something of value.`,
+        stale: `First outreach to a new lead. Make it sharp and relevant.`,
+        renewal: `Contract ending soon (${lead.contractEnd}). Start renewal conversation with retention angle.`,
+      };
+      const actionContext = contextOverride || contextMap[actionType] || "Follow up on this deal.";
+      const { data, error } = await supabase.functions.invoke("draft-followup", {
+        body: {
+          meeting: latestMeeting || { title: "Follow-up", date: new Date().toISOString().split("T")[0], intelligence: { summary: actionContext, nextSteps: [{ action: actionContext, owner: lead.assignedTo }] } },
+          leadFields: { name: lead.name, role: lead.role, company: lead.company, brand: lead.brand },
+          dealIntelligence: lead.dealIntelligence,
+        },
+      });
+      if (error) throw error;
+      setDraftedPriorityEmails(prev => ({ ...prev, [actionType]: data.email }));
+    } catch (err) {
+      toast.error("Failed to generate draft");
+    } finally {
+      setDraftingPriority(null);
+    }
+  };
 
   const momentum = lead.dealIntelligence?.momentumSignals?.momentum;
   const healthScore = lead.dealIntelligence?.winStrategy?.dealTemperature;
@@ -445,15 +510,50 @@ export default function DealRoom() {
                     <div className="space-y-2">
                       {priorityActions.map((pa, i) => {
                         const Icon = pa.icon;
+                        const isDrafting = draftingPriority === pa.type;
+                        const draftedEmail = draftedPriorityEmails[pa.type];
+                        const isPrep = pa.type === "prep";
+                        const isDraftable = ["email", "dark", "followup", "stale", "renewal"].includes(pa.type);
+                        const buttonLabels: Record<string, string> = {
+                          prep: "Generate Prep",
+                          email: "Draft Reply",
+                          dark: "Draft Re-engagement",
+                          followup: "Draft Follow-up",
+                          stale: "Draft Outreach",
+                          renewal: "Draft Renewal",
+                        };
                         return (
-                          <div key={i} className="rounded-lg border border-border bg-secondary/20 p-3 flex items-start gap-3">
-                            <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-secondary text-muted-foreground">
-                              <Icon className="h-3.5 w-3.5" />
+                          <div key={i} className="space-y-2">
+                            <div className="rounded-lg border border-border bg-secondary/20 p-3 flex items-start gap-3">
+                              <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-secondary text-muted-foreground">
+                                <Icon className="h-3.5 w-3.5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">{pa.title}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{pa.subtitle}</p>
+                              </div>
+                              {isPrep && (
+                                <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={handleGeneratePrep} disabled={generatingPrep}>
+                                  {generatingPrep ? <Loader2 className="h-3 w-3 animate-spin" /> : buttonLabels[pa.type]}
+                                </Button>
+                              )}
+                              {isDraftable && (
+                                <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={() => handleDraftPriorityAction(pa.type)} disabled={isDrafting}>
+                                  {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : buttonLabels[pa.type]}
+                                </Button>
+                              )}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium">{pa.title}</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">{pa.subtitle}</p>
-                            </div>
+                            {draftedEmail && (
+                              <div className="ml-10 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
+                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
+                                    <Copy className="h-3 w-3" /> Copy
+                                  </Button>
+                                </div>
+                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -868,6 +968,7 @@ export default function DealRoom() {
         </div>
         )}
       </div>
+      <PrepBriefDialog open={showPrepDialog} onOpenChange={setShowPrepDialog} brief={prepBrief} loading={generatingPrep} leadName={lead.name} />
     </div>
   );
 }

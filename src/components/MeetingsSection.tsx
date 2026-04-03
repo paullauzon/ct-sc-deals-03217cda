@@ -852,7 +852,7 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
 
 // ─── Prep Brief Dialog ───
 
-function PrepBriefDialog({ open, onOpenChange, brief, loading, leadName }: { open: boolean; onOpenChange: (v: boolean) => void; brief: MeetingPrepBrief | null; loading: boolean; leadName: string }) {
+export function PrepBriefDialog({ open, onOpenChange, brief, loading, leadName }: { open: boolean; onOpenChange: (v: boolean) => void; brief: MeetingPrepBrief | null; loading: boolean; leadName: string }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
@@ -994,7 +994,7 @@ function PrepBriefDialog({ open, onOpenChange, brief, loading, leadName }: { ope
   );
 }
 
-function PrepSection({ title, children, variant }: { title: string; children: React.ReactNode; variant?: string }) {
+export function PrepSection({ title, children, variant }: { title: string; children: React.ReactNode; variant?: string }) {
   return (
     <div className="space-y-1.5">
       <h4 className={`text-xs font-medium uppercase tracking-wider ${variant === "destructive" ? "text-destructive" : "text-muted-foreground"}`}>{title}</h4>
