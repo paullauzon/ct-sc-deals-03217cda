@@ -372,8 +372,8 @@ export function Pipeline() {
                           {(() => {
                             const insight = getClosingInsight(lead);
                             return insight ? (
-                              <span className="text-[10px] text-muted-foreground/70 flex items-center gap-0.5 max-w-[100px] truncate" title={insight.text}>
-                                {insight.icon}
+                              <span className="text-[10px] text-muted-foreground/70 max-w-[100px] truncate" title={insight.text}>
+                                {insight.text}
                               </span>
                             ) : null;
                           })()}
