@@ -422,8 +422,8 @@ export function Pipeline() {
                         const hasIntelBadges = health || coverage || momentum || dropped.length > 0;
 
                         return hasIntelBadges ? (
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 text-[10px] flex-wrap">
+                          <div className="space-y-1.5 pt-2 border-t border-border/50">
+                            <div className="flex items-center gap-2 text-[10px] flex-wrap">
                               {health && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
