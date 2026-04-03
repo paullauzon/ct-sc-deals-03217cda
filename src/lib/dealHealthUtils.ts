@@ -1,6 +1,19 @@
 import { Lead, DealIntelligence } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 
+// ─── Mark Action Item Done ───
+
+export function markActionItemDone(lead: Lead, itemIndex: number): Partial<Lead> {
+  const di = lead.dealIntelligence;
+  if (!di || !di.actionItemTracker) return {};
+  const tracker = [...di.actionItemTracker];
+  if (itemIndex < 0 || itemIndex >= tracker.length) return {};
+  tracker[itemIndex] = { ...tracker[itemIndex], status: "Completed" };
+  return {
+    dealIntelligence: { ...di, actionItemTracker: tracker } as any,
+  };
+}
+
 // ─── Deal Health Score (0-100) ───
 
 export interface DealHealthResult {
