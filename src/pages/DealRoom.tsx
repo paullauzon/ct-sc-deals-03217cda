@@ -119,6 +119,44 @@ export default function DealRoom() {
   const { unansweredIds } = useUnansweredEmails(leadIdArray);
   const { tasks: playbookTasks } = useLeadTasks(leadIdArray);
 
+  // Load saved drafts from DB on mount
+  useEffect(() => {
+    if (!id) return;
+    (async () => {
+      const { data } = await supabase.from("lead_drafts").select("*").eq("lead_id", id).eq("status", "draft");
+      if (data && data.length > 0) {
+        const loaded: Record<string, string> = {};
+        (data as any[]).forEach(d => { loaded[d.action_key] = d.content; });
+        setDraftedPriorityEmails(loaded);
+      }
+    })();
+  }, [id]);
+
+  // Upsert draft to DB
+  const saveDraftToDb = useCallback(async (actionKey: string, content: string, draftType: string, contextLabel: string) => {
+    if (!id) return;
+    await supabase.from("lead_drafts").upsert({
+      lead_id: id,
+      action_key: actionKey,
+      content,
+      draft_type: draftType,
+      context_label: contextLabel,
+      status: "draft",
+      updated_at: new Date().toISOString(),
+    } as any, { onConflict: "lead_id,action_key" });
+  }, [id]);
+
+  const discardDraft = useCallback(async (actionKey: string) => {
+    if (!id) return;
+    setDraftedPriorityEmails(prev => {
+      const next = { ...prev };
+      delete next[actionKey];
+      return next;
+    });
+    await supabase.from("lead_drafts").update({ status: "discarded" } as any).eq("lead_id", id).eq("action_key", actionKey);
+    toast("Draft discarded");
+  }, [id]);
+
   useEffect(() => {
     if (id) {
       fetchActivityLog(id).then(setActivityLog);
