@@ -182,7 +182,7 @@ export default function DealRoom() {
       {/* Top Bar */}
       <div className="border-b border-border px-6 py-3">
         <div className="max-w-[1600px] mx-auto flex items-center gap-4">
-          <button onClick={() => navigate("/")} className="text-muted-foreground hover:text-foreground">
+          <button onClick={() => window.history.length > 1 ? navigate(-1) : navigate("/")} className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div className="flex-1 min-w-0">
