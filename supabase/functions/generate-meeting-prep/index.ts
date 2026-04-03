@@ -149,8 +149,11 @@ serve(async (req) => {
 
     const { meetings, leadFields, dealIntelligence } = await req.json();
 
-    if (!meetings || meetings.length === 0) {
-      return new Response(JSON.stringify({ error: "No meetings to prepare from" }),
+    // Allow prep even with no prior meetings — use lead context + deal intelligence
+    const hasMeetings = meetings && meetings.length > 0;
+    const hasContext = leadFields?.name || dealIntelligence;
+    if (!hasMeetings && !hasContext) {
+      return new Response(JSON.stringify({ error: "No meetings or lead context to prepare from" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
