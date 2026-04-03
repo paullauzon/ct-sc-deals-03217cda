@@ -510,15 +510,50 @@ export default function DealRoom() {
                     <div className="space-y-2">
                       {priorityActions.map((pa, i) => {
                         const Icon = pa.icon;
+                        const isDrafting = draftingPriority === pa.type;
+                        const draftedEmail = draftedPriorityEmails[pa.type];
+                        const isPrep = pa.type === "prep";
+                        const isDraftable = ["email", "dark", "followup", "stale", "renewal"].includes(pa.type);
+                        const buttonLabels: Record<string, string> = {
+                          prep: "Generate Prep",
+                          email: "Draft Reply",
+                          dark: "Draft Re-engagement",
+                          followup: "Draft Follow-up",
+                          stale: "Draft Outreach",
+                          renewal: "Draft Renewal",
+                        };
                         return (
-                          <div key={i} className="rounded-lg border border-border bg-secondary/20 p-3 flex items-start gap-3">
-                            <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-secondary text-muted-foreground">
-                              <Icon className="h-3.5 w-3.5" />
+                          <div key={i} className="space-y-2">
+                            <div className="rounded-lg border border-border bg-secondary/20 p-3 flex items-start gap-3">
+                              <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-secondary text-muted-foreground">
+                                <Icon className="h-3.5 w-3.5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">{pa.title}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{pa.subtitle}</p>
+                              </div>
+                              {isPrep && (
+                                <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={handleGeneratePrep} disabled={generatingPrep}>
+                                  {generatingPrep ? <Loader2 className="h-3 w-3 animate-spin" /> : buttonLabels[pa.type]}
+                                </Button>
+                              )}
+                              {isDraftable && (
+                                <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={() => handleDraftPriorityAction(pa.type)} disabled={isDrafting}>
+                                  {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : buttonLabels[pa.type]}
+                                </Button>
+                              )}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium">{pa.title}</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">{pa.subtitle}</p>
-                            </div>
+                            {draftedEmail && (
+                              <div className="ml-10 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
+                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
+                                    <Copy className="h-3 w-3" /> Copy
+                                  </Button>
+                                </div>
+                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
