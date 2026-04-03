@@ -38,7 +38,7 @@ const OWNER_COLORS: Record<string, string> = {
   Tomos: "bg-foreground/40 text-background",
 };
 
-function getClosingInsight(lead: Lead): { text: string } | null {
+function getClosingInsight(lead: Lead): { label: string; text: string } | null {
   const meetingsWithIntel = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const latest = meetingsWithIntel?.[0]?.intelligence;
   if (!latest) return null;
@@ -46,16 +46,16 @@ function getClosingInsight(lead: Lead): { text: string } | null {
   const trunc = (s: string) => s.length > 60 ? s.slice(0, 57) + "…" : s;
 
   if (latest.dealSignals?.objections?.length > 0) {
-    return { text: trunc(latest.dealSignals.objections[0]) };
+    return { label: "Objection", text: trunc(latest.dealSignals.objections[0]) };
   }
   if (latest.painPoints?.length > 0) {
-    return { text: trunc(latest.painPoints[0]) };
+    return { label: "Pain point", text: trunc(latest.painPoints[0]) };
   }
   if (latest.dealSignals?.timeline && latest.dealSignals.timeline !== "Not mentioned" && latest.dealSignals.timeline !== "None mentioned") {
-    return { text: trunc(latest.dealSignals.timeline) };
+    return { label: "Timeline", text: trunc(latest.dealSignals.timeline) };
   }
   if (latest.dealSignals?.sentiment && latest.dealSignals?.buyingIntent) {
-    return { text: trunc(`${latest.dealSignals.sentiment} · ${latest.dealSignals.buyingIntent} intent`) };
+    return { label: "Signal", text: trunc(`${latest.dealSignals.sentiment} · ${latest.dealSignals.buyingIntent} intent`) };
   }
   return null;
 }
