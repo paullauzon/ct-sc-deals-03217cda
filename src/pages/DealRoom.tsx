@@ -968,6 +968,7 @@ export default function DealRoom() {
         </div>
         )}
       </div>
+      <PrepBriefDialog open={showPrepDialog} onOpenChange={setShowPrepDialog} brief={prepBrief} loading={generatingPrep} leadName={lead.name} />
     </div>
   );
 }
