@@ -146,6 +146,7 @@ function QuickNote({ lead, onSave, onFollowUp }: { lead: Lead; onSave: (id: stri
 
 export function Pipeline() {
   const { getLeadsByStage, updateLead, leads, isLeadNew, markLeadSeen } = useLeads();
+  const pipelineNavigate = useNavigate();
   const { leadJobs } = useProcessing();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
