@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
 import { BrandLogo } from "@/components/BrandLogo";
+import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, markActionItemDone } from "@/lib/dealHealthUtils";
 
 const ALL_STAGES: LeadStage[] = [

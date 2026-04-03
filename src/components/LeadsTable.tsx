@@ -9,6 +9,7 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { BrandLogo } from "@/components/BrandLogo";
+import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { getBrandBorderClass } from "@/lib/brandColors";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
