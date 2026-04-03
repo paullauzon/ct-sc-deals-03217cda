@@ -25,6 +25,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, getUnifiedActionCount, getNextBestAction, markActionItemDone } from "@/lib/dealHealthUtils";
 import { useLeadTasks } from "@/hooks/useLeadTasks";
+import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
