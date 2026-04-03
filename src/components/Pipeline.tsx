@@ -546,7 +546,8 @@ export function Pipeline() {
                                 </span>
                               </div>
                             ) : null}
-                        ) : null;
+                          </>
+                        );
                       })()}
                       {/* Pending suggestions indicator */}
                       {(() => {
