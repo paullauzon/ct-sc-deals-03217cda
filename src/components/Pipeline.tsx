@@ -417,25 +417,27 @@ export function Pipeline() {
                               {health && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <span className={cn("px-1.5 py-0.5 rounded flex items-center gap-0.5 font-medium",
-                                      health.color === "emerald" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" :
-                                      health.color === "amber" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" :
-                                      "bg-red-500/10 text-red-600 dark:text-red-400"
-                                    )}>
-                                      <Heart className="h-2.5 w-2.5" /> {health.score}
+                                    <span className="px-1.5 py-0.5 rounded bg-secondary text-foreground/70 font-medium tabular-nums">
+                                      {health.score}
                                     </span>
                                   </TooltipTrigger>
-                                  <TooltipContent className="text-xs max-w-[200px]">
-                                    <p className="font-medium mb-1">Deal Health: {health.label}</p>
-                                    {health.factors.map((f, i) => (
-                                      <p key={i} className="text-muted-foreground">{f.impact > 0 ? "+" : ""}{f.impact} {f.label}</p>
-                                    ))}
+                                  <TooltipContent className="max-w-[220px] p-3">
+                                    <div className="flex items-baseline gap-2 mb-2">
+                                      <span className="text-lg font-semibold font-mono">{health.score}</span>
+                                      <span className="text-xs text-muted-foreground">{health.label}</span>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      {health.factors.map((f, i) => (
+                                        <p key={i} className="text-xs text-muted-foreground font-mono">
+                                          <span className="inline-block w-8 text-right">{f.impact > 0 ? "+" : ""}{f.impact}</span> {f.label}
+                                        </p>
+                                      ))}
+                                    </div>
                                   </TooltipContent>
                                 </Tooltip>
                               )}
                               {coverage && (
-                                <span className={cn("px-1.5 py-0.5 rounded flex items-center gap-0.5", coverage.colorClass)}>
-                                  {coverage.coverage === "no-champion" ? <ShieldAlert className="h-2.5 w-2.5" /> : <Users className="h-2.5 w-2.5" />}
+                                <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                                   {coverage.label}
                                 </span>
                               )}
