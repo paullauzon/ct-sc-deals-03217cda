@@ -737,13 +737,36 @@ export default function DealRoom() {
                     <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5">
                       <Clock className="h-3.5 w-3.5" /> Waiting on Them ({theyOweItems.length})
                     </h3>
-                    <div className="space-y-1.5">
-                      {theyOweItems.map((a, i) => (
-                        <div key={i} className="rounded-lg border border-border bg-secondary/10 p-3">
-                          <p className="text-sm"><span className="font-medium">{lead.name}</span> <span className="text-muted-foreground">owes:</span> "{a.item}"</p>
-                          {a.deadline && <p className="text-xs text-muted-foreground mt-0.5">Due: {a.deadline}</p>}
-                        </div>
-                      ))}
+                    <div className="space-y-2">
+                      {theyOweItems.map((a, i) => {
+                        const waitKey = `waiting-${i}`;
+                        const isDrafting = draftingPriority === waitKey;
+                        const draftedEmail = draftedPriorityEmails[waitKey];
+                        return (
+                          <div key={i} className="space-y-2">
+                            <div className="rounded-lg border border-border bg-secondary/10 p-3 flex items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm"><span className="font-medium">{lead.name}</span> <span className="text-muted-foreground">owes:</span> "{a.item}"</p>
+                                {a.deadline && <p className="text-xs text-muted-foreground mt-0.5">Due: {a.deadline}</p>}
+                              </div>
+                              <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={() => handleDraftPriorityAction(waitKey, `The prospect (${lead.name}) committed to "${a.item}"${a.deadline ? ` by ${a.deadline}` : ""} but hasn't delivered. Draft a gentle nudge that adds new value or context rather than just asking "did you get a chance to...". Reference something specific to keep the conversation moving forward.`)} disabled={isDrafting}>
+                                {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Draft Nudge"}
+                              </Button>
+                            </div>
+                            {draftedEmail && (
+                              <div className="ml-4 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
+                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
+                                    <Copy className="h-3 w-3" /> Copy
+                                  </Button>
+                                </div>
+                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
