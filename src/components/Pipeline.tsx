@@ -395,13 +395,27 @@ export function Pipeline() {
                           {lead.meetingOutcome && <span>{lead.meetingOutcome}</span>}
                         </div>
                       </div>
+                      {/* Row 4b: Closing insight — own full-width row */}
+                      {(() => {
+                        const insight = getClosingInsight(lead);
+                        return insight ? (
+                          <p className="text-[10px] text-muted-foreground/70 italic truncate" title={insight.text}>
+                            "{insight.text}"
+                          </p>
+                        ) : null;
+                      })()}
                       {/* Row 5: Deal Health + Stakeholder Coverage + Intelligence */}
                       {(() => {
                         const health = computeDealHealthScore(lead);
                         const coverage = getStakeholderCoverage(lead);
                         const dropped = getDroppedPromises(lead);
                         const winLose = !closed ? getWinLoseCard(lead) : null;
-                        const hasIntelBadges = health || coverage || lead.dealIntelligence?.momentumSignals?.momentum || dropped.length > 0;
+                        const momentum = lead.dealIntelligence?.momentumSignals?.momentum;
+                        const momentumLabel = momentum === "Accelerating" ? "Gaining speed" :
+                          momentum === "Stalling" ? "Losing steam" :
+                          momentum === "Stalled" ? "Gone quiet" :
+                          momentum === "Steady" ? "Steady pace" : momentum;
+                        const hasIntelBadges = health || coverage || momentum || dropped.length > 0;
 
                         return hasIntelBadges ? (
                           <div className="space-y-1">
@@ -410,13 +424,13 @@ export function Pipeline() {
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <span className="px-1.5 py-0.5 rounded bg-secondary text-foreground/70 font-medium tabular-nums">
-                                      {health.score}
+                                      Health: {health.score}/100
                                     </span>
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-[220px] p-3">
                                     <div className="flex items-baseline gap-2 mb-2">
                                       <span className="text-lg font-semibold font-mono">{health.score}</span>
-                                      <span className="text-xs text-muted-foreground">{health.label}</span>
+                                      <span className="text-xs text-muted-foreground">/ 100 · {health.label}</span>
                                     </div>
                                     <div className="space-y-0.5">
                                       {health.factors.map((f, i) => (
@@ -433,10 +447,9 @@ export function Pipeline() {
                                   {coverage.label}
                                 </span>
                               )}
-                              {lead.dealIntelligence?.momentumSignals?.momentum && (
+                              {momentumLabel && (
                                 <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-                                  {lead.dealIntelligence.momentumSignals.momentum === "Accelerating" ? "↑" :
-                                   lead.dealIntelligence.momentumSignals.momentum === "Stalling" || lead.dealIntelligence.momentumSignals.momentum === "Stalled" ? "↓" : "→"} {lead.dealIntelligence.momentumSignals.momentum}
+                                  {momentumLabel}
                                 </span>
                               )}
                               {lead.enrichment && (
