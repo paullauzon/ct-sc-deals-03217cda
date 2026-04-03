@@ -1,50 +1,43 @@
 
 
-# Redesign Action Items: Collapsible on Pipeline Cards + Actionable Hub in Deal Room
+# Redesign Pipeline Card Actions: Clean, Clickable, Professional
 
-## The Problems
+## What's Wrong Now
 
-1. **Pipeline cards**: Dropped promises show as truncated text with "+2 more" that can't be expanded. No way to see or act on them.
-2. **Deal Room sidebar**: Action items are listed but are read-only — no way to mark them done, draft a follow-up, or take action directly.
-3. **No connection** between seeing a dropped promise and doing something about it (drafting an email, marking complete, etc.).
+1. **Overdue actions section** uses random emoji (⚠), mismatched icon styles (AlertTriangle + Crown), tiny checkbox circles, and red text that clashes with the minimalist design system
+2. **Win/Lose "do next" line** at the bottom uses a Crown icon that has no semantic meaning — looks decorative, not actionable
+3. **No clear path to action** — clicking a checkbox on a 9px pipeline card is not how a sales rep works. They need one click to get to the Deal Room Actions tab where AI drafting is available
+4. **Follow-up date** sits below everything as an orphaned line
 
 ## What Gets Built
 
-### 1. Pipeline Card — Collapsible Action Items
+### Pipeline Card — Simplified Action Summary
 
-Replace the current single-line truncated display with a collapsible:
-- **Collapsed** (default): Show count badge "⚠ 3 overdue actions" with a chevron toggle
-- **Expanded**: Show each action item as a compact row with: item text, days overdue, owner, and a small "✓" button to mark done inline
-- Uses `Collapsible` from radix (already in project)
-- Clicking the item text still opens the lead detail as before
+Replace the current overdue collapsible + crown tooltip + follow-up line with a single clean block:
 
-### 2. Deal Room — "Action Center" Tab
+**When overdue actions exist:**
+- One line: `3 actions overdue` in subdued red text (no emoji, no icons, no triangle)
+- Entire line is clickable → navigates to `/deal/:id` with Actions tab focused
+- On hover: subtle underline + arrow indicator
 
-Add a new tab "Actions" to the Deal Room tabbed workspace (between Intelligence and Emails). This becomes the single place to see and act on everything:
+**When no overdue but "do next" exists:**
+- One line: the `doNext` text from win/lose card, plain muted text
+- Clickable → navigates to Deal Room Actions tab
 
-- **Open Action Items** section: Each item shows text, owner, deadline, days overdue, status badge. Each row has:
-  - "✓ Done" button — marks the action item as completed in the lead's `dealIntelligence.actionItemTracker`
-  - "Draft Follow-Up" button — opens the existing ActionSheet (from FollowUpsTab) pre-filled with context about this specific action item
-- **Next Best Action** card at the top — computed from `getNextBestAction()` in `dealHealthUtils.ts`, showing the single most important thing to do with urgency color coding
-- **Completed Items** collapsible at bottom — shows what's been done for audit trail
+**Follow-up date** moves inline as a small muted suffix: `· Follow-up Mar 24`
 
-### 3. Pipeline Lead Detail Panel — Action Items Section
+Remove: Crown icon, AlertTriangle icon, ⚠ emoji, inline checkboxes on cards, CollapsibleContent with individual items. All of that lives in Deal Room.
 
-The `LeadDetail` component (in LeadsTable.tsx) is the side panel that opens when clicking a pipeline card. Add a compact "Action Items" section here too:
-- Show open items with "✓" mark-done buttons
-- Link to "Open Deal Room → Actions" for the full view
+### Deal Room Actions Tab — Add "Draft" Buttons
 
-## Technical Approach
+Each open action item row gets a "Draft" button that triggers the existing `draft-followup` edge function with the action item context pre-filled. This reuses the same AI drafting pattern from FollowUpsTab.
 
-- **Marking items done**: Update `lead.dealIntelligence.actionItemTracker[i].status` from "Open"/"Overdue" to "Completed" and persist via `updateLead()`. No new database tables needed.
-- **`getNextBestAction`**: Already built in `dealHealthUtils.ts` but never imported anywhere. Wire it into the Deal Room Actions tab and Pipeline card.
-- **ActionSheet reuse**: Extract the ActionSheet component from FollowUpsTab into its own file so it can be imported by Deal Room. Or keep it inline and add a similar draft capability in Deal Room.
+Flow: Click "Draft" → calls edge function with meeting context + action item text → shows generated email in a textarea → "Copy" button.
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/Pipeline.tsx` | Replace dropped promises single-line with Collapsible showing all items with mark-done buttons |
-| `src/pages/DealRoom.tsx` | Add "Actions" tab with Next Best Action card, actionable item list with Done/Draft buttons, completed items collapsible |
-| `src/lib/dealHealthUtils.ts` | Add helper to update action item status in-place (returns updated dealIntelligence object) |
+| `src/components/Pipeline.tsx` | Replace overdue collapsible + crown tooltip + follow-up line with clean single-line clickable summary that links to Deal Room |
+| `src/pages/DealRoom.tsx` | Add "Draft" button to each open action item row, with inline AI email generation using existing `draft-followup` edge function |
 
