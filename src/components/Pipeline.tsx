@@ -80,9 +80,7 @@ function OwnerBadge({ owner }: { owner: string }) {
 }
 
 function getAgingClass(days: number): string {
-  if (days >= 21) return "border-red-500 dark:border-red-400 animate-pulse";
-  if (days >= 14) return "border-orange-400 dark:border-orange-500";
-  if (days >= 7) return "border-yellow-400 dark:border-yellow-500";
+  if (days >= 21) return "border-foreground/30";
   return "border-border";
 }
 
