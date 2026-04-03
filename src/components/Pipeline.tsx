@@ -427,7 +427,7 @@ export function Pipeline() {
                               {health && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <span className="px-1.5 py-0.5 rounded bg-secondary text-foreground/70 font-medium tabular-nums">
+                                    <span className="px-2 py-1 rounded bg-secondary text-foreground/70 font-medium tabular-nums">
                                       Health: {health.score}/100
                                     </span>
                                   </TooltipTrigger>
