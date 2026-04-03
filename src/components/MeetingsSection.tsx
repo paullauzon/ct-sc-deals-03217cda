@@ -994,7 +994,7 @@ export function PrepBriefDialog({ open, onOpenChange, brief, loading, leadName }
   );
 }
 
-function PrepSection({ title, children, variant }: { title: string; children: React.ReactNode; variant?: string }) {
+export function PrepSection({ title, children, variant }: { title: string; children: React.ReactNode; variant?: string }) {
   return (
     <div className="space-y-1.5">
       <h4 className={`text-xs font-medium uppercase tracking-wider ${variant === "destructive" ? "text-destructive" : "text-muted-foreground"}`}>{title}</h4>
