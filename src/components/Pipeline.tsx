@@ -37,7 +37,7 @@ const OWNER_COLORS: Record<string, string> = {
   Tomos: "bg-foreground/40 text-background",
 };
 
-function getClosingInsight(lead: Lead): { icon: React.ReactNode; text: string } | null {
+function getClosingInsight(lead: Lead): { text: string } | null {
   const meetingsWithIntel = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const latest = meetingsWithIntel?.[0]?.intelligence;
   if (!latest) return null;
@@ -45,16 +45,16 @@ function getClosingInsight(lead: Lead): { icon: React.ReactNode; text: string } 
   const trunc = (s: string) => s.length > 60 ? s.slice(0, 57) + "…" : s;
 
   if (latest.dealSignals?.objections?.length > 0) {
-    return { icon: <Zap className="h-2.5 w-2.5 shrink-0" />, text: trunc(latest.dealSignals.objections[0]) };
+    return { text: trunc(latest.dealSignals.objections[0]) };
   }
   if (latest.painPoints?.length > 0) {
-    return { icon: <Target className="h-2.5 w-2.5 shrink-0" />, text: trunc(latest.painPoints[0]) };
+    return { text: trunc(latest.painPoints[0]) };
   }
   if (latest.dealSignals?.timeline && latest.dealSignals.timeline !== "Not mentioned" && latest.dealSignals.timeline !== "None mentioned") {
-    return { icon: <Timer className="h-2.5 w-2.5 shrink-0" />, text: trunc(latest.dealSignals.timeline) };
+    return { text: trunc(latest.dealSignals.timeline) };
   }
   if (latest.dealSignals?.sentiment && latest.dealSignals?.buyingIntent) {
-    return { icon: <BarChart3 className="h-2.5 w-2.5 shrink-0" />, text: trunc(`${latest.dealSignals.sentiment} · ${latest.dealSignals.buyingIntent} intent`) };
+    return { text: trunc(`${latest.dealSignals.sentiment} · ${latest.dealSignals.buyingIntent} intent`) };
   }
   return null;
 }
