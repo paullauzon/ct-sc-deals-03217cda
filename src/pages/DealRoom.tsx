@@ -390,38 +390,91 @@ export default function DealRoom() {
                         if (a.deadline) {
                           try { daysOverdue = Math.max(0, Math.floor((now.getTime() - new Date(a.deadline).getTime()) / 86400000)); } catch {}
                         }
+                        const isDrafting = draftingIdx === origIdx;
+                        const draftedEmail = draftedEmails[origIdx];
+
+                        const handleDraft = async () => {
+                          setDraftingIdx(origIdx);
+                          try {
+                            const latestMeeting = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())?.[0];
+                            const { data, error } = await supabase.functions.invoke("draft-followup", {
+                              body: {
+                                meeting: latestMeeting || { title: "Follow-up", date: new Date().toISOString().split("T")[0], intelligence: { summary: a.item, nextSteps: [{ action: a.item, owner: a.owner || lead.assignedTo }] } },
+                                leadFields: { name: lead.name, role: lead.role, company: lead.company, brand: lead.brand },
+                                dealIntelligence: lead.dealIntelligence,
+                              },
+                            });
+                            if (error) throw error;
+                            setDraftedEmails(prev => ({ ...prev, [origIdx]: data.email }));
+                          } catch (err) {
+                            toast.error("Failed to generate draft");
+                          } finally {
+                            setDraftingIdx(null);
+                          }
+                        };
+
                         return (
-                          <div key={i} className={cn("rounded-lg border p-3 flex items-start gap-3 group",
-                            a.status === "Overdue" || daysOverdue > 0 ? "border-red-300 dark:border-red-800 bg-red-50/50 dark:bg-red-950/10" : "border-border"
-                          )}>
-                            <button
-                              onClick={() => {
-                                const updates = markActionItemDone(lead, origIdx);
-                                if (Object.keys(updates).length) {
-                                  save(updates);
-                                  toast.success(`Marked "${a.item.slice(0, 40)}" done`);
-                                }
-                              }}
-                              className="w-6 h-6 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center shrink-0 mt-0.5 hover:border-primary hover:bg-primary/10 transition-colors group-hover:border-primary/50"
-                              title="Mark done"
-                            >
-                              <Check className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />
-                            </button>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium">{a.item}</p>
-                              <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                                {a.owner && <span>{a.owner}</span>}
-                                {a.deadline && <span>Due: {a.deadline}</span>}
-                                {daysOverdue > 0 && (
-                                  <span className="text-red-600 dark:text-red-400 font-medium">{daysOverdue}d overdue</span>
-                                )}
-                                <Badge variant="outline" className={cn("text-[9px]",
-                                  a.status === "Overdue" ? "border-red-500/50 text-red-600 dark:text-red-400" : ""
-                                )}>
-                                  {a.status}
-                                </Badge>
+                          <div key={i} className="space-y-2">
+                            <div className={cn("rounded-lg border p-3 flex items-start gap-3 group",
+                              a.status === "Overdue" || daysOverdue > 0 ? "border-destructive/30 bg-destructive/5" : "border-border"
+                            )}>
+                              <button
+                                onClick={() => {
+                                  const updates = markActionItemDone(lead, origIdx);
+                                  if (Object.keys(updates).length) {
+                                    save(updates);
+                                    toast.success(`Marked "${a.item.slice(0, 40)}" done`);
+                                  }
+                                }}
+                                className="w-6 h-6 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center shrink-0 mt-0.5 hover:border-primary hover:bg-primary/10 transition-colors group-hover:border-primary/50"
+                                title="Mark done"
+                              >
+                                <Check className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+                              </button>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">{a.item}</p>
+                                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                  {a.owner && <span>{a.owner}</span>}
+                                  {a.deadline && <span>Due: {a.deadline}</span>}
+                                  {daysOverdue > 0 && (
+                                    <span className="text-destructive font-medium">{daysOverdue}d overdue</span>
+                                  )}
+                                  <Badge variant="outline" className={cn("text-[9px]",
+                                    a.status === "Overdue" ? "border-destructive/50 text-destructive" : ""
+                                  )}>
+                                    {a.status}
+                                  </Badge>
+                                </div>
                               </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs shrink-0"
+                                onClick={handleDraft}
+                                disabled={isDrafting}
+                              >
+                                {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Draft"}
+                              </Button>
                             </div>
+                            {draftedEmail && (
+                              <div className="ml-9 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 text-xs gap-1"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(draftedEmail);
+                                      toast.success("Copied to clipboard");
+                                    }}
+                                  >
+                                    <Copy className="h-3 w-3" /> Copy
+                                  </Button>
+                                </div>
+                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
