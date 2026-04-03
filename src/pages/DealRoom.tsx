@@ -88,7 +88,7 @@ export default function DealRoom() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-2">
           <p className="text-lg font-medium">Deal not found</p>
-          <button onClick={() => navigate("/")} className="text-sm text-muted-foreground hover:text-foreground underline">Back to pipeline</button>
+          <button onClick={() => window.history.length > 1 ? navigate(-1) : navigate("/")} className="text-sm text-muted-foreground hover:text-foreground underline">Back to pipeline</button>
         </div>
       </div>
     );
