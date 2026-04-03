@@ -479,7 +479,7 @@ export function Pipeline() {
                             {!dropped.length && winLose && winLose.doNext !== "—" && !closed && (
                               <div
                                 onClick={(e) => { e.stopPropagation(); pipelineNavigate(`/deal/${lead.id}?tab=actions`); }}
-                                className="mt-1 flex w-full items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-secondary hover:bg-secondary/80 text-[11px] font-semibold text-foreground/80 hover:text-foreground cursor-pointer transition-all"
+                                className="mt-0.5 flex w-full items-center gap-1.5 px-3 py-2 rounded-md bg-secondary hover:bg-secondary/80 text-[11px] font-semibold text-foreground/80 hover:text-foreground cursor-pointer transition-all"
                               >
                                 <span className="truncate">{winLose.doNext}</span>
                                 <ChevronRight className="h-3.5 w-3.5 shrink-0 ml-auto text-muted-foreground" />
