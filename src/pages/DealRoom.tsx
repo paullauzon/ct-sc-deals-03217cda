@@ -486,20 +486,41 @@ export default function DealRoom() {
             {!isClosed && (
               <TabsContent value="actions" className="p-4 space-y-5">
                 {/* Next Best Action highlight */}
-                {nextBestAction && priorityActions.length === 0 && droppedPromises.length === 0 && (
-                  <div className="rounded-lg border border-border bg-secondary/30 p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-primary/10 text-primary">
-                        <Zap className="h-4 w-4" />
+                {nextBestAction && priorityActions.length === 0 && droppedPromises.length === 0 && (() => {
+                  const nbaKey = "nba";
+                  const isDrafting = draftingPriority === nbaKey;
+                  const draftedEmail = draftedPriorityEmails[nbaKey];
+                  return (
+                    <div className="space-y-2">
+                      <div className="rounded-lg border border-border bg-secondary/30 p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-primary/10 text-primary">
+                            <Zap className="h-4 w-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Next Best Action</span>
+                            <p className="text-sm font-medium mt-0.5">{nextBestAction.action}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{nextBestAction.reason}</p>
+                          </div>
+                          <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={() => handleDraftPriorityAction(nbaKey, `${nextBestAction.action}. Context: ${nextBestAction.reason}. Draft an email that executes this action.`)} disabled={isDrafting}>
+                            {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Draft"}
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Next Best Action</span>
-                        <p className="text-sm font-medium mt-0.5">{nextBestAction.action}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{nextBestAction.reason}</p>
-                      </div>
+                      {draftedEmail && (
+                        <div className="ml-11 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
+                            <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
+                              <Copy className="h-3 w-3" /> Copy
+                            </Button>
+                          </div>
+                          <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Priority Actions */}
                 {priorityActions.length > 0 && (
