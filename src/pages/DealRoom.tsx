@@ -104,7 +104,7 @@ export default function DealRoom() {
   const { leads, loading, updateLead, addMeeting } = useLeads();
   const lead = leads.find(l => l.id === id);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
-  const [draftedEmails, setDraftedEmails] = useState<Record<number, string>>({});
+  
   
   // Priority action states
   const [showPrepDialog, setShowPrepDialog] = useState(false);
