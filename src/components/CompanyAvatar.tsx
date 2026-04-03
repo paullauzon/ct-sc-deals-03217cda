@@ -26,7 +26,7 @@ export function CompanyAvatar({ companyUrl, email, companyName, size = "sm", cla
     return (
       <div
         className={cn(
-          "rounded-sm bg-secondary text-muted-foreground flex items-center justify-center font-medium shrink-0 ring-1 ring-border",
+          "rounded-sm bg-secondary text-muted-foreground flex items-center justify-center font-medium shrink-0",
           SIZES[size],
           className
         )}
@@ -40,7 +40,7 @@ export function CompanyAvatar({ companyUrl, email, companyName, size = "sm", cla
     <img
       src={logoUrl}
       alt={companyName || ""}
-      className={cn("rounded-sm shrink-0 ring-1 ring-border object-contain", SIZES[size], className)}
+      className={cn("rounded-sm shrink-0 object-contain", SIZES[size], className)}
       onError={() => setImgError(true)}
       loading="lazy"
     />
