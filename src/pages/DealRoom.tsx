@@ -50,10 +50,13 @@ function DealProgressBar({ currentStage }: { currentStage: LeadStage }) {
 
 export default function DealRoom() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { leads, updateLead, addMeeting } = useLeads();
   const lead = leads.find(l => l.id === id);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  const [draftingIdx, setDraftingIdx] = useState<number | null>(null);
+  const [draftedEmails, setDraftedEmails] = useState<Record<number, string>>({});
 
   useEffect(() => {
     if (id) {
