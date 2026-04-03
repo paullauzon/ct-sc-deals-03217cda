@@ -594,14 +594,14 @@ export default function DealRoom() {
                         </div>
                       </div>
                       {draftedEmail && (
-                        <div className="ml-11 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
-                            <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
-                              <Copy className="h-3 w-3" /> Copy
-                            </Button>
-                          </div>
-                          <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                        <div className="ml-11">
+                          <DraftCard
+                            content={draftedEmail}
+                            onSave={(text) => { setDraftedPriorityEmails(prev => ({ ...prev, [nbaKey]: text })); saveDraftToDb(nbaKey, text, "nba", nextBestAction.action.slice(0, 100)); }}
+                            onRegenerate={() => handleDraftPriorityAction(nbaKey, `${nextBestAction.action}. Context: ${nextBestAction.reason}. Draft an email that executes this action.`)}
+                            onDiscard={() => discardDraft(nbaKey)}
+                            isRegenerating={draftingPriority === nbaKey}
+                          />
                         </div>
                       )}
                     </div>
