@@ -270,6 +270,60 @@ export function getObjectionPlaybook(lead: Lead, allLeads: Lead[]): ObjectionPla
   return playbook;
 }
 
+// ─── Unified Action Count ───
+
+export interface UnifiedActionCount {
+  total: number;
+  breakdown: { dropped: number; playbook: number; nextBest: boolean; overdueFollowUp: boolean };
+  /** Single-item display text when total === 1 */
+  singleActionText: string | null;
+  /** Tooltip lines for breakdown */
+  tooltipLines: string[];
+}
+
+export function getUnifiedActionCount(
+  lead: Lead,
+  playbookTaskCount: number = 0
+): UnifiedActionCount {
+  const dropped = getDroppedPromises(lead);
+  const nba = getNextBestAction(lead);
+  const now = new Date();
+
+  let overdueFollowUp = false;
+  if (lead.nextFollowUp) {
+    try {
+      overdueFollowUp = new Date(lead.nextFollowUp) < now;
+    } catch {}
+  }
+
+  const droppedCount = dropped.length;
+  const hasNextBest = !!nba;
+  const total = droppedCount + playbookTaskCount + (hasNextBest ? 1 : 0) + (overdueFollowUp ? 1 : 0);
+
+  // Tooltip breakdown
+  const tooltipLines: string[] = [];
+  if (droppedCount > 0) tooltipLines.push(`${droppedCount} overdue commitment${droppedCount > 1 ? "s" : ""}`);
+  if (playbookTaskCount > 0) tooltipLines.push(`${playbookTaskCount} playbook task${playbookTaskCount > 1 ? "s" : ""} due`);
+  if (hasNextBest) tooltipLines.push(nba!.action);
+  if (overdueFollowUp) tooltipLines.push("Follow-up overdue");
+
+  // Single action text
+  let singleActionText: string | null = null;
+  if (total === 1) {
+    if (droppedCount === 1) singleActionText = `Complete: "${dropped[0].item}"`;
+    else if (playbookTaskCount === 1) singleActionText = null; // will use playbook title from caller
+    else if (hasNextBest) singleActionText = nba!.action;
+    else if (overdueFollowUp) singleActionText = "Follow up — overdue";
+  }
+
+  return {
+    total,
+    breakdown: { dropped: droppedCount, playbook: playbookTaskCount, nextBest: hasNextBest, overdueFollowUp },
+    singleActionText,
+    tooltipLines,
+  };
+}
+
 // ─── Next Best Action Engine ───
 
 export interface NextBestAction {
