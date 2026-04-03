@@ -122,7 +122,7 @@ export default function DealRoom() {
       const d = new Date(lead.meetingDate);
       const now = new Date();
       const diff = Math.floor((d.getTime() - now.getTime()) / 86400000);
-      return diff >= 0 && diff <= 7 && !lead.meetings?.some(m => m.intelligence?.meetingPrepBrief);
+      return diff >= 0 && diff <= 7;
     } catch { return false; }
   })());
   const unifiedCount = getUnifiedActionCount(lead, playbookTasks.length, { hasUnansweredEmail, hasMeetingPrep });
