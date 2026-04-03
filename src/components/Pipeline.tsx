@@ -314,7 +314,7 @@ export function Pipeline() {
                         else { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }
                       }}
                       className={cn(
-                        "rounded-md p-3 transition-colors space-y-1.5",
+                        "rounded-md p-4 transition-colors space-y-2.5",
                         getBrandBorderClass(lead.brand),
                         selectMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
                         selectedIds.has(lead.id) ? "border-2 border-primary bg-primary/5" : "border border-border " + getAgingClass(days) + " hover:bg-secondary/30"
