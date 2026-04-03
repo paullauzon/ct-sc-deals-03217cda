@@ -337,6 +337,11 @@ export function Pipeline() {
                             {isLeadNew(lead.id) && (
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-foreground/10 text-foreground animate-pulse">NEW</span>
                             )}
+                            {lead.linkedinUrl && (
+                              <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn"}>
+                                <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] hover:opacity-80 transition-colors" />
+                              </a>
+                            )}
                           </p>
                           <p className="text-xs text-muted-foreground flex items-center gap-1">
                             <CompanyAvatar companyUrl={lead.companyUrl} email={lead.email} companyName={lead.company} size="xs" />
