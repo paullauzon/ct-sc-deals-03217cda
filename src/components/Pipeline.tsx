@@ -479,8 +479,8 @@ export function Pipeline() {
                           </div>
                         ) : lead.dealIntelligence?.riskRegister?.filter(r => r.mitigationStatus !== "Mitigated").length ? (
                           <div className="flex items-center gap-1.5 text-[10px]">
-                            <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground flex items-center gap-0.5">
-                              <AlertTriangle className="h-2.5 w-2.5" /> {lead.dealIntelligence.riskRegister!.filter(r => r.mitigationStatus !== "Mitigated").length} risks
+                            <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                              {lead.dealIntelligence.riskRegister!.filter(r => r.mitigationStatus !== "Mitigated").length} risks
                             </span>
                           </div>
                         ) : null;
