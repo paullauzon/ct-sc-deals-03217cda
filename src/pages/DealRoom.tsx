@@ -105,6 +105,63 @@ export default function DealRoom() {
   const days = computeDaysInStage(lead.stageEnteredDate);
   const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
 
+  const handleGeneratePrep = async () => {
+    setGeneratingPrep(true);
+    setPrepBrief(null);
+    setShowPrepDialog(true);
+    try {
+      const meetings = lead.meetings || [];
+      const { data, error } = await supabase.functions.invoke("generate-meeting-prep", {
+        body: {
+          meetings,
+          leadFields: {
+            name: lead.name, company: lead.company, role: lead.role,
+            stage: lead.stage, priority: lead.priority, dealValue: lead.dealValue,
+            serviceInterest: lead.serviceInterest, brand: lead.brand,
+          },
+          dealIntelligence: lead.dealIntelligence || null,
+        },
+      });
+      if (error) throw error;
+      if (data?.brief) setPrepBrief(data.brief);
+      else throw new Error("No brief generated");
+    } catch (e: any) {
+      console.error("Prep brief error:", e);
+      toast.error(e.message || "Failed to generate prep brief");
+      setShowPrepDialog(false);
+    } finally {
+      setGeneratingPrep(false);
+    }
+  };
+
+  const handleDraftPriorityAction = async (actionType: string, contextOverride?: string) => {
+    setDraftingPriority(actionType);
+    try {
+      const latestMeeting = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())?.[0];
+      const contextMap: Record<string, string> = {
+        email: `Reply to their unanswered email. Be direct and reference the conversation.`,
+        dark: `Re-engage a prospect who has gone dark for ${lead.lastContactDate ? Math.floor((new Date().getTime() - new Date(lead.lastContactDate).getTime()) / 86400000) : "several"}+ days. Provide new value, not a check-in.`,
+        followup: `Overdue follow-up was due ${lead.nextFollowUp}. Deliver something of value.`,
+        stale: `First outreach to a new lead. Make it sharp and relevant.`,
+        renewal: `Contract ending soon (${lead.contractEnd}). Start renewal conversation with retention angle.`,
+      };
+      const actionContext = contextOverride || contextMap[actionType] || "Follow up on this deal.";
+      const { data, error } = await supabase.functions.invoke("draft-followup", {
+        body: {
+          meeting: latestMeeting || { title: "Follow-up", date: new Date().toISOString().split("T")[0], intelligence: { summary: actionContext, nextSteps: [{ action: actionContext, owner: lead.assignedTo }] } },
+          leadFields: { name: lead.name, role: lead.role, company: lead.company, brand: lead.brand },
+          dealIntelligence: lead.dealIntelligence,
+        },
+      });
+      if (error) throw error;
+      setDraftedPriorityEmails(prev => ({ ...prev, [actionType]: data.email }));
+    } catch (err) {
+      toast.error("Failed to generate draft");
+    } finally {
+      setDraftingPriority(null);
+    }
+  };
+
   const momentum = lead.dealIntelligence?.momentumSignals?.momentum;
   const healthScore = lead.dealIntelligence?.winStrategy?.dealTemperature;
   const stakeholders = lead.dealIntelligence?.stakeholderMap || [];
