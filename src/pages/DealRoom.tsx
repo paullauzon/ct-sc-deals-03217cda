@@ -567,17 +567,37 @@ export default function DealRoom() {
             </h3>
             {openActions.length > 0 ? (
               <div className="space-y-1.5">
-                {openActions.map((a, i) => (
-                  <div key={i} className={cn("border border-border rounded-md p-2 text-xs",
-                    a.status === "Overdue" ? "border-red-300 dark:border-red-800" : ""
-                  )}>
-                    <p className="font-medium">{a.item}</p>
-                    <div className="flex items-center justify-between mt-0.5 text-muted-foreground">
-                      <span>{a.owner}</span>
-                      <span className={a.status === "Overdue" ? "text-red-600 dark:text-red-400" : ""}>{a.status} · {a.deadline || "No deadline"}</span>
+                {openActions.map((a, i) => {
+                  const origIdx = actionItems.indexOf(a);
+                  return (
+                    <div key={i} className={cn("border border-border rounded-md p-2 text-xs group",
+                      a.status === "Overdue" ? "border-red-300 dark:border-red-800" : ""
+                    )}>
+                      <div className="flex items-start gap-1.5">
+                        <button
+                          onClick={() => {
+                            const updates = markActionItemDone(lead, origIdx);
+                            if (Object.keys(updates).length) {
+                              save(updates);
+                              toast.success(`Done: "${a.item.slice(0, 30)}…"`);
+                            }
+                          }}
+                          className="w-4 h-4 rounded border border-muted-foreground/30 flex items-center justify-center shrink-0 mt-0.5 hover:border-primary hover:bg-primary/10 transition-colors"
+                          title="Mark done"
+                        >
+                          <Check className="h-2.5 w-2.5 opacity-0 group-hover:opacity-50" />
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium">{a.item}</p>
+                          <div className="flex items-center justify-between mt-0.5 text-muted-foreground">
+                            <span>{a.owner}</span>
+                            <span className={a.status === "Overdue" ? "text-red-600 dark:text-red-400" : ""}>{a.status} · {a.deadline || "No deadline"}</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">No open action items</p>
