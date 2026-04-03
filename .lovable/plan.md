@@ -1,43 +1,30 @@
 
 
-# Redesign Pipeline Card Actions: Clean, Clickable, Professional
+# Fix "Deal Not Found" + Redesign Action Summary on Pipeline Cards
 
-## What's Wrong Now
+## Problem 1: "Deal Not Found" on Click
 
-1. **Overdue actions section** uses random emoji (⚠), mismatched icon styles (AlertTriangle + Crown), tiny checkbox circles, and red text that clashes with the minimalist design system
-2. **Win/Lose "do next" line** at the bottom uses a Crown icon that has no semantic meaning — looks decorative, not actionable
-3. **No clear path to action** — clicking a checkbox on a 9px pipeline card is not how a sales rep works. They need one click to get to the Deal Room Actions tab where AI drafting is available
-4. **Follow-up date** sits below everything as an orphaned line
+The "3 actions overdue" link uses `window.location.href = /deal/${lead.id}?tab=actions` which causes a full page reload. On reload, DealRoom renders immediately while leads are still being fetched from the database — so `leads.find()` returns `undefined` and shows "Deal not found."
 
-## What Gets Built
+Two fixes needed:
+- **Pipeline.tsx**: Replace `window.location.href` with React Router's `navigate()` (imported from `useNavigate`) so navigation happens client-side without losing state
+- **DealRoom.tsx**: Add a loading guard — when `loading` is true and `lead` is not found, show a spinner instead of "Deal not found." Only show "Deal not found" when loading is complete and the lead genuinely doesn't exist
 
-### Pipeline Card — Simplified Action Summary
+## Problem 2: Redesign Action Summary Row
 
-Replace the current overdue collapsible + crown tooltip + follow-up line with a single clean block:
+Current: Red `text-destructive` text saying "3 actions overdue" with a raw date string. Looks alarming and cheap.
 
-**When overdue actions exist:**
-- One line: `3 actions overdue` in subdued red text (no emoji, no icons, no triangle)
-- Entire line is clickable → navigates to `/deal/:id` with Actions tab focused
-- On hover: subtle underline + arrow indicator
-
-**When no overdue but "do next" exists:**
-- One line: the `doNext` text from win/lose card, plain muted text
-- Clickable → navigates to Deal Room Actions tab
-
-**Follow-up date** moves inline as a small muted suffix: `· Follow-up Mar 24`
-
-Remove: Crown icon, AlertTriangle icon, ⚠ emoji, inline checkboxes on cards, CollapsibleContent with individual items. All of that lives in Deal Room.
-
-### Deal Room Actions Tab — Add "Draft" Buttons
-
-Each open action item row gets a "Draft" button that triggers the existing `draft-followup` edge function with the action item context pre-filled. This reuses the same AI drafting pattern from FollowUpsTab.
-
-Flow: Click "Draft" → calls edge function with meeting context + action item text → shows generated email in a textarea → "Copy" button.
+New design — clean, muted, professional:
+- Replace red text with `text-muted-foreground` — no alarm colors on pipeline cards
+- Format: `3 pending actions · Next follow-up Mar 24` (not "overdue" — reframe as "pending" to stay action-oriented rather than punitive)
+- Add a subtle right arrow (`→`) on hover to indicate clickability
+- Remove the word "overdue" entirely from the pipeline card — the Deal Room Actions tab handles urgency context
+- For "do next" fallback line: keep as-is but ensure consistent muted styling
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/Pipeline.tsx` | Replace overdue collapsible + crown tooltip + follow-up line with clean single-line clickable summary that links to Deal Room |
-| `src/pages/DealRoom.tsx` | Add "Draft" button to each open action item row, with inline AI email generation using existing `draft-followup` edge function |
+| `src/components/Pipeline.tsx` | Replace `window.location.href` with `navigate()` from React Router. Change action summary styling from `text-destructive` to `text-muted-foreground`, rename "overdue" to "pending actions", format date as `Mar 24` not `2026-03-24` |
+| `src/pages/DealRoom.tsx` | Import `loading` from `useLeads()`. When `!lead && loading`, show a loading spinner. Only show "Deal not found" when `!lead && !loading` |
 
