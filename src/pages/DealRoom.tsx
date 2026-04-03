@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { BrandLogo } from "@/components/BrandLogo";
+import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -122,6 +123,7 @@ export default function DealRoom() {
           </button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
+              <CompanyAvatar companyUrl={lead.companyUrl} email={lead.email} companyName={lead.company} size="md" />
               <h1 className="text-lg font-semibold truncate">{lead.name}</h1>
               <BrandLogo brand={lead.brand} size="md" />
               <Badge variant="outline" className="text-xs">{lead.stage}</Badge>

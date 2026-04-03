@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
 import { BrandLogo } from "@/components/BrandLogo";
+import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, markActionItemDone } from "@/lib/dealHealthUtils";
 
 const ALL_STAGES: LeadStage[] = [
@@ -337,7 +338,10 @@ export function Pipeline() {
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-foreground/10 text-foreground animate-pulse">NEW</span>
                             )}
                           </p>
-                          <p className="text-xs text-muted-foreground">{lead.company || "—"} · {lead.role}</p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <CompanyAvatar companyUrl={lead.companyUrl} email={lead.email} companyName={lead.company} size="xs" />
+                            {lead.company || "—"} · {lead.role}
+                          </p>
                         </div>
                         <QuickNote lead={lead} onSave={handleQuickNote} onFollowUp={handleFollowUp} />
                         <OwnerBadge owner={lead.assignedTo} />
