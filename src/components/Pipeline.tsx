@@ -374,14 +374,9 @@ export function Pipeline() {
                           <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.priority === "High" ? "bg-foreground/10 font-medium" : ""}`}>{lead.priority}</span>
                         </div>
                       </div>
-                      {/* Row 4a: Days in stage + LinkedIn + Outcome */}
+                      {/* Row 4a: Days in stage + Outcome */}
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <span className={`tabular-nums ${days > 14 ? "text-foreground font-medium" : ""}`}>{days}d in stage</span>
-                        {lead.linkedinUrl && (
-                          <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn"}>
-                            <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] hover:opacity-80 transition-colors" />
-                          </a>
-                        )}
                         {lead.meetingOutcome && <span className="ml-auto">{lead.meetingOutcome}</span>}
                       </div>
                       {/* Row 4b: Meeting details (Calendly + Fireflies) */}
