@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
-import { Lead, LeadStage } from "@/types/lead";
+import { Lead, LeadStage, MeetingPrepBrief } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { MeetingsSection } from "@/components/MeetingsSection";
 import { PrepBriefDialog } from "@/components/MeetingsSection";
