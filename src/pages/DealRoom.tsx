@@ -689,19 +689,44 @@ export default function DealRoom() {
                     <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5">
                       <BarChart3 className="h-3.5 w-3.5" /> Playbook Tasks ({playbookTasks.length})
                     </h3>
-                    <div className="space-y-1.5">
-                      {playbookTasks.map((task) => (
-                        <div key={task.id} className="rounded-lg border border-border p-3 flex items-start gap-3">
-                          <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium">{task.title}</p>
-                            <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-                              <span>{task.playbook}</span>
-                              <span>Due: {task.due_date}</span>
+                    <div className="space-y-2">
+                      {playbookTasks.map((task) => {
+                        const pbKey = `playbook-${task.id}`;
+                        const isDrafting = draftingPriority === pbKey;
+                        const draftedEmail = draftedPriorityEmails[pbKey];
+                        const isEmail = task.task_type === "email";
+                        return (
+                          <div key={task.id} className="space-y-2">
+                            <div className="rounded-lg border border-border p-3 flex items-start gap-3">
+                              <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0 mt-0.5" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium">{task.title}</p>
+                                <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                                  <span>{task.playbook}</span>
+                                  <span>Due: {task.due_date}</span>
+                                </div>
+                                {task.description && <p className="text-xs text-muted-foreground mt-1">{task.description}</p>}
+                              </div>
+                              {isEmail && (
+                                <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={() => handleDraftPriorityAction(pbKey, `${task.title}. ${task.description || ""} The lead is in stage "${lead.stage}". Draft this email.`)} disabled={isDrafting}>
+                                  {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Draft"}
+                                </Button>
+                              )}
                             </div>
+                            {draftedEmail && (
+                              <div className="ml-8 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
+                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
+                                    <Copy className="h-3 w-3" /> Copy
+                                  </Button>
+                                </div>
+                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
