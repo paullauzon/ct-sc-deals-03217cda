@@ -80,6 +80,42 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_drafts: {
+        Row: {
+          action_key: string
+          content: string
+          context_label: string
+          created_at: string
+          draft_type: string
+          id: string
+          lead_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          action_key?: string
+          content?: string
+          context_label?: string
+          created_at?: string
+          draft_type?: string
+          id?: string
+          lead_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          action_key?: string
+          content?: string
+          context_label?: string
+          created_at?: string
+          draft_type?: string
+          id?: string
+          lead_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_emails: {
         Row: {
           body_preview: string | null
