@@ -574,9 +574,6 @@ export function Pipeline() {
                       {closed && lead.closeReason && (
                         <p className="text-xs text-muted-foreground">Reason: {lead.closeReason}</p>
                       )}
-                      {lead.nextFollowUp && !getDroppedPromises(lead).length && (
-                        <p className="text-xs text-muted-foreground">Follow-up: {lead.nextFollowUp}</p>
-                      )}
                     </div>
                   );
                 })}
