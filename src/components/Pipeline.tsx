@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 
-import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3, Check, Linkedin, CalendarCheck, Heart, ShieldAlert } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, AlertTriangle, Zap, Target, Timer, BarChart3, Check, Linkedin, CalendarCheck, Heart, ShieldAlert, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
@@ -455,25 +455,25 @@ export function Pipeline() {
                             {dropped.length > 0 && !closed && (
                               <div
                                 onClick={(e) => { e.stopPropagation(); pipelineNavigate(`/deal/${lead.id}?tab=actions`); }}
-                                className="group/action flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                                className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-secondary/50 hover:bg-secondary text-[10px] font-medium text-muted-foreground hover:text-foreground cursor-pointer transition-all"
                               >
-                                <span className="font-medium">{dropped.length} pending action{dropped.length > 1 ? "s" : ""}</span>
+                                <span>{dropped.length} pending action{dropped.length > 1 ? "s" : ""}</span>
                                 {lead.nextFollowUp && (() => {
                                   try {
                                     const d = new Date(lead.nextFollowUp);
-                                    return <span>· Follow-up {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>;
+                                    return <span className="text-muted-foreground/70">· Follow-up {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>;
                                   } catch { return null; }
                                 })()}
-                                <span className="opacity-0 group-hover/action:opacity-100 transition-opacity">→</span>
+                                <ChevronRight className="h-3 w-3 shrink-0" />
                               </div>
                             )}
                             {!dropped.length && winLose && winLose.doNext !== "—" && !closed && (
                               <div
                                 onClick={(e) => { e.stopPropagation(); pipelineNavigate(`/deal/${lead.id}?tab=actions`); }}
-                                className="group/action text-[10px] text-muted-foreground hover:text-foreground cursor-pointer truncate flex items-center gap-1 transition-colors"
+                                className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-secondary/50 hover:bg-secondary text-[10px] font-medium text-muted-foreground hover:text-foreground cursor-pointer transition-all truncate"
                               >
                                 <span className="truncate">{winLose.doNext}</span>
-                                <span className="opacity-0 group-hover/action:opacity-100 transition-opacity shrink-0">→</span>
+                                <ChevronRight className="h-3 w-3 shrink-0" />
                               </div>
                             )}
                           </div>
