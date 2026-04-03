@@ -455,25 +455,25 @@ export function Pipeline() {
                             {dropped.length > 0 && !closed && (
                               <div
                                 onClick={(e) => { e.stopPropagation(); pipelineNavigate(`/deal/${lead.id}?tab=actions`); }}
-                                className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-secondary/50 hover:bg-secondary text-[10px] font-medium text-muted-foreground hover:text-foreground cursor-pointer transition-all"
+                                className="mt-1 flex w-full items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-secondary hover:bg-secondary/80 text-[11px] font-semibold text-foreground/80 hover:text-foreground cursor-pointer transition-all"
                               >
                                 <span>{dropped.length} pending action{dropped.length > 1 ? "s" : ""}</span>
                                 {lead.nextFollowUp && (() => {
                                   try {
                                     const d = new Date(lead.nextFollowUp);
-                                    return <span className="text-muted-foreground/70">· Follow-up {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>;
+                                    return <span className="ml-auto text-muted-foreground font-normal">Follow-up {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>;
                                   } catch { return null; }
                                 })()}
-                                <ChevronRight className="h-3 w-3 shrink-0" />
+                                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                               </div>
                             )}
                             {!dropped.length && winLose && winLose.doNext !== "—" && !closed && (
                               <div
                                 onClick={(e) => { e.stopPropagation(); pipelineNavigate(`/deal/${lead.id}?tab=actions`); }}
-                                className="mt-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-secondary/50 hover:bg-secondary text-[10px] font-medium text-muted-foreground hover:text-foreground cursor-pointer transition-all truncate"
+                                className="mt-1 flex w-full items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-secondary hover:bg-secondary/80 text-[11px] font-semibold text-foreground/80 hover:text-foreground cursor-pointer transition-all"
                               >
                                 <span className="truncate">{winLose.doNext}</span>
-                                <ChevronRight className="h-3 w-3 shrink-0" />
+                                <ChevronRight className="h-3.5 w-3.5 shrink-0 ml-auto text-muted-foreground" />
                               </div>
                             )}
                           </div>
