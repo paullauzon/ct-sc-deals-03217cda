@@ -1222,7 +1222,7 @@ export function LeadsTable() {
                     {lead.isDuplicate && <span className="text-[10px] px-1 py-0.5 bg-secondary rounded ml-1">DUP</span>}
                   </div>
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">{lead.company || "—"}</td>
+                <td className="px-4 py-3 text-muted-foreground"><span className="flex items-center gap-1.5"><CompanyAvatar companyUrl={lead.companyUrl} email={lead.email} companyName={lead.company} size="xs" />{lead.company || "—"}</span></td>
                 <td className="px-4 py-3 text-muted-foreground">{lead.role}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col gap-0.5">
