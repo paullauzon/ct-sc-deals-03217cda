@@ -274,6 +274,7 @@ export default function DealRoom() {
             <div className="border-b border-border px-4">
               <TabsList className="bg-transparent h-10">
                 {isClosed && <TabsTrigger value="debrief" className="text-xs">Debrief</TabsTrigger>}
+                {!isClosed && <TabsTrigger value="actions" className="text-xs">Actions {openActions.length > 0 ? `(${openActions.length})` : ""}</TabsTrigger>}
                 <TabsTrigger value="timeline" className="text-xs">Timeline</TabsTrigger>
                 <TabsTrigger value="meetings" className="text-xs">Meetings ({lead.meetings?.length || 0})</TabsTrigger>
                 <TabsTrigger value="intelligence" className="text-xs">Intelligence</TabsTrigger>
