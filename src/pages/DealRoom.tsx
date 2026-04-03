@@ -5,6 +5,7 @@ import { useProcessing } from "@/contexts/ProcessingContext";
 import { Lead, LeadStage } from "@/types/lead";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { MeetingsSection } from "@/components/MeetingsSection";
+import { PrepBriefDialog } from "@/components/MeetingsSection";
 import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
