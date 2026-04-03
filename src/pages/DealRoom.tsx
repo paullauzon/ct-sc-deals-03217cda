@@ -9,7 +9,7 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
-import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle, Zap, Check, Loader2, Copy } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle, Zap, Check, Loader2, Copy, Mail, AlertCircle, UserCheck, FileText, BarChart3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals, getNextBestAction, markActionItemDone } from "@/lib/dealHealthUtils";
+import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals, getNextBestAction, getUnifiedActionCount, markActionItemDone } from "@/lib/dealHealthUtils";
+import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
+import { useLeadTasks } from "@/hooks/useLeadTasks";
 
 const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 
