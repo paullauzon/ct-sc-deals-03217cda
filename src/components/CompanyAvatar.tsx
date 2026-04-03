@@ -40,7 +40,7 @@ export function CompanyAvatar({ companyUrl, email, companyName, size = "sm", cla
     <img
       src={logoUrl}
       alt={companyName || ""}
-      className={cn("rounded-sm shrink-0 ring-1 ring-border object-contain", SIZES[size], className)}
+      className={cn("rounded-sm shrink-0 object-contain", SIZES[size], className)}
       onError={() => setImgError(true)}
       loading="lazy"
     />
