@@ -89,6 +89,8 @@ export default function DealRoom() {
   const isClosed = lead.stage === "Closed Won" || lead.stage === "Closed Lost";
   const similarWon = isClosed ? [] : findSimilarWonDeals(lead, leads);
   const droppedPromises = getDroppedPromises(lead);
+  const nextBestAction = isClosed ? null : getNextBestAction(lead);
+  const completedActions = actionItems.filter(a => a.status === "Completed");
 
   // Prev/Next navigation
   const currentIdx = leads.findIndex(l => l.id === id);
