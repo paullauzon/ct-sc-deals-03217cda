@@ -1,33 +1,15 @@
 
 
-# De-Cramp Row 4: Separate Days, LinkedIn, and Meeting Info
+# Move LinkedIn Icon Next to Lead Name
 
-## The Problem
+## Change
 
-Row 4 packs "22d in stage", LinkedIn icon, Calendly meeting details (name + duration + date), brand logo, Fireflies icon, meeting count, and meeting outcome all into a single `flex justify-between` row with `gap-1.5`. Everything collides visually.
+Move the LinkedIn icon from Row 4a (where it's cramped between "days in stage" and meeting outcome) to Row 1, right after the lead's name. This declutters Row 4a and places LinkedIn where it's most useful — next to the person's identity.
 
-## Solution: Split Into Two Rows
+## Implementation
 
-Break Row 4 into two distinct rows with clear separation:
+**`src/components/Pipeline.tsx`**:
 
-**Row 4a — Stage & Status** (left-aligned, spaced):
-- `22d in stage` with generous right margin
-- LinkedIn icon (if present) with proper spacing
-- Meeting outcome badge (e.g., "Held") — right-aligned
-
-**Row 4b — Meeting Details** (only if Calendly booking exists):
-- Full-width dedicated row for Calendly info: icon + event name + duration + date
-- Brand logo + Fireflies meeting count on the right
-- This gets its own line so nothing competes for horizontal space
-
-### Spacing fixes:
-- Row 4a: increase gap from `gap-1.5` to `gap-3` between days/LinkedIn/outcome
-- Row 4b: slight indent or muted styling to show it's supplementary detail
-- Both rows use consistent `text-xs text-muted-foreground`
-
-## Files Changed
-
-| File | Changes |
-|------|---------|
-| `src/components/Pipeline.tsx` | Split Row 4 into two rows — one for stage/LinkedIn/outcome, one for meeting details. Increase spacing between inline elements. |
+1. **Row 1 (name line, ~line 334)**: Add the LinkedIn icon after the name (and after the NEW badge if present), inline in the same flex row
+2. **Row 4a (~lines 372-381)**: Remove the LinkedIn link block entirely, leaving just "days in stage" and meeting outcome — much cleaner
 
