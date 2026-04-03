@@ -1,48 +1,52 @@
 
 
-# Make Objections Hyper-Actionable
+# Make Every Action Executable with AI Drafting
 
 ## Problem
 
-Objection cards currently show just the objection text plus a status badge ("Open" / "Recurring"). No context on where it was raised, no guidance on how to handle it, and no way to act. The salesperson sees "Nature of leads (cold vs. warm)" and thinks "...so what do I do about it?"
+Three sections in the Actions tab are passive — no buttons, no way to act:
+
+1. **Playbook Tasks** — Shows "Send agenda & talking points" with a due date but no Draft button
+2. **Waiting on Them** — Shows what the prospect owes but no "Nudge" button to draft a gentle follow-up
+3. **Strategic Actions** — Shows "Identify a champion" or "Multi-thread" but no way to draft an outreach
+
+Additionally, the **Next Best Action** card (shown when no priority actions exist) has no Draft button either.
 
 ## Solution
 
-Enrich each objection card with three layers of context:
+Add contextual Draft buttons to every section, using the same `handleDraftPriorityAction` pattern already proven in Priority Actions and Objections.
 
-1. **Where it came from**: Show `raisedIn` (the meeting where it was raised) so the rep knows the context
-2. **How similar deals handled it**: Use the existing `getObjectionPlaybook()` function which cross-references won deals that addressed similar objections and returns the resolution approach + deal name
-3. **Draft response button**: Add a "Draft Response" button that calls `draft-followup` with objection-specific context so the rep can generate a targeted email addressing the specific concern
+### 1. Playbook Tasks — Add "Draft" button
 
-### Card layout per objection:
+Each playbook task that has `task_type: "email"` gets a Draft button. The context sent to AI includes the task title, description, and stage.
 
-```text
-┌──────────────────────────────────────────────────┐
-│ "Nature of leads (cold vs. warm)"      Recurring │
-│ Raised in: Introductory Call                     │
-│                                                  │
-│ Won deal approach: [Company X] addressed this    │
-│ by showing warm lead conversion metrics          │
-│                                        [Draft]   │
-└──────────────────────────────────────────────────┘
-```
+### 2. Waiting on Them — Add "Nudge" button
 
-## Implementation
+Each prospect-owed item gets a "Draft Nudge" button. The AI context explains: "The prospect committed to [item] and hasn't delivered. Draft a gentle nudge that adds value rather than just asking."
 
-**`src/pages/DealRoom.tsx`** — Objections section (~lines 705-723):
+### 3. Strategic Actions — Add "Draft" button
 
-1. Import `getObjectionPlaybook` from `dealHealthUtils`
-2. Compute playbook matches and create a lookup map keyed by objection text
-3. For each objection card, add:
-   - `raisedIn` line (e.g., "Raised in: Introductory Call") when available
-   - If a playbook match exists: show "Similar deal handled this: [resolution]" with the won deal name
-   - A "Draft Response" button that calls `handleDraftPriorityAction` with type `objection-{index}` and context including the specific objection text
-4. Add `objection-*` handling to `handleDraftPriorityAction` context map
-5. Track drafted objection emails in `draftedPriorityEmails` using `objection-{index}` keys
+Strategic actions like "Identify a champion" or "Multi-thread the deal" get a Draft button. The AI context explains the strategic goal and asks for an email that advances it (e.g., reaching out to another stakeholder).
+
+### 4. Next Best Action — Add "Draft" button
+
+The standalone NBA card gets a Draft button using `handleDraftPriorityAction` with `type: "nba"` and the action text as context.
+
+### State management
+
+All new drafts use the existing `draftingPriority` / `draftedPriorityEmails` state with unique keys:
+- Playbook: `playbook-{task.id}`
+- Waiting: `waiting-{index}`
+- Strategic: `strategic-{index}`
+- NBA: `nba`
+
+### Draft display
+
+Same inline pattern as Priority Actions — AI Draft card appears below the action with Copy button.
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/pages/DealRoom.tsx` | Import `getObjectionPlaybook`. Enrich objection cards with raisedIn, playbook match, and Draft Response button with inline email display. |
+| `src/pages/DealRoom.tsx` | Add Draft buttons to Playbook Tasks (email types), Waiting on Them (Nudge), Strategic Actions, and Next Best Action. All use `handleDraftPriorityAction` with rich contextual prompts. Show inline drafted emails with Copy button using existing state pattern. |
 
