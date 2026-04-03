@@ -379,7 +379,7 @@ export function Pipeline() {
                           })()}
                           {lead.linkedinUrl && (
                             <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title={lead.linkedinTitle || "LinkedIn"}>
-                              <Linkedin className="h-3.5 w-3.5 text-[#0A66C2] hover:opacity-70 transition-opacity" />
+                              <Linkedin className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
                             </a>
                           )}
                           {lead.calendlyBookedAt && lead.meetingDate && (
