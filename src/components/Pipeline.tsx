@@ -431,7 +431,21 @@ export function Pipeline() {
 
                         // Unified action count
                         const leadPlaybookTasks = allPlaybookTasks.filter(t => t.lead_id === lead.id);
-                        const unified = getUnifiedActionCount(lead, leadPlaybookTasks.length);
+                        // Detect meeting prep needed: future meeting date + no prep meetings
+                        let hasMeetingPrep = false;
+                        if (lead.meetingDate) {
+                          try {
+                            const md = new Date(lead.meetingDate);
+                            if (md > new Date()) {
+                              const hasPrepMeeting = lead.meetings?.some((m: any) => m.intelligence?.prepBrief);
+                              if (!hasPrepMeeting) hasMeetingPrep = true;
+                            }
+                          } catch {}
+                        }
+                        const unified = getUnifiedActionCount(lead, leadPlaybookTasks.length, {
+                          hasUnansweredEmail: unansweredIds.has(lead.id),
+                          hasMeetingPrep,
+                        });
                         const winLose = !closed ? getWinLoseCard(lead) : null;
 
                         // Single action text: use playbook task title if that's the sole source
