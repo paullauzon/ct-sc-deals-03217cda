@@ -216,30 +216,88 @@ export default function DealRoom() {
     }
   };
 
-  const handleDraftPriorityAction = async (actionType: string, contextOverride?: string) => {
-    setDraftingPriority(actionType);
+  const handleDraftPriorityAction = async (actionKey: string, contextOverride?: string) => {
+    setDraftingPriority(actionKey);
     try {
       const latestMeeting = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())?.[0];
+
+      // Derive the AI actionType from the action key
+      let aiActionType = "default";
+      let actionSpecificContext = "";
+
+      if (actionKey.startsWith("objection")) {
+        aiActionType = "objection";
+        actionSpecificContext = contextOverride || "Address this objection directly with evidence.";
+      } else if (actionKey.startsWith("waiting")) {
+        aiActionType = "nudge";
+        actionSpecificContext = contextOverride || "They owe us something. Nudge with new value.";
+      } else if (actionKey.startsWith("strategic")) {
+        aiActionType = "strategic";
+        actionSpecificContext = contextOverride || "Expand the deal footprint.";
+      } else if (actionKey.startsWith("playbook")) {
+        // Derive from task title keywords
+        const titleLower = (contextOverride || "").toLowerCase();
+        if (titleLower.includes("agenda") || titleLower.includes("talking points")) aiActionType = "agenda";
+        else if (titleLower.includes("recap") || titleLower.includes("post-meeting") || titleLower.includes("follow-up with recap")) aiActionType = "post-meeting";
+        else if (titleLower.includes("check-in") || titleLower.includes("no response")) aiActionType = "nudge";
+        else if (titleLower.includes("re-engage") || titleLower.includes("breakup")) aiActionType = "re-engagement";
+        else if (titleLower.includes("value-add")) aiActionType = "nudge";
+        else if (titleLower.includes("question") || titleLower.includes("proposal")) aiActionType = "proposal-followup";
+        else if (titleLower.includes("scarcity") || titleLower.includes("final attempt")) aiActionType = "re-engagement";
+        else aiActionType = "default";
+        actionSpecificContext = contextOverride || "";
+      } else if (actionKey === "nba") {
+        const nbaText = (contextOverride || "").toLowerCase();
+        if (nbaText.includes("re-engage") || nbaText.includes("dark")) aiActionType = "re-engagement";
+        else if (nbaText.includes("proposal")) aiActionType = "proposal-followup";
+        else if (nbaText.includes("nudge") || nbaText.includes("waiting")) aiActionType = "nudge";
+        else if (nbaText.includes("outreach") || nbaText.includes("first contact")) aiActionType = "outreach";
+        else aiActionType = "default";
+        actionSpecificContext = contextOverride || "";
+      } else {
+        // Map from priority action types
+        const typeMap: Record<string, string> = {
+          email: "post-meeting",
+          dark: "re-engagement",
+          followup: "post-meeting",
+          stale: "outreach",
+          renewal: "nudge",
+        };
+        aiActionType = typeMap[actionKey] || "default";
+      }
+
       const contextMap: Record<string, string> = {
         email: `Reply to their unanswered email. Be direct and reference the conversation.`,
-        dark: `Re-engage a prospect who has gone dark for ${lead.lastContactDate ? Math.floor((new Date().getTime() - new Date(lead.lastContactDate).getTime()) / 86400000) : "several"}+ days. Provide new value, not a check-in.`,
+        dark: `Re-engage a prospect who has gone dark for ${lead.lastContactDate ? Math.floor((new Date().getTime() - new Date(lead.lastContactDate).getTime()) / 86400000) : "several"}+ days.`,
         followup: `Overdue follow-up was due ${lead.nextFollowUp}. Deliver something of value.`,
-        stale: `First outreach to a new lead. Make it sharp and relevant.`,
-        renewal: `Contract ending soon (${lead.contractEnd}). Start renewal conversation with retention angle.`,
+        stale: `First outreach to a new lead. Make it sharp and relevant to ${lead.company} in ${lead.geography || "their market"}.${lead.targetCriteria ? ` Criteria: ${lead.targetCriteria}.` : ""}${lead.targetRevenue ? ` Revenue target: ${lead.targetRevenue}.` : ""}`,
+        renewal: `Contract ending ${lead.contractEnd}. Start renewal conversation.${lead.subscriptionValue ? ` Current value: $${lead.subscriptionValue.toLocaleString()}.` : ""}`,
       };
-      const actionContext = contextOverride || contextMap[actionType] || "Follow up on this deal.";
+      const actionContext = contextOverride || contextMap[actionKey] || "Follow up on this deal.";
+
+      // Build richer meeting context with action-specific details
+      const meetingPayload = latestMeeting
+        ? { ...latestMeeting, actionSpecificContext: actionSpecificContext || actionContext }
+        : { title: "Follow-up", date: new Date().toISOString().split("T")[0], intelligence: { summary: actionContext, nextSteps: [{ action: actionContext, owner: lead.assignedTo }] }, actionSpecificContext: actionSpecificContext || actionContext };
+
       const { data, error } = await supabase.functions.invoke("draft-followup", {
         body: {
-          meeting: latestMeeting || { title: "Follow-up", date: new Date().toISOString().split("T")[0], intelligence: { summary: actionContext, nextSteps: [{ action: actionContext, owner: lead.assignedTo }] } },
-          leadFields: { name: lead.name, role: lead.role, company: lead.company, brand: lead.brand },
+          meeting: meetingPayload,
+          leadFields: {
+            name: lead.name, role: lead.role, company: lead.company, brand: lead.brand,
+            serviceInterest: lead.serviceInterest, targetCriteria: lead.targetCriteria,
+            targetRevenue: lead.targetRevenue, geography: lead.geography,
+            stage: lead.stage, assignedTo: lead.assignedTo,
+          },
           dealIntelligence: lead.dealIntelligence,
+          actionType: aiActionType,
         },
       });
       if (error) throw error;
-      setDraftedPriorityEmails(prev => ({ ...prev, [actionType]: data.email }));
+      setDraftedPriorityEmails(prev => ({ ...prev, [actionKey]: data.email }));
       // Persist to DB
-      const draftType = actionType.startsWith("objection") ? "objection" : actionType.startsWith("waiting") ? "nudge" : actionType.startsWith("strategic") ? "strategic" : actionType.startsWith("playbook") ? "playbook" : actionType;
-      saveDraftToDb(actionType, data.email, draftType, actionContext.slice(0, 100));
+      const draftType = actionKey.startsWith("objection") ? "objection" : actionKey.startsWith("waiting") ? "nudge" : actionKey.startsWith("strategic") ? "strategic" : actionKey.startsWith("playbook") ? "playbook" : actionKey;
+      saveDraftToDb(actionKey, data.email, draftType, actionContext.slice(0, 100));
     } catch (err) {
       toast.error("Failed to generate draft");
     } finally {
