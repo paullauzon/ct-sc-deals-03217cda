@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
@@ -10,7 +10,7 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
-import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle, Zap, Check, Loader2, Copy, Mail, AlertCircle, UserCheck, FileText, BarChart3 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle, Zap, Check, Loader2, Copy, Mail, AlertCircle, UserCheck, FileText, BarChart3, RefreshCw, Trash2, Save } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,51 @@ import { toast } from "sonner";
 import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals, getNextBestAction, getUnifiedActionCount, markActionItemDone, getObjectionPlaybook } from "@/lib/dealHealthUtils";
 import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
 import { useLeadTasks } from "@/hooks/useLeadTasks";
+
+// Reusable editable draft card with Save/Regenerate/Discard
+function DraftCard({ content, onSave, onRegenerate, onDiscard, isRegenerating }: {
+  content: string;
+  onSave: (text: string) => void;
+  onRegenerate: () => void;
+  onDiscard: () => void;
+  isRegenerating?: boolean;
+}) {
+  const [editText, setEditText] = useState(content);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => { setEditText(content); setDirty(false); }, [content]);
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(editText); toast.success("Copied to clipboard"); }}>
+            <Copy className="h-3 w-3" /> Copy
+          </Button>
+        </div>
+      </div>
+      <Textarea
+        value={editText}
+        onChange={e => { setEditText(e.target.value); setDirty(true); }}
+        className="text-xs font-sans leading-relaxed min-h-[120px] bg-background/50"
+      />
+      <div className="flex items-center gap-2 justify-end">
+        {dirty && (
+          <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => { onSave(editText); setDirty(false); toast.success("Draft saved"); }}>
+            <Save className="h-3 w-3" /> Save
+          </Button>
+        )}
+        <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={onRegenerate} disabled={isRegenerating}>
+          {isRegenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Regenerate
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-destructive hover:text-destructive" onClick={onDiscard}>
+          <Trash2 className="h-3 w-3" /> Discard
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 
