@@ -20,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals, getNextBestAction, getUnifiedActionCount, markActionItemDone } from "@/lib/dealHealthUtils";
+import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals, getNextBestAction, getUnifiedActionCount, markActionItemDone, getObjectionPlaybook } from "@/lib/dealHealthUtils";
 import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
 import { useLeadTasks } from "@/hooks/useLeadTasks";
 
