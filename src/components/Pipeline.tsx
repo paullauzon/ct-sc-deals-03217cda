@@ -515,7 +515,7 @@ export function Pipeline() {
                               </div>
                             )}
                             {/* Unified action bar */}
-                            {unified.total > 0 && !closed && (
+                            {unified.total > 0 && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <div
