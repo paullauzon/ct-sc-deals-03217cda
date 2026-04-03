@@ -1,15 +1,32 @@
 
 
-# Move LinkedIn Icon Next to Lead Name
+# Split Meeting Line + Label Closing Insight
 
-## Change
+## Changes
 
-Move the LinkedIn icon from Row 4a (where it's cramped between "days in stage" and meeting outcome) to Row 1, right after the lead's name. This declutters Row 4a and places LinkedIn where it's most useful — next to the person's identity.
+### 1. Meeting details on two lines (`src/components/Pipeline.tsx`, ~lines 386-393)
 
-## Implementation
+Currently one cramped line: `📅 Introductory Call 25 min · Mar 4, 10:00 PM`
 
-**`src/components/Pipeline.tsx`**:
+Split into:
+- **Line 1**: CalendarCheck icon + event name (e.g., `Introductory Call`)
+- **Line 2**: Duration + date/time, slightly indented (no icon), same `text-[10px] text-muted-foreground` styling
 
-1. **Row 1 (name line, ~line 334)**: Add the LinkedIn icon after the name (and after the NEW badge if present), inline in the same flex row
-2. **Row 4a (~lines 372-381)**: Remove the LinkedIn link block entirely, leaving just "days in stage" and meeting outcome — much cleaner
+### 2. Label the closing insight with its source (`src/components/Pipeline.tsx`, ~lines 41-60 + 404-412)
+
+Currently just: `"Lack of ownership and equity in previous ventures"` — a salesperson has no idea what this is.
+
+**Update `getClosingInsight`** to return a `{ label: string, text: string }` where label is the insight type:
+- Objections → `"Objection"`
+- Pain points → `"Pain point"`
+- Timeline → `"Timeline"`
+- Sentiment → `"Signal"`
+
+**Update the render** to show: `Objection: "Lack of ownership..."` — label in normal weight, quote in italic. This makes it instantly actionable.
+
+## Files Changed
+
+| File | Changes |
+|------|---------|
+| `src/components/Pipeline.tsx` | Split Calendly meeting line into two rows. Add label field to `getClosingInsight` return type and display it as a prefix before the quoted text. |
 
