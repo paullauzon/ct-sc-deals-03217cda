@@ -151,6 +151,7 @@ export function Pipeline() {
   const { leadJobs } = useProcessing();
   const allLeadIds = leads.map(l => l.id);
   const { tasks: allPlaybookTasks } = useLeadTasks(allLeadIds.length > 0 ? allLeadIds : undefined);
+  const { unansweredIds } = useUnansweredEmails(allLeadIds);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
