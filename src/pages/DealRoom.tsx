@@ -270,7 +270,7 @@ export default function DealRoom() {
 
         {/* Center: Tabbed Workspace */}
         <div className="flex-1 min-w-0 overflow-y-auto">
-          <Tabs defaultValue={isClosed ? "debrief" : "timeline"} className="h-full">
+          <Tabs defaultValue={isClosed ? "debrief" : openActions.length > 0 ? "actions" : "timeline"} className="h-full">
             <div className="border-b border-border px-4">
               <TabsList className="bg-transparent h-10">
                 {isClosed && <TabsTrigger value="debrief" className="text-xs">Debrief</TabsTrigger>}
