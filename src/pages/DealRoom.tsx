@@ -20,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals, getNextBestAction, getUnifiedActionCount, markActionItemDone } from "@/lib/dealHealthUtils";
+import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals, getNextBestAction, getUnifiedActionCount, markActionItemDone, getObjectionPlaybook } from "@/lib/dealHealthUtils";
 import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
 import { useLeadTasks } from "@/hooks/useLeadTasks";
 
@@ -703,24 +703,62 @@ export default function DealRoom() {
                 )}
 
                 {/* Objections to Address */}
-                {openObjections.length > 0 && (
+                {openObjections.length > 0 && (() => {
+                  const playbookEntries = getObjectionPlaybook(lead, leads);
+                  const playbookMap = new Map(playbookEntries.map(p => [p.objection, p]));
+                  return (
                   <div>
                     <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5">
                       <Shield className="h-3.5 w-3.5" /> Objections to Address ({openObjections.length})
                     </h3>
-                    <div className="space-y-1.5">
-                      {openObjections.map((o: any, i: number) => (
-                        <div key={i} className="rounded-lg border border-border p-3">
-                          <p className="text-sm font-medium">{o.objection}</p>
-                          <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-                            <Badge variant="outline" className="text-[9px]">{o.status}</Badge>
-                            {o.raisedBy && <span>Raised by: {o.raisedBy}</span>}
+                    <div className="space-y-2">
+                      {openObjections.map((o: any, i: number) => {
+                        const match = playbookMap.get(o.objection);
+                        const objKey = `objection-${i}`;
+                        const isDrafting = draftingPriority === objKey;
+                        const draftedEmail = draftedPriorityEmails[objKey];
+                        return (
+                          <div key={i} className="space-y-2">
+                            <div className="rounded-lg border border-border p-3 space-y-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-medium">"{o.objection}"</p>
+                                <Badge variant="outline" className="text-[9px] shrink-0">{o.status}</Badge>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                                {o.raisedIn && <span>Raised in: <span className="text-foreground/70">{o.raisedIn}</span></span>}
+                                {o.raisedBy && <span>By: <span className="text-foreground/70">{o.raisedBy}</span></span>}
+                              </div>
+                              {match && (
+                                <div className="rounded-md bg-emerald-500/5 border border-emerald-500/15 p-2 text-xs">
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">Won deal approach</span>
+                                  <span className="text-muted-foreground"> ({match.wonDealName}): </span>
+                                  <span className="text-foreground/80">{match.wonDealApproach}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-end">
+                                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleDraftPriorityAction(objKey, `Address this specific objection from the prospect: "${o.objection}". ${match ? `A similar won deal (${match.wonDealName}) handled this by: ${match.wonDealApproach}. Use a similar approach.` : "Provide a compelling, data-backed response."} Be specific and address their concern directly.`)} disabled={isDrafting}>
+                                  {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Draft Response"}
+                                </Button>
+                              </div>
+                            </div>
+                            {draftedEmail && (
+                              <div className="ml-4 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
+                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
+                                    <Copy className="h-3 w-3" /> Copy
+                                  </Button>
+                                </div>
+                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* Strategic Actions */}
                 {strategicActions.length > 0 && (
