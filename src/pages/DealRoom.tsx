@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
@@ -10,7 +10,7 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
-import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle, Zap, Check, Loader2, Copy, Mail, AlertCircle, UserCheck, FileText, BarChart3 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle, Zap, Check, Loader2, Copy, Mail, AlertCircle, UserCheck, FileText, BarChart3, RefreshCw, Trash2, Save } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,51 @@ import { toast } from "sonner";
 import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, findSimilarWonDeals, getNextBestAction, getUnifiedActionCount, markActionItemDone, getObjectionPlaybook } from "@/lib/dealHealthUtils";
 import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
 import { useLeadTasks } from "@/hooks/useLeadTasks";
+
+// Reusable editable draft card with Save/Regenerate/Discard
+function DraftCard({ content, onSave, onRegenerate, onDiscard, isRegenerating }: {
+  content: string;
+  onSave: (text: string) => void;
+  onRegenerate: () => void;
+  onDiscard: () => void;
+  isRegenerating?: boolean;
+}) {
+  const [editText, setEditText] = useState(content);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => { setEditText(content); setDirty(false); }, [content]);
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(editText); toast.success("Copied to clipboard"); }}>
+            <Copy className="h-3 w-3" /> Copy
+          </Button>
+        </div>
+      </div>
+      <Textarea
+        value={editText}
+        onChange={e => { setEditText(e.target.value); setDirty(true); }}
+        className="text-xs font-sans leading-relaxed min-h-[120px] bg-background/50"
+      />
+      <div className="flex items-center gap-2 justify-end">
+        {dirty && (
+          <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => { onSave(editText); setDirty(false); toast.success("Draft saved"); }}>
+            <Save className="h-3 w-3" /> Save
+          </Button>
+        )}
+        <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={onRegenerate} disabled={isRegenerating}>
+          {isRegenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} Regenerate
+        </Button>
+        <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 text-destructive hover:text-destructive" onClick={onDiscard}>
+          <Trash2 className="h-3 w-3" /> Discard
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 
@@ -59,8 +104,7 @@ export default function DealRoom() {
   const { leads, loading, updateLead, addMeeting } = useLeads();
   const lead = leads.find(l => l.id === id);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
-  const [draftingIdx, setDraftingIdx] = useState<number | null>(null);
-  const [draftedEmails, setDraftedEmails] = useState<Record<number, string>>({});
+  
   
   // Priority action states
   const [showPrepDialog, setShowPrepDialog] = useState(false);
@@ -73,6 +117,44 @@ export default function DealRoom() {
   const leadIdArray = useMemo(() => id ? [id] : [], [id]);
   const { unansweredIds } = useUnansweredEmails(leadIdArray);
   const { tasks: playbookTasks } = useLeadTasks(leadIdArray);
+
+  // Load saved drafts from DB on mount
+  useEffect(() => {
+    if (!id) return;
+    (async () => {
+      const { data } = await supabase.from("lead_drafts").select("*").eq("lead_id", id).eq("status", "draft");
+      if (data && data.length > 0) {
+        const loaded: Record<string, string> = {};
+        (data as any[]).forEach(d => { loaded[d.action_key] = d.content; });
+        setDraftedPriorityEmails(loaded);
+      }
+    })();
+  }, [id]);
+
+  // Upsert draft to DB
+  const saveDraftToDb = useCallback(async (actionKey: string, content: string, draftType: string, contextLabel: string) => {
+    if (!id) return;
+    await supabase.from("lead_drafts").upsert({
+      lead_id: id,
+      action_key: actionKey,
+      content,
+      draft_type: draftType,
+      context_label: contextLabel,
+      status: "draft",
+      updated_at: new Date().toISOString(),
+    } as any, { onConflict: "lead_id,action_key" });
+  }, [id]);
+
+  const discardDraft = useCallback(async (actionKey: string) => {
+    if (!id) return;
+    setDraftedPriorityEmails(prev => {
+      const next = { ...prev };
+      delete next[actionKey];
+      return next;
+    });
+    await supabase.from("lead_drafts").update({ status: "discarded" } as any).eq("lead_id", id).eq("action_key", actionKey);
+    toast("Draft discarded");
+  }, [id]);
 
   useEffect(() => {
     if (id) {
@@ -155,6 +237,9 @@ export default function DealRoom() {
       });
       if (error) throw error;
       setDraftedPriorityEmails(prev => ({ ...prev, [actionType]: data.email }));
+      // Persist to DB
+      const draftType = actionType.startsWith("objection") ? "objection" : actionType.startsWith("waiting") ? "nudge" : actionType.startsWith("strategic") ? "strategic" : actionType.startsWith("playbook") ? "playbook" : actionType;
+      saveDraftToDb(actionType, data.email, draftType, actionContext.slice(0, 100));
     } catch (err) {
       toast.error("Failed to generate draft");
     } finally {
@@ -508,14 +593,14 @@ export default function DealRoom() {
                         </div>
                       </div>
                       {draftedEmail && (
-                        <div className="ml-11 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
-                            <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
-                              <Copy className="h-3 w-3" /> Copy
-                            </Button>
-                          </div>
-                          <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                        <div className="ml-11">
+                          <DraftCard
+                            content={draftedEmail}
+                            onSave={(text) => { setDraftedPriorityEmails(prev => ({ ...prev, [nbaKey]: text })); saveDraftToDb(nbaKey, text, "nba", nextBestAction.action.slice(0, 100)); }}
+                            onRegenerate={() => handleDraftPriorityAction(nbaKey, `${nextBestAction.action}. Context: ${nextBestAction.reason}. Draft an email that executes this action.`)}
+                            onDiscard={() => discardDraft(nbaKey)}
+                            isRegenerating={draftingPriority === nbaKey}
+                          />
                         </div>
                       )}
                     </div>
@@ -565,14 +650,14 @@ export default function DealRoom() {
                               )}
                             </div>
                             {draftedEmail && (
-                              <div className="ml-10 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
-                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
-                                    <Copy className="h-3 w-3" /> Copy
-                                  </Button>
-                                </div>
-                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              <div className="ml-10">
+                                <DraftCard
+                                  content={draftedEmail}
+                                  onSave={(text) => { setDraftedPriorityEmails(prev => ({ ...prev, [pa.type]: text })); saveDraftToDb(pa.type, text, pa.type, pa.title.slice(0, 100)); }}
+                                  onRegenerate={() => handleDraftPriorityAction(pa.type)}
+                                  onDiscard={() => discardDraft(pa.type)}
+                                  isRegenerating={draftingPriority === pa.type}
+                                />
                               </div>
                             )}
                           </div>
@@ -596,28 +681,11 @@ export default function DealRoom() {
                         if (a.deadline) {
                           try { daysOverdue = Math.max(0, Math.floor((now.getTime() - new Date(a.deadline).getTime()) / 86400000)); } catch {}
                         }
-                        const isDrafting = draftingIdx === origIdx;
-                        const draftedEmail = draftedEmails[origIdx];
+                        const commitKey = `commitment-${origIdx}`;
+                        const isDrafting = draftingPriority === commitKey;
+                        const draftedEmail = draftedPriorityEmails[commitKey];
 
-                        const handleDraft = async () => {
-                          setDraftingIdx(origIdx);
-                          try {
-                            const latestMeeting = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())?.[0];
-                            const { data, error } = await supabase.functions.invoke("draft-followup", {
-                              body: {
-                                meeting: latestMeeting || { title: "Follow-up", date: new Date().toISOString().split("T")[0], intelligence: { summary: a.item, nextSteps: [{ action: a.item, owner: a.owner || lead.assignedTo }] } },
-                                leadFields: { name: lead.name, role: lead.role, company: lead.company, brand: lead.brand },
-                                dealIntelligence: lead.dealIntelligence,
-                              },
-                            });
-                            if (error) throw error;
-                            setDraftedEmails(prev => ({ ...prev, [origIdx]: data.email }));
-                          } catch (err) {
-                            toast.error("Failed to generate draft");
-                          } finally {
-                            setDraftingIdx(null);
-                          }
-                        };
+                        const handleDraft = () => handleDraftPriorityAction(commitKey, `We committed to "${a.item}" for ${lead.name}${a.deadline ? ` by ${a.deadline}` : ""}. Draft an email that fulfills or addresses this commitment directly.`);
 
                         return (
                           <div key={i} className="space-y-2">
@@ -658,22 +726,14 @@ export default function DealRoom() {
                               </Button>
                             </div>
                             {draftedEmail && (
-                              <div className="ml-9 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 text-xs gap-1"
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(draftedEmail);
-                                      toast.success("Copied to clipboard");
-                                    }}
-                                  >
-                                    <Copy className="h-3 w-3" /> Copy
-                                  </Button>
-                                </div>
-                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              <div className="ml-9">
+                                <DraftCard
+                                  content={draftedEmail}
+                                  onSave={(text) => { setDraftedPriorityEmails(prev => ({ ...prev, [commitKey]: text })); saveDraftToDb(commitKey, text, "commitment", a.item.slice(0, 100)); }}
+                                  onRegenerate={handleDraft}
+                                  onDiscard={() => discardDraft(commitKey)}
+                                  isRegenerating={isDrafting}
+                                />
                               </div>
                             )}
                           </div>
@@ -714,14 +774,14 @@ export default function DealRoom() {
                               )}
                             </div>
                             {draftedEmail && (
-                              <div className="ml-8 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
-                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
-                                    <Copy className="h-3 w-3" /> Copy
-                                  </Button>
-                                </div>
-                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              <div className="ml-8">
+                                <DraftCard
+                                  content={draftedEmail}
+                                  onSave={(text) => { setDraftedPriorityEmails(prev => ({ ...prev, [pbKey]: text })); saveDraftToDb(pbKey, text, "playbook", task.title.slice(0, 100)); }}
+                                  onRegenerate={() => handleDraftPriorityAction(pbKey, `${task.title}. ${task.description || ""} The lead is in stage "${lead.stage}". Draft this email.`)}
+                                  onDiscard={() => discardDraft(pbKey)}
+                                  isRegenerating={draftingPriority === pbKey}
+                                />
                               </div>
                             )}
                           </div>
@@ -754,14 +814,14 @@ export default function DealRoom() {
                               </Button>
                             </div>
                             {draftedEmail && (
-                              <div className="ml-4 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
-                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
-                                    <Copy className="h-3 w-3" /> Copy
-                                  </Button>
-                                </div>
-                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              <div className="ml-4">
+                                <DraftCard
+                                  content={draftedEmail}
+                                  onSave={(text) => { setDraftedPriorityEmails(prev => ({ ...prev, [waitKey]: text })); saveDraftToDb(waitKey, text, "nudge", `Nudge: ${a.item.slice(0, 80)}`); }}
+                                  onRegenerate={() => handleDraftPriorityAction(waitKey, `The prospect (${lead.name}) committed to "${a.item}"${a.deadline ? ` by ${a.deadline}` : ""} but hasn't delivered. Draft a gentle nudge that adds new value or context rather than just asking "did you get a chance to...". Reference something specific to keep the conversation moving forward.`)}
+                                  onDiscard={() => discardDraft(waitKey)}
+                                  isRegenerating={draftingPriority === waitKey}
+                                />
                               </div>
                             )}
                           </div>
@@ -811,14 +871,14 @@ export default function DealRoom() {
                               </div>
                             </div>
                             {draftedEmail && (
-                              <div className="ml-4 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
-                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
-                                    <Copy className="h-3 w-3" /> Copy
-                                  </Button>
-                                </div>
-                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              <div className="ml-4">
+                                <DraftCard
+                                  content={draftedEmail}
+                                  onSave={(text) => { setDraftedPriorityEmails(prev => ({ ...prev, [objKey]: text })); saveDraftToDb(objKey, text, "objection", `Objection: ${o.objection.slice(0, 80)}`); }}
+                                  onRegenerate={() => handleDraftPriorityAction(objKey, `Address this specific objection from the prospect: "${o.objection}". ${match ? `A similar won deal (${match.wonDealName}) handled this by: ${match.wonDealApproach}. Use a similar approach.` : "Provide a compelling, data-backed response."} Be specific and address their concern directly.`)}
+                                  onDiscard={() => discardDraft(objKey)}
+                                  isRegenerating={draftingPriority === objKey}
+                                />
                               </div>
                             )}
                           </div>
@@ -861,14 +921,14 @@ export default function DealRoom() {
                               )}
                             </div>
                             {draftedEmail && (
-                              <div className="ml-4 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
-                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
-                                    <Copy className="h-3 w-3" /> Copy
-                                  </Button>
-                                </div>
-                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              <div className="ml-4">
+                                <DraftCard
+                                  content={draftedEmail}
+                                  onSave={(text) => { setDraftedPriorityEmails(prev => ({ ...prev, [stratKey]: text })); saveDraftToDb(stratKey, text, "strategic", sa.title.slice(0, 100)); }}
+                                  onRegenerate={() => handleDraftPriorityAction(stratKey, contextMap[sa.title] || defaultCtx)}
+                                  onDiscard={() => discardDraft(stratKey)}
+                                  isRegenerating={draftingPriority === stratKey}
+                                />
                               </div>
                             )}
                           </div>
