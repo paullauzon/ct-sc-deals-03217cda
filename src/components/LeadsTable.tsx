@@ -229,7 +229,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
               </a>
             )}
           </div>
-          <p className="text-sm text-muted-foreground">{lead.role} · {lead.company || "No company"}</p>
+          <p className="text-sm text-muted-foreground flex items-center gap-1.5"><CompanyAvatar companyUrl={lead.companyUrl} email={lead.email} companyName={lead.company} size="sm" />{lead.role} · {lead.company || "No company"}</p>
           {lead.calendlyBookedAt && (
             <p className="flex items-center gap-1.5 text-xs text-primary font-medium mt-0.5">
               <CalendarCheck className="h-3.5 w-3.5 shrink-0" />

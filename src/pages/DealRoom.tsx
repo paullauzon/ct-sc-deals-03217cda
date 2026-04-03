@@ -122,6 +122,7 @@ export default function DealRoom() {
           </button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
+              <CompanyAvatar companyUrl={lead.companyUrl} email={lead.email} companyName={lead.company} size="md" />
               <h1 className="text-lg font-semibold truncate">{lead.name}</h1>
               <BrandLogo brand={lead.brand} size="md" />
               <Badge variant="outline" className="text-xs">{lead.stage}</Badge>
