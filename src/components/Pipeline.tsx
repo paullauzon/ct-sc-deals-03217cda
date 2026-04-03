@@ -314,7 +314,7 @@ export function Pipeline() {
                         else { setSelectedLeadId(lead.id); markLeadSeen(lead.id); }
                       }}
                       className={cn(
-                        "rounded-md p-3 transition-colors space-y-1.5",
+                        "rounded-md p-4 transition-colors space-y-2.5",
                         getBrandBorderClass(lead.brand),
                         selectMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
                         selectedIds.has(lead.id) ? "border-2 border-primary bg-primary/5" : "border border-border " + getAgingClass(days) + " hover:bg-secondary/30"
@@ -403,7 +403,7 @@ export function Pipeline() {
                       {(() => {
                         const insight = getClosingInsight(lead);
                         return insight ? (
-                          <p className="text-[10px] text-muted-foreground/70 italic truncate" title={insight.text}>
+                          <p className="text-[10px] text-muted-foreground/70 italic truncate mt-0.5" title={insight.text}>
                             "{insight.text}"
                           </p>
                         ) : null;
@@ -422,12 +422,12 @@ export function Pipeline() {
                         const hasIntelBadges = health || coverage || momentum || dropped.length > 0;
 
                         return hasIntelBadges ? (
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 text-[10px] flex-wrap">
+                          <div className="space-y-1.5 pt-2 border-t border-border/50">
+                            <div className="flex items-center gap-2 text-[10px] flex-wrap">
                               {health && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <span className="px-1.5 py-0.5 rounded bg-secondary text-foreground/70 font-medium tabular-nums">
+                                    <span className="px-2 py-1 rounded bg-secondary text-foreground/70 font-medium tabular-nums">
                                       Health: {health.score}/100
                                     </span>
                                   </TooltipTrigger>
@@ -447,24 +447,24 @@ export function Pipeline() {
                                 </Tooltip>
                               )}
                               {coverage && (
-                                <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                                <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">
                                   {coverage.label}
                                 </span>
                               )}
                               {momentumLabel && (
-                                <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                                <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">
                                   {momentumLabel}
                                 </span>
                               )}
                               {lead.enrichment && (
-                                <span className="px-1 py-0.5 rounded bg-secondary text-muted-foreground">AI</span>
+                                <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">AI</span>
                               )}
                             </div>
                             {/* Action summary — clean clickable line */}
                             {dropped.length > 0 && !closed && (
                               <div
                                 onClick={(e) => { e.stopPropagation(); pipelineNavigate(`/deal/${lead.id}?tab=actions`); }}
-                                className="mt-1 flex w-full items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-secondary hover:bg-secondary/80 text-[11px] font-semibold text-foreground/80 hover:text-foreground cursor-pointer transition-all"
+                                className="mt-0.5 flex w-full items-center gap-1.5 px-3 py-2 rounded-md bg-secondary hover:bg-secondary/80 text-[11px] font-semibold text-foreground/80 hover:text-foreground cursor-pointer transition-all"
                               >
                                 <span>{dropped.length} pending action{dropped.length > 1 ? "s" : ""}</span>
                                 {lead.nextFollowUp && (() => {
@@ -479,7 +479,7 @@ export function Pipeline() {
                             {!dropped.length && winLose && winLose.doNext !== "—" && !closed && (
                               <div
                                 onClick={(e) => { e.stopPropagation(); pipelineNavigate(`/deal/${lead.id}?tab=actions`); }}
-                                className="mt-1 flex w-full items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-secondary hover:bg-secondary/80 text-[11px] font-semibold text-foreground/80 hover:text-foreground cursor-pointer transition-all"
+                                className="mt-0.5 flex w-full items-center gap-1.5 px-3 py-2 rounded-md bg-secondary hover:bg-secondary/80 text-[11px] font-semibold text-foreground/80 hover:text-foreground cursor-pointer transition-all"
                               >
                                 <span className="truncate">{winLose.doNext}</span>
                                 <ChevronRight className="h-3.5 w-3.5 shrink-0 ml-auto text-muted-foreground" />
