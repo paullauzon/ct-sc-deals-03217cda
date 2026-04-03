@@ -152,8 +152,9 @@ export function getDroppedPromises(lead: Lead): DroppedPromise[] {
   if (!actions) return [];
 
   const now = new Date();
+  const leadNameLower = lead.name?.toLowerCase() || "";
   return actions
-    .filter(a => a.status === "Open" || a.status === "Overdue")
+    .filter(a => (a.status === "Open" || a.status === "Overdue") && a.owner?.toLowerCase() !== leadNameLower)
     .map(a => {
       let daysOverdue = 0;
       if (a.deadline) {
@@ -290,6 +291,10 @@ export interface UnifiedActionCount {
     noChampion: boolean;
     overdueFollowUp: boolean;
     staleNewLead: boolean;
+    contractRenewal: boolean;
+    logMeetingOutcome: boolean;
+    sentimentDeclining: boolean;
+    highIntent: boolean;
     nextBest: boolean;
   };
   /** Single-item display text when total === 1 */
@@ -409,7 +414,47 @@ export function getUnifiedActionCount(
     }
   }
 
-  // 11. Next Best Action (catch-all, but don't duplicate dropped/theyOwe)
+  // 11. Contract renewal approaching (Closed Won)
+  let contractRenewal = false;
+  if (lead.stage === "Closed Won" && lead.contractEnd) {
+    try {
+      const daysToRenewal = Math.floor((new Date(lead.contractEnd).getTime() - now.getTime()) / 86400000);
+      if (daysToRenewal >= 0 && daysToRenewal <= 60) {
+        contractRenewal = true;
+        tooltipLines.push(`Renewal in ${daysToRenewal}d — start conversation`);
+      }
+    } catch {}
+  }
+
+  // 12. Log meeting outcome (data hygiene)
+  let logMeetingOutcome = false;
+  if (lead.stage === "Meeting Held" && !lead.meetingOutcome) {
+    logMeetingOutcome = true;
+    tooltipLines.push("Log meeting outcome");
+  }
+
+  // 13. Declining sentiment trajectory
+  let sentimentDeclining = false;
+  const sentTrajectory = di?.momentumSignals?.sentimentTrajectory;
+  if (Array.isArray(sentTrajectory) && sentTrajectory.length >= 2) {
+    const sentimentRank: Record<string, number> = { "Very Positive": 5, "Positive": 4, "Neutral": 3, "Cautious": 2, "Negative": 1 };
+    const first = sentimentRank[sentTrajectory[0]] ?? 3;
+    const last = sentimentRank[sentTrajectory[sentTrajectory.length - 1]] ?? 3;
+    if (last < first) {
+      sentimentDeclining = true;
+      tooltipLines.push(`Sentiment declining — was ${sentTrajectory[0]}, now ${sentTrajectory[sentTrajectory.length - 1]}`);
+    }
+  }
+
+  // 14. High intent — multi-submission
+  let highIntent = false;
+  const submissions = (lead as any).submissions;
+  if (Array.isArray(submissions) && submissions.length > 1 && (lead.stage === "New Lead" || lead.stage === "Qualified")) {
+    highIntent = true;
+    tooltipLines.push(`High intent — submitted ${submissions.length} times, prioritize outreach`);
+  }
+
+  // 15. Next Best Action (catch-all, but don't duplicate dropped/theyOwe)
   let hasNextBest = false;
   if (droppedCount === 0 && theyOweCount === 0) {
     const nba = getNextBestAction(lead);
@@ -430,6 +475,10 @@ export function getUnifiedActionCount(
     (noChampion ? 1 : 0) +
     (overdueFollowUp ? 1 : 0) +
     (staleNewLead ? 1 : 0) +
+    (contractRenewal ? 1 : 0) +
+    (logMeetingOutcome ? 1 : 0) +
+    (sentimentDeclining ? 1 : 0) +
+    (highIntent ? 1 : 0) +
     (hasNextBest ? 1 : 0);
 
   // Single action text — show the first tooltip line as the card text
@@ -451,6 +500,10 @@ export function getUnifiedActionCount(
       noChampion,
       overdueFollowUp,
       staleNewLead,
+      contractRenewal,
+      logMeetingOutcome,
+      sentimentDeclining,
+      highIntent,
       nextBest: hasNextBest,
     },
     singleActionText,
