@@ -447,17 +447,17 @@ export function Pipeline() {
                                 </Tooltip>
                               )}
                               {coverage && (
-                                <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                                <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">
                                   {coverage.label}
                                 </span>
                               )}
                               {momentumLabel && (
-                                <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                                <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">
                                   {momentumLabel}
                                 </span>
                               )}
                               {lead.enrichment && (
-                                <span className="px-1 py-0.5 rounded bg-secondary text-muted-foreground">AI</span>
+                                <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">AI</span>
                               )}
                             </div>
                             {/* Action summary — clean clickable line */}
