@@ -238,6 +238,9 @@ export default function DealRoom() {
       });
       if (error) throw error;
       setDraftedPriorityEmails(prev => ({ ...prev, [actionType]: data.email }));
+      // Persist to DB
+      const draftType = actionType.startsWith("objection") ? "objection" : actionType.startsWith("waiting") ? "nudge" : actionType.startsWith("strategic") ? "strategic" : actionType.startsWith("playbook") ? "playbook" : actionType;
+      saveDraftToDb(actionType, data.email, draftType, actionContext.slice(0, 100));
     } catch (err) {
       toast.error("Failed to generate draft");
     } finally {
