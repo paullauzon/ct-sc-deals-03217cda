@@ -897,14 +897,14 @@ export default function DealRoom() {
                               </div>
                             </div>
                             {draftedEmail && (
-                              <div className="ml-4 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
-                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
-                                    <Copy className="h-3 w-3" /> Copy
-                                  </Button>
-                                </div>
-                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              <div className="ml-4">
+                                <DraftCard
+                                  content={draftedEmail}
+                                  onSave={(text) => { setDraftedPriorityEmails(prev => ({ ...prev, [objKey]: text })); saveDraftToDb(objKey, text, "objection", `Objection: ${o.objection.slice(0, 80)}`); }}
+                                  onRegenerate={() => handleDraftPriorityAction(objKey, `Address this specific objection from the prospect: "${o.objection}". ${match ? `A similar won deal (${match.wonDealName}) handled this by: ${match.wonDealApproach}. Use a similar approach.` : "Provide a compelling, data-backed response."} Be specific and address their concern directly.`)}
+                                  onDiscard={() => discardDraft(objKey)}
+                                  isRegenerating={draftingPriority === objKey}
+                                />
                               </div>
                             )}
                           </div>
