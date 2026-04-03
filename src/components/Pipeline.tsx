@@ -23,7 +23,8 @@ import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
 import { BrandLogo } from "@/components/BrandLogo";
 import { CompanyAvatar } from "@/components/CompanyAvatar";
-import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, markActionItemDone } from "@/lib/dealHealthUtils";
+import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, getUnifiedActionCount, getNextBestAction, markActionItemDone } from "@/lib/dealHealthUtils";
+import { useLeadTasks } from "@/hooks/useLeadTasks";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
@@ -147,6 +148,8 @@ export function Pipeline() {
   const { getLeadsByStage, updateLead, leads, isLeadNew, markLeadSeen } = useLeads();
   const pipelineNavigate = useNavigate();
   const { leadJobs } = useProcessing();
+  const allLeadIds = leads.map(l => l.id);
+  const { tasks: allPlaybookTasks } = useLeadTasks(allLeadIds.length > 0 ? allLeadIds : undefined);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -417,87 +420,134 @@ export function Pipeline() {
                       {(() => {
                         const health = computeDealHealthScore(lead);
                         const coverage = getStakeholderCoverage(lead);
-                        const dropped = getDroppedPromises(lead);
-                        const winLose = !closed ? getWinLoseCard(lead) : null;
                         const momentum = lead.dealIntelligence?.momentumSignals?.momentum;
                         const momentumLabel = momentum === "Accelerating" ? "Gaining speed" :
                           momentum === "Stalling" ? "Losing steam" :
                           momentum === "Stalled" ? "Gone quiet" :
                           momentum === "Steady" ? "Steady pace" : momentum;
-                        const hasIntelBadges = health || coverage || momentum || dropped.length > 0;
+                        const hasIntelBadges = health || coverage || momentum;
 
-                        return hasIntelBadges ? (
-                          <div className="space-y-1.5 pt-2 border-t border-border/50">
-                            <div className="flex items-center gap-2 text-[10px] flex-wrap">
-                              {health && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="px-2 py-1 rounded bg-secondary text-foreground/70 font-medium tabular-nums">
-                                      Health: {health.score}/100
+                        // Unified action count
+                        const leadPlaybookTasks = allPlaybookTasks.filter(t => t.lead_id === lead.id);
+                        const unified = getUnifiedActionCount(lead, leadPlaybookTasks.length);
+                        const winLose = !closed ? getWinLoseCard(lead) : null;
+
+                        // Single action text: use playbook task title if that's the sole source
+                        let actionText = unified.singleActionText;
+                        if (unified.total === 1 && !actionText && leadPlaybookTasks.length === 1) {
+                          actionText = leadPlaybookTasks[0].title;
+                        }
+
+                        // Fallback hierarchy when unified total is 0
+                        const nba = !closed ? getNextBestAction(lead) : null;
+                        const fallbackText = nba?.action || (winLose?.doNext !== "—" ? winLose?.doNext : null);
+
+                        // Follow-up date + overdue check
+                        let followUpDisplay: { text: string; overdue: boolean } | null = null;
+                        if (lead.nextFollowUp) {
+                          try {
+                            const d = new Date(lead.nextFollowUp);
+                            const isOverdue = d < new Date();
+                            followUpDisplay = {
+                              text: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                              overdue: isOverdue,
+                            };
+                          } catch {}
+                        }
+
+                        return (
+                          <>
+                            {hasIntelBadges && (
+                              <div className="space-y-1.5 pt-2 border-t border-border/50">
+                                <div className="flex items-center gap-2 text-[10px] flex-wrap">
+                                  {health && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="px-2 py-1 rounded bg-secondary text-foreground/70 font-medium tabular-nums">
+                                          Health: {health.score}/100
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-[220px] p-3">
+                                        <div className="flex items-baseline gap-2 mb-2">
+                                          <span className="text-lg font-semibold font-mono">{health.score}</span>
+                                          <span className="text-xs text-muted-foreground">/ 100 · {health.label}</span>
+                                        </div>
+                                        <div className="space-y-0.5">
+                                          {health.factors.map((f, i) => (
+                                            <p key={i} className="text-xs text-muted-foreground font-mono">
+                                              <span className="inline-block w-8 text-right">{f.impact > 0 ? "+" : ""}{f.impact}</span> {f.label}
+                                            </p>
+                                          ))}
+                                        </div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                  {coverage && (
+                                    <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">
+                                      {coverage.label}
                                     </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-[220px] p-3">
-                                    <div className="flex items-baseline gap-2 mb-2">
-                                      <span className="text-lg font-semibold font-mono">{health.score}</span>
-                                      <span className="text-xs text-muted-foreground">/ 100 · {health.label}</span>
-                                    </div>
-                                    <div className="space-y-0.5">
-                                      {health.factors.map((f, i) => (
-                                        <p key={i} className="text-xs text-muted-foreground font-mono">
-                                          <span className="inline-block w-8 text-right">{f.impact > 0 ? "+" : ""}{f.impact}</span> {f.label}
-                                        </p>
-                                      ))}
-                                    </div>
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-                              {coverage && (
-                                <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">
-                                  {coverage.label}
-                                </span>
-                              )}
-                              {momentumLabel && (
-                                <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">
-                                  {momentumLabel}
-                                </span>
-                              )}
-                              {lead.enrichment && (
-                                <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">AI</span>
-                              )}
-                            </div>
-                            {/* Action summary — clean clickable line */}
-                            {dropped.length > 0 && !closed && (
-                              <div
-                                onClick={(e) => { e.stopPropagation(); pipelineNavigate(`/deal/${lead.id}?tab=actions`); }}
-                                className="mt-0.5 flex w-full items-center gap-1.5 px-3 py-2 rounded-md bg-secondary hover:bg-secondary/80 text-[11px] font-semibold text-foreground/80 hover:text-foreground cursor-pointer transition-all"
-                              >
-                                <span>{dropped.length} pending action{dropped.length > 1 ? "s" : ""}</span>
-                                {lead.nextFollowUp && (() => {
-                                  try {
-                                    const d = new Date(lead.nextFollowUp);
-                                    return <span className="ml-auto text-muted-foreground font-normal">Follow-up {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>;
-                                  } catch { return null; }
-                                })()}
-                                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                  )}
+                                  {momentumLabel && (
+                                    <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">
+                                      {momentumLabel}
+                                    </span>
+                                  )}
+                                  {lead.enrichment && (
+                                    <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">AI</span>
+                                  )}
+                                </div>
                               </div>
                             )}
-                            {!dropped.length && winLose && winLose.doNext !== "—" && !closed && (
+                            {/* Unified action bar */}
+                            {unified.total > 0 && !closed && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div
+                                    onClick={(e) => { e.stopPropagation(); pipelineNavigate(`/deal/${lead.id}?tab=actions`); }}
+                                    className="mt-0.5 flex w-full items-center gap-1.5 px-3 py-2 rounded-md bg-secondary hover:bg-secondary/80 text-[11px] font-semibold text-foreground/80 hover:text-foreground cursor-pointer transition-all"
+                                  >
+                                    <span className="truncate">
+                                      {unified.total === 1 && actionText
+                                        ? actionText
+                                        : `${unified.total} next step${unified.total > 1 ? "s" : ""}`}
+                                    </span>
+                                    {followUpDisplay && (
+                                      <span className={cn("ml-auto font-normal whitespace-nowrap", followUpDisplay.overdue ? "text-foreground/70 font-medium" : "text-muted-foreground")}>
+                                        {followUpDisplay.overdue ? "Overdue" : "Follow-up"} {followUpDisplay.text}
+                                      </span>
+                                    )}
+                                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[240px] p-3">
+                                  <p className="text-xs font-medium mb-1.5">Next steps breakdown</p>
+                                  <div className="space-y-1">
+                                    {unified.tooltipLines.map((line, i) => (
+                                      <p key={i} className="text-xs text-muted-foreground">• {line}</p>
+                                    ))}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            {unified.total === 0 && fallbackText && !closed && (
                               <div
                                 onClick={(e) => { e.stopPropagation(); pipelineNavigate(`/deal/${lead.id}?tab=actions`); }}
                                 className="mt-0.5 flex w-full items-center gap-1.5 px-3 py-2 rounded-md bg-secondary hover:bg-secondary/80 text-[11px] font-semibold text-foreground/80 hover:text-foreground cursor-pointer transition-all"
                               >
-                                <span className="truncate">{winLose.doNext}</span>
+                                <span className="truncate">{fallbackText}</span>
                                 <ChevronRight className="h-3.5 w-3.5 shrink-0 ml-auto text-muted-foreground" />
                               </div>
                             )}
-                          </div>
-                        ) : lead.dealIntelligence?.riskRegister?.filter(r => r.mitigationStatus !== "Mitigated").length ? (
-                          <div className="flex items-center gap-1.5 text-[10px]">
-                            <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-                              {lead.dealIntelligence.riskRegister!.filter(r => r.mitigationStatus !== "Mitigated").length} risks
-                            </span>
-                          </div>
-                        ) : null;
+                            {/* Risk fallback when no intelligence */}
+                            {!hasIntelBadges && unified.total === 0 && lead.dealIntelligence?.riskRegister?.filter(r => r.mitigationStatus !== "Mitigated").length ? (
+                              <div className="flex items-center gap-1.5 text-[10px]">
+                                <span className="px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                                  {lead.dealIntelligence.riskRegister!.filter(r => r.mitigationStatus !== "Mitigated").length} risks
+                                </span>
+                              </div>
+                            ) : null}
+                          </>
+                        );
                       })()}
                       {/* Pending suggestions indicator */}
                       {(() => {
@@ -523,9 +573,6 @@ export function Pipeline() {
                       })()}
                       {closed && lead.closeReason && (
                         <p className="text-xs text-muted-foreground">Reason: {lead.closeReason}</p>
-                      )}
-                      {lead.nextFollowUp && !getDroppedPromises(lead).length && (
-                        <p className="text-xs text-muted-foreground">Follow-up: {lead.nextFollowUp}</p>
                       )}
                     </div>
                   );
