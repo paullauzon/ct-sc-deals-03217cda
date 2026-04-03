@@ -336,7 +336,124 @@ export default function DealRoom() {
               </TabsContent>
             )}
 
-            <TabsContent value="timeline" className="p-4 space-y-2">
+            {/* Actions Tab */}
+            {!isClosed && (
+              <TabsContent value="actions" className="p-4 space-y-4">
+                {/* Next Best Action */}
+                {nextBestAction && (
+                  <div className={cn("rounded-lg border p-4",
+                    nextBestAction.urgency === "critical" ? "border-red-500/30 bg-red-500/5" :
+                    nextBestAction.urgency === "high" ? "border-amber-500/30 bg-amber-500/5" :
+                    "border-border bg-secondary/30"
+                  )}>
+                    <div className="flex items-start gap-3">
+                      <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0",
+                        nextBestAction.urgency === "critical" ? "bg-red-500/10 text-red-600 dark:text-red-400" :
+                        nextBestAction.urgency === "high" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" :
+                        "bg-primary/10 text-primary"
+                      )}>
+                        <Zap className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Next Best Action</span>
+                          <Badge variant="outline" className={cn("text-[9px]",
+                            nextBestAction.urgency === "critical" ? "border-red-500/50 text-red-600 dark:text-red-400" :
+                            nextBestAction.urgency === "high" ? "border-amber-500/50 text-amber-600 dark:text-amber-400" :
+                            ""
+                          )}>
+                            {nextBestAction.urgency}
+                          </Badge>
+                        </div>
+                        <p className="text-sm font-medium">{nextBestAction.action}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{nextBestAction.reason}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Open Action Items */}
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                    <Target className="h-3.5 w-3.5" /> Open Actions ({openActions.length})
+                  </h3>
+                  {openActions.length > 0 ? (
+                    <div className="space-y-2">
+                      {openActions.map((a, i) => {
+                        const origIdx = actionItems.indexOf(a);
+                        const now = new Date();
+                        let daysOverdue = 0;
+                        if (a.deadline) {
+                          try { daysOverdue = Math.max(0, Math.floor((now.getTime() - new Date(a.deadline).getTime()) / 86400000)); } catch {}
+                        }
+                        return (
+                          <div key={i} className={cn("rounded-lg border p-3 flex items-start gap-3 group",
+                            a.status === "Overdue" || daysOverdue > 0 ? "border-red-300 dark:border-red-800 bg-red-50/50 dark:bg-red-950/10" : "border-border"
+                          )}>
+                            <button
+                              onClick={() => {
+                                const updates = markActionItemDone(lead, origIdx);
+                                if (Object.keys(updates).length) {
+                                  save(updates);
+                                  toast.success(`Marked "${a.item.slice(0, 40)}" done`);
+                                }
+                              }}
+                              className="w-6 h-6 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center shrink-0 mt-0.5 hover:border-primary hover:bg-primary/10 transition-colors group-hover:border-primary/50"
+                              title="Mark done"
+                            >
+                              <Check className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{a.item}</p>
+                              <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                {a.owner && <span>{a.owner}</span>}
+                                {a.deadline && <span>Due: {a.deadline}</span>}
+                                {daysOverdue > 0 && (
+                                  <span className="text-red-600 dark:text-red-400 font-medium">{daysOverdue}d overdue</span>
+                                )}
+                                <Badge variant="outline" className={cn("text-[9px]",
+                                  a.status === "Overdue" ? "border-red-500/50 text-red-600 dark:text-red-400" : ""
+                                )}>
+                                  {a.status}
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-sm text-muted-foreground">
+                      <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-emerald-500/40" />
+                      <p>All actions completed</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Completed Items */}
+                {completedActions.length > 0 && (
+                  <Collapsible>
+                    <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground w-full group">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500/60" />
+                      <span>{completedActions.length} completed</span>
+                      <ChevronLeft className="h-3 w-3 ml-auto transition-transform group-data-[state=open]:rotate-[-90deg]" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="mt-2 space-y-1.5">
+                        {completedActions.map((a, i) => (
+                          <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground py-1.5 pl-1">
+                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500/50 mt-0.5" />
+                            <span className="line-through opacity-60">{a.item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+              </TabsContent>
+            )}
+
+
               {activityLog.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">No activity recorded yet</p>
               ) : (
