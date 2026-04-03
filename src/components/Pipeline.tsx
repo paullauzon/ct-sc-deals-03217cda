@@ -25,6 +25,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, getUnifiedActionCount, getNextBestAction, markActionItemDone } from "@/lib/dealHealthUtils";
 import { useLeadTasks } from "@/hooks/useLeadTasks";
+import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
@@ -150,6 +151,7 @@ export function Pipeline() {
   const { leadJobs } = useProcessing();
   const allLeadIds = leads.map(l => l.id);
   const { tasks: allPlaybookTasks } = useLeadTasks(allLeadIds.length > 0 ? allLeadIds : undefined);
+  const { unansweredIds } = useUnansweredEmails(allLeadIds);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -429,7 +431,21 @@ export function Pipeline() {
 
                         // Unified action count
                         const leadPlaybookTasks = allPlaybookTasks.filter(t => t.lead_id === lead.id);
-                        const unified = getUnifiedActionCount(lead, leadPlaybookTasks.length);
+                        // Detect meeting prep needed: future meeting date + no prep meetings
+                        let hasMeetingPrep = false;
+                        if (lead.meetingDate) {
+                          try {
+                            const md = new Date(lead.meetingDate);
+                            if (md > new Date()) {
+                              const hasPrepMeeting = lead.meetings?.some((m: any) => m.intelligence?.prepBrief);
+                              if (!hasPrepMeeting) hasMeetingPrep = true;
+                            }
+                          } catch {}
+                        }
+                        const unified = getUnifiedActionCount(lead, leadPlaybookTasks.length, {
+                          hasUnansweredEmail: unansweredIds.has(lead.id),
+                          hasMeetingPrep,
+                        });
                         const winLose = !closed ? getWinLoseCard(lead) : null;
 
                         // Single action text: use playbook task title if that's the sole source

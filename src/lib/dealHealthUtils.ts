@@ -270,55 +270,189 @@ export function getObjectionPlaybook(lead: Lead, allLeads: Lead[]): ObjectionPla
   return playbook;
 }
 
+// ─── Active stages for "going dark" detection ───
+
+const ACTIVE_STAGES = new Set(["Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"]);
+const POST_MEETING_STAGES = new Set(["Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"]);
+
 // ─── Unified Action Count ───
 
 export interface UnifiedActionCount {
   total: number;
-  breakdown: { dropped: number; playbook: number; nextBest: boolean; overdueFollowUp: boolean };
+  breakdown: {
+    unansweredEmail: boolean;
+    dropped: number;
+    meetingPrep: boolean;
+    objections: number;
+    playbook: number;
+    theyOwe: number;
+    goingDark: boolean;
+    noChampion: boolean;
+    overdueFollowUp: boolean;
+    staleNewLead: boolean;
+    nextBest: boolean;
+  };
   /** Single-item display text when total === 1 */
   singleActionText: string | null;
-  /** Tooltip lines for breakdown */
+  /** Tooltip lines for breakdown, priority-ordered */
   tooltipLines: string[];
 }
 
 export function getUnifiedActionCount(
   lead: Lead,
-  playbookTaskCount: number = 0
+  playbookTaskCount: number = 0,
+  options: {
+    hasUnansweredEmail?: boolean;
+    hasMeetingPrep?: boolean;
+  } = {}
 ): UnifiedActionCount {
-  const dropped = getDroppedPromises(lead);
-  const nba = getNextBestAction(lead);
+  const di = lead.dealIntelligence;
   const now = new Date();
+  const tooltipLines: string[] = [];
 
-  let overdueFollowUp = false;
-  if (lead.nextFollowUp) {
+  // 1. Unanswered inbound email
+  const unansweredEmail = options.hasUnansweredEmail ?? false;
+  if (unansweredEmail) tooltipLines.push(`Reply to ${lead.name}'s email`);
+
+  // 2. Dropped promises
+  const dropped = getDroppedPromises(lead);
+  const droppedCount = dropped.length;
+  if (droppedCount > 0) {
+    if (droppedCount === 1) tooltipLines.push(`Complete: "${dropped[0].item}"`);
+    else tooltipLines.push(`${droppedCount} overdue commitment${droppedCount > 1 ? "s" : ""}`);
+  }
+
+  // 3. Meeting prep needed
+  const meetingPrep = options.hasMeetingPrep ?? false;
+  if (meetingPrep) {
+    const meetingDate = lead.meetingDate;
+    if (meetingDate) {
+      try {
+        const d = new Date(meetingDate);
+        tooltipLines.push(`Prep for meeting ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`);
+      } catch {
+        tooltipLines.push("Prep for upcoming meeting");
+      }
+    } else {
+      tooltipLines.push("Prep for upcoming meeting");
+    }
+  }
+
+  // 4. Open objections
+  const openObjections = (di?.objectionTracker || []).filter(
+    (o: any) => o.status === "Open" || o.status === "Recurring"
+  );
+  const objectionsCount = openObjections.length;
+  if (objectionsCount > 0) {
+    if (objectionsCount === 1) tooltipLines.push(`Address: "${openObjections[0].objection}"`);
+    else tooltipLines.push(`${objectionsCount} open objection${objectionsCount > 1 ? "s" : ""}`);
+  }
+
+  // 5. Playbook tasks
+  if (playbookTaskCount > 0) {
+    tooltipLines.push(`${playbookTaskCount} playbook task${playbookTaskCount > 1 ? "s" : ""} due`);
+  }
+
+  // 6. They owe us something
+  const theyOwe = (di?.actionItemTracker || []).filter(
+    (a: any) => (a.status === "Open" || a.status === "Overdue") &&
+      a.owner?.toLowerCase() === lead.name?.toLowerCase()
+  );
+  const theyOweCount = theyOwe.length;
+  if (theyOweCount > 0) {
+    if (theyOweCount === 1) tooltipLines.push(`Nudge ${lead.name}: "${theyOwe[0].item}"`);
+    else tooltipLines.push(`${theyOweCount} items ${lead.name} owes`);
+  }
+
+  // 7. Going dark
+  let goingDark = false;
+  if (ACTIVE_STAGES.has(lead.stage) && lead.lastContactDate) {
     try {
-      overdueFollowUp = new Date(lead.nextFollowUp) < now;
+      const daysSilent = Math.floor((now.getTime() - new Date(lead.lastContactDate).getTime()) / 86400000);
+      if (daysSilent >= 7) {
+        goingDark = true;
+        tooltipLines.push(`Re-engage — ${daysSilent}d silent`);
+      }
     } catch {}
   }
 
-  const droppedCount = dropped.length;
-  const hasNextBest = !!nba;
-  const total = droppedCount + playbookTaskCount + (hasNextBest ? 1 : 0) + (overdueFollowUp ? 1 : 0);
+  // 8. No champion past Meeting Held
+  let noChampion = false;
+  const stakeholders = di?.stakeholderMap || [];
+  if (POST_MEETING_STAGES.has(lead.stage) && stakeholders.length > 0) {
+    const hasChampion = stakeholders.some((s: any) => s.stance === "Champion");
+    if (!hasChampion) {
+      noChampion = true;
+      tooltipLines.push("Find a champion");
+    }
+  }
 
-  // Tooltip breakdown
-  const tooltipLines: string[] = [];
-  if (droppedCount > 0) tooltipLines.push(`${droppedCount} overdue commitment${droppedCount > 1 ? "s" : ""}`);
-  if (playbookTaskCount > 0) tooltipLines.push(`${playbookTaskCount} playbook task${playbookTaskCount > 1 ? "s" : ""} due`);
-  if (hasNextBest) tooltipLines.push(nba!.action);
+  // 9. Overdue follow-up
+  let overdueFollowUp = false;
+  if (lead.nextFollowUp) {
+    try { overdueFollowUp = new Date(lead.nextFollowUp) < now; } catch {}
+  }
   if (overdueFollowUp) tooltipLines.push("Follow-up overdue");
 
-  // Single action text
+  // 10. Stale new lead
+  let staleNewLead = false;
+  if ((lead.stage === "New Lead" || lead.stage === "Qualified") && !lead.lastContactDate) {
+    const submitted = lead.dateSubmitted || lead.stageEnteredDate;
+    if (submitted) {
+      try {
+        const daysOld = Math.floor((now.getTime() - new Date(submitted).getTime()) / 86400000);
+        if (daysOld >= 2) {
+          staleNewLead = true;
+          tooltipLines.push("Make first contact");
+        }
+      } catch {}
+    }
+  }
+
+  // 11. Next Best Action (catch-all, but don't duplicate dropped/theyOwe)
+  let hasNextBest = false;
+  if (droppedCount === 0 && theyOweCount === 0) {
+    const nba = getNextBestAction(lead);
+    if (nba) {
+      hasNextBest = true;
+      tooltipLines.push(nba.action);
+    }
+  }
+
+  const total =
+    (unansweredEmail ? 1 : 0) +
+    droppedCount +
+    (meetingPrep ? 1 : 0) +
+    objectionsCount +
+    playbookTaskCount +
+    theyOweCount +
+    (goingDark ? 1 : 0) +
+    (noChampion ? 1 : 0) +
+    (overdueFollowUp ? 1 : 0) +
+    (staleNewLead ? 1 : 0) +
+    (hasNextBest ? 1 : 0);
+
+  // Single action text — show the first tooltip line as the card text
   let singleActionText: string | null = null;
-  if (total === 1) {
-    if (droppedCount === 1) singleActionText = `Complete: "${dropped[0].item}"`;
-    else if (playbookTaskCount === 1) singleActionText = null; // will use playbook title from caller
-    else if (hasNextBest) singleActionText = nba!.action;
-    else if (overdueFollowUp) singleActionText = "Follow up — overdue";
+  if (total === 1 && tooltipLines.length > 0) {
+    singleActionText = tooltipLines[0];
   }
 
   return {
     total,
-    breakdown: { dropped: droppedCount, playbook: playbookTaskCount, nextBest: hasNextBest, overdueFollowUp },
+    breakdown: {
+      unansweredEmail,
+      dropped: droppedCount,
+      meetingPrep,
+      objections: objectionsCount,
+      playbook: playbookTaskCount,
+      theyOwe: theyOweCount,
+      goingDark,
+      noChampion,
+      overdueFollowUp,
+      staleNewLead,
+      nextBest: hasNextBest,
+    },
     singleActionText,
     tooltipLines,
   };
