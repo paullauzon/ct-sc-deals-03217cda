@@ -840,14 +840,14 @@ export default function DealRoom() {
                               </Button>
                             </div>
                             {draftedEmail && (
-                              <div className="ml-4 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">AI Draft</span>
-                                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => { navigator.clipboard.writeText(draftedEmail); toast.success("Copied to clipboard"); }}>
-                                    <Copy className="h-3 w-3" /> Copy
-                                  </Button>
-                                </div>
-                                <pre className="text-xs whitespace-pre-wrap font-sans text-foreground leading-relaxed">{draftedEmail}</pre>
+                              <div className="ml-4">
+                                <DraftCard
+                                  content={draftedEmail}
+                                  onSave={(text) => { setDraftedPriorityEmails(prev => ({ ...prev, [waitKey]: text })); saveDraftToDb(waitKey, text, "nudge", `Nudge: ${a.item.slice(0, 80)}`); }}
+                                  onRegenerate={() => handleDraftPriorityAction(waitKey, `The prospect (${lead.name}) committed to "${a.item}"${a.deadline ? ` by ${a.deadline}` : ""} but hasn't delivered. Draft a gentle nudge that adds new value or context rather than just asking "did you get a chance to...". Reference something specific to keep the conversation moving forward.`)}
+                                  onDiscard={() => discardDraft(waitKey)}
+                                  isRegenerating={draftingPriority === waitKey}
+                                />
                               </div>
                             )}
                           </div>
