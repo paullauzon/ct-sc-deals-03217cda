@@ -61,6 +61,11 @@ export default function DealRoom() {
   const [draftingIdx, setDraftingIdx] = useState<number | null>(null);
   const [draftedEmails, setDraftedEmails] = useState<Record<number, string>>({});
 
+  // Hooks must be called before any early returns
+  const leadIdArray = useMemo(() => id ? [id] : [], [id]);
+  const { unansweredIds } = useUnansweredEmails(leadIdArray);
+  const { tasks: playbookTasks } = useLeadTasks(leadIdArray);
+
   useEffect(() => {
     if (id) {
       fetchActivityLog(id).then(setActivityLog);
@@ -109,6 +114,63 @@ export default function DealRoom() {
   const droppedPromises = getDroppedPromises(lead);
   const nextBestAction = isClosed ? null : getNextBestAction(lead);
   const completedActions = actionItems.filter(a => a.status === "Completed");
+
+  // Compute unified action count
+  const hasUnansweredEmail = id ? unansweredIds.has(id) : false;
+  const hasMeetingPrep = !!(lead.meetingDate && (() => {
+    try {
+      const d = new Date(lead.meetingDate);
+      const now = new Date();
+      const diff = Math.floor((d.getTime() - now.getTime()) / 86400000);
+      return diff >= 0 && diff <= 7 && !lead.meetings?.some(m => m.intelligence?.meetingPrepBrief);
+    } catch { return false; }
+  })());
+  const unifiedCount = getUnifiedActionCount(lead, playbookTasks.length, { hasUnansweredEmail, hasMeetingPrep });
+
+  // Build structured action sections for the Actions tab
+  const theyOweItems = (lead.dealIntelligence?.actionItemTracker || []).filter(
+    (a: any) => (a.status === "Open" || a.status === "Overdue") && a.owner?.toLowerCase() === lead.name?.toLowerCase()
+  );
+  const openObjections = (lead.dealIntelligence?.objectionTracker || []).filter(
+    (o: any) => o.status === "Open" || o.status === "Recurring"
+  );
+
+  // Priority actions: contextual signals that need immediate attention
+  const priorityActions: { icon: any; title: string; subtitle: string; type: string }[] = [];
+  if (hasUnansweredEmail) priorityActions.push({ icon: Mail, title: `Reply to ${lead.name}'s email`, subtitle: "They reached out and are awaiting your reply", type: "email" });
+  if (unifiedCount.breakdown.goingDark) {
+    const daysSilent = lead.lastContactDate ? Math.floor((new Date().getTime() - new Date(lead.lastContactDate).getTime()) / 86400000) : 0;
+    priorityActions.push({ icon: AlertCircle, title: `Re-engage — ${daysSilent}d since last contact`, subtitle: "Deal is going dark in active stage", type: "dark" });
+  }
+  if (hasMeetingPrep) {
+    let dateStr = "upcoming";
+    try { const d = new Date(lead.meetingDate); dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); } catch {}
+    priorityActions.push({ icon: FileText, title: `Prep for meeting ${dateStr}`, subtitle: "No prep brief generated yet", type: "prep" });
+  }
+  if (unifiedCount.breakdown.overdueFollowUp) {
+    priorityActions.push({ icon: Clock, title: "Follow-up overdue", subtitle: `Was due ${lead.nextFollowUp}`, type: "followup" });
+  }
+  if (unifiedCount.breakdown.staleNewLead) {
+    priorityActions.push({ icon: Zap, title: "Make first contact", subtitle: "New lead with no outreach yet — 2+ days old", type: "stale" });
+  }
+  if (unifiedCount.breakdown.contractRenewal) {
+    let daysToRenewal = 0;
+    try { daysToRenewal = Math.floor((new Date(lead.contractEnd).getTime() - new Date().getTime()) / 86400000); } catch {}
+    priorityActions.push({ icon: Calendar, title: `Renewal in ${daysToRenewal}d — start conversation`, subtitle: "Contract ending soon", type: "renewal" });
+  }
+
+  // Strategic actions
+  const strategicActions: { title: string; subtitle: string }[] = [];
+  if (unifiedCount.breakdown.noChampion) strategicActions.push({ title: "Find a champion", subtitle: "No internal advocate identified among stakeholders" });
+  if (unifiedCount.breakdown.logMeetingOutcome) strategicActions.push({ title: "Log meeting outcome", subtitle: "Meeting held but outcome not recorded — data hygiene" });
+  if (unifiedCount.breakdown.sentimentDeclining) {
+    const traj = lead.dealIntelligence?.momentumSignals?.sentimentTrajectory;
+    strategicActions.push({ title: `Sentiment declining`, subtitle: traj ? `Was ${traj[0]}, now ${traj[traj.length - 1]}` : "Trend is downward across meetings" });
+  }
+  if (unifiedCount.breakdown.highIntent) {
+    const subCount = Array.isArray((lead as any).submissions) ? (lead as any).submissions.length : 0;
+    strategicActions.push({ title: `High intent — submitted ${subCount} times`, subtitle: "Prioritize outreach for this engaged prospect" });
+  }
 
   // Prev/Next navigation
   const currentIdx = leads.findIndex(l => l.id === id);
