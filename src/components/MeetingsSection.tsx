@@ -852,7 +852,7 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
 
 // ─── Prep Brief Dialog ───
 
-function PrepBriefDialog({ open, onOpenChange, brief, loading, leadName }: { open: boolean; onOpenChange: (v: boolean) => void; brief: MeetingPrepBrief | null; loading: boolean; leadName: string }) {
+export function PrepBriefDialog({ open, onOpenChange, brief, loading, leadName }: { open: boolean; onOpenChange: (v: boolean) => void; brief: MeetingPrepBrief | null; loading: boolean; leadName: string }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
