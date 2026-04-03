@@ -351,11 +351,11 @@ export default function DealRoom() {
 
         {/* Center: Tabbed Workspace */}
         <div className="flex-1 min-w-0 overflow-y-auto">
-          <Tabs defaultValue={searchParams.get("tab") || (isClosed ? "debrief" : openActions.length > 0 ? "actions" : "timeline")} className="h-full">
+          <Tabs defaultValue={searchParams.get("tab") || (isClosed ? "debrief" : unifiedCount.total > 0 ? "actions" : "timeline")} className="h-full">
             <div className="border-b border-border px-4">
               <TabsList className="bg-transparent h-10">
                 {isClosed && <TabsTrigger value="debrief" className="text-xs">Debrief</TabsTrigger>}
-                {!isClosed && <TabsTrigger value="actions" className="text-xs">Actions {openActions.length > 0 ? `(${openActions.length})` : ""}</TabsTrigger>}
+                {!isClosed && <TabsTrigger value="actions" className="text-xs">Actions {unifiedCount.total > 0 ? `(${unifiedCount.total})` : ""}</TabsTrigger>}
                 <TabsTrigger value="timeline" className="text-xs">Timeline</TabsTrigger>
                 <TabsTrigger value="meetings" className="text-xs">Meetings ({lead.meetings?.length || 0})</TabsTrigger>
                 <TabsTrigger value="intelligence" className="text-xs">Intelligence</TabsTrigger>
