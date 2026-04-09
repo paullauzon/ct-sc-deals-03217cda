@@ -1022,7 +1022,7 @@ function ClearableSelectField({ label, value, options, onChange }: { label: stri
 }
 
 export function LeadsTable() {
-  const { leads, addLead, isLeadNew, markLeadSeen, archiveLead } = useLeads();
+  const { leads, addLead, isLeadNew, markLeadSeen, archiveLead, refreshLeads } = useLeads();
   const { startBulkProcessing } = useProcessing();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");

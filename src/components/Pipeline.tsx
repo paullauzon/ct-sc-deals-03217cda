@@ -147,7 +147,7 @@ function QuickNote({ lead, onSave, onFollowUp }: { lead: Lead; onSave: (id: stri
 }
 
 export function Pipeline() {
-  const { getLeadsByStage, updateLead, leads, isLeadNew, markLeadSeen, archiveLead } = useLeads();
+  const { getLeadsByStage, updateLead, leads, isLeadNew, markLeadSeen, archiveLead, refreshLeads } = useLeads();
   const pipelineNavigate = useNavigate();
   const { leadJobs, startBulkProcessing } = useProcessing();
   const allLeadIds = leads.map(l => l.id);
