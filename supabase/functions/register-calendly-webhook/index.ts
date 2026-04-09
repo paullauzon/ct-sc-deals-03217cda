@@ -48,20 +48,29 @@ Deno.serve(async (req) => {
     );
 
     if (existing) {
-      console.log(`[register-calendly-webhook] Already registered: ${existing.uri}`);
-      return new Response(JSON.stringify({
-        status: "already_registered",
-        webhook: {
-          uri: existing.uri,
-          callback_url: existing.callback_url,
-          events: existing.events,
-          state: existing.state,
-          created_at: existing.created_at,
-        },
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (existing.state === "active") {
+        console.log(`[register-calendly-webhook] Already registered and active: ${existing.uri}`);
+        return new Response(JSON.stringify({
+          status: "already_registered",
+          webhook: {
+            uri: existing.uri,
+            callback_url: existing.callback_url,
+            events: existing.events,
+            state: existing.state,
+            created_at: existing.created_at,
+          },
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Webhook exists but is disabled — delete it so we can re-create
+      console.log(`[register-calendly-webhook] Found disabled webhook ${existing.uri}, deleting...`);
+      const deleteRes = await fetch(existing.uri, { method: "DELETE", headers });
+      if (!deleteRes.ok) {
+        console.warn(`[register-calendly-webhook] Delete failed: ${deleteRes.status}`);
+      }
     }
 
     // 3. Register new webhook
