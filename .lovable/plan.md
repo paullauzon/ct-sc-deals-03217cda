@@ -1,62 +1,43 @@
 
 
-# Fix AI Copy Generation Across the Entire System
+# Find Meetings for All New Leads
 
-## The Problem
+## What's Happening
 
-The `draft-followup` edge function has a single system prompt optimized for **post-meeting follow-up emails**. But it's now being called for 8+ different action types: agenda emails, nudges, objection responses, strategic outreach, re-engagement, prep briefs, NBA actions, and commitment fulfillment emails.
+There are **104 leads stuck at "New Lead"** with zero meetings and zero Calendly data. Two systems should be catching these:
 
-The result: every draft reads like a vague post-meeting follow-up regardless of what's actually needed. "Send agenda & talking points" produces a generic 80-word follow-up instead of an actual agenda with talking points.
+1. **Calendly backfill** — matches Calendly bookings to leads by email. The function exists (`backfill-calendly`) but hasn't been run recently. It only matches by **exact email**, so if a lead submitted with one email but booked Calendly with another, it misses.
 
-## The Fix
+2. **Fireflies search** (via `run-lead-job` / Auto-Find) — searches Fireflies by email, name, domain, and company. This is more robust but currently only runs when you click Auto-Find on individual leads or use bulk processing.
 
-### 1. Action-aware system prompts in `draft-followup`
+## Plan
 
-Replace the single system prompt with a prompt selector based on `actionType` (a new field passed in the request body). Each action type gets a purpose-built prompt that generates the right content format.
+### 1. Run the Calendly backfill immediately
 
-**Action types and what they should generate:**
+Deploy and trigger `backfill-calendly` with `?force=true` to scan all Calendly events from the last 90 days and match them to leads. This will advance any matched New Leads to "Meeting Set."
 
-| actionType | Output format |
-|---|---|
-| `agenda` | Subject + 3 numbered agenda items with talking points, time estimate, specific to their deal |
-| `post-meeting` | Recap with action items and dates (current behavior, refined) |
-| `nudge` | Value-add nudge referencing something new, not "checking in" |
-| `objection` | Direct response to the specific objection with evidence/data |
-| `re-engagement` | Market insight or trigger event angle, not "we miss you" |
-| `commitment` | Fulfillment email delivering what was promised |
-| `outreach` | First-touch cold email, sharp and specific |
-| `strategic` | Stakeholder expansion or multi-threading email |
-| `proposal-followup` | Proposal-specific follow-up with ROI angle |
-| `default` | Falls back to current general follow-up prompt |
+### 2. Trigger bulk Fireflies processing for unmatched New Leads
 
-Each prompt inherits the same P1 rules (no dashes, no banned phrases, max 80 words for emails, specificity) but the output structure and tone differ completely.
+After the Calendly backfill, queue all remaining "New Lead" stage leads (those still without meetings) through the existing bulk processing pipeline (`run-lead-job`). This searches Fireflies by name, email, and domain — a wider net than Calendly's email-only match.
 
-### 2. Pass `actionType` from DealRoom
+To avoid overloading Fireflies (rate limits), batch them in groups of 5 with delays between batches.
 
-Update `handleDraftPriorityAction` to derive and pass an `actionType` field in the request body so the edge function knows what kind of content to generate.
+### 3. Add a "Find Meetings for All New Leads" button
 
-Mapping logic:
-- Playbook tasks: derive from `task.title` keywords ("agenda" → `agenda`, "recap" → `post-meeting`, "check-in" → `nudge`, "re-engage" → `re-engagement`, "breakup" → `re-engagement`)
-- `waiting-*` keys → `nudge`
-- `objection-*` keys → `objection`
-- `strategic-*` keys → `strategic`
-- Priority actions: map from `pa.type` (email → `outreach`, dark → `re-engagement`, followup → `post-meeting`, prep → `agenda`)
-- Commitment keys → `commitment`
-- NBA → derive from action text or default
+Add a one-click button in the Pipeline view (or a bulk action) that triggers this combined Calendly + Fireflies scan for all New Leads at once, so this doesn't have to be done manually lead by lead again.
 
-### 3. Richer context for each action type
+## Implementation
 
-The current context passed to the AI is thin. Enhance it per action type:
-
-- **Agenda**: Include meeting date/time, attendees, previous meeting topics, their stated priorities, and service interest
-- **Nudge**: Include what they committed to, when, and what's happened since
-- **Objection**: Include the exact objection, when it was raised, won deal approach if available
-- **Commitment**: Include what was promised, the deadline, and what's being delivered
+| Step | Detail |
+|------|--------|
+| Deploy + call `backfill-calendly` | Run it with `force=true` to re-scan all events |
+| Queue remaining New Leads | Insert `processing_jobs` rows for all New Leads still without meetings, triggering `run-lead-job` for each |
+| UI button | Add "Scan All New Leads" action to Pipeline filters or bulk actions bar |
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/draft-followup/index.ts` | Accept `actionType` field. Add prompt map with 10 purpose-built system prompts. Select prompt based on actionType. Pass richer context to AI. |
-| `src/pages/DealRoom.tsx` | Pass `actionType` in every `handleDraftPriorityAction` call body. Derive actionType from the action key/context. Build richer context strings per type. |
+| `src/components/Pipeline.tsx` | Add "Scan All New Leads" button that triggers bulk processing for all New Lead stage leads |
+| `src/components/BulkProcessingDialog.tsx` | Support "all new leads" mode that queues every unprocessed New Lead |
 
