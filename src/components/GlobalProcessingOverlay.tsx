@@ -233,9 +233,17 @@ export function GlobalProcessingOverlay() {
 
       {/* Individual searching jobs */}
       {searchingLeadJobs.map(j => (
-        <div key={j.leadId} className="flex items-center gap-2 text-xs">
-          <Loader2 className="h-3 w-3 animate-spin text-primary" />
-          <span className="truncate">Searching for {j.leadName}...</span>
+        <div key={j.leadId} className="space-y-1">
+          <div className="flex items-center gap-2 text-xs">
+            <Loader2 className="h-3 w-3 animate-spin text-primary" />
+            <span className="truncate font-medium">{j.leadName}</span>
+          </div>
+          {j.progressMessage && (
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground pl-5">
+              {getStepIcon(j.progressMessage)}
+              <span className="truncate">{j.progressMessage}</span>
+            </div>
+          )}
         </div>
       ))}
     </div>
