@@ -11,6 +11,8 @@ export interface LeadJobState {
   pendingSuggestions: Array<{ field: string; label: string; value: string | number; evidence: string }>;
   leadId: string;
   leadName: string;
+  progressMessage?: string;
+  status?: string;
 }
 
 export interface FailedLead {
@@ -90,11 +92,25 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     return ageMs > 15 * 60 * 1000; // 15 minutes
   }, []);
 
-  const markJobAsTimedOut = useCallback((jobId: string) => {
+  const markJobAsTimedOut = useCallback((jobId: string, leadId?: string, leadName?: string) => {
+    // Don't set acknowledged: true here — let the realtime handler process the
+    // "failed" status first so it can clear UI state, THEN acknowledge.
     (supabase.from("processing_jobs") as any)
-      .update({ status: "failed", error: "Timed out — edge function did not complete", acknowledged: true })
+      .update({ status: "failed", error: "Timed out — edge function did not complete" })
       .eq("id", jobId)
       .then();
+
+    // Defensively clear local state immediately too
+    if (leadId) {
+      setLeadJobs(prev => {
+        const copy = { ...prev };
+        delete copy[leadId];
+        return copy;
+      });
+      if (leadName) {
+        toast.error(`Search timed out for ${leadName}`);
+      }
+    }
   }, []);
 
   // ─── Apply completed job results to lead ───
