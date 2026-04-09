@@ -1236,6 +1236,12 @@ export default function DealRoom() {
         )}
       </div>
       <PrepBriefDialog open={showPrepDialog} onOpenChange={setShowPrepDialog} brief={prepBrief} loading={generatingPrep} leadName={lead.name} />
+      <ArchiveDialog
+        open={!!archiveTarget}
+        leadName={archiveTarget?.name || ""}
+        onConfirm={(reason) => { if (archiveTarget) { archiveLead(archiveTarget.id, reason); setArchiveTarget(null); navigate("/"); } }}
+        onCancel={() => setArchiveTarget(null)}
+      />
     </div>
   );
 }

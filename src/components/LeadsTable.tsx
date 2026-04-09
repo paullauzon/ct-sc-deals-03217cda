@@ -8,6 +8,7 @@ import { MeetingsSection } from "@/components/MeetingsSection";
 import { EmailsSection } from "@/components/EmailsSection";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
+import { ArchiveDialog } from "@/components/ArchiveDialog";
 import { BrandLogo } from "@/components/BrandLogo";
 import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { getBrandBorderClass } from "@/lib/brandColors";
@@ -1321,7 +1322,12 @@ export function LeadsTable() {
       <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
       <NewLeadDialog open={showNewLead} onClose={() => setShowNewLead(false)} onSave={addLead} />
       <FirefliesImportDialog open={showFireflies} onOpenChange={setShowFireflies} />
-      
+      <ArchiveDialog
+        open={!!archiveTarget}
+        leadName={archiveTarget?.name || ""}
+        onConfirm={(reason) => { if (archiveTarget) { archiveLead(archiveTarget.id, reason); setArchiveTarget(null); } }}
+        onCancel={() => setArchiveTarget(null)}
+      />
     </div>
   );
 }

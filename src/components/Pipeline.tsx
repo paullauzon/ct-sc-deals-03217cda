@@ -697,7 +697,12 @@ export function Pipeline() {
           </Button>
         </div>
       )}
-      
+      <ArchiveDialog
+        open={!!archiveTarget}
+        leadName={archiveTarget?.name || ""}
+        onConfirm={(reason) => { if (archiveTarget) { archiveLead(archiveTarget.id, reason); setArchiveTarget(null); } }}
+        onCancel={() => setArchiveTarget(null)}
+      />
     </div>
   );
 }
