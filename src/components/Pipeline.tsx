@@ -274,12 +274,28 @@ export function Pipeline() {
               onClick={async () => {
                 setBackfilling(true);
                 try {
+                  // 1. Clean up zombie jobs (stuck >10min)
+                  const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+                  await supabase.from("processing_jobs")
+                    .update({ acknowledged: true, status: "failed", error: "Timed out (zombie cleanup)" })
+                    .in("status", ["queued", "processing"])
+                    .lt("created_at", tenMinAgo);
+
+                  // 2. Calendly sync
                   toast.info("Running Calendly sync...");
-                  await supabase.functions.invoke("backfill-calendly");
-                  toast.success("Calendly sync complete");
+                  const res = await supabase.functions.invoke("backfill-calendly");
+                  const calendlyMatches = res.data?.results?.filter((r: any) => r.status === "advanced_to_meeting_set" || r.status === "stamped_only") || [];
+                  toast.success(`Calendly: ${calendlyMatches.length} matches found`);
+
+                  // 3. Fresh DB query for unprocessed leads
+                  const { data: freshLeads } = await supabase.from("leads").select("id, stage, meetings").eq("stage", "New Lead");
                   const { data: doneJobs } = await supabase.from("processing_jobs").select("lead_id").in("status", ["done", "completed"]);
                   const doneIds = new Set((doneJobs || []).map((r: any) => r.lead_id));
-                  const unprocessed = leads.filter(l => l.stage === "New Lead" && (!l.meetings || l.meetings.length === 0) && !doneIds.has(l.id));
+                  const unprocessed = (freshLeads || []).filter((l: any) => {
+                    const meetings = Array.isArray(l.meetings) ? l.meetings : [];
+                    return meetings.length === 0 && !doneIds.has(l.id);
+                  });
+
                   if (unprocessed.length > 0) {
                     toast.info(`Queuing ${unprocessed.length} leads for Fireflies...`);
                     startBulkProcessing(unprocessed.length);
