@@ -146,6 +146,7 @@ function AppContent() {
 
       <CommandPalette onNavigate={handleCmdNavigate} onSelectLead={handleCmdSelectLead} externalOpen={cmdOpen} onExternalOpenChange={setCmdOpen} />
       <LeadDetail leadId={cmdLeadId} open={!!cmdLeadId} onClose={() => setCmdLeadId(null)} />
+      <GlobalProcessingOverlay />
     </div>
   );
 }
