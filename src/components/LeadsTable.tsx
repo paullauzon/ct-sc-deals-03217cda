@@ -1032,6 +1032,11 @@ export function LeadsTable() {
   const [showFireflies, setShowFireflies] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
   const [scoringAll, setScoringAll] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
+  const [viewMode, setViewMode] = useState<"active" | "archived">("active");
+  const [archivedLeads, setArchivedLeads] = useState<any[]>([]);
+  const [loadingArchived, setLoadingArchived] = useState(false);
+  const [scoringAll, setScoringAll] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("dateSubmitted");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -1301,7 +1306,7 @@ export function LeadsTable() {
                 <td className="px-4 py-3 text-xs text-muted-foreground">{SOURCE_LABELS[lead.source] || lead.source}</td>
                 <td className="px-2 py-3">
                   <button
-                    onClick={(e) => { e.stopPropagation(); archiveLead(lead.id); }}
+                    onClick={(e) => { e.stopPropagation(); setArchiveTarget({ id: lead.id, name: lead.name }); }}
                     className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
                     title="Archive lead"
                   >

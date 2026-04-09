@@ -460,7 +460,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
       action: {
         label: "Undo",
         onClick: () => {
-          supabase.from("leads").update({ archived_at: null } as any).eq("id", id).then(({ error }) => {
+          supabase.from("leads").update({ archived_at: null, archive_reason: '' } as any).eq("id", id).then(({ error }) => {
             if (error) { toast.error("Failed to unarchive"); return; }
             // Re-fetch and add back
             supabase.from("leads").select("*").eq("id", id).single().then(({ data }) => {
