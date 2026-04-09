@@ -1,38 +1,100 @@
 
+## What I found
 
-# Fix: False-Positive Meeting Matching for Common First Names
+The stuck “Searching for Amber Tobias...” state is most likely a frontend state bug, not proof that work is still running.
 
-## Root Cause
+Current flow in `src/contexts/ProcessingContext.tsx`:
+1. `startAutoFind()` immediately sets `leadJobs[lead.id].searching = true`
+2. The UI renders that generic message in `src/components/GlobalProcessingOverlay.tsx`
+3. If the job goes stale, `markJobAsTimedOut()` updates the DB to:
+   - `status = failed`
+   - `acknowledged = true`
+4. But the realtime listener ignores any update where `acknowledged` is true:
+   - `if (job.acknowledged) return;`
+5. Result: the failure never clears the local `leadJobs` state, so the spinner can stay forever
 
-Eric Hung's lead has `company: "Eric Hung"` (same as his name). The Fireflies search filter builds "company words" by stripping generic terms, leaving `["eric", "hung"]`. It then picks `companyWords[0]` (which is `"eric"` or `"hung"`) and does a **single word-boundary match** against meeting titles.
+There is also no live per-lead progress text for individual searches, only the static “Searching for X...” label, so even when the backend is doing work you can’t tell what step it is on.
 
-Since `"eric"` is an extremely common first name, every Fireflies meeting with any "Eric" in the title matched — Eric Phan, Eric Lin, Eric Yetter, etc. All 7 meetings are for different people named Eric.
+I also found a timeout mismatch:
+- stale-job logic uses 15 minutes
+- `waitForJobCompletion()` still times out after 10 minutes
 
-The same bug would affect any lead whose company name is identical to their personal name, or whose company name contains a very common word that also appears in unrelated meeting titles.
+## Plan
 
-## Fix
+### 1. Fix the stale-job cleanup bug
+Update `src/contexts/ProcessingContext.tsx` so timed-out jobs are not hidden from the realtime handler before the UI can react.
 
-### 1. Skip company-name matching when company equals lead name
+Implementation:
+- Change `markJobAsTimedOut()` to stop setting `acknowledged: true` immediately
+- Let the normal `failed` branch process the update, clear `leadJobs`, show an error, then acknowledge
+- Reorder the realtime handler so terminal statuses (`completed` / `failed`) are handled before the early `acknowledged` return
 
-In `fetch-fireflies/index.ts`, the `buildSearchFilter` function receives `searchCompanies`. In `run-lead-job/index.ts`, the company is passed as `lead.company`. When the company name is identical (or nearly identical) to the lead's name, the company signal adds zero new information — the name signal already covers it. Skip adding company words in this case.
+### 2. Show real progress for individual lead searches
+Right now individual jobs only show a spinner with a name.
 
-### 2. Require ALL distinctive company words to match (not just the first)
+Implementation:
+- Extend `LeadJobState` with `progressMessage` and optionally `status`
+- In the realtime subscription and hydration path, copy `job.progress_message` into `leadJobs[job.lead_id]`
+- Render that message in `src/components/GlobalProcessingOverlay.tsx` so the user sees:
+  - Searching Fireflies (Captarget)...
+  - Searching Fireflies (SourceCo)...
+  - Found N meetings, analyzing with AI...
+  - Synthesizing deal intelligence...
 
-Currently only `companyWords[0]` is checked. Change to require all distinctive words (or at least 2+ words for short company names) to match. This prevents single common words like "eric" from triggering false positives.
+### 3. Make timeout behavior consistent
+Use one shared timeout constant in `src/contexts/ProcessingContext.tsx`.
 
-### 3. Skip company words that are common first/last names
+Implementation:
+- Replace the hardcoded 10-minute timeout in `waitForJobCompletion()` with the same 15-minute threshold used by stale cleanup
+- Use the same constant for:
+  - `isStaleJob()`
+  - periodic cleanup
+  - wait-for-completion safety timeout
 
-Add a guard: if a company word is fewer than 5 characters and matches a common first name (from the existing nickname map keys or a small blocklist), skip it as a matching signal.
+### 4. Clear stuck UI state immediately when a job times out
+Even with realtime fixes, the UI should defensively clear stale entries.
 
-### 4. Clean up Eric Hung's bad meetings
+Implementation:
+- When stale jobs are detected during hydration or periodic cleanup, also remove their entry from `leadJobs`
+- Show a toast like “Search timed out for Amber Tobias”
+- Prevent the overlay from showing a spinner for jobs already marked failed locally
 
-Run a DB update to clear the incorrectly assigned meetings from CT-217.
+### 5. Rehydrate visible state after refresh
+If the page refreshes during a search, the user should still see what is happening.
 
-## Files Changed
+Implementation:
+- During mount hydration, rebuild `leadJobs` from unacknowledged `queued` / `processing` jobs including `progress_message`
+- If there are no active jobs but the UI still has a stale local searching state, clear it
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/fetch-fireflies/index.ts` | In `buildSearchFilter`: (a) skip company matching when company equals a search name, (b) require multiple distinctive words to match instead of just one, (c) add common-name guard for short company words |
-| `supabase/functions/run-lead-job/index.ts` | Pass `leadName` alongside `searchCompanies` so the filter can compare them |
-| DB cleanup | Clear incorrect meetings from CT-217 (Eric Hung) |
+## Files to update
 
+- `src/contexts/ProcessingContext.tsx`
+  - fix stale timeout acknowledgment flow
+  - store per-lead progress messages
+  - unify timeout constants
+  - improve hydration / cleanup behavior
+- `src/components/GlobalProcessingOverlay.tsx`
+  - show live per-lead progress text instead of only “Searching for X...”
+  - optionally show timed-out / failed state more clearly
+
+## Technical details
+
+The most important bug is this combination:
+
+```ts
+markJobAsTimedOut() => update({ status: "failed", acknowledged: true })
+```
+
+plus
+
+```ts
+if (job.acknowledged) return;
+```
+
+That means the UI never processes the failed update, so the search indicator can remain on screen indefinitely even though the job is already dead.
+
+After this fix, you’ll be able to tell the difference between:
+- still running
+- timed out
+- failed
+- finished
