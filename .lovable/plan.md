@@ -1,40 +1,47 @@
 
 
-# Fix Bulk Processing + Show Background Progress
+# Archive Leads Feature
 
-## What happened
+## Problem
+Test leads like "Adam Haile" (the user themselves) clutter the pipeline. There's no way to remove leads without deleting them. Need a safe archive that hides leads from the entire system while preserving data.
 
-- Calendly backfill worked: 5 new leads matched and advanced to "Meeting Set"
-- Fireflies bulk processing failed to start properly — only 1 lead (Adam Haile) was queued before a network timeout killed the flow
-- 2 Adam Haile jobs are stuck in "processing" status (Fireflies hit 429 rate limits)
-- 97 New Leads still have no meetings and were never queued
-- The UI shows nothing because the bulk job phase was never properly initialized
+## Approach
 
-## Fixes
+Add an `archived_at` column to the `leads` table. Archived leads are filtered out everywhere — no new stage, no deletion. A simple archive/unarchive action on each lead.
 
-### 1. Clean up stuck jobs + retry bulk queue
+### 1. Database Migration
 
-The backfill button handler in Pipeline.tsx and LeadsTable.tsx needs to:
-- After Calendly backfill completes, refresh leads data to get updated stages
-- Then count truly unprocessed leads (New Lead + no meetings + no completed processing job)
-- Call `startBulkProcessing()` with the correct count so the overlay activates
+Add `archived_at` (nullable timestamp) to the `leads` table:
+```sql
+ALTER TABLE leads ADD COLUMN archived_at timestamptz DEFAULT NULL;
+```
 
-The current code calls `startBulkProcessing` before the Calendly response comes back, and if the count is 0 or the call errors, the overlay never shows.
+### 2. Filter archived leads at the source — `LeadContext.tsx`
 
-### 2. Fix the backfill button flow
+In `fetchLeadsFromDb()`, add `.is("archived_at", null)` to the query so archived leads never enter React state. This means every component (Dashboard, Pipeline, Command Center, etc.) automatically excludes them with zero changes.
 
-Current issue: the button calls Calendly backfill, then immediately tries to count unprocessed leads and start bulk processing — but the leads data hasn't been refreshed yet after Calendly updated some leads. The count is stale.
+### 3. Add `archiveLead` and `unarchiveLead` to LeadContext
 
-Fix: After Calendly backfill returns, call `refreshLeads()` to reload from DB, then compute the unprocessed count from fresh data, then call `startBulkProcessing()`.
+- `archiveLead(id)`: sets `archived_at = now()` in DB, removes lead from local state, shows toast with Undo
+- Context type gets `archiveLead: (id: string) => void`
 
-### 3. Mark zombie jobs as failed
+### 4. Add Archive button to the UI
 
-Add cleanup logic: before starting new bulk processing, mark any old `processing` or `queued` jobs older than 10 minutes as `acknowledged` so they don't interfere.
+- **LeadsTable**: Add an "Archive" option to each lead row's actions dropdown (or right-click menu)
+- **DealRoom**: Add an "Archive Lead" button in the lead header area
+- **Pipeline card**: Add archive to the card's action menu
+
+### 5. Archived Leads view (optional but useful)
+
+Add a small "Archived" link/filter in the Leads table header that queries `leads` where `archived_at IS NOT NULL`, showing archived leads with an "Unarchive" button.
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/Pipeline.tsx` | Fix backfill handler: await Calendly response, refresh leads, compute unprocessed from fresh data, then start bulk processing. Add zombie job cleanup before starting. |
-| `src/components/LeadsTable.tsx` | Same fix to backfill handler. |
+| Migration | `ALTER TABLE leads ADD COLUMN archived_at timestamptz DEFAULT NULL` |
+| `src/contexts/LeadContext.tsx` | Filter `.is("archived_at", null)` in fetch query. Add `archiveLead` function that updates DB and removes from state. Add to context type. |
+| `src/components/LeadsTable.tsx` | Add "Archive" action to lead row actions. Add "Show Archived" toggle that loads archived leads separately. |
+| `src/pages/DealRoom.tsx` | Add "Archive" button in lead header. Navigate back after archiving. |
+| `src/components/Pipeline.tsx` | Add "Archive" to pipeline card dropdown menu. |
 
