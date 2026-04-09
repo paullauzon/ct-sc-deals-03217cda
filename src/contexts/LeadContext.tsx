@@ -35,6 +35,7 @@ interface LeadContextType {
   getLeadsByStage: (stage: LeadStage) => Lead[];
   searchLeads: (query: string) => Lead[];
   archiveLead: (id: string) => void;
+  refreshLeads: () => Promise<void>;
 }
 
 const LeadContext = createContext<LeadContextType | null>(null);
@@ -112,6 +113,14 @@ export function LeadProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, [leads]);
+
+  const refreshLeads = useCallback(async () => {
+    const dbLeads = await fetchLeadsFromDb();
+    if (dbLeads && dbLeads.length > 0) {
+      setLeads(dbLeads);
+      leadIdsRef.current = new Set(dbLeads.map(l => l.id));
+    }
+  }, []);
 
   // Load leads from DB on mount, seed if empty
   useEffect(() => {
@@ -468,7 +477,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   }, [leads]);
 
   return (
-    <LeadContext.Provider value={{ leads, loading, unseenCount, clearUnseen, isLeadNew, markLeadSeen, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads, archiveLead }}>
+    <LeadContext.Provider value={{ leads, loading, unseenCount, clearUnseen, isLeadNew, markLeadSeen, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads, archiveLead, refreshLeads }}>
       {children}
     </LeadContext.Provider>
   );

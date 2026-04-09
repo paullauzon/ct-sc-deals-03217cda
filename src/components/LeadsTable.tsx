@@ -1022,7 +1022,7 @@ function ClearableSelectField({ label, value, options, onChange }: { label: stri
 }
 
 export function LeadsTable() {
-  const { leads, addLead, isLeadNew, markLeadSeen, archiveLead } = useLeads();
+  const { leads, addLead, isLeadNew, markLeadSeen, archiveLead, refreshLeads } = useLeads();
   const { startBulkProcessing } = useProcessing();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
@@ -1158,18 +1158,21 @@ export function LeadsTable() {
               const calendlyResults = res.data?.results?.filter((r: any) => r.status === "advanced_to_meeting_set" || r.status === "stamped_only") || [];
               toast.success(`Calendly: ${calendlyResults.length} matches found`);
 
-              // 3. Fresh DB query for unprocessed leads (all stages, not just New Lead)
-              const { data: freshLeads } = await supabase.from("leads").select("id, meetings");
-              const { data: doneJobs } = await supabase.from("processing_jobs").select("lead_id").in("status", ["done", "completed"]);
-              const doneIds = new Set((doneJobs || []).map((r: any) => r.lead_id));
-              const unprocessed = (freshLeads || []).filter((l: any) => {
-                const meetings = Array.isArray(l.meetings) ? l.meetings : [];
-                return meetings.length === 0 && !doneIds.has(l.id);
-              });
+               // 3. Refresh context so startBulkProcessing uses fresh data
+               await refreshLeads();
 
-              if (unprocessed.length > 0) {
-                toast.info(`Queuing ${unprocessed.length} leads for Fireflies search...`);
-                startBulkProcessing(unprocessed.length);
+               // 4. Fresh DB query for unprocessed leads (all stages, not just New Lead)
+               const { data: freshLeads } = await supabase.from("leads").select("id, meetings").is("archived_at", null);
+               const { data: doneJobs } = await supabase.from("processing_jobs").select("lead_id").in("status", ["done", "completed"]);
+               const doneIds = new Set((doneJobs || []).map((r: any) => r.lead_id));
+               const unprocessed = (freshLeads || []).filter((l: any) => {
+                 const meetings = Array.isArray(l.meetings) ? l.meetings : [];
+                 return meetings.length === 0 && !doneIds.has(l.id);
+               });
+
+               if (unprocessed.length > 0) {
+                 toast.info(`Queuing ${unprocessed.length} leads for Fireflies search...`);
+                 startBulkProcessing(unprocessed.length);
               } else {
                 toast.success("All leads already processed!");
               }
