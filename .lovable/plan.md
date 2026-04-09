@@ -1,40 +1,44 @@
 
 
-# Fix Bulk Processing Reliability
+# Fix Calendly Real-Time Webhook → Lead Matching
 
-## What Happened
-- Calendly sync worked fine (5 new matches)
-- Fireflies bulk processed only 8/98 leads, then the Myall Budden job got stuck and the loop died
-- 90 leads remain unprocessed
-- The overlay wasn't rendered at the time, so you saw nothing
+## What's Wrong
 
-## Root Causes
-1. **Zombie cleanup is too aggressive**: The 2-minute periodic cleanup marks jobs older than 10 minutes as timed out. But a single Fireflies scan can take 2-3 minutes, and the client-side loop was killed when the page reloaded during the code deploy
-2. **No resume capability**: If the loop dies mid-run (page refresh, code deploy, network glitch), there's no way to pick up where it left off — you have to start over, but `processedIds` excludes already-completed leads, so it skips them. The issue is the loop function itself is gone from memory
-3. **Myall Budden is stuck**: Still sitting as `processing` / `acknowledged: false`, blocking the overlay
+**The webhook IS registered at Calendly** — confirmed by the 409 "Already Exists" response. Calendly is sending `invitee.created` events to the `ingest-calendly-booking` function.
 
-## Plan
+**But the function is broken and can't process them.** There's a duplicate variable declaration on lines 76 and 78:
 
-### 1. Clean up stuck Myall Budden job
-Mark the stuck job as failed so it's cleared from the UI.
+```typescript
+const eventName = payload.scheduled_event?.name || ...  // line 76
+const eventName = payload.scheduled_event?.name || ...  // line 78  ← DUPLICATE
+```
 
-### 2. Increase zombie timeout to 15 minutes
-The current 10-minute window is too tight for leads that require scanning 1000+ Fireflies transcripts. Increase to 15 minutes in both the periodic cleanup and the `isStaleJob` check.
+This causes a compile/runtime error. Every webhook from Calendly hits a broken function and silently fails. Zero logs confirms this — the function crashes before any `console.log` runs.
 
-### 3. Add a "Resume" detection on mount
-When the page loads, check if there are unprocessed leads that should have been part of a bulk run. If the bulk phase is "idle" but there are still queued/processing jobs, show a toast offering to resume.
+Additionally, the `register-calendly-webhook` function has a bug in its duplicate detection: it searches for webhooks with `state === "active"` but the Calendly API returns the webhook with a different state label, so it tries to create a new one and gets a 409. This is cosmetic but should be fixed.
 
-### 4. Make the backfill button re-runnable
-Currently `startBulkProcessing` correctly queries the DB for leads with `meetings = '[]'` and excludes leads with completed processing jobs. This means clicking "Backfill All Meetings" again will pick up the remaining ~90 leads. The fix is just to ensure the stuck Myall Budden job doesn't block things.
+## Fix
 
-### 5. Show the overlay immediately on button click
-Add a brief "Starting..." state so you see feedback within 1 second of clicking, before the DB queries complete.
+### 1. Fix `ingest-calendly-booking` — remove duplicate variable (line 78)
+
+Delete line 78 (`const eventName = ...`). The identical declaration on line 76 is the correct one. This single fix will make the webhook functional again.
+
+### 2. Fix `register-calendly-webhook` — improve duplicate detection
+
+Change the existing check from matching only `state === "active"` to also matching `state === "active"` OR just matching by `callback_url` regardless of state. This prevents the false 409 errors.
+
+### 3. Deploy both functions
+
+After fixing, deploy to make the webhook live immediately.
+
+## Result
+
+When someone books via Calendly, the webhook fires instantly, the function matches by email, and the lead moves to "Meeting Set" in real time — no manual backfill needed.
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/contexts/ProcessingContext.tsx` | Increase stale job timeout from 10 to 15 minutes. Add immediate "Starting..." feedback before DB queries. On mount, auto-fail the stuck Myall Budden job (and any stuck processing jobs). |
-| `src/components/Pipeline.tsx` | Add toast feedback immediately when button is clicked (before Calendly sync starts). |
-| `src/components/LeadsTable.tsx` | Same immediate feedback fix. |
+| `supabase/functions/ingest-calendly-booking/index.ts` | Remove duplicate `const eventName` on line 78 |
+| `supabase/functions/register-calendly-webhook/index.ts` | Fix duplicate webhook detection to match by URL regardless of state |
 
