@@ -469,7 +469,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
   }, [leads]);
 
   return (
-    <LeadContext.Provider value={{ leads, loading, unseenCount, clearUnseen, isLeadNew, markLeadSeen, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads, archiveLead }}>
+    <LeadContext.Provider value={{ leads, loading, unseenCount, clearUnseen, isLeadNew, markLeadSeen, updateLead, addLead, addMeeting, getMetrics, getLeadsByStage, searchLeads, archiveLead, refreshLeads }}>
       {children}
     </LeadContext.Provider>
   );
