@@ -264,7 +264,14 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
     // Hydrate unacknowledged jobs on mount
     (async () => {
-      // First, clean up zombie jobs: processing + acknowledged (from cancelled bulk runs)
+      // Aggressive cleanup: any processing/queued job older than 30 min is dead
+      const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      await (supabase.from("processing_jobs") as any)
+        .update({ status: "failed", acknowledged: true, error: "Zombie job — cleaned up on mount" })
+        .in("status", ["processing", "queued"])
+        .lt("updated_at", thirtyMinAgo);
+
+      // Also clean up acknowledged processing jobs (from cancelled bulk runs)
       await (supabase.from("processing_jobs") as any)
         .update({ status: "failed", error: "Zombie job — cleaned up on mount" })
         .eq("status", "processing")
