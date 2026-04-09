@@ -1,49 +1,40 @@
 
 
-# Direct "Backfill All" Button — No Dialog, Combined Calendly + Fireflies
+# Fix Bulk Processing + Show Background Progress
 
-## Problem
+## What happened
 
-The "Process All Leads" button opens a dialog with counts and options. The user wants a single-click action that immediately:
-1. Runs the Calendly backfill (matches bookings by email)
-2. Queues all remaining unprocessed leads (no meetings, no completed processing job) for Fireflies search
+- Calendly backfill worked: 5 new leads matched and advanced to "Meeting Set"
+- Fireflies bulk processing failed to start properly — only 1 lead (Adam Haile) was queued before a network timeout killed the flow
+- 2 Adam Haile jobs are stuck in "processing" status (Fireflies hit 429 rate limits)
+- 97 New Leads still have no meetings and were never queued
+- The UI shows nothing because the bulk job phase was never properly initialized
 
-No dialog, no count input — just do it.
+## Fixes
 
-## Changes
+### 1. Clean up stuck jobs + retry bulk queue
 
-### `src/components/LeadsTable.tsx`
+The backfill button handler in Pipeline.tsx and LeadsTable.tsx needs to:
+- After Calendly backfill completes, refresh leads data to get updated stages
+- Then count truly unprocessed leads (New Lead + no meetings + no completed processing job)
+- Call `startBulkProcessing()` with the correct count so the overlay activates
 
-- Replace the "Process All Leads" button with a "Backfill All Meetings" button
-- On click: call `backfill-calendly` with `force=true` first, then call `startBulkProcessing()` for all unprocessed leads
-- Show a toast with progress ("Running Calendly sync... then queuing Fireflies search for X leads")
-- No dialog — direct execution
-- Disable button while running, show spinner
+The current code calls `startBulkProcessing` before the Calendly response comes back, and if the count is 0 or the call errors, the overlay never shows.
 
-### `src/components/Pipeline.tsx`
+### 2. Fix the backfill button flow
 
-- Same treatment for the "Scan N New Leads" button — make it a direct one-click "Backfill Meetings" action instead of opening the dialog
-- Calls Calendly backfill then queues Fireflies processing
+Current issue: the button calls Calendly backfill, then immediately tries to count unprocessed leads and start bulk processing — but the leads data hasn't been refreshed yet after Calendly updated some leads. The count is stale.
 
-### `src/contexts/ProcessingContext.tsx`
+Fix: After Calendly backfill returns, call `refreshLeads()` to reload from DB, then compute the unprocessed count from fresh data, then call `startBulkProcessing()`.
 
-- Verify `startBulkProcessing` can accept a count of 0 or "all" to process every unprocessed lead without requiring the dialog
+### 3. Mark zombie jobs as failed
 
-## Flow
-
-```text
-User clicks "Backfill All Meetings"
-  → Toast: "Syncing Calendly bookings..."
-  → POST backfill-calendly?force=true
-  → Toast: "Found X Calendly matches. Queuing Y leads for Fireflies..."
-  → startBulkProcessing(unprocessedCount)
-  → Toast: "Processing X leads in background"
-```
+Add cleanup logic: before starting new bulk processing, mark any old `processing` or `queued` jobs older than 10 minutes as `acknowledged` so they don't interfere.
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/LeadsTable.tsx` | Replace "Process All Leads" button with "Backfill All Meetings" — direct execution calling Calendly backfill then bulk Fireflies processing, no dialog |
-| `src/components/Pipeline.tsx` | Replace "Scan N New Leads" button with same direct one-click backfill action |
+| `src/components/Pipeline.tsx` | Fix backfill handler: await Calendly response, refresh leads, compute unprocessed from fresh data, then start bulk processing. Add zombie job cleanup before starting. |
+| `src/components/LeadsTable.tsx` | Same fix to backfill handler. |
 
