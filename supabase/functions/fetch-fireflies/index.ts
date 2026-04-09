@@ -518,6 +518,7 @@ serve(async (req) => {
     const searchNames: string[] = body.searchNames || [];
     const searchDomains: string[] = body.searchDomains || [];
     const searchCompanies: string[] = body.searchCompanies || [];
+    const searchLeadName: string = body.searchLeadName || "";
 
     const hasSearchCriteria = searchEmails.length > 0 || searchNames.length > 0 || searchDomains.length > 0 || searchCompanies.length > 0;
 
@@ -527,7 +528,7 @@ serve(async (req) => {
 
     if (hasSearchCriteria) {
       // ── Metadata-first approach: paginate metadata, then fetch full transcripts for matches ──
-      const filterFn = buildSearchFilter(searchEmails, searchNames, searchDomains, searchCompanies);
+      const filterFn = buildSearchFilter(searchEmails, searchNames, searchDomains, searchCompanies, searchLeadName);
       const metadataMatches = await fetchMetadataPaginated(FIREFLIES_API_KEY, filterFn, limit, since || undefined);
       console.log(`Metadata scan found ${metadataMatches.length} matches. Fetching full transcripts...`);
 
