@@ -1023,13 +1023,14 @@ function ClearableSelectField({ label, value, options, onChange }: { label: stri
 
 export function LeadsTable() {
   const { leads, addLead, isLeadNew, markLeadSeen } = useLeads();
+  const { startBulkProcessing } = useProcessing();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
   const [brandFilter, setBrandFilter] = useState<string>("all");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [showNewLead, setShowNewLead] = useState(false);
   const [showFireflies, setShowFireflies] = useState(false);
-  const [showBulkProcess, setShowBulkProcess] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const [scoringAll, setScoringAll] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("dateSubmitted");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -1141,7 +1142,35 @@ export function LeadsTable() {
           <p className="text-sm text-muted-foreground mt-1">{sorted.length} of {leads.length} leads</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowBulkProcess(true)}><Zap className="w-4 h-4" /> Process All Leads</Button>
+          <Button variant="outline" size="sm" disabled={backfilling} onClick={async () => {
+            setBackfilling(true);
+            try {
+              toast.info("Running Calendly sync...");
+              const { data: { session } } = await supabase.auth.getSession();
+              const res = await supabase.functions.invoke("backfill-calendly", {
+                headers: { "x-api-key": "backfill" },
+              });
+              const calendlyResults = res.data?.results?.filter((r: any) => r.status === "advanced_to_meeting_set" || r.status === "stamped_only") || [];
+              toast.success(`Calendly: ${calendlyResults.length} matches found`);
+              // Now queue Fireflies for all remaining unprocessed
+              const { data: doneJobs } = await supabase.from("processing_jobs").select("lead_id").in("status", ["done", "completed"]);
+              const doneIds = new Set((doneJobs || []).map((r: any) => r.lead_id));
+              const unprocessed = leads.filter(l => (!l.meetings || l.meetings.length === 0) && !doneIds.has(l.id));
+              if (unprocessed.length > 0) {
+                toast.info(`Queuing ${unprocessed.length} leads for Fireflies search...`);
+                startBulkProcessing(unprocessed.length);
+              } else {
+                toast.success("All leads already processed!");
+              }
+            } catch (err) {
+              toast.error("Backfill failed: " + (err as Error).message);
+            } finally {
+              setBackfilling(false);
+            }
+          }}>
+            {backfilling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+            {backfilling ? "Backfilling..." : "Backfill All Meetings"}
+          </Button>
           {unscoredCount > 0 && (
             <Button variant="outline" size="sm" onClick={handleScoreAll} disabled={scoringAll}>
               <Target className="w-4 h-4" />
@@ -1264,7 +1293,7 @@ export function LeadsTable() {
       <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
       <NewLeadDialog open={showNewLead} onClose={() => setShowNewLead(false)} onSave={addLead} />
       <FirefliesImportDialog open={showFireflies} onOpenChange={setShowFireflies} />
-      <BulkProcessingDialog open={showBulkProcess} onOpenChange={setShowBulkProcess} />
+      
     </div>
   );
 }

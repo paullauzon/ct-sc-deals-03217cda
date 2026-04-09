@@ -26,7 +26,7 @@ import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, getUnifiedActionCount, getNextBestAction, markActionItemDone } from "@/lib/dealHealthUtils";
 import { useLeadTasks } from "@/hooks/useLeadTasks";
 import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
-import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
+import { supabase } from "@/integrations/supabase/client";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
@@ -149,7 +149,7 @@ function QuickNote({ lead, onSave, onFollowUp }: { lead: Lead; onSave: (id: stri
 export function Pipeline() {
   const { getLeadsByStage, updateLead, leads, isLeadNew, markLeadSeen } = useLeads();
   const pipelineNavigate = useNavigate();
-  const { leadJobs } = useProcessing();
+  const { leadJobs, startBulkProcessing } = useProcessing();
   const allLeadIds = leads.map(l => l.id);
   const { tasks: allPlaybookTasks } = useLeadTasks(allLeadIds.length > 0 ? allLeadIds : undefined);
   const { unansweredIds } = useUnansweredEmails(allLeadIds);
@@ -160,7 +160,7 @@ export function Pipeline() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
 
   const newLeadCount = useMemo(() => leads.filter(l => l.stage === "New Lead" && (!l.meetings || l.meetings.length === 0)).length, [leads]);
 
@@ -270,11 +270,34 @@ export function Pipeline() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setBulkDialogOpen(true)}
+              disabled={backfilling}
+              onClick={async () => {
+                setBackfilling(true);
+                try {
+                  toast.info("Running Calendly sync...");
+                  await supabase.functions.invoke("backfill-calendly", {
+                    headers: { "x-api-key": "backfill" },
+                  });
+                  toast.success("Calendly sync complete");
+                  const { data: doneJobs } = await supabase.from("processing_jobs").select("lead_id").in("status", ["done", "completed"]);
+                  const doneIds = new Set((doneJobs || []).map((r: any) => r.lead_id));
+                  const unprocessed = leads.filter(l => l.stage === "New Lead" && (!l.meetings || l.meetings.length === 0) && !doneIds.has(l.id));
+                  if (unprocessed.length > 0) {
+                    toast.info(`Queuing ${unprocessed.length} leads for Fireflies...`);
+                    startBulkProcessing(unprocessed.length);
+                  } else {
+                    toast.success("All new leads processed!");
+                  }
+                } catch (err) {
+                  toast.error("Backfill failed: " + (err as Error).message);
+                } finally {
+                  setBackfilling(false);
+                }
+              }}
               className="h-8 text-xs gap-1.5"
             >
-              <Zap className="h-3.5 w-3.5" />
-              Scan {newLeadCount} New Leads
+              {backfilling ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+              {backfilling ? "Backfilling..." : `Backfill ${newLeadCount} New Leads`}
             </Button>
           )}
         <div className="relative w-full max-w-xs">
@@ -647,7 +670,7 @@ export function Pipeline() {
           </Button>
         </div>
       )}
-      <BulkProcessingDialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen} />
+      
     </div>
   );
 }
