@@ -1,0 +1,1 @@
+ALTER TABLE public.leads ADD COLUMN archived_at timestamptz DEFAULT NULL;

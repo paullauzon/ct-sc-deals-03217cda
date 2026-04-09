@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 
-import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, Check, Linkedin, CalendarCheck, ChevronRight, Zap } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, Check, Linkedin, CalendarCheck, ChevronRight, Zap, Archive } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
@@ -147,7 +147,7 @@ function QuickNote({ lead, onSave, onFollowUp }: { lead: Lead; onSave: (id: stri
 }
 
 export function Pipeline() {
-  const { getLeadsByStage, updateLead, leads, isLeadNew, markLeadSeen } = useLeads();
+  const { getLeadsByStage, updateLead, leads, isLeadNew, markLeadSeen, archiveLead } = useLeads();
   const pipelineNavigate = useNavigate();
   const { leadJobs, startBulkProcessing } = useProcessing();
   const allLeadIds = leads.map(l => l.id);
@@ -406,6 +406,13 @@ export function Pipeline() {
                           </p>
                         </div>
                         <QuickNote lead={lead} onSave={handleQuickNote} onFollowUp={handleFollowUp} />
+                        <button
+                          onClick={(e) => { e.stopPropagation(); archiveLead(lead.id); }}
+                          className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          title="Archive lead"
+                        >
+                          <Archive className="h-3 w-3" />
+                        </button>
                         <OwnerBadge owner={lead.assignedTo} />
                       </div>
                       {/* Row 2: Multi-submission / associates */}

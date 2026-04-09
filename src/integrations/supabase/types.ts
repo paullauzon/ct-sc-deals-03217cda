@@ -215,6 +215,7 @@ export type Database = {
       leads: {
         Row: {
           acquisition_strategy: string
+          archived_at: string | null
           assigned_to: string
           billing_frequency: string
           brand: string
@@ -296,6 +297,7 @@ export type Database = {
         }
         Insert: {
           acquisition_strategy?: string
+          archived_at?: string | null
           assigned_to?: string
           billing_frequency?: string
           brand?: string
@@ -377,6 +379,7 @@ export type Database = {
         }
         Update: {
           acquisition_strategy?: string
+          archived_at?: string | null
           assigned_to?: string
           billing_frequency?: string
           brand?: string

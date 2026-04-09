@@ -23,7 +23,7 @@ import { format, parseISO } from "date-fns";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight, Clock, GitCommit, MessageSquare, Calendar, Search as SearchIcon, Linkedin, CalendarCheck } from "lucide-react";
+import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight, Clock, GitCommit, MessageSquare, Calendar, Search as SearchIcon, Linkedin, CalendarCheck, Archive } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
@@ -1022,7 +1022,7 @@ function ClearableSelectField({ label, value, options, onChange }: { label: stri
 }
 
 export function LeadsTable() {
-  const { leads, addLead, isLeadNew, markLeadSeen } = useLeads();
+  const { leads, addLead, isLeadNew, markLeadSeen, archiveLead } = useLeads();
   const { startBulkProcessing } = useProcessing();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
@@ -1295,6 +1295,15 @@ export function LeadsTable() {
                 <td className="px-4 py-3 text-xs">{lead.priority}</td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{lead.createdAt ? format(parseISO(lead.createdAt), "MMM d, h:mm a") : lead.dateSubmitted}</td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">{SOURCE_LABELS[lead.source] || lead.source}</td>
+                <td className="px-2 py-3">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); archiveLead(lead.id); }}
+                    className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                    title="Archive lead"
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
