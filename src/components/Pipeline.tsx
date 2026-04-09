@@ -266,6 +266,17 @@ export function Pipeline() {
             <CheckSquare className="h-3.5 w-3.5" />
             {selectMode ? "Cancel" : "Select"}
           </Button>
+          {newLeadCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkDialogOpen(true)}
+              className="h-8 text-xs gap-1.5"
+            >
+              <Zap className="h-3.5 w-3.5" />
+              Scan {newLeadCount} New Leads
+            </Button>
+          )}
         <div className="relative w-full max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
