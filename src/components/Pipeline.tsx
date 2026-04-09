@@ -670,7 +670,7 @@ export function Pipeline() {
           </Button>
         </div>
       )}
-      <BulkProcessingDialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen} />
+      
     </div>
   );
 }
