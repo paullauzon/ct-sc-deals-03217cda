@@ -34,7 +34,7 @@ interface LeadContextType {
   getMetrics: () => PipelineMetrics;
   getLeadsByStage: (stage: LeadStage) => Lead[];
   searchLeads: (query: string) => Lead[];
-  archiveLead: (id: string) => void;
+  archiveLead: (id: string, reason: string) => void;
   refreshLeads: () => Promise<void>;
 }
 
@@ -443,13 +443,13 @@ export function LeadProvider({ children }: { children: ReactNode }) {
     [leads]
   );
 
-  const archiveLead = useCallback((id: string) => {
+  const archiveLead = useCallback((id: string, reason: string) => {
     const lead = leads.find(l => l.id === id);
     const leadName = lead?.name || id;
     // Remove from local state immediately
     setLeads(prev => prev.filter(l => l.id !== id));
     // Persist to DB
-    supabase.from("leads").update({ archived_at: new Date().toISOString() } as any).eq("id", id).then(({ error }) => {
+    supabase.from("leads").update({ archived_at: new Date().toISOString(), archive_reason: reason } as any).eq("id", id).then(({ error }) => {
       if (error) {
         console.error("Archive error:", error);
         toast.error("Failed to archive lead");
