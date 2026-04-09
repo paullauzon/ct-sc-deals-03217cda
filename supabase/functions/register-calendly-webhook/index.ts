@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
     const listData = await listRes.json();
 
     const existing = (listData.collection || []).find(
-      (wh: any) => wh.callback_url === WEBHOOK_TARGET_URL && wh.state === "active"
+      (wh: any) => wh.callback_url === WEBHOOK_TARGET_URL
     );
 
     if (existing) {
