@@ -81,13 +81,13 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
   const pausedRef = useRef(false);
   const resumeResolverRef = useRef<(() => void) | null>(null);
 
-  // ─── Stale job detection (>10 min old) ───
+  // ─── Stale job detection (>15 min old) ───
 
   const isStaleJob = useCallback((job: any): boolean => {
     const updatedAt = job.updated_at || job.created_at;
     if (!updatedAt) return false;
     const ageMs = Date.now() - new Date(updatedAt).getTime();
-    return ageMs > 10 * 60 * 1000; // 10 minutes
+    return ageMs > 15 * 60 * 1000; // 15 minutes
   }, []);
 
   const markJobAsTimedOut = useCallback((jobId: string) => {
@@ -276,12 +276,12 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
 
     // Periodic stale job cleanup every 2 minutes
     const staleInterval = setInterval(async () => {
-      const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
       const { data: staleJobs } = await (supabase.from("processing_jobs") as any)
         .select("id, lead_name")
         .eq("acknowledged", false)
         .in("status", ["queued", "processing"])
-        .lt("updated_at", tenMinAgo);
+        .lt("updated_at", fifteenMinAgo);
 
       if (staleJobs && staleJobs.length > 0) {
         for (const job of staleJobs) {
@@ -406,10 +406,11 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Show overlay immediately with "Starting..." feedback
     setBulkJob({
       phase: "running", totalJobs: total, completedJobs: 0, failedJobs: 0, foundMeetings: 0, noMeetings: 0,
       currentLeadIndex: 0, currentLeadName: leadsToProcess[0]?.name || "",
-      progressMessage: `[1/${total}] Starting...`, bulkJobIds: [], cancelled: false,
+      progressMessage: `Starting... queuing ${total} leads`, bulkJobIds: [], cancelled: false,
       paused: false, failedLeads: [], processedLeads: [],
     });
 
