@@ -1392,6 +1392,7 @@ export function LeadsTable() {
           </tbody>
         </table>
       </div>
+      )}
 
       <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
       <NewLeadDialog open={showNewLead} onClose={() => setShowNewLead(false)} onSave={addLead} />
