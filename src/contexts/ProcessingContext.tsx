@@ -358,7 +358,17 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     cancelledRef.current = false;
     pausedRef.current = false;
 
-    const currentLeads = leadsRef.current;
+    // Query DB directly for leads — avoids stale React state race condition
+    const { data: dbLeads, error: leadsError } = await supabase
+      .from("leads")
+      .select("id, name, email, company, company_url, role, stage, priority, deal_value, service_interest, meetings, buyer_type, source, message")
+      .is("archived_at", null)
+      .eq("meetings", "[]");
+
+    if (leadsError || !dbLeads) {
+      toast.error("Failed to fetch leads from database");
+      return;
+    }
 
     // Fetch already-processed lead IDs to exclude them
     const { data: processedRows } = await supabase
@@ -367,10 +377,22 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
       .in("status", ["done", "completed"]);
     const processedIds = new Set((processedRows || []).map(r => r.lead_id));
 
-    // Filter to only leads with no meetings AND never processed before
-    let leadsToProcess = currentLeads.filter(
-      l => (!l.meetings || l.meetings.length === 0) && !processedIds.has(l.id)
-    );
+    // Map DB rows to lead-like objects and exclude already-processed
+    let leadsToProcess = dbLeads
+      .filter(r => !processedIds.has(r.id))
+      .map(r => ({
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        company: r.company,
+        companyUrl: r.company_url || "",
+        role: r.role,
+        stage: r.stage,
+        priority: r.priority,
+        dealValue: Number(r.deal_value) || 0,
+        serviceInterest: r.service_interest || "TBD",
+        meetings: Array.isArray(r.meetings) ? r.meetings : [],
+      }));
 
     // Apply limit if provided
     if (limit && limit > 0) {
@@ -420,8 +442,9 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         }));
 
         try {
-          const existingMeetingIds = (lead.meetings || []).map(m => m.firefliesId).filter(Boolean);
-          const existingMeetings = (lead.meetings || []).map(m => ({
+          const meetingsArr = Array.isArray(lead.meetings) ? lead.meetings as any[] : [];
+          const existingMeetingIds = meetingsArr.map(m => m.firefliesId).filter(Boolean);
+          const existingMeetings = meetingsArr.map(m => ({
             ...m,
             transcript: m.transcript || "",
           }));
