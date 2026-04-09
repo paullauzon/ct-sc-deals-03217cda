@@ -275,9 +275,7 @@ export function Pipeline() {
                 setBackfilling(true);
                 try {
                   toast.info("Running Calendly sync...");
-                  await supabase.functions.invoke("backfill-calendly", {
-                    headers: { "x-api-key": "backfill" },
-                  });
+                  await supabase.functions.invoke("backfill-calendly");
                   toast.success("Calendly sync complete");
                   const { data: doneJobs } = await supabase.from("processing_jobs").select("lead_id").in("status", ["done", "completed"]);
                   const doneIds = new Set((doneJobs || []).map((r: any) => r.lead_id));
