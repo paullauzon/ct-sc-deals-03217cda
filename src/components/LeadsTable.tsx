@@ -1212,23 +1212,44 @@ export function LeadsTable() {
         </div>
       )}
 
-      <div className="flex gap-3">
-        <Input placeholder="Search leads..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-        <Select value={stageFilter} onValueChange={setStageFilter}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="All Stages" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Stages</SelectItem>
-            {STAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={brandFilter} onValueChange={setBrandFilter}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="All Brands" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Brands</SelectItem>
-            <SelectItem value="Captarget">Captarget</SelectItem>
-            <SelectItem value="SourceCo">SourceCo</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex gap-3 items-center">
+        <div className="flex rounded-md border border-border overflow-hidden mr-2">
+          <button
+            onClick={() => setViewMode("active")}
+            className={cn("px-3 py-1.5 text-xs font-medium transition-colors", viewMode === "active" ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:bg-muted")}
+          >Active</button>
+          <button
+            onClick={() => {
+              setViewMode("archived");
+              setLoadingArchived(true);
+              supabase.from("leads").select("id, name, company, stage, archive_reason, archived_at, brand").not("archived_at", "is", null).order("archived_at", { ascending: false }).then(({ data }) => {
+                setArchivedLeads(data || []);
+                setLoadingArchived(false);
+              });
+            }}
+            className={cn("px-3 py-1.5 text-xs font-medium transition-colors", viewMode === "archived" ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:bg-muted")}
+          >Archived</button>
+        </div>
+        {viewMode === "active" && (
+          <>
+            <Input placeholder="Search leads..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
+            <Select value={stageFilter} onValueChange={setStageFilter}>
+              <SelectTrigger className="w-44"><SelectValue placeholder="All Stages" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Stages</SelectItem>
+                {STAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={brandFilter} onValueChange={setBrandFilter}>
+              <SelectTrigger className="w-36"><SelectValue placeholder="All Brands" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Brands</SelectItem>
+                <SelectItem value="Captarget">Captarget</SelectItem>
+                <SelectItem value="SourceCo">SourceCo</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
+        )}
       </div>
 
       <div className="border border-border rounded-md overflow-x-auto">
