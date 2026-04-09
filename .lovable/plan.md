@@ -1,34 +1,51 @@
 
 
-# Clean Up Stuck Jobs + Process 3 Remaining Leads
+# Archive Reason + Archived Leads Viewer
 
-## Current State
+## What needs to change
 
-- 118 of 120 no-meeting leads have been searched — Fireflies returned nothing because they never scheduled a Calendly meeting
-- 2 jobs are stuck in "processing" (John Matthews, Cordelia Shackleton) from the last backfill
-- 1 lead (Odanette Isaac) was never queued
-
-After this, every lead will have been searched. Future processing only needs to happen when new leads arrive or new Calendly bookings come in.
+1. **DB**: Add `archive_reason` text column to `leads` table
+2. **Archive flow**: Replace the instant-archive click with a small dialog that requires a reason before archiving
+3. **Archived folder**: Add an "Archived" tab/view in LeadsTable that loads archived leads with their reason displayed
 
 ## Plan
 
-### 1. Mark the 2 stuck processing jobs as failed
+### 1. Migration: add `archive_reason` column
+Add nullable `archive_reason text` column to leads table, defaulting to `''`.
 
-In `ProcessingContext.tsx`, the mount-time hydration already handles this for jobs older than 15 minutes. But these jobs are now hours old and may have been acknowledged already. Add a one-time cleanup on mount: any `processing` job older than 30 minutes gets marked `failed` + `acknowledged`, and the local `leadJobs` state is cleared for those leads.
+### 2. Create `ArchiveDialog` component
+A small dialog with:
+- Lead name displayed
+- Required text input for archive reason (e.g. "Test lead", "Duplicate", "Not a real prospect")
+- Cancel / Archive buttons
+- Archive button disabled until reason is entered
 
-### 2. Re-queue the 3 unprocessed leads automatically
+### 3. Update `archiveLead` in LeadContext
+- Change signature to `archiveLead(id: string, reason: string)`
+- Write both `archived_at` and `archive_reason` to DB
+- Update context type
 
-After cleanup, the next "Backfill All" click will pick up these 3 leads (the DB-direct discovery query already checks for leads without a `completed` processing job). No code change needed — just click the button after the stuck jobs are cleared.
+### 4. Update all archive trigger points
+Each place that calls `archiveLead` now opens the dialog instead of archiving directly:
+- **LeadsTable.tsx**: Archive button → opens ArchiveDialog
+- **Pipeline.tsx**: Archive button → opens ArchiveDialog  
+- **DealRoom.tsx**: Archive button → opens ArchiveDialog
 
-**Alternatively**, we can add a small fix: during the zombie cleanup on mount, if we find stuck bulk jobs, automatically re-queue them instead of just failing them. This would be more resilient for future runs too.
-
-### 3. No other action needed
-
-The 118 leads with no meetings are genuinely empty — no Calendly booking means no Fireflies transcript. The system worked correctly for them.
+### 5. Add "Archived" tab in LeadsTable
+- Add a toggle/tab at the top: "Active" | "Archived"
+- When "Archived" is selected, query DB for `archived_at IS NOT NULL`
+- Show a simplified table: Name, Company, Stage (at time of archive), Archive Reason, Archived Date
+- Add "Restore" button per row (clears `archived_at` and `archive_reason`)
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/contexts/ProcessingContext.tsx` | Extend mount-time cleanup to mark very old (>30min) stuck `processing` jobs as `failed` + `acknowledged`, clearing local state. This ensures the 2 stuck jobs don't block future backfills. |
+| DB migration | Add `archive_reason text default '' not null` to leads |
+| `src/components/ArchiveDialog.tsx` | New — dialog with reason input |
+| `src/contexts/LeadContext.tsx` | Update `archiveLead` signature to include reason, write `archive_reason` to DB |
+| `src/components/LeadsTable.tsx` | Add ArchiveDialog state, "Archived" tab that fetches and displays archived leads with reasons |
+| `src/components/Pipeline.tsx` | Add ArchiveDialog state instead of direct archive call |
+| `src/pages/DealRoom.tsx` | Add ArchiveDialog state instead of direct archive call |
+| `src/lib/leadDbMapping.ts` | Map `archive_reason` field if needed |
 
