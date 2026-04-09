@@ -35,6 +35,7 @@ interface LeadContextType {
   getLeadsByStage: (stage: LeadStage) => Lead[];
   searchLeads: (query: string) => Lead[];
   archiveLead: (id: string) => void;
+  refreshLeads: () => Promise<void>;
 }
 
 const LeadContext = createContext<LeadContextType | null>(null);
