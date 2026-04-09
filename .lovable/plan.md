@@ -1,44 +1,38 @@
 
 
-# Fix Calendly Real-Time Webhook → Lead Matching
+# Fix: False-Positive Meeting Matching for Common First Names
 
-## What's Wrong
+## Root Cause
 
-**The webhook IS registered at Calendly** — confirmed by the 409 "Already Exists" response. Calendly is sending `invitee.created` events to the `ingest-calendly-booking` function.
+Eric Hung's lead has `company: "Eric Hung"` (same as his name). The Fireflies search filter builds "company words" by stripping generic terms, leaving `["eric", "hung"]`. It then picks `companyWords[0]` (which is `"eric"` or `"hung"`) and does a **single word-boundary match** against meeting titles.
 
-**But the function is broken and can't process them.** There's a duplicate variable declaration on lines 76 and 78:
+Since `"eric"` is an extremely common first name, every Fireflies meeting with any "Eric" in the title matched — Eric Phan, Eric Lin, Eric Yetter, etc. All 7 meetings are for different people named Eric.
 
-```typescript
-const eventName = payload.scheduled_event?.name || ...  // line 76
-const eventName = payload.scheduled_event?.name || ...  // line 78  ← DUPLICATE
-```
-
-This causes a compile/runtime error. Every webhook from Calendly hits a broken function and silently fails. Zero logs confirms this — the function crashes before any `console.log` runs.
-
-Additionally, the `register-calendly-webhook` function has a bug in its duplicate detection: it searches for webhooks with `state === "active"` but the Calendly API returns the webhook with a different state label, so it tries to create a new one and gets a 409. This is cosmetic but should be fixed.
+The same bug would affect any lead whose company name is identical to their personal name, or whose company name contains a very common word that also appears in unrelated meeting titles.
 
 ## Fix
 
-### 1. Fix `ingest-calendly-booking` — remove duplicate variable (line 78)
+### 1. Skip company-name matching when company equals lead name
 
-Delete line 78 (`const eventName = ...`). The identical declaration on line 76 is the correct one. This single fix will make the webhook functional again.
+In `fetch-fireflies/index.ts`, the `buildSearchFilter` function receives `searchCompanies`. In `run-lead-job/index.ts`, the company is passed as `lead.company`. When the company name is identical (or nearly identical) to the lead's name, the company signal adds zero new information — the name signal already covers it. Skip adding company words in this case.
 
-### 2. Fix `register-calendly-webhook` — improve duplicate detection
+### 2. Require ALL distinctive company words to match (not just the first)
 
-Change the existing check from matching only `state === "active"` to also matching `state === "active"` OR just matching by `callback_url` regardless of state. This prevents the false 409 errors.
+Currently only `companyWords[0]` is checked. Change to require all distinctive words (or at least 2+ words for short company names) to match. This prevents single common words like "eric" from triggering false positives.
 
-### 3. Deploy both functions
+### 3. Skip company words that are common first/last names
 
-After fixing, deploy to make the webhook live immediately.
+Add a guard: if a company word is fewer than 5 characters and matches a common first name (from the existing nickname map keys or a small blocklist), skip it as a matching signal.
 
-## Result
+### 4. Clean up Eric Hung's bad meetings
 
-When someone books via Calendly, the webhook fires instantly, the function matches by email, and the lead moves to "Meeting Set" in real time — no manual backfill needed.
+Run a DB update to clear the incorrectly assigned meetings from CT-217.
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/ingest-calendly-booking/index.ts` | Remove duplicate `const eventName` on line 78 |
-| `supabase/functions/register-calendly-webhook/index.ts` | Fix duplicate webhook detection to match by URL regardless of state |
+| `supabase/functions/fetch-fireflies/index.ts` | In `buildSearchFilter`: (a) skip company matching when company equals a search name, (b) require multiple distinctive words to match instead of just one, (c) add common-name guard for short company words |
+| `supabase/functions/run-lead-job/index.ts` | Pass `leadName` alongside `searchCompanies` so the filter can compare them |
+| DB cleanup | Clear incorrect meetings from CT-217 (Eric Hung) |
 
