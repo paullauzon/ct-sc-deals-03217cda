@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 
-import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, Check, Linkedin, CalendarCheck, ChevronRight } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, Check, Linkedin, CalendarCheck, ChevronRight, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
@@ -26,6 +26,7 @@ import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, getUnifiedActionCount, getNextBestAction, markActionItemDone } from "@/lib/dealHealthUtils";
 import { useLeadTasks } from "@/hooks/useLeadTasks";
 import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
+import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
