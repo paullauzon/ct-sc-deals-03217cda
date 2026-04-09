@@ -440,7 +440,7 @@ export default function DealRoom() {
               variant="ghost"
               size="sm"
               className="h-7 text-xs gap-1 text-muted-foreground hover:text-destructive"
-              onClick={() => { archiveLead(lead.id); navigate("/"); }}
+              onClick={() => setArchiveTarget({ id: lead.id, name: lead.name })}
             >
               <Archive className="h-3.5 w-3.5" /> Archive
             </Button>

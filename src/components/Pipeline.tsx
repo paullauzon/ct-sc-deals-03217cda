@@ -411,7 +411,7 @@ export function Pipeline() {
                         </div>
                         <QuickNote lead={lead} onSave={handleQuickNote} onFollowUp={handleFollowUp} />
                         <button
-                          onClick={(e) => { e.stopPropagation(); archiveLead(lead.id); }}
+                          onClick={(e) => { e.stopPropagation(); setArchiveTarget({ id: lead.id, name: lead.name }); }}
                           className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
                           title="Archive lead"
                         >

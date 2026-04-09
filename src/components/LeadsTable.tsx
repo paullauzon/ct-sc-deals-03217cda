@@ -1036,7 +1036,6 @@ export function LeadsTable() {
   const [viewMode, setViewMode] = useState<"active" | "archived">("active");
   const [archivedLeads, setArchivedLeads] = useState<any[]>([]);
   const [loadingArchived, setLoadingArchived] = useState(false);
-  const [scoringAll, setScoringAll] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("dateSubmitted");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
