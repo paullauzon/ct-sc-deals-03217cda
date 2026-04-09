@@ -281,14 +281,15 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           if (job.status === "completed") {
             applyCompletedJob(job);
           } else if (job.status === "queued" || job.status === "processing") {
-            // Check if stale before showing as active
             if (isStaleJob(job)) {
-              markJobAsTimedOut(job.id);
-              toast.error(`Processing timed out for ${job.lead_name}`);
+              markJobAsTimedOut(job.id, job.lead_id, job.lead_name);
             } else {
               setLeadJobs(prev => ({
                 ...prev,
-                [job.lead_id]: { searching: true, pendingSuggestions: [], leadId: job.lead_id, leadName: job.lead_name },
+                [job.lead_id]: {
+                  searching: true, pendingSuggestions: [], leadId: job.lead_id, leadName: job.lead_name,
+                  progressMessage: job.progress_message || undefined, status: job.status,
+                },
               }));
             }
           } else if (job.status === "failed") {
