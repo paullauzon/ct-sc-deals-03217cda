@@ -11,6 +11,8 @@ export interface LeadJobState {
   pendingSuggestions: Array<{ field: string; label: string; value: string | number; evidence: string }>;
   leadId: string;
   leadName: string;
+  progressMessage?: string;
+  status?: string;
 }
 
 export interface FailedLead {
@@ -90,11 +92,25 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     return ageMs > 15 * 60 * 1000; // 15 minutes
   }, []);
 
-  const markJobAsTimedOut = useCallback((jobId: string) => {
+  const markJobAsTimedOut = useCallback((jobId: string, leadId?: string, leadName?: string) => {
+    // Don't set acknowledged: true here — let the realtime handler process the
+    // "failed" status first so it can clear UI state, THEN acknowledge.
     (supabase.from("processing_jobs") as any)
-      .update({ status: "failed", error: "Timed out — edge function did not complete", acknowledged: true })
+      .update({ status: "failed", error: "Timed out — edge function did not complete" })
       .eq("id", jobId)
       .then();
+
+    // Defensively clear local state immediately too
+    if (leadId) {
+      setLeadJobs(prev => {
+        const copy = { ...prev };
+        delete copy[leadId];
+        return copy;
+      });
+      if (leadName) {
+        toast.error(`Search timed out for ${leadName}`);
+      }
+    }
   }, []);
 
   // ─── Apply completed job results to lead ───
@@ -193,6 +209,27 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         { event: "UPDATE", schema: "public", table: "processing_jobs" },
         (payload) => {
           const job = payload.new as any;
+
+          // Process terminal statuses FIRST — before checking acknowledged
+          // This ensures timed-out jobs (which are now set to failed without acknowledged)
+          // still get their UI state cleared properly.
+          if (job.status === "completed") {
+            applyCompletedJob(job);
+            return;
+          }
+
+          if (job.status === "failed") {
+            toast.error(`Processing failed for ${job.lead_name}: ${job.error || "Unknown error"}`);
+            setLeadJobs(prev => {
+              const copy = { ...prev };
+              delete copy[job.lead_id];
+              return copy;
+            });
+            (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
+            return;
+          }
+
+          // Now skip acknowledged non-terminal jobs
           if (job.acknowledged) return;
 
           // For bulk jobs during sequential processing, update the progress message in real-time
@@ -206,7 +243,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           if (job.status === "processing") {
             // Skip stale jobs — they timed out
             if (isStaleJob(job)) {
-              markJobAsTimedOut(job.id);
+              markJobAsTimedOut(job.id, job.lead_id, job.lead_name);
               return;
             }
             setLeadJobs(prev => ({
@@ -216,22 +253,10 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
                 pendingSuggestions: [],
                 leadId: job.lead_id,
                 leadName: job.lead_name,
+                progressMessage: job.progress_message || undefined,
+                status: job.status,
               },
             }));
-          }
-
-          if (job.status === "completed") {
-            applyCompletedJob(job);
-          }
-
-          if (job.status === "failed") {
-            toast.error(`Processing failed for ${job.lead_name}: ${job.error || "Unknown error"}`);
-            setLeadJobs(prev => {
-              const copy = { ...prev };
-              delete copy[job.lead_id];
-              return copy;
-            });
-            (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
           }
         }
       )
@@ -256,14 +281,15 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           if (job.status === "completed") {
             applyCompletedJob(job);
           } else if (job.status === "queued" || job.status === "processing") {
-            // Check if stale before showing as active
             if (isStaleJob(job)) {
-              markJobAsTimedOut(job.id);
-              toast.error(`Processing timed out for ${job.lead_name}`);
+              markJobAsTimedOut(job.id, job.lead_id, job.lead_name);
             } else {
               setLeadJobs(prev => ({
                 ...prev,
-                [job.lead_id]: { searching: true, pendingSuggestions: [], leadId: job.lead_id, leadName: job.lead_name },
+                [job.lead_id]: {
+                  searching: true, pendingSuggestions: [], leadId: job.lead_id, leadName: job.lead_name,
+                  progressMessage: job.progress_message || undefined, status: job.status,
+                },
               }));
             }
           } else if (job.status === "failed") {
@@ -278,14 +304,14 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     const staleInterval = setInterval(async () => {
       const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
       const { data: staleJobs } = await (supabase.from("processing_jobs") as any)
-        .select("id, lead_name")
+        .select("id, lead_id, lead_name")
         .eq("acknowledged", false)
         .in("status", ["queued", "processing"])
         .lt("updated_at", fifteenMinAgo);
 
       if (staleJobs && staleJobs.length > 0) {
         for (const job of staleJobs) {
-          markJobAsTimedOut(job.id);
+          markJobAsTimedOut(job.id, job.lead_id, job.lead_name);
           console.warn(`Periodic cleanup: marked stale job for ${job.lead_name} as timed out`);
         }
       }
@@ -318,10 +344,9 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         )
         .subscribe();
 
-      // Safety timeout: 10 minutes
+      // Safety timeout: 15 minutes (matches stale job threshold)
       setTimeout(async () => {
         supabase.removeChannel(channel);
-        // Check actual DB status before declaring failure
         try {
           const { data: job } = await (supabase.from("processing_jobs") as any)
             .select("status, new_meetings, error")
@@ -337,8 +362,8 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             return;
           }
         } catch {}
-        resolve({ status: "failed", newMeetingsCount: 0, error: "Timed out after 10 minutes" });
-      }, 10 * 60 * 1000);
+        resolve({ status: "failed", newMeetingsCount: 0, error: "Timed out after 15 minutes" });
+      }, 15 * 60 * 1000);
     });
   }, []);
 
