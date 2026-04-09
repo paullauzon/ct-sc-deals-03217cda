@@ -103,6 +103,7 @@ serve(async (req) => {
         searchNames,
         searchDomains,
         searchCompanies,
+        searchLeadName: lead.name || "",
         limit: 100,
         summarize: false,
       };
