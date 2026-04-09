@@ -26,7 +26,7 @@ import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, getUnifiedActionCount, getNextBestAction, markActionItemDone } from "@/lib/dealHealthUtils";
 import { useLeadTasks } from "@/hooks/useLeadTasks";
 import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
-import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
+import { supabase } from "@/integrations/supabase/client";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
@@ -149,7 +149,7 @@ function QuickNote({ lead, onSave, onFollowUp }: { lead: Lead; onSave: (id: stri
 export function Pipeline() {
   const { getLeadsByStage, updateLead, leads, isLeadNew, markLeadSeen } = useLeads();
   const pipelineNavigate = useNavigate();
-  const { leadJobs } = useProcessing();
+  const { leadJobs, startBulkProcessing } = useProcessing();
   const allLeadIds = leads.map(l => l.id);
   const { tasks: allPlaybookTasks } = useLeadTasks(allLeadIds.length > 0 ? allLeadIds : undefined);
   const { unansweredIds } = useUnansweredEmails(allLeadIds);
