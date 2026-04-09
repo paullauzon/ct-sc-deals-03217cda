@@ -1252,6 +1252,59 @@ export function LeadsTable() {
         )}
       </div>
 
+      {viewMode === "archived" ? (
+        <div className="border border-border rounded-md overflow-x-auto">
+          {loadingArchived ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">Loading archived leads...</div>
+          ) : archivedLeads.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">No archived leads</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/50">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Name</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Company</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Stage</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Archive Reason</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Archived</th>
+                  <th className="px-2 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {archivedLeads.map((al: any) => (
+                  <tr key={al.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                    <td className="px-4 py-3 text-xs font-medium">
+                      <div className="flex items-center gap-2">
+                        <BrandLogo brand={al.brand} size="xxs" />
+                        {al.name}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{al.company || "—"}</td>
+                    <td className="px-4 py-3 text-xs">{al.stage}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px] truncate">{al.archive_reason || "—"}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{al.archived_at ? format(parseISO(al.archived_at), "MMM d, yyyy") : "—"}</td>
+                    <td className="px-2 py-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs"
+                        onClick={() => {
+                          supabase.from("leads").update({ archived_at: null, archive_reason: '' } as any).eq("id", al.id).then(({ error }) => {
+                            if (error) { toast.error("Failed to restore"); return; }
+                            setArchivedLeads(prev => prev.filter(a => a.id !== al.id));
+                            refreshLeads();
+                            toast.success(`${al.name} restored`);
+                          });
+                        }}
+                      >Restore</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : (
       <div className="border border-border rounded-md overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
