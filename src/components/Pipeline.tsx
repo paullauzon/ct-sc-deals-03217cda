@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, DragEvent } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, DragEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 
-import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, Check, Linkedin, CalendarCheck, ChevronRight } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, Check, Linkedin, CalendarCheck, ChevronRight, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
@@ -26,6 +26,7 @@ import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, getUnifiedActionCount, getNextBestAction, markActionItemDone } from "@/lib/dealHealthUtils";
 import { useLeadTasks } from "@/hooks/useLeadTasks";
 import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
+import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
@@ -159,6 +160,9 @@ export function Pipeline() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+
+  const newLeadCount = useMemo(() => leads.filter(l => l.stage === "New Lead" && (!l.meetings || l.meetings.length === 0)).length, [leads]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -262,6 +266,17 @@ export function Pipeline() {
             <CheckSquare className="h-3.5 w-3.5" />
             {selectMode ? "Cancel" : "Select"}
           </Button>
+          {newLeadCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkDialogOpen(true)}
+              className="h-8 text-xs gap-1.5"
+            >
+              <Zap className="h-3.5 w-3.5" />
+              Scan {newLeadCount} New Leads
+            </Button>
+          )}
         <div className="relative w-full max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -632,6 +647,7 @@ export function Pipeline() {
           </Button>
         </div>
       )}
+      <BulkProcessingDialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen} />
     </div>
   );
 }
