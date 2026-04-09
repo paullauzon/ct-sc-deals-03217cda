@@ -273,13 +273,14 @@ export function Pipeline() {
               disabled={backfilling}
               onClick={async () => {
                 setBackfilling(true);
+                toast.info("Starting backfill — syncing Calendly then scanning Fireflies...");
                 try {
-                  // 1. Clean up zombie jobs (stuck >10min)
-                  const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+                  // 1. Clean up zombie jobs (stuck >15min)
+                  const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
                   await supabase.from("processing_jobs")
                     .update({ acknowledged: true, status: "failed", error: "Timed out (zombie cleanup)" })
                     .in("status", ["queued", "processing"])
-                    .lt("created_at", tenMinAgo);
+                    .lt("created_at", fifteenMinAgo);
 
                   // 2. Calendly sync
                   toast.info("Running Calendly sync...");
