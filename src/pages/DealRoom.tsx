@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { ArchiveDialog } from "@/components/ArchiveDialog";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
@@ -104,6 +105,7 @@ export default function DealRoom() {
   const { leads, loading, updateLead, addMeeting, archiveLead } = useLeads();
   const lead = leads.find(l => l.id === id);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
   
   
   // Priority action states
@@ -440,7 +442,7 @@ export default function DealRoom() {
               variant="ghost"
               size="sm"
               className="h-7 text-xs gap-1 text-muted-foreground hover:text-destructive"
-              onClick={() => { archiveLead(lead.id); navigate("/"); }}
+              onClick={() => setArchiveTarget({ id: lead.id, name: lead.name })}
             >
               <Archive className="h-3.5 w-3.5" /> Archive
             </Button>
@@ -1234,6 +1236,12 @@ export default function DealRoom() {
         )}
       </div>
       <PrepBriefDialog open={showPrepDialog} onOpenChange={setShowPrepDialog} brief={prepBrief} loading={generatingPrep} leadName={lead.name} />
+      <ArchiveDialog
+        open={!!archiveTarget}
+        leadName={archiveTarget?.name || ""}
+        onConfirm={(reason) => { if (archiveTarget) { archiveLead(archiveTarget.id, reason); setArchiveTarget(null); navigate("/"); } }}
+        onCancel={() => setArchiveTarget(null)}
+      />
     </div>
   );
 }

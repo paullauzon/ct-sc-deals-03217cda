@@ -8,6 +8,7 @@ import { MeetingsSection } from "@/components/MeetingsSection";
 import { EmailsSection } from "@/components/EmailsSection";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
+import { ArchiveDialog } from "@/components/ArchiveDialog";
 import { BrandLogo } from "@/components/BrandLogo";
 import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { getBrandBorderClass } from "@/lib/brandColors";
@@ -1032,6 +1033,10 @@ export function LeadsTable() {
   const [showFireflies, setShowFireflies] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
   const [scoringAll, setScoringAll] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
+  const [viewMode, setViewMode] = useState<"active" | "archived">("active");
+  const [archivedLeads, setArchivedLeads] = useState<any[]>([]);
+  const [loadingArchived, setLoadingArchived] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("dateSubmitted");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -1207,25 +1212,99 @@ export function LeadsTable() {
         </div>
       )}
 
-      <div className="flex gap-3">
-        <Input placeholder="Search leads..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-        <Select value={stageFilter} onValueChange={setStageFilter}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="All Stages" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Stages</SelectItem>
-            {STAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={brandFilter} onValueChange={setBrandFilter}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="All Brands" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Brands</SelectItem>
-            <SelectItem value="Captarget">Captarget</SelectItem>
-            <SelectItem value="SourceCo">SourceCo</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex gap-3 items-center">
+        <div className="flex rounded-md border border-border overflow-hidden mr-2">
+          <button
+            onClick={() => setViewMode("active")}
+            className={cn("px-3 py-1.5 text-xs font-medium transition-colors", viewMode === "active" ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:bg-muted")}
+          >Active</button>
+          <button
+            onClick={() => {
+              setViewMode("archived");
+              setLoadingArchived(true);
+              supabase.from("leads").select("id, name, company, stage, archive_reason, archived_at, brand").not("archived_at", "is", null).order("archived_at", { ascending: false }).then(({ data }) => {
+                setArchivedLeads(data || []);
+                setLoadingArchived(false);
+              });
+            }}
+            className={cn("px-3 py-1.5 text-xs font-medium transition-colors", viewMode === "archived" ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:bg-muted")}
+          >Archived</button>
+        </div>
+        {viewMode === "active" && (
+          <>
+            <Input placeholder="Search leads..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
+            <Select value={stageFilter} onValueChange={setStageFilter}>
+              <SelectTrigger className="w-44"><SelectValue placeholder="All Stages" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Stages</SelectItem>
+                {STAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={brandFilter} onValueChange={setBrandFilter}>
+              <SelectTrigger className="w-36"><SelectValue placeholder="All Brands" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Brands</SelectItem>
+                <SelectItem value="Captarget">Captarget</SelectItem>
+                <SelectItem value="SourceCo">SourceCo</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
+        )}
       </div>
 
+      {viewMode === "archived" ? (
+        <div className="border border-border rounded-md overflow-x-auto">
+          {loadingArchived ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">Loading archived leads...</div>
+          ) : archivedLeads.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">No archived leads</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/50">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Name</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Company</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Stage</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Archive Reason</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Archived</th>
+                  <th className="px-2 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {archivedLeads.map((al: any) => (
+                  <tr key={al.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                    <td className="px-4 py-3 text-xs font-medium">
+                      <div className="flex items-center gap-2">
+                        <BrandLogo brand={al.brand} size="xxs" />
+                        {al.name}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{al.company || "—"}</td>
+                    <td className="px-4 py-3 text-xs">{al.stage}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px] truncate">{al.archive_reason || "—"}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{al.archived_at ? format(parseISO(al.archived_at), "MMM d, yyyy") : "—"}</td>
+                    <td className="px-2 py-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs"
+                        onClick={() => {
+                          supabase.from("leads").update({ archived_at: null, archive_reason: '' } as any).eq("id", al.id).then(({ error }) => {
+                            if (error) { toast.error("Failed to restore"); return; }
+                            setArchivedLeads(prev => prev.filter(a => a.id !== al.id));
+                            refreshLeads();
+                            toast.success(`${al.name} restored`);
+                          });
+                        }}
+                      >Restore</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : (
       <div className="border border-border rounded-md overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -1301,7 +1380,7 @@ export function LeadsTable() {
                 <td className="px-4 py-3 text-xs text-muted-foreground">{SOURCE_LABELS[lead.source] || lead.source}</td>
                 <td className="px-2 py-3">
                   <button
-                    onClick={(e) => { e.stopPropagation(); archiveLead(lead.id); }}
+                    onClick={(e) => { e.stopPropagation(); setArchiveTarget({ id: lead.id, name: lead.name }); }}
                     className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors"
                     title="Archive lead"
                   >
@@ -1313,11 +1392,17 @@ export function LeadsTable() {
           </tbody>
         </table>
       </div>
+      )}
 
       <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
       <NewLeadDialog open={showNewLead} onClose={() => setShowNewLead(false)} onSave={addLead} />
       <FirefliesImportDialog open={showFireflies} onOpenChange={setShowFireflies} />
-      
+      <ArchiveDialog
+        open={!!archiveTarget}
+        leadName={archiveTarget?.name || ""}
+        onConfirm={(reason) => { if (archiveTarget) { archiveLead(archiveTarget.id, reason); setArchiveTarget(null); } }}
+        onCancel={() => setArchiveTarget(null)}
+      />
     </div>
   );
 }

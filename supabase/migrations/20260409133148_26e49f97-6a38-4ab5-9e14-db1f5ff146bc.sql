@@ -1,0 +1,1 @@
+ALTER TABLE public.leads ADD COLUMN archive_reason text NOT NULL DEFAULT '';

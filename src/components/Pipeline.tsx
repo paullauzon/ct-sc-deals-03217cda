@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, DragEvent } from "react";
+import { ArchiveDialog } from "@/components/ArchiveDialog";
 import { useNavigate } from "react-router-dom";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
@@ -161,6 +162,7 @@ export function Pipeline() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [backfilling, setBackfilling] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
 
   const newLeadCount = useMemo(() => leads.filter(l => l.stage === "New Lead" && (!l.meetings || l.meetings.length === 0)).length, [leads]);
 
@@ -411,7 +413,7 @@ export function Pipeline() {
                         </div>
                         <QuickNote lead={lead} onSave={handleQuickNote} onFollowUp={handleFollowUp} />
                         <button
-                          onClick={(e) => { e.stopPropagation(); archiveLead(lead.id); }}
+                          onClick={(e) => { e.stopPropagation(); setArchiveTarget({ id: lead.id, name: lead.name }); }}
                           className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
                           title="Archive lead"
                         >
@@ -695,7 +697,12 @@ export function Pipeline() {
           </Button>
         </div>
       )}
-      
+      <ArchiveDialog
+        open={!!archiveTarget}
+        leadName={archiveTarget?.name || ""}
+        onConfirm={(reason) => { if (archiveTarget) { archiveLead(archiveTarget.id, reason); setArchiveTarget(null); } }}
+        onCancel={() => setArchiveTarget(null)}
+      />
     </div>
   );
 }
