@@ -1,43 +1,49 @@
 
 
-# Find Meetings for All New Leads
+# Direct "Backfill All" Button — No Dialog, Combined Calendly + Fireflies
 
-## What's Happening
+## Problem
 
-There are **104 leads stuck at "New Lead"** with zero meetings and zero Calendly data. Two systems should be catching these:
+The "Process All Leads" button opens a dialog with counts and options. The user wants a single-click action that immediately:
+1. Runs the Calendly backfill (matches bookings by email)
+2. Queues all remaining unprocessed leads (no meetings, no completed processing job) for Fireflies search
 
-1. **Calendly backfill** — matches Calendly bookings to leads by email. The function exists (`backfill-calendly`) but hasn't been run recently. It only matches by **exact email**, so if a lead submitted with one email but booked Calendly with another, it misses.
+No dialog, no count input — just do it.
 
-2. **Fireflies search** (via `run-lead-job` / Auto-Find) — searches Fireflies by email, name, domain, and company. This is more robust but currently only runs when you click Auto-Find on individual leads or use bulk processing.
+## Changes
 
-## Plan
+### `src/components/LeadsTable.tsx`
 
-### 1. Run the Calendly backfill immediately
+- Replace the "Process All Leads" button with a "Backfill All Meetings" button
+- On click: call `backfill-calendly` with `force=true` first, then call `startBulkProcessing()` for all unprocessed leads
+- Show a toast with progress ("Running Calendly sync... then queuing Fireflies search for X leads")
+- No dialog — direct execution
+- Disable button while running, show spinner
 
-Deploy and trigger `backfill-calendly` with `?force=true` to scan all Calendly events from the last 90 days and match them to leads. This will advance any matched New Leads to "Meeting Set."
+### `src/components/Pipeline.tsx`
 
-### 2. Trigger bulk Fireflies processing for unmatched New Leads
+- Same treatment for the "Scan N New Leads" button — make it a direct one-click "Backfill Meetings" action instead of opening the dialog
+- Calls Calendly backfill then queues Fireflies processing
 
-After the Calendly backfill, queue all remaining "New Lead" stage leads (those still without meetings) through the existing bulk processing pipeline (`run-lead-job`). This searches Fireflies by name, email, and domain — a wider net than Calendly's email-only match.
+### `src/contexts/ProcessingContext.tsx`
 
-To avoid overloading Fireflies (rate limits), batch them in groups of 5 with delays between batches.
+- Verify `startBulkProcessing` can accept a count of 0 or "all" to process every unprocessed lead without requiring the dialog
 
-### 3. Add a "Find Meetings for All New Leads" button
+## Flow
 
-Add a one-click button in the Pipeline view (or a bulk action) that triggers this combined Calendly + Fireflies scan for all New Leads at once, so this doesn't have to be done manually lead by lead again.
-
-## Implementation
-
-| Step | Detail |
-|------|--------|
-| Deploy + call `backfill-calendly` | Run it with `force=true` to re-scan all events |
-| Queue remaining New Leads | Insert `processing_jobs` rows for all New Leads still without meetings, triggering `run-lead-job` for each |
-| UI button | Add "Scan All New Leads" action to Pipeline filters or bulk actions bar |
+```text
+User clicks "Backfill All Meetings"
+  → Toast: "Syncing Calendly bookings..."
+  → POST backfill-calendly?force=true
+  → Toast: "Found X Calendly matches. Queuing Y leads for Fireflies..."
+  → startBulkProcessing(unprocessedCount)
+  → Toast: "Processing X leads in background"
+```
 
 ## Files Changed
 
 | File | Changes |
 |------|---------|
-| `src/components/Pipeline.tsx` | Add "Scan All New Leads" button that triggers bulk processing for all New Lead stage leads |
-| `src/components/BulkProcessingDialog.tsx` | Support "all new leads" mode that queues every unprocessed New Lead |
+| `src/components/LeadsTable.tsx` | Replace "Process All Leads" button with "Backfill All Meetings" — direct execution calling Calendly backfill then bulk Fireflies processing, no dialog |
+| `src/components/Pipeline.tsx` | Replace "Scan N New Leads" button with same direct one-click backfill action |
 
