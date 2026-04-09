@@ -328,6 +328,21 @@ function buildSearchFilter(
   const lowerFullNames = searchNames.map((n) => n.toLowerCase().trim());
   const lowerDomains = searchDomains.map((d) => d.toLowerCase().trim());
 
+  // Common first names that should NOT be used as standalone company signals
+  const COMMON_FIRST_NAMES = new Set([
+    ...Object.keys(NICKNAME_MAP),
+    "eric", "mark", "paul", "john", "adam", "ryan", "sean", "brian", "kevin",
+    "scott", "jason", "jeff", "greg", "alan", "carl", "gary", "ray", "lee",
+    "chad", "troy", "dean", "todd", "kyle", "dale", "neil", "joel", "ross",
+    "doug", "brad", "kurt", "wade", "seth", "hugh", "luke", "jack", "aaron",
+    "bruce", "craig", "roger", "terry", "randy", "larry", "barry", "harry",
+    "peter", "frank", "henry", "louis", "keith", "ralph", "wayne", "lloyd",
+    "glenn", "cecil", "clyde", "homer", "oscar", "edgar", "percy", "mary",
+    "anna", "jane", "lisa", "sara", "sarah", "amy", "kim", "sue", "ann",
+    "jean", "joan", "ruth", "lynn", "gail", "dawn", "faye", "iris", "june",
+    "hung", "wang", "chen", "wong", "chang", "yang", "chung", "park", "song",
+  ]);
+
   const GENERIC_COMPANY_WORDS = new Set([
     "group", "capital", "partners", "services", "solutions", "inc", "llc",
     "corp", "corporation", "company", "co", "the", "and", "of", "for",
@@ -335,12 +350,26 @@ function buildSearchFilter(
     "associates", "global", "international", "home", "health", "tech",
     "financial", "investment", "investments", "properties", "fund", "equity",
   ]);
+
+  // Skip company matching when company name equals the lead's personal name
+  const leadNameNorm = (searchLeadName || "").toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
+  const leadNameWords = new Set(leadNameNorm.split(/\s+/).filter(Boolean));
+
   const companyWords: string[] = [];
   for (const company of searchCompanies) {
-    const words = company.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(
-      (w) => w.length >= 2 && !GENERIC_COMPANY_WORDS.has(w)
+    const compNorm = company.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
+    // Skip if company name is essentially the same as the lead name
+    const compWords = compNorm.split(/\s+/).filter(Boolean);
+    const compSet = new Set(compWords);
+    const isNameAsCompany = compWords.length > 0 && compWords.every((w) => leadNameWords.has(w));
+    if (isNameAsCompany) {
+      console.log(`Skipping company "${company}" — identical to lead name "${searchLeadName}"`);
+      continue;
+    }
+    const distinctive = compWords.filter(
+      (w) => w.length >= 2 && !GENERIC_COMPANY_WORDS.has(w) && !COMMON_FIRST_NAMES.has(w)
     );
-    companyWords.push(...words);
+    companyWords.push(...distinctive);
   }
   companyWords.sort((a, b) => b.length - a.length);
 
@@ -383,18 +412,15 @@ function buildSearchFilter(
       for (const field of allEmailFields) {
         if (matchesInText(field)) return true;
       }
-
-      // Note: speaker name matching requires sentences (full transcript).
-      // In metadata-first mode, we match on title + participants + emails.
-      // Speaker matching happens if we fall back to non-search mode.
     }
 
-    // Signal 4: Company name match in title or participants
+    // Signal 4: Company name match — require ALL distinctive words to match
     if (companyWords.length > 0) {
-      const distinctiveWord = companyWords[0];
-      if (wordBoundaryMatch(titleLower, distinctiveWord)) return true;
+      const allMatchTitle = companyWords.every((w) => wordBoundaryMatch(titleLower, w));
+      if (allMatchTitle) return true;
       for (const field of allEmailFields) {
-        if (wordBoundaryMatch(field, distinctiveWord)) return true;
+        const allMatchField = companyWords.every((w) => wordBoundaryMatch(field, w));
+        if (allMatchField) return true;
       }
     }
 
