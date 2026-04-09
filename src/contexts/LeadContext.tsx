@@ -114,6 +114,14 @@ export function LeadProvider({ children }: { children: ReactNode }) {
     });
   }, [leads]);
 
+  const refreshLeads = useCallback(async () => {
+    const dbLeads = await fetchLeadsFromDb();
+    if (dbLeads && dbLeads.length > 0) {
+      setLeads(dbLeads);
+      leadIdsRef.current = new Set(dbLeads.map(l => l.id));
+    }
+  }, []);
+
   // Load leads from DB on mount, seed if empty
   useEffect(() => {
     let cancelled = false;
