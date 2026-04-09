@@ -209,6 +209,27 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         { event: "UPDATE", schema: "public", table: "processing_jobs" },
         (payload) => {
           const job = payload.new as any;
+
+          // Process terminal statuses FIRST — before checking acknowledged
+          // This ensures timed-out jobs (which are now set to failed without acknowledged)
+          // still get their UI state cleared properly.
+          if (job.status === "completed") {
+            applyCompletedJob(job);
+            return;
+          }
+
+          if (job.status === "failed") {
+            toast.error(`Processing failed for ${job.lead_name}: ${job.error || "Unknown error"}`);
+            setLeadJobs(prev => {
+              const copy = { ...prev };
+              delete copy[job.lead_id];
+              return copy;
+            });
+            (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
+            return;
+          }
+
+          // Now skip acknowledged non-terminal jobs
           if (job.acknowledged) return;
 
           // For bulk jobs during sequential processing, update the progress message in real-time
@@ -222,7 +243,7 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
           if (job.status === "processing") {
             // Skip stale jobs — they timed out
             if (isStaleJob(job)) {
-              markJobAsTimedOut(job.id);
+              markJobAsTimedOut(job.id, job.lead_id, job.lead_name);
               return;
             }
             setLeadJobs(prev => ({
@@ -232,22 +253,10 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
                 pendingSuggestions: [],
                 leadId: job.lead_id,
                 leadName: job.lead_name,
+                progressMessage: job.progress_message || undefined,
+                status: job.status,
               },
             }));
-          }
-
-          if (job.status === "completed") {
-            applyCompletedJob(job);
-          }
-
-          if (job.status === "failed") {
-            toast.error(`Processing failed for ${job.lead_name}: ${job.error || "Unknown error"}`);
-            setLeadJobs(prev => {
-              const copy = { ...prev };
-              delete copy[job.lead_id];
-              return copy;
-            });
-            (supabase.from("processing_jobs") as any).update({ acknowledged: true }).eq("id", job.id).then();
           }
         }
       )
