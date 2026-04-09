@@ -442,8 +442,9 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         }));
 
         try {
-          const existingMeetingIds = (lead.meetings || []).map(m => m.firefliesId).filter(Boolean);
-          const existingMeetings = (lead.meetings || []).map(m => ({
+          const meetingsArr = Array.isArray(lead.meetings) ? lead.meetings as any[] : [];
+          const existingMeetingIds = meetingsArr.map(m => m.firefliesId).filter(Boolean);
+          const existingMeetings = meetingsArr.map(m => ({
             ...m,
             transcript: m.transcript || "",
           }));
