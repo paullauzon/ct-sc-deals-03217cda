@@ -34,6 +34,7 @@ interface LeadContextType {
   getMetrics: () => PipelineMetrics;
   getLeadsByStage: (stage: LeadStage) => Lead[];
   searchLeads: (query: string) => Lead[];
+  archiveLead: (id: string) => void;
 }
 
 const LeadContext = createContext<LeadContextType | null>(null);
@@ -44,7 +45,7 @@ const STAGES: LeadStage[] = [
 ];
 
 async function fetchLeadsFromDb(): Promise<Lead[] | null> {
-  const { data, error } = await supabase.from("leads").select("*");
+  const { data, error } = await supabase.from("leads").select("*").is("archived_at", null);
   if (error) {
     console.error("Failed to fetch leads:", error);
     return null;
