@@ -304,14 +304,14 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     const staleInterval = setInterval(async () => {
       const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
       const { data: staleJobs } = await (supabase.from("processing_jobs") as any)
-        .select("id, lead_name")
+        .select("id, lead_id, lead_name")
         .eq("acknowledged", false)
         .in("status", ["queued", "processing"])
         .lt("updated_at", fifteenMinAgo);
 
       if (staleJobs && staleJobs.length > 0) {
         for (const job of staleJobs) {
-          markJobAsTimedOut(job.id);
+          markJobAsTimedOut(job.id, job.lead_id, job.lead_name);
           console.warn(`Periodic cleanup: marked stale job for ${job.lead_name} as timed out`);
         }
       }
@@ -344,10 +344,9 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
         )
         .subscribe();
 
-      // Safety timeout: 10 minutes
+      // Safety timeout: 15 minutes (matches stale job threshold)
       setTimeout(async () => {
         supabase.removeChannel(channel);
-        // Check actual DB status before declaring failure
         try {
           const { data: job } = await (supabase.from("processing_jobs") as any)
             .select("status, new_meetings, error")
@@ -363,8 +362,8 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
             return;
           }
         } catch {}
-        resolve({ status: "failed", newMeetingsCount: 0, error: "Timed out after 10 minutes" });
-      }, 10 * 60 * 1000);
+        resolve({ status: "failed", newMeetingsCount: 0, error: "Timed out after 15 minutes" });
+      }, 15 * 60 * 1000);
     });
   }, []);
 
