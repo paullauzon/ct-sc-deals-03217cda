@@ -1029,7 +1029,7 @@ export function LeadsTable() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [showNewLead, setShowNewLead] = useState(false);
   const [showFireflies, setShowFireflies] = useState(false);
-  const [showBulkProcess, setShowBulkProcess] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const [scoringAll, setScoringAll] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("dateSubmitted");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
