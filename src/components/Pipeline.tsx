@@ -160,7 +160,7 @@ export function Pipeline() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
 
   const newLeadCount = useMemo(() => leads.filter(l => l.stage === "New Lead" && (!l.meetings || l.meetings.length === 0)).length, [leads]);
 
