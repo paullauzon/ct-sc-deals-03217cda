@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, DragEvent } from "react";
+import { ArchiveDialog } from "@/components/ArchiveDialog";
 import { useNavigate } from "react-router-dom";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
@@ -161,6 +162,7 @@ export function Pipeline() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [backfilling, setBackfilling] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
 
   const newLeadCount = useMemo(() => leads.filter(l => l.stage === "New Lead" && (!l.meetings || l.meetings.length === 0)).length, [leads]);
 

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { ArchiveDialog } from "@/components/ArchiveDialog";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
@@ -104,6 +105,7 @@ export default function DealRoom() {
   const { leads, loading, updateLead, addMeeting, archiveLead } = useLeads();
   const lead = leads.find(l => l.id === id);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
   
   
   // Priority action states
