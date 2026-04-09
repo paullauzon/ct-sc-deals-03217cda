@@ -318,6 +318,7 @@ function buildSearchFilter(
   searchNames: string[],
   searchDomains: string[],
   searchCompanies: string[],
+  searchLeadName?: string,
 ): ((t: any) => boolean) | null {
   if (searchEmails.length === 0 && searchNames.length === 0 && searchDomains.length === 0 && searchCompanies.length === 0) {
     return null;
