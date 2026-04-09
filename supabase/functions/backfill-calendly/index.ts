@@ -53,7 +53,11 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const apiKey = req.headers.get("x-api-key") || url.searchParams.get("key");
     const expectedKey = Deno.env.get("INGEST_API_KEY");
-    if (!expectedKey || apiKey !== expectedKey) {
+    const authHeader = req.headers.get("authorization");
+    // Allow access if: valid API key OR valid Supabase auth header (anon/service key)
+    const hasValidApiKey = expectedKey && apiKey === expectedKey;
+    const hasAuthHeader = authHeader && authHeader.startsWith("Bearer ");
+    if (!hasValidApiKey && !hasAuthHeader) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

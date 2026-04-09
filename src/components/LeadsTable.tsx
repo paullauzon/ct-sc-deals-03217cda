@@ -1146,10 +1146,7 @@ export function LeadsTable() {
             setBackfilling(true);
             try {
               toast.info("Running Calendly sync...");
-              const { data: { session } } = await supabase.auth.getSession();
-              const res = await supabase.functions.invoke("backfill-calendly", {
-                headers: { "x-api-key": "backfill" },
-              });
+              const res = await supabase.functions.invoke("backfill-calendly");
               const calendlyResults = res.data?.results?.filter((r: any) => r.status === "advanced_to_meeting_set" || r.status === "stamped_only") || [];
               toast.success(`Calendly: ${calendlyResults.length} matches found`);
               // Now queue Fireflies for all remaining unprocessed
