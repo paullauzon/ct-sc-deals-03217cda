@@ -1,51 +1,30 @@
 
 
-# Archive Reason + Archived Leads Viewer
+# Scan Fireflies for 23 Missing Transcripts
 
-## What needs to change
-
-1. **DB**: Add `archive_reason` text column to `leads` table
-2. **Archive flow**: Replace the instant-archive click with a small dialog that requires a reason before archiving
-3. **Archived folder**: Add an "Archived" tab/view in LeadsTable that loads archived leads with their reason displayed
+## Problem
+23 leads have Calendly meetings that already occurred but no Fireflies transcript was linked. They're stuck at "Meeting Set."
 
 ## Plan
 
-### 1. Migration: add `archive_reason` column
-Add nullable `archive_reason text` column to leads table, defaulting to `''`.
+### 1. Trigger individual Fireflies scans for all 23 leads
+Use the existing `run-lead-job` edge function to re-process each of these 23 leads. This function already handles Fireflies matching (email, name, domain, speaker-name fallback) and will:
+- Search Fireflies for matching transcripts
+- If found: attach the meeting, run AI analysis, advance stage to "Meeting Held"
+- If not found: confirm "no meetings" — these were likely no-shows or unrecorded
 
-### 2. Create `ArchiveDialog` component
-A small dialog with:
-- Lead name displayed
-- Required text input for archive reason (e.g. "Test lead", "Duplicate", "Not a real prospect")
-- Cancel / Archive buttons
-- Archive button disabled until reason is entered
+### 2. Implementation
+Write a small script that calls `run-lead-job` for each of the 23 lead IDs sequentially (with a short delay between calls to avoid rate limits). This can be done via `supabase.functions.invoke` or direct HTTP calls to the edge function.
 
-### 3. Update `archiveLead` in LeadContext
-- Change signature to `archiveLead(id: string, reason: string)`
-- Write both `archived_at` and `archive_reason` to DB
-- Update context type
+### 3. After processing
+Review the results to see which leads got transcripts vs. which confirmed as no-shows. For confirmed no-shows, we can optionally bulk-update their stage or add a note.
 
-### 4. Update all archive trigger points
-Each place that calls `archiveLead` now opens the dialog instead of archiving directly:
-- **LeadsTable.tsx**: Archive button → opens ArchiveDialog
-- **Pipeline.tsx**: Archive button → opens ArchiveDialog  
-- **DealRoom.tsx**: Archive button → opens ArchiveDialog
-
-### 5. Add "Archived" tab in LeadsTable
-- Add a toggle/tab at the top: "Active" | "Archived"
-- When "Archived" is selected, query DB for `archived_at IS NOT NULL`
-- Show a simplified table: Name, Company, Stage (at time of archive), Archive Reason, Archived Date
-- Add "Restore" button per row (clears `archived_at` and `archive_reason`)
+## Technical Details
+- Use `code--exec` to run a script that calls the `run-lead-job` function for each lead ID
+- The 23 lead IDs: SC-T-069, SC-I-039, SC-T-063, CT-190, CT-191, SC-I-038, SC-T-065, SC-I-037, TGT-027, SC-T-062, SC-T-059, SC-I-034, SC-T-054, CT-080, TGT-015, TGT-007, CT-018, CT-019, SC-I-009, SC-I-008, CT-025, CT-028, CT-047
+- Sequential processing with ~3s delay between calls
+- Log results for each lead (found/not found)
 
 ## Files Changed
-
-| File | Changes |
-|------|---------|
-| DB migration | Add `archive_reason text default '' not null` to leads |
-| `src/components/ArchiveDialog.tsx` | New — dialog with reason input |
-| `src/contexts/LeadContext.tsx` | Update `archiveLead` signature to include reason, write `archive_reason` to DB |
-| `src/components/LeadsTable.tsx` | Add ArchiveDialog state, "Archived" tab that fetches and displays archived leads with reasons |
-| `src/components/Pipeline.tsx` | Add ArchiveDialog state instead of direct archive call |
-| `src/pages/DealRoom.tsx` | Add ArchiveDialog state instead of direct archive call |
-| `src/lib/leadDbMapping.ts` | Map `archive_reason` field if needed |
+No code changes needed — this uses existing infrastructure.
 
