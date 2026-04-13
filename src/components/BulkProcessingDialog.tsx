@@ -23,6 +23,7 @@ export function BulkProcessingDialog({ open, onOpenChange }: { open: boolean; on
       .from("processing_jobs")
       .select("lead_id")
       .in("status", ["done", "completed"])
+      .neq("new_meetings", "[]")
       .then(({ data }) => {
         const ids = new Set((data || []).map(r => r.lead_id));
         setProcessedLeadIds(ids);
