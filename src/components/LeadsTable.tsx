@@ -1169,7 +1169,7 @@ export function LeadsTable() {
 
                // 4. Fresh DB query for unprocessed leads (all stages, not just New Lead)
                const { data: freshLeads } = await supabase.from("leads").select("id, meetings").is("archived_at", null);
-               const { data: doneJobs } = await supabase.from("processing_jobs").select("lead_id").in("status", ["done", "completed"]);
+               const { data: doneJobs } = await supabase.from("processing_jobs").select("lead_id").in("status", ["done", "completed"]).neq("new_meetings", "[]");
                const doneIds = new Set((doneJobs || []).map((r: any) => r.lead_id));
                const unprocessed = (freshLeads || []).filter((l: any) => {
                  const meetings = Array.isArray(l.meetings) ? l.meetings : [];

@@ -406,7 +406,8 @@ export function ProcessingProvider({ children }: { children: ReactNode }) {
     const { data: processedRows } = await supabase
       .from("processing_jobs")
       .select("lead_id")
-      .in("status", ["done", "completed"]);
+      .in("status", ["done", "completed"])
+      .neq("new_meetings", "[]");
     const processedIds = new Set((processedRows || []).map(r => r.lead_id));
 
     // Map DB rows to lead-like objects and exclude already-processed
