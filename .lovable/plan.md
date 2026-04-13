@@ -1,30 +1,40 @@
 
 
-# Scan Fireflies for 23 Missing Transcripts
+# Fix "Backfill All" to Re-scan Leads with No Meetings Found
 
 ## Problem
-23 leads have Calendly meetings that already occurred but no Fireflies transcript was linked. They're stuck at "Meeting Set."
+The "Backfill All Meetings" button skips leads that were previously scanned but had no Fireflies match. 20 leads with `stage = Meeting Set` and `meetings = []` are permanently excluded because they have `completed` processing jobs — even though those jobs found nothing.
 
-## Plan
+## Root Cause
+Both the backfill button (LeadsTable.tsx line 1172-1176) and `startBulkProcessing` (ProcessingContext.tsx line 406-410) exclude leads if they have ANY `completed` processing job. They should only exclude leads whose completed jobs actually found meetings.
 
-### 1. Trigger individual Fireflies scans for all 23 leads
-Use the existing `run-lead-job` edge function to re-process each of these 23 leads. This function already handles Fireflies matching (email, name, domain, speaker-name fallback) and will:
-- Search Fireflies for matching transcripts
-- If found: attach the meeting, run AI analysis, advance stage to "Meeting Held"
-- If not found: confirm "no meetings" — these were likely no-shows or unrecorded
+## Fix
 
-### 2. Implementation
-Write a small script that calls `run-lead-job` for each of the 23 lead IDs sequentially (with a short delay between calls to avoid rate limits). This can be done via `supabase.functions.invoke` or direct HTTP calls to the edge function.
+### 1. Update LeadsTable.tsx backfill button logic (line 1172)
+Change the `processing_jobs` query to only fetch jobs that actually found meetings:
+```sql
+SELECT lead_id FROM processing_jobs 
+WHERE status IN ('done','completed') 
+AND new_meetings != '[]'
+```
 
-### 3. After processing
-Review the results to see which leads got transcripts vs. which confirmed as no-shows. For confirmed no-shows, we can optionally bulk-update their stage or add a note.
+### 2. Update ProcessingContext.tsx `startBulkProcessing` (line 406-410)
+Same change — only treat leads as "already processed" if a prior job found meetings:
+```sql
+SELECT lead_id FROM processing_jobs 
+WHERE status IN ('done','completed') 
+AND new_meetings != '[]'
+```
 
-## Technical Details
-- Use `code--exec` to run a script that calls the `run-lead-job` function for each lead ID
-- The 23 lead IDs: SC-T-069, SC-I-039, SC-T-063, CT-190, CT-191, SC-I-038, SC-T-065, SC-I-037, TGT-027, SC-T-062, SC-T-059, SC-I-034, SC-T-054, CT-080, TGT-015, TGT-007, CT-018, CT-019, SC-I-009, SC-I-008, CT-025, CT-028, CT-047
-- Sequential processing with ~3s delay between calls
-- Log results for each lead (found/not found)
+### 3. Update BulkProcessingDialog.tsx (line 27-29)
+Same fix for the count display in the dialog.
 
 ## Files Changed
-No code changes needed — this uses existing infrastructure.
+| File | Change |
+|------|--------|
+| `src/components/LeadsTable.tsx` | Filter completed jobs to only those with non-empty `new_meetings` |
+| `src/contexts/ProcessingContext.tsx` | Same filter in `startBulkProcessing` |
+| `src/components/BulkProcessingDialog.tsx` | Same filter for the unprocessed count |
+
+This ensures leads that were scanned but had no Fireflies match will be re-scanned on subsequent backfill runs.
 
