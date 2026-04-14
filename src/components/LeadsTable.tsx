@@ -1031,8 +1031,10 @@ export function LeadsTable() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [showNewLead, setShowNewLead] = useState(false);
   const [showFireflies, setShowFireflies] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
   const [scoringAll, setScoringAll] = useState(false);
+  const [linkedinEnriching, setLinkedinEnriching] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
   const [viewMode, setViewMode] = useState<"active" | "archived">("active");
   const [archivedLeads, setArchivedLeads] = useState<any[]>([]);
@@ -1197,6 +1199,29 @@ export function LeadsTable() {
               {scoringAll ? "Scoring..." : `Score ${unscoredCount} Leads`}
             </Button>
           )}
+          <Button variant="outline" size="sm" disabled={linkedinEnriching} onClick={async () => {
+            setLinkedinEnriching(true);
+            toast.info("Starting LinkedIn enrichment for all unenriched leads...");
+            try {
+              const { data, error } = await supabase.functions.invoke("backfill-linkedin");
+              if (error) throw error;
+              if (data?.error) throw new Error(data.error);
+              const found = data?.results?.filter((r: any) => r.linkedin_url)?.length || 0;
+              const total = data?.results?.length || 0;
+              toast.success(`LinkedIn enrichment complete: ${found}/${total} profiles found`);
+              refreshLeads();
+            } catch (err) {
+              toast.error("LinkedIn enrichment failed: " + (err as Error).message);
+            } finally {
+              setLinkedinEnriching(false);
+            }
+          }}>
+            {linkedinEnriching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Linkedin className="w-4 h-4" />}
+            {linkedinEnriching ? "Enriching..." : "LinkedIn Enrich"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowBulk(true)}>
+            <Zap className="w-4 h-4" /> Process Leads
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowFireflies(true)}><img src="/fireflies-icon.svg" alt="" className="w-4 h-4" /> Import Fireflies</Button>
           <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
           <Button size="sm" onClick={() => setShowNewLead(true)}>New Lead</Button>
@@ -1397,6 +1422,7 @@ export function LeadsTable() {
       <LeadDetail leadId={selectedLeadId} open={!!selectedLeadId} onClose={() => setSelectedLeadId(null)} />
       <NewLeadDialog open={showNewLead} onClose={() => setShowNewLead(false)} onSave={addLead} />
       <FirefliesImportDialog open={showFireflies} onOpenChange={setShowFireflies} />
+      <BulkProcessingDialog open={showBulk} onOpenChange={setShowBulk} />
       <ArchiveDialog
         open={!!archiveTarget}
         leadName={archiveTarget?.name || ""}
