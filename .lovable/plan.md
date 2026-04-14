@@ -1,40 +1,28 @@
 
 
-# Fix "Backfill All" to Re-scan Leads with No Meetings Found
+# Add 2 Legitimate Missing Leads from HubSpot
 
-## Problem
-The "Backfill All Meetings" button skips leads that were previously scanned but had no Fireflies match. 20 leads with `stage = Meeting Set` and `meetings = []` are permanently excluded because they have `completed` processing jobs — even though those jobs found nothing.
+## What We'll Do
+Add the 2 clearly legitimate missing leads from the HubSpot export to the database. Skip the rest (spam, own employee, unrelated professionals).
 
-## Root Cause
-Both the backfill button (LeadsTable.tsx line 1172-1176) and `startBulkProcessing` (ProcessingContext.tsx line 406-410) exclude leads if they have ANY `completed` processing job. They should only exclude leads whose completed jobs actually found meetings.
+## Leads to Add
 
-## Fix
+| Name | Email | Company | Why Legitimate |
+|------|-------|---------|----------------|
+| Ramesh Dorairajan | (from CSV) | HGS - Hinduja Global Solutions | SVP Corp Dev & M&A, 25yr experience, ex-Tata Motors |
+| Wasif Khan | (from CSV) | viaPhoton | CFO, ex-Madison Dearborn/Third Point/Morgan Stanley |
 
-### 1. Update LeadsTable.tsx backfill button logic (line 1172)
-Change the `processing_jobs` query to only fetch jobs that actually found meetings:
-```sql
-SELECT lead_id FROM processing_jobs 
-WHERE status IN ('done','completed') 
-AND new_meetings != '[]'
-```
+## Optional (needs your call)
+- **Hannah Melotto** (melottogroup.com) — small copywriting agency, but active on deal platforms. Add or skip?
 
-### 2. Update ProcessingContext.tsx `startBulkProcessing` (line 406-410)
-Same change — only treat leads as "already processed" if a prior job found meetings:
-```sql
-SELECT lead_id FROM processing_jobs 
-WHERE status IN ('done','completed') 
-AND new_meetings != '[]'
-```
+## Steps
+1. Extract emails and details from the HubSpot CSV for these 2-3 contacts
+2. Insert into `leads` table with brand=Captarget, stage=New Lead
+3. Run score-lead on each to get tier/scoring
 
-### 3. Update BulkProcessingDialog.tsx (line 27-29)
-Same fix for the count display in the dialog.
-
-## Files Changed
-| File | Change |
-|------|--------|
-| `src/components/LeadsTable.tsx` | Filter completed jobs to only those with non-empty `new_meetings` |
-| `src/contexts/ProcessingContext.tsx` | Same filter in `startBulkProcessing` |
-| `src/components/BulkProcessingDialog.tsx` | Same filter for the unprocessed count |
-
-This ensures leads that were scanned but had no Fireflies match will be re-scanned on subsequent backfill runs.
+## Excluded
+- **Valeria Rivera** — your own CAPTARGET employee
+- **ANSAD AZIZ** — Aramco procurement, spam
+- **Sophie Lane, Vicki Alderton, Alyssa Stone, Effie Wells, Jordan Mills** — no M&A relevance
+- **8 no-name contacts** — spam/junk
 
