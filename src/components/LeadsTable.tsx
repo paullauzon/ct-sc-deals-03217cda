@@ -1203,7 +1203,7 @@ export function LeadsTable() {
             setLinkedinEnriching(true);
             toast.info("Starting LinkedIn enrichment for all unenriched leads...");
             try {
-              const { data, error } = await supabase.functions.invoke("backfill-linkedin");
+              const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { retry_failed: true } });
               if (error) throw error;
               if (data?.error) throw new Error(data.error);
               const found = data?.results?.filter((r: any) => r.linkedin_url)?.length || 0;
