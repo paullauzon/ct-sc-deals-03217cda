@@ -633,7 +633,11 @@ async function processLead(
     geography: lead.geography,
   };
 
-  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns);
+  // Run AI rationalization before search
+  console.log(`  Running AI rationalization for ${lead.name}...`);
+  const rationalization = await rationalizeLead(leadContext, openaiKey);
+
+  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization);
 
   if (!agentResult.url) {
     await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
