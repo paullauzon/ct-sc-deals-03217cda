@@ -26,7 +26,8 @@
 - [Archiving Leads](mem://features/lead-archiving) — Archiving logic and mandatory reason tracking
 - [Internal Data Exclusion](mem://business/data-exclusion-rules) — Exclusion rules for internal domains
 - [Lead Ingestion](mem://integrations/webflow-zapier-ingestion) — Resilient JSON parsing and normalization for Webflow leads
-- [Email Tracking](mem://features/email-correspondence-tracking) — Zapier ingest-email for Gmail/Outlook threading
+- [Email Tracking](mem://features/email-correspondence-tracking) — Dual-state: Zapier active, deep sync paused
+- [Email Sync Status](mem://integrations/email-sync-status) — Outlook sync built but blocked on tenant admin consent
 - [Calendly Sync](mem://integrations/calendly-webhook-sync) — Webhook logic, auto-assign to Malik, backfill utility
 - [Calendly Auth](mem://integrations/backfill-calendly-auth) — Dual authentication (INGEST_API_KEY/Bearer) for backfill
 - [Fireflies Sync](mem://integrations/fireflies-sync) — Multi-signal transcript matching and false-positive prevention
