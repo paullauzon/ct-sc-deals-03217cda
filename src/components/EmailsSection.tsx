@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle } from "lucide-react";
 
 interface LeadEmail {
   id: string;
@@ -14,8 +14,14 @@ interface LeadEmail {
   from_address: string;
   from_name: string;
   to_addresses: string[];
+  cc_addresses?: string[];
   subject: string;
   body_preview: string;
+  body_html?: string;
+  body_text?: string;
+  attachments?: Array<{ name?: string; url?: string; has?: boolean }>;
+  replied_at?: string | null;
+  bounce_reason?: string;
   email_date: string;
   source: string;
   created_at: string;
