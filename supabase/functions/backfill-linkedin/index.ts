@@ -123,7 +123,8 @@ async function serperSearch(query: string, serperKey: string, limit = 5): Promis
     });
 
     if (!res.ok) {
-      console.error(`Serper search error ${res.status}`);
+      const errBody = await res.text();
+      console.error(`Serper search error ${res.status}: ${errBody.slice(0, 200)}`);
       return [];
     }
 
