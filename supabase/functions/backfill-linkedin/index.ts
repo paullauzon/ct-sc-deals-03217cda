@@ -380,6 +380,7 @@ async function inlineVerify(
   linkedinUrl: string,
   linkedinSnippet: string,
   openaiKey: string,
+  nameVariants?: string[],
 ): Promise<{ verdict: "correct" | "wrong" | "uncertain"; reason: string }> {
   const contextParts: string[] = [];
   if (lead.company) contextParts.push(`Company: ${lead.company}`);
@@ -387,12 +388,18 @@ async function inlineVerify(
   if (lead.companyUrl) contextParts.push(`Company URL: ${lead.companyUrl}`);
   if (lead.role) contextParts.push(`Role: ${lead.role}`);
 
+  const nameVariantBlock = nameVariants && nameVariants.length > 0
+    ? `\nKNOWN NAME VARIANTS (confirmed by analysis): ${nameVariants.join(", ")}
+- If the LinkedIn name matches ANY of these variants, the name is CORRECT.
+- Common nickname mappings (Woody→William, Bob→Robert, Bill→William, Mike→Michael, etc.) are valid matches.\n`
+    : "";
+
   const prompt = `You are verifying whether a LinkedIn profile URL belongs to the correct person. Be strict — only say "correct" if the LinkedIn snippet clearly matches.
 
 PERSON TO FIND:
 Name: ${lead.name}
 ${contextParts.join("\n")}
-
+${nameVariantBlock}
 LINKEDIN MATCH:
 URL: ${linkedinUrl}
 Snippet: ${linkedinSnippet || "No snippet available"}
@@ -401,7 +408,7 @@ RULES:
 - The LinkedIn profile MUST be for someone at the SAME company (or a clearly related entity).
 - If the email domain matches the LinkedIn company, that's a strong signal for CORRECT.
 - Consider company name abbreviations (e.g., "GMAX" vs "G-Max Industries").
-- If the LinkedIn URL contains a completely different name, that's WRONG.
+- If the LinkedIn URL contains a completely different name, that's WRONG — UNLESS it matches a known name variant listed above.
 - If not enough info to verify, say "uncertain".
 
 Respond with ONLY: {"verdict": "correct"|"wrong"|"uncertain", "reason": "brief explanation"}`;
@@ -499,6 +506,7 @@ interface AgentResult {
   turnsUsed: number;
   gaveUpReason: string | null;
   snippet?: string;
+  verified?: boolean;
 }
 
 function buildSystemPrompt(maxTurns: number): string {
