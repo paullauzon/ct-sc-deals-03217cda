@@ -1,0 +1,72 @@
+# Project Memory
+
+## Core
+- Hyper-minimalist, black-and-white, premium aesthetic. No alarmist colors (except specific warnings) or emojis. Lucide icons.
+- Direct OpenAI API only (GPT-4o/mini). NEVER use Lovable AI Gateway.
+- AI Copywriting: Max 80 words, no filler ("hope you're well"), no em/en dashes, professional peer-to-peer tone.
+- Deal value = Captarget/SourceCo service revenue ($5K-$25K/mo), strictly excluding M&A target sizes.
+- Exclude internal domains (captarget.com, sourcecodeals.com) from pipelines.
+- Separate Lovable Preview and Live URL DBs; data is not synchronized.
+- UI: Monochrome badges (bg-secondary), no border rings on logos, left borders for brands (Red Captarget, Amber SourceCo).
+- Use 'pending' instead of 'overdue' for urgency signaling to maintain premium feel.
+- 'Avg Deal Size' metrics are strictly calculated from 'Closed Won' deals.
+
+## Memories
+- [Aesthetic Direction](mem://design/aesthetic-direction) — Hyper-minimalist, B&W theme, no alarm colors
+- [Design Standards](mem://style/design-system-standards) — Typography, icon, and visual indicator rules
+- [Company Logos](mem://features/company-logo-integration) — Google Favicon API usage, no border rings
+- [Brand Differentiation](mem://features/brand-differentiation-ui) — Brand accent stripes (Captarget Red, SourceCo Amber) and logos
+- [Pipeline Layout](mem://design/pipeline-card-layout) — Premium monochrome 7-row structure for pipeline cards
+- [AI Copywriting Rules](mem://style/ai-copywriting-standards) — P1_RULES: Tone, length, and formatting constraints for AI drafting
+- [Intelligence Labeling](mem://design/intelligence-labeling-standard) — Use concrete, human-readable labels instead of abstract scores
+- [Sales Fields](mem://features/sales-tracking-fields) — Core tracking fields and Deal Value definition
+- [Service Offerings](mem://business/service-offerings) — Specific Captarget and SourceCo service types
+- [Pipeline Workflow](mem://features/pipeline-workflow) — 13 stages: active (1-8), nurture (9-10 Revisit/Reconnect, Long Term Follow Up), terminal (Lost, Went Dark, Closed Won)
+- [Lead Unification](mem://features/lead-data-unification) — Email-based deduplication and chronological submission history
+- [Archiving Leads](mem://features/lead-archiving) — Archiving logic and mandatory reason tracking
+- [Internal Data Exclusion](mem://business/data-exclusion-rules) — Exclusion rules for internal domains
+- [Lead Ingestion](mem://integrations/webflow-zapier-ingestion) — Resilient JSON parsing and normalization for Webflow leads
+- [Email Tracking](mem://features/email-correspondence-tracking) — Zapier ingest-email for Gmail/Outlook threading
+- [Calendly Sync](mem://integrations/calendly-webhook-sync) — Webhook logic, auto-assign to Malik, backfill utility
+- [Calendly Auth](mem://integrations/backfill-calendly-auth) — Dual authentication (INGEST_API_KEY/Bearer) for backfill
+- [Fireflies Sync](mem://integrations/fireflies-sync) — Multi-signal transcript matching and false-positive prevention
+- [Meeting Deduplication](mem://features/meeting-deduplication-logic) — firefliesId-based guard and transcript length preference
+- [Cron Synchronization](mem://integrations/fireflies-cron-sync) — 15-minute sync job for recent Fireflies meetings
+- [Processing Reliability](mem://features/robust-processing-pipeline) — Timeout guards and DB listener logic for jobs
+- [Bulk Processing Reliability](mem://features/bulk-processing-reliability) — Sub-task timeouts, persistence-first reliability model
+- [Bulk Processing Logic](mem://features/bulk-processing-logic) — Database-first approach to discovery to avoid React race conditions
+- [Meeting Reconciliation](mem://features/meeting-reconciliation-automation) — One-click sync, refresh, and queue workflow
+- [Enrichment Automation](mem://integrations/linkedin-enrichment-automation) — AI Search Agent logic for LinkedIn profile verification
+- [Enrichment Trigger](mem://features/automated-enrichment-trigger) — Promise.allSettled usage for immediate scoring and backfill
+- [Research Engine](mem://features/research-recommend-engine) — AbortSignal fetch, snippet priority, and timeout handling
+- [Deal Intelligence](mem://features/accumulated-deal-intelligence) — GPT-4o 128K context usage without truncation
+- [Meeting Intelligence](mem://features/structured-meeting-intelligence) — Extraction of 20+ fields using GPT-4o
+- [Sales Strategy](mem://features/psychological-sales-strategy) — Psychographic markers, Power Moves, and Landmines
+- [Prep Intel](mem://features/prep-intel-architecture) — Battle Card format and inline citation link generation
+- [Sales Intelligence](mem://features/sales-intelligence-analytics) — Loss Autopsy, Dropped Balls, and Engagement Decay tracking
+- [Action Governance](mem://features/action-item-governance) — Tracking extracted transcript promises and completion rates
+- [Deal Health](mem://features/deal-health-intelligence) — Champion Coverage tracking and deal stalling flags
+- [Next Steps Engine](mem://features/next-steps-engine) — The 15 prioritized signals that drive action queues
+- [Action Center](mem://features/action-center-workflow) — Priority queue workflow and AI drafting via lead_drafts
+- [Task Playbooks](mem://features/automated-task-playbooks) — Auto-supersede pending tasks on stage changes
+- [AI Sales Playbook](mem://features/ai-sales-playbook) — Action chips and "Copy & Mark Done" logic
+- [CRM Automation](mem://features/crm-automation-logic) — Automatic contact dates and delta-write DB updates
+- [Command Center Efficiency](mem://features/command-center-efficiency-tools) — Keyboard shortcuts and inline task management
+- [Follow-up Backlog](mem://features/follow-up-backlog-management) — Inline snooze and 7-day actionable window logic
+- [Operational Efficiency](mem://features/operational-efficiency-tools) — Cmd+K global search and Deal Aging Heatmap
+- [Stage Undo](mem://features/stage-change-undo) — 5-second toast logic to revert metrics and tasks
+- [Deal Pre-screen](mem://features/deal-gating-prescreen) — Minimum qualification gating fields
+- [Company Name Formatting](mem://logic/company-name-formatting) — Title-case normalization logic
+- [Business Economics](mem://features/business-economics-logic) — CAC, LTV, and NRR calculation structures
+- [Ad Spend Metrics](mem://business/advertising-spend) — Baseline ad spend figures for Captarget and SourceCo
+- [Business Reporting](mem://logic/business-reporting-integrity) — Data integrity constraints for closed won reporting
+- [Forecast Logic](mem://features/forecast-forecasting-logic) — Multipliers and cycle day estimates for revenue forecasting
+- [Dual Architecture](mem://features/dual-system-architecture) — CRM vs. Business Operations system switching
+- [Navigation Reliability](mem://features/deal-room-navigation-reliability) — History-aware routing in Deal Room
+- [LinkedIn Visibility](mem://features/linkedin-ui-visibility) — UI placement and trigger logic for LinkedIn profiles
+- [Pipeline Filters](mem://features/pipeline-intelligence-filters) — Overdue follow-up visibility and quick-filter styling
+- [SourceCo Fields](mem://features/sourceco-data-fields) — Buyer type and acquisition strategy metadata
+- [Data Sources](mem://project/data-sources) — Hardcoded tracking sources for Captarget/SourceCo forms
+- [Environment Separation](mem://project/environment-separation) — Lovable Preview vs. Live DB constraints
+- [AI Gateway Constraint](mem://integrations/ai-model-usage) — Strictly use direct OpenAI API
+- [Urgency Signaling](mem://features/sales-urgency-signaling) — Use pending language over alarm colors
