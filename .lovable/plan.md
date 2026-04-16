@@ -1,76 +1,56 @@
 
 
-# Fix Import Data Gaps & Enrich Notes with Full Deal Context
+# Import Gap Fix: LinkedIn, Kick-Off Meetings, and Missing Context
 
-## Problems Found
+## Current State (280 leads in Revisit/Reconnect)
 
-### 1. Data corruption: `google_drive_link` column
-Lisa Jefferson (CT-426) has target criteria text in `google_drive_link` instead of a Drive URL. The CSV parser misaligned columns on multi-line description rows.
+| Field | Has Data | Missing | Issue |
+|---|---|---|---|
+| LinkedIn URL | 47 | **233** | CSV column 38 ("Main LinkedIn Profile") was never mapped during import |
+| Kick-Off Meetings | **0** | ~15+ | Fix script ran but `meetings_added: 0` — likely column index mismatch |
+| Pipedrive Context in notes | 159 | 121 | 121 had no data in context columns — correct |
+| Billing/contract data | 9 | 271 | Fix script only found 0 new billing rows — column parsing issue |
+| Scoring | 280 | 0 | Done |
+| Owners | 280 | 0 | Done |
+| Websites | 172 | 108 | Need AI enrichment for these |
+| Fireflies URL | 110 | 170 | Already captured what CSV had |
 
-### 2. Lost CSV columns — rich deal context not captured
-These CSV fields were silently dropped during import:
+## Root Causes
 
-| CSV Column | Data Examples | Count with Data |
-|---|---|---|
-| Next Steps | "Client Submitted a Buyers Profile", "No - Still Awaiting The Guide" | ~50+ |
-| Deal Term | Contract length info | ~20+ |
-| Credit Details | Amount and date of credit issuance | ~10+ |
-| Account Status | Active/inactive flags | sparse |
-| Onboarding Guide Attached | "Yes - Already Completed", "No - Still Awaiting The Guide" | ~30+ |
-| FireFlies Kick-Off Call | Second Fireflies URL for kick-off meetings | ~15+ |
-| SourceCo Email | Whether to use SourceCo branding for outreach | sparse |
+1. **LinkedIn URLs from CSV never imported.** The original Python import script didn't map CSV column 38 to `linkedin_url`. The fix script also didn't address it. ~80+ leads in the CSV have a LinkedIn URL that's sitting unimported.
 
-### 3. `service_interest` mapping too aggressive
-CSV values like "Origination Both Sides", "Off Market + Calling", "Full Market Email + Calling", "Origination Business Owners", "Origination Intermediaries" are being mapped to "Other" — losing the actual service detail.
+2. **Kick-Off Call URLs not stored.** The fix script reported `meetings_added: 0` — the column index for "FireFlies Kick-Off Call" (col 43) may have been misread due to multi-line CSV fields causing row/column misalignment.
 
-### 4. `subscription_value` / `contract_start` / `contract_end` barely populated
-Only 1 lead each for contract dates despite CSV having more data. The parser may be misreading these columns for multi-line rows.
+3. **Contract billing amounts barely populated (9 total).** Same multi-line CSV parsing issue likely shifted columns for many rows.
 
 ## Fix Plan
 
-### Step 1: Re-run import with corrected field mapping
-Write a new Python script that:
-- Uses proper CSV parsing (Python `csv` module with quoting) to handle multi-line descriptions correctly
-- For each of the 280 imported leads (matched by email), **UPDATE** the following fields from CSV:
-  - `google_drive_link` — only if CSV value looks like a URL (contains "drive.google" or "docs.google")
-  - `contract_start` — from "First Payment Date (Jenni)"
-  - `contract_end` — from "Contractual End Date"  
-  - `subscription_value` — from "Contract Billing Amount" (parse number)
-  - `service_interest` — store the raw CSV "Service" value directly (it's more useful than the forced enum mapping)
+### Step 1: Re-parse CSV and patch LinkedIn, kick-off calls, and billing
+Write a corrected Python script that:
+- Uses Python `csv` module (handles multi-line correctly)
+- For each CSV row matched by email to a DB lead, **UPDATE**:
+  - `linkedin_url` from column 38 ("Main LinkedIn Profile") — only if lead currently has no LinkedIn
+  - `meetings` array — append kick-off call from column 43 ("FireFlies Kick-Off Call") if it's a URL
+  - `subscription_value` from column 34 ("Contract Billing Amount") — if currently 0
+  - `contract_start` from column 32 ("First Payment Date")
+  - `contract_end` from column 33 ("Contractual End Date")
+- Match by email (lowercase) against existing DB leads
+- Log counts for each field updated
 
-### Step 2: Append missing deal context to `notes`
-For each lead, append a structured block at the end of existing notes:
+### Step 2: Trigger `backfill-linkedin` for remaining gaps
+After importing CSV LinkedIn URLs, ~150+ leads will still lack LinkedIn. These need the AI enrichment agent. Run `backfill-linkedin` in batches (5 per run, ~30 runs needed).
 
-```text
---- Pipedrive Context ---
-Firm Type: Independent Sponsor
-Next Steps: Client Submitted a Buyers Profile
-Onboarding Guide: No - Still Awaiting The Guide
-Deal Term: 6 months
-Credit Details: $500 issued 03/15/2024
-```
+### Step 3: Trigger `backfill-linkedin-website` for 108 leads missing websites
+Run the website enrichment for leads with no `company_url`.
 
-Only include fields that have non-empty values. This preserves the "why they didn't buy" and operational context without needing new DB columns.
-
-### Step 3: Store kick-off call Fireflies URLs as meetings
-Where "FireFlies Kick-Off Call" has a URL, add it as a second entry in the `meetings` jsonb array (with title "Kick-Off Call").
-
-### Step 4: Fix service_interest values
-Map CSV "Service" field to closest enum OR store as-is in notes if no match. The actual Pipedrive service names are more descriptive than our enum.
-
-### Step 5: Verify data integrity
-Query the DB after updates to confirm:
-- `google_drive_link` only contains URLs (not text blobs)
-- `notes` have the appended Pipedrive context
-- Kick-off meetings are stored
-- Contract/billing data is populated
-
-## Technical approach
-- Python script via `code--exec` using Supabase REST API
-- Match existing leads by email (same as original import)
-- UPDATE only — no new inserts needed
-- Parse CSV with Python `csv.reader` to handle multi-line fields correctly
+### Step 4: Update pipeline memory
+Update `mem://features/pipeline-workflow` from 11 to 13 stages.
 
 ## No schema changes needed
-All additional context goes into existing `notes` field. The 3 new columns (`secondary_contacts`, `google_drive_link`, `forecasted_close_date`) already exist.
+All fields already exist in the database.
+
+## Estimated scope
+- 1 Python script via `code--exec` (CSV re-parse + DB patch)
+- 2-3 edge function invocations for enrichment batches
+- 1 memory file update
 
