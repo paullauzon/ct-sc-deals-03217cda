@@ -144,6 +144,85 @@ interface LeadContext {
   geography: string | null;
 }
 
+// ─── Pre-Search Rationalization ───
+
+interface RationalizationResult {
+  name_variants: string[];
+  company_variants: string[];
+  email_inference: { first_initial: string; likely_names: string[] } | null;
+  linkedin_slug_guesses: string[];
+  best_search_queries: string[];
+  confidence_notes: string;
+}
+
+async function rationalizeLead(
+  lead: LeadContext,
+  openaiKey: string,
+): Promise<RationalizationResult | null> {
+  const contextParts: string[] = [];
+  contextParts.push(`Name: ${lead.name}`);
+  if (lead.company) contextParts.push(`Company: ${lead.company}`);
+  if (lead.email) contextParts.push(`Email: ${lead.email}`);
+  if (lead.companyUrl) contextParts.push(`Company URL: ${lead.companyUrl}`);
+  if (lead.websiteUrl) contextParts.push(`Website: ${lead.websiteUrl}`);
+  if (lead.role) contextParts.push(`Role: ${lead.role}`);
+  if (lead.geography) contextParts.push(`Geography: ${lead.geography}`);
+
+  const prompt = `You are a pre-search analyst. Given a person's data, produce a structured search plan for finding their LinkedIn profile. Think step-by-step about who this person really is before any search happens.
+
+PERSON DATA:
+${contextParts.join("\n")}
+
+ANALYSIS RULES:
+1. NICKNAME EXPANSION: If the first name is a common nickname, list ALL formal/legal name variants. Common mappings include but aren't limited to:
+   Woody→William/Woodrow, Bill/Billy→William, Bob/Bobby→Robert, Dick→Richard, Ted→Edward/Theodore, Chuck→Charles, Jack→John/Jackson, Jim/Jimmy→James, Mike→Michael, Joe→Joseph, Tom/Tommy→Thomas, Dave→David, Dan→Daniel, Pat→Patrick/Patricia, Chris→Christopher/Christine, Alex→Alexander/Alexandra, Sam→Samuel/Samantha, Ben→Benjamin, Matt→Matthew, Nick→Nicholas, Rick/Ricky→Richard, Steve→Stephen/Steven, Andy→Andrew, Tony→Anthony, Larry→Lawrence, Jerry→Gerald/Jerome, Terry→Terrence/Teresa, Jeff→Jeffrey, Greg→Gregory, Phil→Philip, Ron→Ronald, Ray→Raymond, Ken→Kenneth, Don→Donald, Hank→Henry, Peggy→Margaret, Beth→Elizabeth, Kate/Katie→Katherine, Liz→Elizabeth, Maggie→Margaret, Sally→Sarah, Jenny→Jennifer, Molly→Mary, Patty→Patricia, Sandy→Sandra, Barb→Barbara, Meg→Margaret, Sue→Susan, Vicky→Victoria, Wendy→Gwendolyn, Penny→Penelope, Cathy→Catherine, Debbie→Deborah, Cindy→Cynthia, Nancy→Ann/Anne, Mandy→Amanda
+
+2. EMAIL USERNAME ANALYSIS: Parse the email username carefully:
+   - "wcissel@" → first initial is "w", surname is "cissel" → likely names starting with W (William, Walter, Warren, Wesley, Wayne, etc.)
+   - "jsmith@" → first initial is "j" → James, John, Joseph, Jeffrey, etc.
+   - "firstname.lastname@" → confirms exact spelling
+   - "flastname@" or "firstl@" → extract initial + name fragment
+
+3. COMPANY NAME NORMALIZATION: Break concatenated names into words (e.g., "Treatyoakequity" → "Treaty Oak Equity"), expand abbreviations, consider DBA names
+
+4. DOMAIN CROSS-REFERENCE: If email domain differs from company URL domain, note this — both are valid search signals
+
+5. SEARCH QUERY GENERATION: Produce 2-3 ranked search queries from most-to-least specific. Always include:
+   - A query using the MOST LIKELY legal/formal name with company
+   - A query using the original name as given
+   Format: "FirstName LastName" OR "VariantName" "Company" site:linkedin.com/in
+
+6. LINKEDIN SLUG GUESSES: Common patterns: firstnamelastname, flastname, firstname-lastname, firstlast
+
+Respond with ONLY a JSON object:
+{
+  "name_variants": ["formal/legal name variants to search"],
+  "company_variants": ["company name variants"],
+  "email_inference": {"first_initial": "x", "likely_names": ["Name1", "Name2"]} or null,
+  "linkedin_slug_guesses": ["possible-slug-1", "possible-slug-2"],
+  "best_search_queries": ["query1 site:linkedin.com/in", "query2 site:linkedin.com/in"],
+  "confidence_notes": "Brief reasoning about name/company analysis"
+}`;
+
+  try {
+    const content = await callAI(
+      [{ role: "user", content: prompt }],
+      openaiKey,
+      "gpt-4o-mini",
+    );
+
+    const jsonStr = content.replace(/```json\s*/g, "").replace(/```/g, "").trim();
+    const parsed = JSON.parse(jsonStr);
+    console.log(`  Rationalization: ${parsed.confidence_notes}`);
+    console.log(`  Name variants: ${(parsed.name_variants || []).join(", ")}`);
+    console.log(`  Best queries: ${(parsed.best_search_queries || []).join(" | ")}`);
+    return parsed as RationalizationResult;
+  } catch (e) {
+    console.error(`  Rationalization failed:`, e);
+    return null;
+  }
+}
+
 interface AgentResult {
   url: string | null;
   profileContent: string;
