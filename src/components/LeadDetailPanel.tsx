@@ -222,7 +222,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             )}
             {leftOpen && (
               <div className="relative">
-                <LeadPanelLeftRail lead={lead} daysInStage={days} />
+                <LeadPanelLeftRail lead={lead} daysInStage={days} save={save} />
                 <button onClick={() => setLeftOpen(false)} className="absolute top-2.5 right-2 text-muted-foreground hover:text-foreground p-1 rounded hover:bg-secondary/40" title="Hide panel">
                   <PanelLeftClose className="h-3.5 w-3.5" />
                 </button>
