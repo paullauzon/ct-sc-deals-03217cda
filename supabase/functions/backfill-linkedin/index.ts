@@ -192,7 +192,7 @@ async function callAI(
   openaiKey: string,
   model: string,
 ): Promise<string> {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 4; attempt++) {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -201,9 +201,10 @@ async function callAI(
       },
       body: JSON.stringify({ model, messages }),
     });
-    if (res.status === 429 && attempt < 2) {
-      const delay = (attempt + 1) * 3000;
-      console.warn(`  OpenAI 429 — retrying in ${delay / 1000}s (attempt ${attempt + 1}/3)...`);
+    if (res.status === 429 && attempt < 3) {
+      const delays = [5000, 15000, 30000];
+      const delay = delays[attempt];
+      console.warn(`  OpenAI 429 — retrying in ${delay / 1000}s (attempt ${attempt + 1}/4)...`);
       await res.text(); // consume body
       await new Promise(r => setTimeout(r, delay));
       continue;
