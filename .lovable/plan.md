@@ -1,66 +1,76 @@
 
 
-# Import Audit & Next Steps
+# Fix Import Data Gaps & Enrich Notes with Full Deal Context
 
-## Import Status: Complete and Healthy
+## Problems Found
 
-All 290 CSV rows were processed (0 errors):
-- **208 new leads** created (CT-223 → CT-430)
-- **82 existing leads** updated (notes merged, stage moved)
-- **280 total** in Revisit/Reconnect (includes some pre-existing leads that were already matched by email, like SourceCo/Target leads)
+### 1. Data corruption: `google_drive_link` column
+Lisa Jefferson (CT-426) has target criteria text in `google_drive_link` instead of a Drive URL. The CSV parser misaligned columns on multi-line description rows.
 
-### Data coverage in Revisit/Reconnect:
-| Field | Has Data | Missing |
+### 2. Lost CSV columns — rich deal context not captured
+These CSV fields were silently dropped during import:
+
+| CSV Column | Data Examples | Count with Data |
 |---|---|---|
-| Email + Name | 280/280 | 0 |
-| Deal Value | 223 | 57 |
-| Notes | 262 | 18 |
-| LinkedIn | 123 | **157** |
-| Website | 172 | **108** |
-| Fireflies URL | 97 | 183 |
-| Secondary Contacts | 58 | — |
-| Meetings (kick-off) | 43 | — |
-| Owner/Assigned | 264 | 16 |
-| Target Revenue | 85 | — |
-| Referral Source | 75 | — |
+| Next Steps | "Client Submitted a Buyers Profile", "No - Still Awaiting The Guide" | ~50+ |
+| Deal Term | Contract length info | ~20+ |
+| Credit Details | Amount and date of credit issuance | ~10+ |
+| Account Status | Active/inactive flags | sparse |
+| Onboarding Guide Attached | "Yes - Already Completed", "No - Still Awaiting The Guide" | ~30+ |
+| FireFlies Kick-Off Call | Second Fireflies URL for kick-off meetings | ~15+ |
+| SourceCo Email | Whether to use SourceCo branding for outreach | sparse |
 
-Secondary contacts are parsing correctly (e.g. Calvin Lane → Salman Khan, Ben Schneider → Anthony Ekmekjian).
+### 3. `service_interest` mapping too aggressive
+CSV values like "Origination Both Sides", "Off Market + Calling", "Full Market Email + Calling", "Origination Business Owners", "Origination Intermediaries" are being mapped to "Other" — losing the actual service detail.
 
-## What's Missing — Action Items
+### 4. `subscription_value` / `contract_start` / `contract_end` barely populated
+Only 1 lead each for contract dates despite CSV having more data. The parser may be misreading these columns for multi-line rows.
 
-### 1. LinkedIn & Website Enrichment (biggest gap)
-157 Revisit/Reconnect leads have no LinkedIn URL, 108 have no website. The existing `backfill-linkedin` function can fill these, but it processes 5 leads per run and would take many runs. We should:
-- Run a targeted batch enrichment specifically for Revisit/Reconnect leads missing LinkedIn/website
-- Potentially increase the batch size for this one-time backfill since we just need basic lookups, not deep scoring
+## Fix Plan
 
-### 2. Lead Scoring for Imported Leads
-None of the 208 newly imported leads have `stage1_score`, `stage2_score`, or `tier` set. The enrichment pipeline (`enrich-lead-scoring`) should be triggered for these to get them properly scored and tiered.
+### Step 1: Re-run import with corrected field mapping
+Write a new Python script that:
+- Uses proper CSV parsing (Python `csv` module with quoting) to handle multi-line descriptions correctly
+- For each of the 280 imported leads (matched by email), **UPDATE** the following fields from CSV:
+  - `google_drive_link` — only if CSV value looks like a URL (contains "drive.google" or "docs.google")
+  - `contract_start` — from "First Payment Date (Jenni)"
+  - `contract_end` — from "Contractual End Date"  
+  - `subscription_value` — from "Contract Billing Amount" (parse number)
+  - `service_interest` — store the raw CSV "Service" value directly (it's more useful than the forced enum mapping)
 
-### 3. Owner Assignment Gaps
-16 leads have no `assigned_to`. These came from CSV rows where `Owner Name` was blank. We should assign them (likely to Malik as default, per existing patterns).
+### Step 2: Append missing deal context to `notes`
+For each lead, append a structured block at the end of existing notes:
 
-### 4. Duplicates Within Import
-The script deduplicated by email within the CSV and against existing DB records. However, some imported leads may represent the same person with different emails (e.g., personal vs. company email). A quick audit could flag these.
+```text
+--- Pipedrive Context ---
+Firm Type: Independent Sponsor
+Next Steps: Client Submitted a Buyers Profile
+Onboarding Guide: No - Still Awaiting The Guide
+Deal Term: 6 months
+Credit Details: $500 issued 03/15/2024
+```
 
-### 5. Pipeline Memory Update
-The `mem://features/pipeline-workflow` file still references "11 distinct stages" — needs updating to 13 stages with the new Revisit/Reconnect and Long Term Follow Up definitions.
+Only include fields that have non-empty values. This preserves the "why they didn't buy" and operational context without needing new DB columns.
 
-## Implementation Plan
+### Step 3: Store kick-off call Fireflies URLs as meetings
+Where "FireFlies Kick-Off Call" has a URL, add it as a second entry in the `meetings` jsonb array (with title "Kick-Off Call").
 
-### Step 1: Assign unowned leads
-Set `assigned_to = 'Malik'` for the 16 leads in Revisit/Reconnect with no owner.
+### Step 4: Fix service_interest values
+Map CSV "Service" field to closest enum OR store as-is in notes if no match. The actual Pipedrive service names are more descriptive than our enum.
 
-### Step 2: Trigger LinkedIn/website enrichment batch
-Run `backfill-linkedin` targeting the 157 Revisit/Reconnect leads missing LinkedIn. This will also pick up websites via the enrichment flow.
+### Step 5: Verify data integrity
+Query the DB after updates to confirm:
+- `google_drive_link` only contains URLs (not text blobs)
+- `notes` have the appended Pipedrive context
+- Kick-off meetings are stored
+- Contract/billing data is populated
 
-### Step 3: Trigger lead scoring
-Run `backfill-lead-scores` for the newly imported leads (CT-223+) to populate tier/scoring.
+## Technical approach
+- Python script via `code--exec` using Supabase REST API
+- Match existing leads by email (same as original import)
+- UPDATE only — no new inserts needed
+- Parse CSV with Python `csv.reader` to handle multi-line fields correctly
 
-### Step 4: Update pipeline memory
-Update `mem://features/pipeline-workflow` to reflect the 13-stage workflow accurately.
-
-### Step 5: Verify end-to-end in the UI
-Open the pipeline, confirm Revisit/Reconnect column shows all 280 leads, click into a few to verify notes, LinkedIn, secondary contacts, and meetings render correctly.
-
-All of this can be done in a single implementation pass — shall I proceed?
+## No schema changes needed
+All additional context goes into existing `notes` field. The 3 new columns (`secondary_contacts`, `google_drive_link`, `forecasted_close_date`) already exist.
 
