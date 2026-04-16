@@ -1030,7 +1030,7 @@ async function aiSearchAgent(
                 const cUrl = candidate.url.split("?")[0];
                 const cSnippet = `${candidate.title || ""} ${candidate.description || ""}`;
                 console.log(`  Open web candidate: ${cUrl}`);
-                const verification = await inlineVerify(lead, cUrl, cSnippet, openaiKey);
+                const verification = await inlineVerify(lead, cUrl, cSnippet, openaiKey, rationalization?.name_variants);
                 if (verification.verdict !== "wrong") {
                   console.log(`  Open web VERIFIED (${verification.verdict}): ${cUrl}`);
                   return { url: cUrl, profileContent: "", turnsUsed: turn + 1, gaveUpReason: null, snippet: cSnippet };
