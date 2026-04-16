@@ -1,91 +1,79 @@
 
 
-# LinkedIn Enrichment: Phase 2+3 — Remaining Improvements for 99% Discovery
+# LinkedIn Enrichment: End-to-End Verification — Bugs Found
 
-## Already Implemented (Full Audit)
+## Test Results
 
-| Capability | Status |
+I deployed `backfill-linkedin` and ran it against Woody Cissel (CT-200) twice. Both failed with the same two bugs.
+
+## Bug 1: Firecrawl v2 Response Format Mismatch
+
+**Error**: `TypeError: results.map is not a function` at line 65 (inside `firecrawlSearch`)
+
+**Cause**: The v2 `/search` endpoint was introduced but the response may not always be an array. The code does `data.data || data.results || []` — but Firecrawl v2 search returns `{ success: true, data: [ ... ] }` when working, but can also return `{ success: true, data: { ... } }` (an object, not array) in edge cases or when the query returns metadata. Need to guard with `Array.isArray()`.
+
+**Fix** (line 98 in `backfill-linkedin/index.ts`):
+```typescript
+const raw = data.data || data.results || [];
+const results = Array.isArray(raw) ? raw : [];
+```
+
+## Bug 2: OpenAI 429 — No Retry Logic on AI Calls
+
+**Error**: `Error: OpenAI HTTP 429` in `callAI` — kills both rationalization and the agent loop immediately.
+
+**Cause**: The `callAI` function (line 202) throws immediately on any non-2xx status with no retry. OpenAI 429s are common and transient. We added retry logic for Firecrawl 429s but not for OpenAI.
+
+**Fix** (`callAI` function): Add a simple retry with exponential backoff (1 retry after 2s delay on 429).
+
+```typescript
+async function callAI(messages, openaiKey, model): Promise<string> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", { ... });
+    if (res.status === 429 && attempt === 0) {
+      console.warn("OpenAI 429 — retrying in 3s...");
+      await new Promise(r => setTimeout(r, 3000));
+      continue;
+    }
+    if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
+    const data = await res.json();
+    return (data.choices?.[0]?.message?.content || "").trim();
+  }
+  throw new Error("OpenAI 429 after retry");
+}
+```
+
+## What's Working (Verified)
+
+| Component | Status |
 |---|---|
-| AI Rationalization (nickname expansion, email inference, company normalization) | Done |
-| Direct LinkedIn slug guessing from rationalization | Done |
-| Inline verification on ALL paths (quick-match, agent, direct slug) | Done |
-| Serper (Google) fallback at quick-match + agent give-up + agent search empty | Done |
-| Relaxed single-name filter (allows single names with company+email) | Done |
-| Search metadata persistence (`linkedin_search_log` jsonb) | Done |
-| Previous search log injection on retry | Done |
-| Verify-then-re-search pipeline (`verify-linkedin-matches` with `re_search`) | Done |
-| Manual LinkedIn URL paste in Deal Room | Done |
-| 3 pre-search strategies (company LinkedIn page, email initials, company website) | Done |
-| Firecrawl v2 endpoints | Done |
-| Firecrawl 429 retry logic | Done |
-| Agent deduplication instruction (lists pre-search queries done) | Done |
-| Email signature LinkedIn URL mining | Done |
+| Auto-trigger from `ingest-lead` | Correct — passes `{ leadId }` via `Promise.allSettled` |
+| Manual URL paste in Deal Room | Code present, correctly calls `backfill-linkedin` with `manualUrl` |
+| "Search Again" button in Deal Room | Code present, clears URL then re-invokes |
+| LinkedIn coverage stats in LeadsTable | Code present, shows `(found/total)` on button |
+| Company cache infrastructure | Code present, `CompanyCache` Map created in batch mode |
+| Cross-lead mining | Code present in Strategy A |
+| Fuzzy company matching | Code present in quick-match |
+| Batch auto-continuation | Code present, chains up to 3 runs |
 
-## What's Still Missing
+## What's Broken (Must Fix)
 
-### D. Company-Level Search Cache Within a Batch
-Currently, 3 leads at "Right Lane Industries" each independently search for the company LinkedIn page and scrape the company website — 3x the same expensive API calls. An in-memory `Map<companyDomain, { linkedinPage, websiteLinks }>` passed through the batch loop would eliminate this.
+| Bug | Impact |
+|---|---|
+| Firecrawl v2 response parsing | All Firecrawl searches fail silently — the primary search engine is dead |
+| OpenAI 429 with no retry | Rationalization fails, agent fails after 1 turn — entire enrichment pipeline is broken |
 
-### E. Increase Batch Size + Auto-Continuation
-`MAX_LEADS_PER_RUN = 5` is too small. Bump to 10 and auto-chain up to 3 runs (30 leads per button press). The function already counts `remaining` — just needs to self-invoke when `remaining > 0`.
+## Plan
 
-### H. Cross-Lead LinkedIn Page Mining
-When Strategy A finds a company LinkedIn page and scrapes employee profiles, match ALL extracted `/in/` slugs against other leads from the same company in the DB. One scrape resolves multiple leads simultaneously.
+### Step 1: Fix `firecrawlSearch` response parsing
+Add `Array.isArray()` guard on the response data.
 
-### I. Fuzzy Company Matching in Quick-Match
-Quick-match currently requires exact substring match of company name in snippet. Add fuzzy matching: normalize both sides (strip "Inc", "LLC", "Corp", lowercase), try word-level overlap (2+ shared words = match). Catches "Right Lane" matching "Right Lane Industries LLC".
+### Step 2: Add OpenAI 429 retry to `callAI`
+Simple 1-retry with 3s backoff on 429.
 
-### K. Batch Progress via Realtime
-During batch processing, broadcast progress to a Supabase realtime channel. The UI subscribes and shows live updates: "Processing 3/10 — Found: Woody Cissel, Searching: Ramesh Dorairajan..."
-
-### L. "Re-search" Button in Deal Room
-Next to the manual LinkedIn paste input, add a "Search Again" button that triggers single-lead mode with `gpt-4o` and 8 turns for leads previously not found. Currently you can only paste manually.
-
-### M. LinkedIn Coverage Stats
-Show enrichment coverage somewhere visible: "LinkedIn: 87/102 (85%)" with found/not-found/wrong breakdown.
-
-## Implementation Plan
-
-### Step 1: Company cache + batch scaling (`backfill-linkedin/index.ts`)
-- Add `companyCache: Map<string, { linkedinPage?: string, websiteLinks?: string[] }>` parameter to `processLead`
-- In Strategy A, check cache before searching; write results to cache after
-- In Strategy C, check cache before scraping; write results to cache after
-- Bump `MAX_LEADS_PER_RUN` from 5 → 10
-- After batch completes with `remaining > 0`, self-invoke up to 2 more times (max 30 leads total)
-
-### Step 2: Cross-lead mining (`backfill-linkedin/index.ts`)
-- After Strategy A scrapes a company LinkedIn page and extracts `/in/` slugs, query the DB for other leads from the same company that still need LinkedIn
-- For each match (slug contains firstName or lastName), write the URL directly with inline verification
-- Track cross-resolved leads in the batch stats
-
-### Step 3: Fuzzy company matching (`backfill-linkedin/index.ts`)
-- Add `normalizeCompanyName(name)` — strips suffixes (Inc, LLC, Corp, Ltd, Group, Holdings), lowercases, trims
-- In quick-match, use normalized comparison + word-overlap scoring instead of raw `includes()`
-- Threshold: 2+ shared words OR normalized exact match
-
-### Step 4: Re-search button + progress UI
-- `src/pages/DealRoom.tsx`: Add "Search Again" button next to the LinkedIn override input, calling `backfill-linkedin` with `{ leadId, retryFailed: true }` (resets `linkedin_url` to null first)
-- `src/components/LeadsTable.tsx`: Subscribe to a realtime channel during batch enrichment to show live progress toasts
-
-### Step 5: Coverage stats
-- `src/components/LeadsTable.tsx` or `Dashboard.tsx`: Query leads table for counts of `linkedin_url IS NOT NULL AND != ''` vs total, display as a small stat badge
+### Step 3: Redeploy and retest
+Deploy `backfill-linkedin`, run on CT-200 (Woody Cissel), CT-219 (Ramesh Dorairajan), and CT-222 (Erik Ott) to verify end-to-end.
 
 ## Files to Change
-
-| File | Changes |
-|---|---|
-| `supabase/functions/backfill-linkedin/index.ts` | Company cache, batch auto-continuation, cross-lead mining, fuzzy company matching |
-| `src/pages/DealRoom.tsx` | "Search Again" button |
-| `src/components/LeadsTable.tsx` | Realtime progress subscription, coverage stats |
-
-## Expected Impact
-
-```text
-Current estimated hit rate:  ~85-90%  (Phase 1 complete)
-After company cache + batch:  ~90-93%  (more leads processed, fewer wasted API calls)
-After cross-lead mining:      ~93-95%  (one scrape resolves multiple leads)
-After fuzzy matching:          ~95-97%  (catches company name variations)
-Manual override (Deal Room):   remaining 3-5%
-Total coverage:                ~99%
-```
+- `supabase/functions/backfill-linkedin/index.ts` — two targeted fixes (response parsing + retry logic)
 
