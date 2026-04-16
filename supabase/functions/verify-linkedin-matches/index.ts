@@ -207,7 +207,76 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ─── Re-search cleared leads if requested ───
+    // ─── Phase D: Re-verify uncertain matches with deeper scraping ───
+    let uncertainResolved = 0;
+    let uncertainCleared = 0;
+    if (reverifyUncertain && !dryRun && uncertainLeadIds.length > 0) {
+      console.log(`\n=== Re-verifying ${uncertainLeadIds.length} uncertain matches ===`);
+      const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
+      
+      for (const leadId of uncertainLeadIds) {
+        const lead = leads.find((l: any) => l.id === leadId);
+        if (!lead || !lead.linkedin_url) continue;
+        
+        try {
+          // Try to scrape the actual LinkedIn profile for more context
+          let profileSnippet = lead.linkedin_title || "";
+          if (FIRECRAWL_API_KEY) {
+            const slug = lead.linkedin_url.split("/in/")[1]?.split("/")[0]?.split("?")[0];
+            if (slug) {
+              const searchRes = await fetch("https://api.firecrawl.dev/v2/search", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${FIRECRAWL_API_KEY}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ query: `"${slug}" site:linkedin.com/in`, limit: 2, scrapeOptions: { formats: ["markdown"] } }),
+              });
+              if (searchRes.ok) {
+                const searchData = await searchRes.json();
+                const raw = searchData.data || searchData.results || [];
+                const arr = Array.isArray(raw) ? raw : [];
+                const match = arr.find((r: any) => r.url?.includes(`/in/${slug}`));
+                if (match) {
+                  profileSnippet = `${match.title || ""} ${match.description || ""} ${(match.markdown || "").substring(0, 500)}`;
+                }
+              }
+            }
+          }
+          
+          // Re-verify with enriched snippet
+          const reVerification = await verifyMatch(
+            { ...lead, linkedin_title: profileSnippet } as LeadForVerification,
+            OPENAI_API_KEY,
+          );
+          
+          if (reVerification.verdict === "correct") {
+            uncertainResolved++;
+            console.log(`UNCERTAIN→CORRECT: ${lead.name} — ${reVerification.reason}`);
+          } else if (reVerification.verdict === "wrong") {
+            uncertainCleared++;
+            await supabase.from("leads").update({
+              linkedin_url: null,
+              linkedin_title: null,
+              linkedin_score: null,
+              linkedin_ma_experience: null,
+              seniority_score: null,
+            }).eq("id", lead.id);
+            clearedLeadIds.push(lead.id);
+            console.log(`UNCERTAIN→CLEARED: ${lead.name} — ${reVerification.reason}`);
+          } else {
+            console.log(`UNCERTAIN→STILL UNCERTAIN: ${lead.name} — ${reVerification.reason}`);
+          }
+          
+          await new Promise((r) => setTimeout(r, DELAY_MS));
+        } catch (e) {
+          console.error(`Re-verify uncertain failed for ${lead.name}:`, e);
+        }
+      }
+      
+      console.log(`Uncertain re-verify: ${uncertainResolved} confirmed, ${uncertainCleared} cleared`);
+    }
+
     let reSearchResults: Array<{ name: string; found: boolean }> = [];
     if (reSearch && !dryRun && clearedLeadIds.length > 0) {
       console.log(`\n=== Re-searching ${clearedLeadIds.length} cleared leads ===`);
