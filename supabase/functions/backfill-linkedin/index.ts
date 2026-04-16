@@ -7,9 +7,9 @@ const corsHeaders = {
 
 const BATCH_SIZE = 3;
 const DELAY_MS = 2000;
-const FLASH_MAX_TURNS = 7;
-const MAX_LEADS_PER_RUN = 10;
-const MAX_AUTO_CHAINS = 3; // up to 30 leads per button press
+const FLASH_MAX_TURNS = 5;
+const MAX_LEADS_PER_RUN = 5;
+const MAX_AUTO_CHAINS = 2; // up to 10 leads per button press
 
 // ─── Company Cache (shared across batch) ───
 interface CompanyCacheEntry {
@@ -1209,7 +1209,7 @@ async function processLead(
   startTime: number = Date.now(),
 ): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
   // Step 3: Timeout guard — save progress before edge function times out
-  const TIMEOUT_MS = 45000;
+  const TIMEOUT_MS = 30000; // Per-lead hard timeout
   if (Date.now() - startTime > TIMEOUT_MS) {
     console.log(`  Timeout guard: skipping ${lead.name} (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`);
     await writeSearchLog(supabase, lead.id, null, { url: null, profileContent: "", turnsUsed: 0, gaveUpReason: "timeout" }, "timeout");
@@ -1552,7 +1552,8 @@ Deno.serve(async (req) => {
     let totalGaveUp = 0;
     let chainsRun = 0;
     const globalStartTime = Date.now();
-    const GLOBAL_TIMEOUT_MS = 130000; // Return before 150s edge function limit
+    const GLOBAL_TIMEOUT_MS = 110000; // Must return well before 150s limit
+    const PER_LEAD_CUTOFF_MS = 90000; // Don't START a new lead after 90s
     const processedIds: string[] = []; // Track across chains to avoid re-processing
 
     for (let chain = 0; chain < MAX_AUTO_CHAINS; chain++) {
@@ -1610,16 +1611,17 @@ Deno.serve(async (req) => {
       console.log(`\n=== Chain ${chain + 1}/${MAX_AUTO_CHAINS}: Processing ${validLeads.length} leads with gpt-4o-mini ===`);
 
       for (const lead of validLeads) {
-        // Global timeout guard — return results before edge function 150s limit
-        if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
-          console.log(`\nGlobal timeout (${Math.round((Date.now() - globalStartTime) / 1000)}s) — returning partial results`);
+        // Don't START processing a new lead if we're past the per-lead cutoff
+        const elapsed = Date.now() - globalStartTime;
+        if (elapsed > PER_LEAD_CUTOFF_MS) {
+          console.log(`\nPer-lead cutoff (${Math.round(elapsed / 1000)}s) — not starting new leads`);
           break;
         }
         totalProcessed++;
         processedIds.push(lead.id);
         console.log(`\n[${totalProcessed}] ${lead.name} (${lead.company})`);
 
-        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, null, companyCache, chainStartTime);
+        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, null, companyCache, globalStartTime);
         totalTurns += result.turnsUsed;
 
         if (result.found) {
