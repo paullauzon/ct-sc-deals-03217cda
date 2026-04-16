@@ -1,63 +1,80 @@
 
 
-# Add Pipeline Stages: Revisit/Reconnect & Long Term Follow Up + Rename Closed Lost → Lost
+# Import Legacy CRM Deals into Revisit/Reconnect
 
-## New Stage Order (13 stages)
+## CSV Overview
+~200+ deals from the old CRM (Pipedrive-style export). Multi-line descriptions, varied stages ("Revisit/ Reconnect", "In Contact", "To Contact", "Lost & Long Term Follow Ups", "Automation Live", etc.).
 
-```text
-1. New Lead
-2. Qualified
-3. Contacted
-4. Meeting Set
-5. Meeting Held
-6. Proposal Sent
-7. Negotiation
-8. Contract Sent
-9. Revisit/Reconnect     ← NEW
-10. Long Term Follow Up   ← NEW
-11. Lost                  ← RENAMED from "Closed Lost"
-12. Went Dark
-13. Closed Won            ← MOVED to end
-```
+## Field Mapping: What Maps Directly
 
-Active stages (progress bar): 1–8. Terminal/post-active: 9–13.
+| CSV Column | → Lead Field | Notes |
+|---|---|---|
+| Primary Contact Name | `name` | |
+| Primary Contact Email | `email` | |
+| Title / Account | `company` | Use Account if present, else Title |
+| Value | `dealValue` | Parse `$2,000.00` → 2000 |
+| Owner Name | `assignedTo` | Map "Malik Hayes" → "Malik", "Valeria Rivera" → "Valeria" |
+| Description | `notes` | |
+| Created | `dateSubmitted` / `createdAt` | |
+| Next Action Date | `nextFollowUp` | |
+| Service | `serviceInterest` | Map to closest enum value |
+| Lead Source | `source` | Store raw value |
+| Website | `companyUrl` | |
+| Referred By | `hearAboutUs` | |
+| EBITDA/Revenue/$ | `targetRevenue` | |
+| First Payment Date | `contractStart` | |
+| Contractual End Date | `contractEnd` | |
+| Contract Billing Amount | `subscriptionValue` | |
+| IntroCall Date/Time | `meetingDate` | |
+| Last Engaged Date | `lastContactDate` | |
+| Main LinkedIn Profile | `linkedinUrl` | |
+| FireFlies Notetaker | `firefliesUrl` | |
+| Firm Type | `buyerType` | |
+| Deal ID | stored in notes or skip | For reference |
+| Stage | All imported as `"Revisit/Reconnect"` per your request |
 
-## Changes Required
+## Fields That Need a Decision
 
-### 1. Type definition (`src/types/lead.ts`)
-- Add `"Revisit/Reconnect"` and `"Long Term Follow Up"` to `LeadStage` union
-- Rename `"Closed Lost"` → `"Lost"`
-- Reorder so `"Closed Won"` is last
+### Recommend NEW columns (genuinely useful for CRM ops):
 
-### 2. Every file referencing "Closed Lost" or stage arrays (~24 files)
-Global find-and-replace `"Closed Lost"` → `"Lost"` across all `.ts` and `.tsx` files. Then update all stage order arrays. Key files:
+1. **`secondary_contacts`** (jsonb) — e.g. `[{email: "...", name: "..."}]`. You have leads with 2-3 secondary contacts. This is real CRM data you'll want to reference during deals.
 
-| File | What changes |
+2. **`google_drive_link`** (text) — Several deals have Drive links to proposals/contracts. Useful reference.
+
+3. **`forecasted_close_date`** (text) — Different from forecast *category*. Actual target date for closing.
+
+### Recommend SKIP (fold into `notes` or ignore):
+
+| CSV Column | Recommendation |
 |---|---|
-| `src/types/lead.ts` | LeadStage type |
-| `src/contexts/LeadContext.tsx` | STAGES array, closed-stage checks, metrics |
-| `src/components/Pipeline.tsx` | ALL_STAGES, CLOSED_STAGES |
-| `src/components/LeadsTable.tsx` | STAGES, ACTIVE_STAGES, DealProgressBar |
-| `src/pages/DealRoom.tsx` | ACTIVE_STAGES, DealProgressBar |
-| `src/components/Dashboard*.tsx` | All dashboard modules (~8 files) with CLOSED_STAGES sets and stage filters |
-| `src/components/PipelineFilters.tsx` | Stage filter options |
-| `src/lib/dealHealthUtils.ts` | Stage references |
-| `src/lib/leadUtils.ts` | Stage logic |
-| `src/lib/playbooks.ts` | Add playbooks for new stages |
-| `src/lib/newLeadUtils.ts` | Stage defaults |
-| `supabase/functions/process-meeting/index.ts` | Stage enum in AI prompt |
-| `supabase/functions/enrich-lead/index.ts` | Stage enum in AI prompt |
+| Credit Details | Append to `notes` — rare, free-text |
+| Deal Term | Append to `notes` |
+| Contract Term | Append to `notes` (or map to `billingFrequency` where clear) |
+| Onboarding Guide Attached | Skip — operational status, not lead data |
+| Next Steps | Append to `notes` |
+| Account Status | Skip |
+| SourceCo Email | Skip — internal routing |
+| FireFlies Kick-Off Call | Store as a second entry in `meetings[]` array |
 
-### 3. Database migration
-- Update any existing leads with `stage = 'Closed Lost'` → `'Lost'` in the database
+### Definitely SKIP (IDs, system fields):
 
-### 4. Playbooks for new stages
-- Add a "Revisit/Reconnect" playbook (re-engagement sequence)
-- Add a "Long Term Follow Up" playbook (periodic nurture touchpoints)
+Stage ID, Contact ID, Account ID, Owner ID, Pipeline ID, Owner Email/Username, Currency (all USD)
 
-### 5. Memory update
-- Update `mem://features/pipeline-workflow` with the new 13-stage definition
+## Import Approach
 
-## No backend schema changes needed
-The `stage` column is a plain `text` field — no enum constraint to alter.
+1. **Add 3 new DB columns** via migration: `secondary_contacts` (jsonb), `google_drive_link` (text), `forecasted_close_date` (text)
+2. **Update type definitions** and mapping functions for new fields
+3. **Write a one-time import script** (edge function or exec) that:
+   - Parses the multi-line CSV properly
+   - Deduplicates against existing leads by email
+   - For existing leads: appends notes, updates stage to "Revisit/Reconnect"
+   - For new leads: generates IDs with `CT-` prefix, sets stage to "Revisit/Reconnect"
+   - Maps all fields per the table above
+   - Folds unmapped fields into `notes` with clear labels
+4. **Run the import** against the correct environment
+
+## Estimated scope
+- 1 migration (3 columns)
+- 3 file edits (types, leadDbMapping, LeadContext or similar)
+- 1 import script (Python via exec, parsing CSV → insert/upsert to DB)
 
