@@ -1011,6 +1011,7 @@ async function processLead(
   model: string,
   maxTurns: number,
   serperKey: string | null = null,
+  companyCache: CompanyCache | null = null,
 ): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
   const leadContext: LeadContext = {
     name: lead.name,
