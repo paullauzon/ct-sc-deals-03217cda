@@ -1,67 +1,50 @@
 
 
-# LinkedIn Enrichment: End-to-End Verification Results
+# Deploy Verification & Serper Credit Fix
 
-## Test Results
+## Current Status
 
-Tested CT-222 (Erik Ott, Shield8). The function deployed successfully but **failed due to OpenAI 429 rate limits consuming the entire edge function timeout**.
+The `backfill-linkedin` function **is already deployed** with all 30+ capabilities. The logs from the most recent run confirm:
+- Retry delays are `2s` and `5s` (the fix is live)
+- Gemini fallback triggers correctly after OpenAI 429 exhaustion
+- Serper returns `400: "Not enough credits"` on every search attempt
 
-```text
-Logs:
-12:03:36  booted
-12:03:37  Checking email signatures...
-12:03:37  Running AI rationalization...
-12:03:38  OpenAI 429 — retrying in 5s (attempt 1/4)
-12:03:43  OpenAI 429 — retrying in 15s (attempt 2/4)
-12:03:59  OpenAI 429 — retrying in 30s (attempt 3/4)
-[function timed out at ~60s — Gemini fallback never reached]
-```
+## The Blocker
 
-## Root Cause
+**Serper API credits are exhausted.** This breaks 4 critical search paths:
+1. Quick-match Serper fallback
+2. Agent turn Serper fallback
+3. Open web search fallback
+4. Strategy D role-filtered search
 
-The retry delays (5s + 15s + 30s = **50s cumulative**) exceed the edge function timeout before the Gemini fallback at attempt 4 can execute. The function dies waiting.
+Without Serper, the system can only find profiles via direct slug guessing, Firecrawl scraping, and email signature mining — roughly 40% of what it's capable of.
 
-## Bug: 10 Leads Still Missing LinkedIn URLs
+## What Needs to Happen
 
-| Lead | Company | Status |
-|---|---|---|
-| CT-222 Erik Ott | Shield8 | Previously searched, failed |
-| SC-I-040 Arun Karthik Ganesan | Grunexus | Never searched |
-| TGT-034 Jae Park | Hanviagroup | Never searched |
-| CT-220 Wasif Khan | Zaphyr | Never searched |
-| CT-219 Ramesh Dorairajan | HGS | Previously searched, failed |
-| CT-201 Dante | Kings Spa For Men | Never searched (single name) |
-| CT-200 Woody Cissel | Right Lane Industries | Previously searched, failed |
-| SC-T-069 Kyle Tamboli | Ancona Holdings | Never searched |
-| CT-217 Eric Hung | Personal email | Never searched |
-| CT-191 Ray French | No company | Never searched |
+### Step 1: Add Serper Credit Exhaustion Handling
+Rather than silently failing, the function should detect the "Not enough credits" error and:
+- Log a clear warning once (not per-search)
+- Skip all Serper-dependent strategies gracefully
+- Continue with Firecrawl-only paths
+- Return `serper_exhausted: true` in the response so the UI can surface this
 
-## Everything Else Verified ✓
+### Step 2: Redeploy and Verify All Entry Points
+Deploy the updated function and confirm all 4 entry points work:
+- **Auto-trigger**: `ingest-lead` calls `backfill-linkedin` on new leads
+- **Batch button**: LeadsTable "LinkedIn Enrich" button
+- **Re-enrich Stale**: LeadsTable "Re-enrich Stale" button
+- **Deal Room**: "Search Again" button and manual URL paste
 
-- **Deployment**: Function deploys and boots successfully
-- **Auto-trigger from ingest-lead**: Code confirmed — `Promise.allSettled` calls backfill-linkedin on new lead creation
-- **Single-lead mode**: Works (Deal Room "Search Again" button sends `{leadId}`)
-- **Manual URL paste**: Works (sends `{leadId, manualUrl}`)
-- **Batch mode**: Code verified — chains, company cache, stale filter all structured correctly
-- **Timeout guard**: 45s per chain (Fix 1 confirmed in code)
-- **Agent candidate collection**: Code present (Fix 2)
-- **Serper knowledge graph mining**: Code present (Fix 3)
-- **Strategy D role-filtered search**: Code present (Fix 4)
+### Step 3: Top Up Serper Credits
+You'll need to top up your Serper account to restore full search capability. Once credits are available, re-run batch enrichment on the 10 missing leads.
 
-## Fix Required
-
-### Reduce OpenAI retry delays to fit within timeout budget
-
-Current: 5s + 15s + 30s = **50s** (exceeds function timeout)
-Proposed: 2s + 5s + 10s = **17s** (leaves 28s for Gemini fallback + actual work)
-
-Also: trigger Gemini fallback after attempt **2** (not attempt 3) — 3 retries is excessive when the account is rate-limited.
-
-### Changes
+## Files to Change
 
 | File | Change |
 |---|---|
-| `supabase/functions/backfill-linkedin/index.ts` | Reduce retry delays from `[5000, 15000, 30000]` to `[2000, 5000]`, trigger fallback after 2 failed retries instead of 3 |
+| `supabase/functions/backfill-linkedin/index.ts` | Add `serperExhausted` flag — detect "Not enough credits" once, skip Serper calls for remainder of run, include flag in response |
 
-After fixing, I'll redeploy and re-test on CT-222, SC-I-040, and TGT-034 to verify actual LinkedIn discovery works end-to-end.
+## After Deployment
+
+Once Serper credits are topped up, run batch enrichment from LeadsTable to process the 10 leads still missing LinkedIn URLs.
 
