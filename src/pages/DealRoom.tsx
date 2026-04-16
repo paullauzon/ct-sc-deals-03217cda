@@ -515,7 +515,16 @@ export default function DealRoom() {
             <p className="text-sm">{lead.email}</p>
             {lead.phone && <p className="text-sm text-muted-foreground">{lead.phone}</p>}
             {lead.companyUrl && <p className="text-xs text-muted-foreground truncate">{lead.companyUrl}</p>}
-          </div>
+            {lead.linkedinUrl ? (
+              <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-[#0A66C2] hover:underline mt-1">
+                <Linkedin className="h-3.5 w-3.5" />
+                {lead.linkedinTitle || "LinkedIn Profile"}
+              </a>
+            ) : (
+              <LinkedInOverride leadId={lead.id} onSuccess={(url, title) => {
+                updateLead(lead.id, { linkedinUrl: url, linkedinTitle: title || "" });
+              }} />
+            )}
           <div className="border-t border-border pt-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Dates</p>
             <div className="space-y-1 text-xs text-muted-foreground">
