@@ -565,7 +565,7 @@ async function aiSearchAgent(
         
         for (const result of serperLinkedins) {
           const snippet = `${result.title || ""} ${result.description || ""}`.toLowerCase();
-          const companyMatch = companyVariants.some(cv => snippet.includes(cv));
+          const companyMatch = companyVariants.some(cv => snippet.includes(cv)) || companyVariants.some(cv => fuzzyCompanyMatch(cv, snippet.substring(0, 200)));
           const lastName = lead.name.split(/\s+/).pop()?.toLowerCase() || "";
           const nameMatch = lastName && snippet.includes(lastName);
           
