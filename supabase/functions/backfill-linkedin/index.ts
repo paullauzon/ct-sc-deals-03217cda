@@ -499,6 +499,8 @@ async function aiSearchAgent(
   rationalization: RationalizationResult | null = null,
   serperKey: string | null = null,
   previousSearchLog: any = null,
+  companyCache: CompanyCache | null = null,
+  supabaseForCrossLead: any = null,
 ): Promise<AgentResult> {
   const contextParts: string[] = [];
   contextParts.push(`Name: ${lead.name}`);
