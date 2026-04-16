@@ -11,13 +11,27 @@ const FLASH_MAX_TURNS = 7;
 const MAX_LEADS_PER_RUN = 5;
 
 
-// ─── Firecrawl Search ───
+// ─── Firecrawl Search (v2 + 429 retry) ───
 
 interface SearchResult {
   url: string;
   title?: string;
   description?: string;
   markdown?: string;
+}
+
+async function firecrawlFetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries = 1,
+): Promise<Response> {
+  let res = await fetch(url, options);
+  if (res.status === 429 && retries > 0) {
+    console.warn(`  Firecrawl 429 rate limit — retrying in 3s...`);
+    await new Promise(r => setTimeout(r, 3000));
+    res = await fetch(url, options);
+  }
+  return res;
 }
 
 async function firecrawlSearch(
@@ -32,7 +46,7 @@ async function firecrawlSearch(
       body.scrapeOptions = { formats: ["markdown"] };
     }
 
-    const res = await fetch("https://api.firecrawl.dev/v1/search", {
+    const res = await firecrawlFetchWithRetry("https://api.firecrawl.dev/v2/search", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -93,7 +107,7 @@ async function serperSearch(query: string, serperKey: string, limit = 5): Promis
   }
 }
 
-// ─── Firecrawl Scrape (single URL) ───
+// ─── Firecrawl Scrape (single URL, v2 + 429 retry) ───
 
 async function firecrawlScrape(
   url: string,
@@ -103,7 +117,7 @@ async function firecrawlScrape(
     let formattedUrl = url.trim();
     if (!formattedUrl.startsWith("http")) formattedUrl = `https://${formattedUrl}`;
 
-    const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
+    const res = await firecrawlFetchWithRetry("https://api.firecrawl.dev/v2/scrape", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -335,6 +349,49 @@ async function tryDirectSlugGuess(
   return null;
 }
 
+// ─── Email Signature LinkedIn Mining ───
+
+async function mineEmailSignatures(
+  leadId: string,
+  lead: LeadContext,
+  supabase: any,
+  openaiKey: string,
+): Promise<{ url: string; snippet: string } | null> {
+  try {
+    const { data: emails } = await supabase
+      .from("lead_emails")
+      .select("body_preview")
+      .eq("lead_id", leadId)
+      .not("body_preview", "is", null)
+      .limit(20);
+
+    if (!emails || emails.length === 0) return null;
+
+    for (const email of emails) {
+      const body = email.body_preview || "";
+      // Match linkedin.com/in/slug patterns
+      const matches = body.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/gi);
+      if (matches && matches.length > 0) {
+        const url = matches[0].replace(/\/$/, "").split("?")[0];
+        console.log(`  Email signature LinkedIn URL found: ${url}`);
+        
+        // Verify it belongs to this person
+        const verification = await inlineVerify(lead, url, `Found in email signature from ${lead.name}`, openaiKey);
+        if (verification.verdict !== "wrong") {
+          console.log(`  Email signature URL verified (${verification.verdict}): ${url}`);
+          return { url, snippet: `Email signature match — ${verification.reason}` };
+        } else {
+          console.log(`  Email signature URL rejected: ${verification.reason}`);
+        }
+      }
+    }
+    return null;
+  } catch (e) {
+    console.error(`  Email signature mining failed:`, e);
+    return null;
+  }
+}
+
 interface AgentResult {
   url: string | null;
   profileContent: string;
@@ -408,6 +465,7 @@ async function aiSearchAgent(
   maxTurns: number = FLASH_MAX_TURNS,
   rationalization: RationalizationResult | null = null,
   serperKey: string | null = null,
+  previousSearchLog: any = null,
 ): Promise<AgentResult> {
   const contextParts: string[] = [];
   contextParts.push(`Name: ${lead.name}`);
@@ -446,8 +504,17 @@ async function aiSearchAgent(
           
           if (companyMatch && nameMatch) {
             const url = result.url.split("?")[0];
-            console.log(`  Quick-match HIT: ${url} (company+name match in snippet)`);
-            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: `${result.title || ""} ${result.description || ""}` };
+            const snippetFull = `${result.title || ""} ${result.description || ""}`;
+            console.log(`  Quick-match candidate: ${url} — running inline verification...`);
+            
+            // A: Add inline verification to quick-match path
+            const verification = await inlineVerify(lead, url, snippetFull, openaiKey);
+            if (verification.verdict === "wrong") {
+              console.log(`  Quick-match REJECTED by inline verify: ${verification.reason}`);
+              continue; // try next result
+            }
+            console.log(`  Quick-match VERIFIED (${verification.verdict}): ${url}`);
+            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: snippetFull };
           }
         }
       }
@@ -471,8 +538,16 @@ async function aiSearchAgent(
           
           if (companyMatch && nameMatch) {
             const url = result.url.split("?")[0];
-            console.log(`  Quick-match Serper HIT: ${url}`);
-            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: `${result.title || ""} ${result.description || ""}` };
+            const snippetFull = `${result.title || ""} ${result.description || ""}`;
+            console.log(`  Quick-match Serper candidate: ${url} — running inline verification...`);
+            
+            const verification = await inlineVerify(lead, url, snippetFull, openaiKey);
+            if (verification.verdict === "wrong") {
+              console.log(`  Quick-match Serper REJECTED: ${verification.reason}`);
+              continue;
+            }
+            console.log(`  Quick-match Serper VERIFIED (${verification.verdict}): ${url}`);
+            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: snippetFull };
           }
         }
       }
@@ -481,6 +556,7 @@ async function aiSearchAgent(
 
   // ─── Pre-execute priority strategies programmatically ───
   const preSearchResults: string[] = [];
+  const preSearchQueriesDone: string[] = [];
 
   // Inject rationalization context
   if (rationalization) {
@@ -501,10 +577,29 @@ async function aiSearchAgent(
     preSearchResults.push(`AI RATIONALIZATION (use these name variants in your searches!):\n${ratContext.join("\n")}`);
   }
 
+  // C: Inject previous search log if retrying
+  if (previousSearchLog) {
+    const prevParts: string[] = [];
+    if (previousSearchLog.fail_reason) {
+      prevParts.push(`PREVIOUS FAILURE REASON: ${previousSearchLog.fail_reason}`);
+    }
+    if (previousSearchLog.rationalization?.queries_tried?.length > 0) {
+      prevParts.push(`PREVIOUSLY TRIED QUERIES (DO NOT repeat these):\n${previousSearchLog.rationalization.queries_tried.join("\n")}`);
+    }
+    if (previousSearchLog.turns_used) {
+      prevParts.push(`Previous attempt used ${previousSearchLog.turns_used} turns.`);
+    }
+    if (prevParts.length > 0) {
+      preSearchResults.push(`PREVIOUS SEARCH ATTEMPT (use this to try NEW strategies):\n${prevParts.join("\n")}`);
+    }
+  }
+
   // Strategy A: Search company LinkedIn page for employees
   if (lead.company) {
+    const companyQuery = `"${lead.company}" site:linkedin.com/company`;
+    preSearchQueriesDone.push(companyQuery);
     console.log(`  Pre-search: Company LinkedIn page for "${lead.company}"`);
-    const companyResults = await firecrawlSearch(`"${lead.company}" site:linkedin.com/company`, firecrawlKey, 3, false);
+    const companyResults = await firecrawlSearch(companyQuery, firecrawlKey, 3, false);
     const companyLinkedinUrl = companyResults.find(r => r.url.includes("linkedin.com/company/"))?.url;
     if (companyLinkedinUrl) {
       const scraped = await firecrawlScrape(companyLinkedinUrl, firecrawlKey);
@@ -546,6 +641,7 @@ async function aiSearchAgent(
       
       const searchVariants = [initials2, ...alphabet.split("").map(m => firstInitial + m + lastInitial)];
       const searchQuery = searchVariants.slice(0, 5).map(v => `"${v}"`).join(" OR ") + ` "${lead.company || ""}" site:linkedin.com/in`;
+      preSearchQueriesDone.push(searchQuery);
       console.log(`  Pre-search: Email initials "${initials2}", middle-initial variants (${firstInitial}[a-z]${lastInitial})`);
       const initialsResults = await firecrawlSearch(searchQuery, firecrawlKey, 5, false);
       const initialsLinkedins = initialsResults.filter(r => r.url.includes("linkedin.com/in/"));
@@ -577,9 +673,15 @@ async function aiSearchAgent(
     }
   }
 
+  // J: Agent deduplication instruction — tell agent what was already searched
+  let dedupNote = "";
+  if (preSearchQueriesDone.length > 0) {
+    dedupNote = `\n\nALREADY SEARCHED (do NOT repeat these exact queries — try NEW strategies instead):\n${preSearchQueriesDone.map((q, i) => `${i + 1}. ${q}`).join("\n")}`;
+  }
+
   const preSearchContext = preSearchResults.length > 0
-    ? `\n\nPRE-SEARCH RESULTS (from automated priority strategies):\n${preSearchResults.join("\n\n")}\n\nIMPORTANT: Analyze these results first. If any LinkedIn URL was found on the company website, try to verify it by searching for the slug (e.g. search for "slug_name" site:linkedin.com). If a profile matches ${lead.name}, report it as found. Do NOT skip these just because the slug looks unusual.`
-    : "";
+    ? `\n\nPRE-SEARCH RESULTS (from automated priority strategies):\n${preSearchResults.join("\n\n")}\n\nIMPORTANT: Analyze these results first. If any LinkedIn URL was found on the company website, try to verify it by searching for the slug (e.g. search for "slug_name" site:linkedin.com). If a profile matches ${lead.name}, report it as found. Do NOT skip these just because the slug looks unusual.${dedupNote}`
+    : dedupNote;
 
   const nameVariantNote = rationalization && rationalization.name_variants.length > 0
     ? `\n\nCRITICAL: This person may go by different names. Search for ALL of these: ${[lead.name, ...rationalization.name_variants].join(", ")}`
@@ -807,9 +909,23 @@ async function processLead(
     geography: lead.geography,
   };
 
+  // B: Mine email signatures for LinkedIn URLs before anything else
+  console.log(`  Checking email signatures for LinkedIn URLs...`);
+  const emailSignatureResult = await mineEmailSignatures(lead.id, leadContext, supabase, openaiKey);
+  if (emailSignatureResult) {
+    console.log(`  Email signature match: ${emailSignatureResult.url}`);
+    return await writeLinkedInResult(lead, emailSignatureResult.url, firecrawlKey, supabase, null, 0, null);
+  }
+
   // Run AI rationalization before search
   console.log(`  Running AI rationalization for ${lead.name}...`);
   const rationalization = await rationalizeLead(leadContext, openaiKey);
+
+  // C: Read previous search log for retry context
+  const previousSearchLog = lead.linkedin_search_log || null;
+  if (previousSearchLog) {
+    console.log(`  Previous search log found — will inject context into agent`);
+  }
 
   // ─── Phase 1A: Direct LinkedIn URL guessing from rationalization slugs ───
   if (rationalization && rationalization.linkedin_slug_guesses?.length > 0) {
@@ -827,7 +943,7 @@ async function processLead(
     }
   }
 
-  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, serperKey);
+  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, serperKey, previousSearchLog);
 
   // ─── Phase 1B: Inline verification before writing ───
   if (agentResult.url) {
@@ -973,7 +1089,7 @@ Deno.serve(async (req) => {
       
       const { data: leadRows } = await supabase
         .from("leads")
-        .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience")
+        .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience, linkedin_search_log")
         .eq("id", singleLeadId)
         .limit(1);
       
@@ -1016,7 +1132,7 @@ Deno.serve(async (req) => {
       console.log(`[single-lead] Processing lead ${singleLeadId}`);
       const { data: leadRows } = await supabase
         .from("leads")
-        .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience")
+        .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience, linkedin_search_log")
         .eq("id", singleLeadId)
         .limit(1);
 
@@ -1078,7 +1194,7 @@ Deno.serve(async (req) => {
     // Get leads needing LinkedIn lookup
     let leadsQuery = supabase
       .from("leads")
-      .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience");
+      .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience, linkedin_search_log");
 
     if (retryFailed) {
       leadsQuery = leadsQuery.eq("linkedin_url", "");
