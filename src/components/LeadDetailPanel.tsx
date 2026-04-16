@@ -53,35 +53,32 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
   // ---- All hooks above this line. Early return is now safe. ----
   if (!lead) return null;
 
-  const days = computeDaysInStage(lead.stageEnteredDate);
-  const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
-
-  const aggregateMeetingIntel = () => {
-    const m = lead.meetings || [];
-    const allObjections: string[] = [], allPainPoints: string[] = [], allCompetitors: string[] = [], allChampions: string[] = [], allActionItems: string[] = [];
-    const sentiments: string[] = [], intents: string[] = [];
-    for (const mt of m) {
-      const intel = mt.intelligence; if (!intel) continue;
-      if (intel.dealSignals?.objections) allObjections.push(...intel.dealSignals.objections);
-      if (intel.dealSignals?.competitors) allCompetitors.push(...intel.dealSignals.competitors);
-      if (intel.dealSignals?.champions) allChampions.push(...intel.dealSignals.champions);
-      if (intel.painPoints) allPainPoints.push(...intel.painPoints);
-      if (intel.actionItems) allActionItems.push(...intel.actionItems.map(a => `${a.item} (${a.owner})`));
-      if (intel.dealSignals?.sentiment) sentiments.push(intel.dealSignals.sentiment);
-      if (intel.dealSignals?.buyingIntent) intents.push(intel.dealSignals.buyingIntent);
-    }
-    return { objections: [...new Set(allObjections)], painPoints: [...new Set(allPainPoints)], competitors: [...new Set(allCompetitors)], champions: [...new Set(allChampions)], actionItems: allActionItems, sentiments, intents };
-  };
-
+  // Move callbacks ABOVE the early return so hook order is stable
   const handleEnrich = useCallback(async () => {
     if (!lead || lead.enrichmentStatus === "running") return;
     setEnriching(true);
-    save({ enrichmentStatus: "running" as any });
+    updateLead(lead.id, { enrichmentStatus: "running" as any });
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 55000);
     try {
+      const m = lead.meetings || [];
+      const allObjections: string[] = [], allPainPoints: string[] = [], allCompetitors: string[] = [], allChampions: string[] = [], allActionItems: string[] = [];
+      const sentiments: string[] = [], intents: string[] = [];
+      for (const mt of m) {
+        const intel = mt.intelligence; if (!intel) continue;
+        if (intel.dealSignals?.objections) allObjections.push(...intel.dealSignals.objections);
+        if (intel.dealSignals?.competitors) allCompetitors.push(...intel.dealSignals.competitors);
+        if (intel.dealSignals?.champions) allChampions.push(...intel.dealSignals.champions);
+        if (intel.painPoints) allPainPoints.push(...intel.painPoints);
+        if (intel.actionItems) allActionItems.push(...intel.actionItems.map(a => `${a.item} (${a.owner})`));
+        if (intel.dealSignals?.sentiment) sentiments.push(intel.dealSignals.sentiment);
+        if (intel.dealSignals?.buyingIntent) intents.push(intel.dealSignals.buyingIntent);
+      }
+      const meetingIntelligence = { objections: [...new Set(allObjections)], painPoints: [...new Set(allPainPoints)], competitors: [...new Set(allCompetitors)], champions: [...new Set(allChampions)], actionItems: allActionItems, sentiments, intents };
+
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const days = computeDaysInStage(lead.stageEnteredDate);
       const response = await fetch(`${supabaseUrl}/functions/v1/enrich-lead`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` },
@@ -95,22 +92,22 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
           leadLostReason: lead.lostReason, leadNotes: lead.notes, leadTargetCriteria: lead.targetCriteria,
           leadTargetRevenue: lead.targetRevenue, leadGeography: lead.geography, leadAcquisitionStrategy: lead.acquisitionStrategy,
           leadBuyerType: lead.buyerType, leadDaysInStage: days, leadStageEnteredDate: lead.stageEnteredDate,
-          meetingIntelligence: aggregateMeetingIntel(), dealIntelligence: lead.dealIntelligence || null,
+          meetingIntelligence, dealIntelligence: lead.dealIntelligence || null,
         }),
       });
       if (!response.ok) { const errData = await response.json().catch(() => ({})); throw new Error(errData.error || `Server error ${response.status}`); }
       const data = await response.json();
       if (data?.error) throw new Error(data.error);
       if (data?.enrichment) {
-        save({ enrichment: data.enrichment, enrichmentStatus: "complete" as any });
+        updateLead(lead.id, { enrichment: data.enrichment, enrichmentStatus: "complete" as any });
         const hasSuggestions = data.enrichment.suggestedUpdates && Object.keys(data.enrichment.suggestedUpdates).length > 0;
         toast.success(hasSuggestions ? "Lead enriched — review AI suggestions" : "Lead enriched with AI intelligence");
       }
     } catch (e: any) {
-      save({ enrichmentStatus: "failed" as any });
+      if (lead) updateLead(lead.id, { enrichmentStatus: "failed" as any });
       toast.error(e.name === "AbortError" ? "Research timed out — try again" : (e.message || "Failed to enrich lead"));
     } finally { clearTimeout(timeout); setEnriching(false); }
-  }, [lead, days]);
+  }, [lead, updateLead]);
 
   const handleDraftAI = useCallback(async () => {
     if (!lead) return;
@@ -138,14 +135,64 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
     finally { setDraftingAI(false); }
   }, [lead]);
 
+  // ---- Now safe to early-return; all hooks have run ----
+  if (!lead) return null;
+
+  const days = computeDaysInStage(lead.stageEnteredDate);
+  const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
+
+  // Quick action: append a timestamped note → writes to lead.notes + activity log
+  const handleAddNote = async () => {
+    const text = noteDraft.trim();
+    if (!text) { toast.error("Note is empty"); return; }
+    const stamp = new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const newBlock = `[${stamp}] ${text}`;
+    const merged = lead.notes ? `${newBlock}\n\n${lead.notes}` : newBlock;
+    save({ notes: merged });
+    await logActivity(lead.id, "note_added", `Note: ${text.length > 80 ? text.slice(0, 77) + "…" : text}`);
+    setNoteDraft("");
+    toast.success("Note added");
+  };
+
+  // Quick action: create a row in lead_tasks
+  const handleAddTask = async () => {
+    const title = taskDraft.trim();
+    if (!title) { toast.error("Task is empty"); return; }
+    const today = new Date().toISOString().split("T")[0];
+    const { error } = await supabase.from("lead_tasks").insert({
+      lead_id: lead.id,
+      playbook: "manual",
+      sequence_order: 0,
+      task_type: "manual",
+      title,
+      description: "",
+      due_date: today,
+      status: "pending",
+    } as any);
+    if (error) { toast.error("Failed to add task"); return; }
+    await logActivity(lead.id, "field_update", `Task added: ${title}`);
+    setTaskDraft("");
+    toast.success("Task added");
+  };
+
+  // Quick action: log a phone/video call → activity log
+  const handleLogCall = async () => {
+    const summary = callDraft.trim();
+    if (!summary) { toast.error("Call summary is empty"); return; }
+    await logActivity(lead.id, "field_update", `Call logged: ${summary}`);
+    save({ lastContactDate: new Date().toISOString().split("T")[0] });
+    setCallDraft("");
+    toast.success("Call logged");
+  };
+
   const onEmail = () => setActiveTab("emails");
   const onSchedule = () => {
     if (lead.calendlyBookedAt) toast(lead.calendlyEventName || "Calendly meeting", { description: lead.meetingDate });
     else window.open("https://calendly.com", "_blank");
   };
   const onNote = () => setActiveTab("notes");
-  const onTask = () => toast("Tasks live in the Deal Room", { description: "Open Deal Room → Actions to add a task" });
-  const onLogCall = () => { setActiveTab("notes"); toast("Log call in Notes"); };
+  const onTask = () => setActiveTab("notes");
+  const onLogCall = () => setActiveTab("notes");
   const onArchive = () => setArchiveTarget({ id: lead.id, name: lead.name });
 
   return (

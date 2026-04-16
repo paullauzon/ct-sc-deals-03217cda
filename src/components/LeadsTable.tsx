@@ -8,16 +8,16 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { getBrandBorderClass } from "@/lib/brandColors";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
 import { Sparkles, RefreshCw, Linkedin, CalendarCheck, Archive, MoreHorizontal } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 
 // Re-export the new HubSpot-style full-screen lead panel so all 6 import sites
 // (Pipeline, ActionQueue, Dashboard, BusinessSystem, IntelligenceCenter, Index/Cmd+K)
@@ -602,101 +602,5 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
         </div>
       </SheetContent>
     </Sheet>
-  );
-}
-
-// ─── Company Activity Section ───
-
-function CompanyActivitySection({ lead, allLeads, onSelectLead }: { lead: Lead; allLeads: Lead[]; onSelectLead: (id: string) => void }) {
-  const associates = getCompanyAssociates(lead, allLeads);
-  if (associates.length === 0) return null;
-
-  const shared = getSharedIntelligence([lead, ...associates]);
-  const trunc = (s: string) => s.length > 80 ? s.slice(0, 77) + "…" : s;
-
-  return (
-    <Section title={`Company Activity · ${lead.company}`}>
-      <p className="text-xs text-muted-foreground mb-2">
-        {associates.length + 1} contacts at this company · {shared.totalMeetings} total meeting{shared.totalMeetings !== 1 ? "s" : ""}
-      </p>
-
-      {/* Associated contacts */}
-      <div className="space-y-1.5">
-        {associates.map((a) => (
-          <div key={a.id} className="flex items-center justify-between text-sm border border-border rounded px-2.5 py-1.5">
-            <div className="min-w-0">
-              <span className="font-medium">{a.name}</span>
-              <span className="text-muted-foreground ml-1.5">· {a.role}</span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Badge variant="outline" className="text-[10px]">{a.stage}</Badge>
-              {a.meetings?.length > 0 && (
-                <span className="text-[10px] text-muted-foreground">{a.meetings.length} mtg{a.meetings.length !== 1 ? "s" : ""}</span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Shared intelligence highlights */}
-      {(shared.objections.length > 0 || shared.painPoints.length > 0) && (
-        <div className="mt-3 space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Shared Intelligence</p>
-          {shared.objections.map((o, i) => (
-            <p key={`o-${i}`} className="text-xs text-muted-foreground flex items-center gap-1"><Zap className="h-3 w-3 shrink-0" /> {trunc(o)}</p>
-          ))}
-          {shared.painPoints.map((p, i) => (
-            <p key={`p-${i}`} className="text-xs text-muted-foreground flex items-center gap-1"><Target className="h-3 w-3 shrink-0" /> {trunc(p)}</p>
-          ))}
-        </div>
-      )}
-    </Section>
-  );
-}
-
-const EVENT_ICONS: Record<string, React.ReactNode> = {
-  stage_change: <GitCommit className="h-3.5 w-3.5 text-primary" />,
-  field_update: <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />,
-  meeting_added: <Calendar className="h-3.5 w-3.5 text-primary" />,
-  note_added: <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />,
-  enrichment_run: <Sparkles className="h-3.5 w-3.5 text-primary" />,
-  bulk_update: <Users className="h-3.5 w-3.5 text-muted-foreground" />,
-};
-
-function ActivityTimeline({ leadId, refreshKey = 0 }: { leadId: string; refreshKey?: number }) {
-  const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetchActivityLog(leadId).then((data) => {
-      if (!cancelled) {
-        setEntries(data);
-        setLoading(false);
-      }
-    });
-    return () => { cancelled = true; };
-  }, [leadId, refreshKey]);
-
-  if (loading) return <p className="text-xs text-muted-foreground py-4 text-center">Loading activity…</p>;
-  if (entries.length === 0) return <p className="text-xs text-muted-foreground py-4 text-center">No activity recorded yet</p>;
-
-  return (
-    <div className="space-y-1 py-2">
-      {entries.map((entry) => (
-        <div key={entry.id} className="flex items-start gap-2.5 py-1.5 border-b border-border/50 last:border-0">
-          <div className="mt-0.5 shrink-0">
-            {EVENT_ICONS[entry.event_type] || <Clock className="h-3.5 w-3.5 text-muted-foreground" />}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs leading-relaxed">{entry.description}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              {new Date(entry.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
