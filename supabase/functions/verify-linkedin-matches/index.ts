@@ -84,7 +84,6 @@ Respond with ONLY a JSON object: {"verdict": "correct"|"wrong"|"uncertain", "rea
     const data = await response.json();
     const content = (data.choices?.[0]?.message?.content || "").trim();
     
-    // Parse JSON from response (handle markdown code blocks)
     const jsonStr = content.replace(/```json\s*/g, "").replace(/```/g, "").trim();
     const parsed = JSON.parse(jsonStr);
     return {
@@ -116,11 +115,13 @@ Deno.serve(async (req) => {
   );
 
   try {
-    // Parse optional dry_run parameter
+    // Parse optional parameters
     let dryRun = false;
+    let reSearch = false;
     try {
       const body = await req.json();
       dryRun = body?.dry_run === true;
+      reSearch = body?.re_search === true;
     } catch { /* no body is fine */ }
 
     // Get all leads with existing linkedin_url (non-empty)
@@ -139,7 +140,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Verifying ${leads.length} LinkedIn matches (dry_run: ${dryRun})`);
+    console.log(`Verifying ${leads.length} LinkedIn matches (dry_run: ${dryRun}, re_search: ${reSearch})`);
 
     const results: Array<{
       name: string;
@@ -153,6 +154,7 @@ Deno.serve(async (req) => {
     let correct = 0;
     let wrong = 0;
     let uncertain = 0;
+    const clearedLeadIds: string[] = [];
 
     for (let i = 0; i < leads.length; i += BATCH_SIZE) {
       const batch = leads.slice(i, i + BATCH_SIZE);
@@ -185,6 +187,7 @@ Deno.serve(async (req) => {
               linkedin_ma_experience: null,
               seniority_score: null,
             }).eq("id", lead.id);
+            clearedLeadIds.push(lead.id);
             console.log(`CLEARED: ${lead.name} (${lead.company}) — ${result.reason}`);
           } else {
             console.log(`WOULD CLEAR: ${lead.name} (${lead.company}) — ${result.reason}`);
@@ -200,8 +203,57 @@ Deno.serve(async (req) => {
       }
     }
 
-    const summary = { success: true, total: leads.length, correct, wrong, uncertain, dryRun, results };
+    // ─── Re-search cleared leads if requested ───
+    let reSearchResults: Array<{ name: string; found: boolean }> = [];
+    if (reSearch && !dryRun && clearedLeadIds.length > 0) {
+      console.log(`\n=== Re-searching ${clearedLeadIds.length} cleared leads ===`);
+      
+      const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+      const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+      for (const leadId of clearedLeadIds) {
+        try {
+          console.log(`Re-searching lead ${leadId}...`);
+          const reSearchResponse = await fetch(`${SUPABASE_URL}/functions/v1/backfill-linkedin`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ leadId }),
+          });
+          
+          const reSearchData = await reSearchResponse.json();
+          const leadName = results.find(r => r.linkedin_url && leads.find(l => l.id === leadId))?.name || leadId;
+          reSearchResults.push({ name: leadName, found: reSearchData?.found === true });
+          console.log(`Re-search ${leadId}: ${reSearchData?.found ? "FOUND" : "NOT FOUND"}`);
+          
+          // Small delay between re-searches
+          await new Promise((r) => setTimeout(r, 1000));
+        } catch (e) {
+          console.error(`Re-search failed for ${leadId}:`, e);
+          reSearchResults.push({ name: leadId, found: false });
+        }
+      }
+    }
+
+    const summary = {
+      success: true,
+      total: leads.length,
+      correct,
+      wrong,
+      uncertain,
+      dryRun,
+      reSearch,
+      reSearchResults: reSearchResults.length > 0 ? reSearchResults : undefined,
+      clearedLeadIds: clearedLeadIds.length > 0 ? clearedLeadIds : undefined,
+      results,
+    };
     console.log(`Verification complete: ${correct} correct, ${wrong} wrong, ${uncertain} uncertain`);
+    if (reSearchResults.length > 0) {
+      const reFound = reSearchResults.filter(r => r.found).length;
+      console.log(`Re-search complete: ${reFound}/${reSearchResults.length} found`);
+    }
 
     return new Response(JSON.stringify(summary), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
