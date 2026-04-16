@@ -102,6 +102,8 @@ function makeSCLead(
     calendlyEventName: "",
     calendlyEventType: "",
     calendlyEventDuration: null,
+    googleDriveLink: "",
+    forecastedCloseDate: "",
   };
 }
 
