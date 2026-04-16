@@ -13,7 +13,7 @@ import {
   Route, Shield, Handshake, Lock
 } from "lucide-react";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
 
 type SubTab = "signals" | "competitors" | "risks" | "coaching" | "gtm";
 
@@ -42,7 +42,7 @@ export function IntelligenceCenter() {
 
   const activeLeads = useMemo(() => leads.filter(l => !CLOSED_STAGES.has(l.stage)), [leads]);
   const wonLeads = useMemo(() => leads.filter(l => l.stage === "Closed Won"), [leads]);
-  const lostLeads = useMemo(() => leads.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark"), [leads]);
+  const lostLeads = useMemo(() => leads.filter(l => l.stage === "Lost" || l.stage === "Went Dark"), [leads]);
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
@@ -290,7 +290,7 @@ function FearMotivationMap({ leads, wonLeads, lostLeads, onDrillDown }: { leads:
       const di = l.dealIntelligence;
       if (!di?.psychologicalProfile) continue;
       const isWon = l.stage === "Closed Won";
-      const isLost = l.stage === "Closed Lost";
+      const isLost = l.stage === "Lost";
 
       const fear = di.psychologicalProfile.fearFactor?.trim();
       if (fear && fear.length > 2) {
@@ -412,7 +412,7 @@ function DecisionProcessIntel({ leads, onDrillDown }: { leads: Lead[]; onDrillDo
         if (dp && dp.length > 2) processes.add(dp);
       }
       const isWon = l.stage === "Closed Won";
-      const isLost = l.stage === "Closed Lost";
+      const isLost = l.stage === "Lost";
       const cycleDays = (l.closedDate && l.dateSubmitted)
         ? Math.max(0, Math.floor((new Date(l.closedDate).getTime() - new Date(l.dateSubmitted).getTime()) / 86400000))
         : null;
@@ -496,7 +496,7 @@ function CompetitiveWinLoss({ leads, onDrillDown }: { leads: Lead[]; onDrillDown
         if (!compMap.has(c)) compMap.set(c, { won: [], lost: [], active: [], objections: [], painPoints: [] });
         const e = compMap.get(c)!;
         if (l.stage === "Closed Won") e.won.push(l);
-        else if (l.stage === "Closed Lost" || l.stage === "Went Dark") e.lost.push(l);
+        else if (l.stage === "Lost" || l.stage === "Went Dark") e.lost.push(l);
         else if (!CLOSED_STAGES.has(l.stage)) e.active.push(l);
 
         for (const m of l.meetings || []) {
@@ -917,7 +917,7 @@ function TalkRatioDeepDive({ leads }: { leads: Lead[] }) {
         count: ratios.length,
       }))
       .sort((a, b) => {
-        const order = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Closed Lost"];
+        const order = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Long Term Follow Up", "Lost", "Went Dark", "Closed Won"];
         return order.indexOf(a.stage) - order.indexOf(b.stage);
       });
 
@@ -1250,7 +1250,7 @@ function ChannelIntelCorrelation({ leads }: { leads: Lead[] }) {
       const srcLeads = leads.filter(l => l.source === source);
       const withMeetings = srcLeads.filter(l => (l.meetings || []).length > 0);
       const won = srcLeads.filter(l => l.stage === "Closed Won");
-      const closed = srcLeads.filter(l => ["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage));
+      const closed = srcLeads.filter(l => ["Closed Won", "Lost", "Went Dark"].includes(l.stage));
       const avgMeetings = srcLeads.length > 0
         ? (srcLeads.reduce((s, l) => s + (l.meetings?.length || 0), 0) / srcLeads.length).toFixed(1)
         : "0";
@@ -1314,7 +1314,7 @@ function ICPValidation({ leads }: { leads: Lead[] }) {
       const g = icpGroups[fit];
       g.leads.push(l);
       if (l.stage === "Closed Won") g.wonCount++;
-      if (l.stage === "Closed Lost") g.lostCount++;
+      if (l.stage === "Lost") g.lostCount++;
 
       const intentOrder = { "Strong": 3, "Moderate": 2, "Low": 1, "None detected": 0 };
       const lastMtg = (l.meetings || []).slice(-1)[0];
@@ -1571,7 +1571,7 @@ function EvaluationCriteriaFrequency({ leads, wonLeads, lostLeads, onDrillDown }
         const entry = criteriaMap.get(c)!;
         entry.total.push(l);
         if (l.stage === "Closed Won") entry.won++;
-        if (l.stage === "Closed Lost" || l.stage === "Went Dark") entry.lost++;
+        if (l.stage === "Lost" || l.stage === "Went Dark") entry.lost++;
       }
     }
     return Array.from(criteriaMap.entries())

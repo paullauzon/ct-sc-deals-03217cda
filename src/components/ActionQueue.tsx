@@ -13,7 +13,7 @@ const OWNERS = ["All", "Malik", "Valeria", "Tomos", "Unassigned"] as const;
 const HORIZONS = [7, 14, 30] as const;
 type CommandTab = "schedule" | "followups" | "pulse" | "intel";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
 const ACTIVE_STAGES = new Set(["Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"]);
 
 function parseTabFromHash(): CommandTab {

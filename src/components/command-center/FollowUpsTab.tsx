@@ -20,7 +20,7 @@ import { toast } from "@/hooks/use-toast";
 import { useLeadTasks, LeadTask } from "@/hooks/useLeadTasks";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
 const STAGE_OPTIONS = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"] as const;
 
 type SortField = "default" | "dealValue" | "lastContact" | "stage" | "name";

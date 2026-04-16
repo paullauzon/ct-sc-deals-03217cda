@@ -10,7 +10,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
 const ACTIVE_STAGES = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"] as const;
 
 const SOURCE_LABELS: Record<LeadSource, string> = {
@@ -37,7 +37,7 @@ function computeBrandMetrics(leads: Lead[], brand: Brand): BrandMetrics {
   const brandLeads = leads.filter(l => l.brand === brand);
   const active = brandLeads.filter(l => !CLOSED_STAGES.has(l.stage));
   const won = brandLeads.filter(l => l.stage === "Closed Won");
-  const lost = brandLeads.filter(l => l.stage === "Closed Lost");
+  const lost = brandLeads.filter(l => l.stage === "Lost");
   const totalClosed = won.length + lost.length;
 
   const mrr = won.reduce((s, l) => {
@@ -126,9 +126,9 @@ function computeMonthlySnapshots(leads: Lead[], brand: Brand) {
     const brandLeads = leads.filter(l => l.brand === brand);
     const leadsThisMonth = brandLeads.filter(l => l.dateSubmitted?.startsWith(month));
     const wonThisMonth = brandLeads.filter(l => l.stage === "Closed Won" && l.closedDate?.startsWith(month));
-    const lostThisMonth = brandLeads.filter(l => l.stage === "Closed Lost" && l.closedDate?.startsWith(month));
+    const lostThisMonth = brandLeads.filter(l => l.stage === "Lost" && l.closedDate?.startsWith(month));
     const totalClosed = wonThisMonth.length + lostThisMonth.length;
-    const pipelineLeads = brandLeads.filter(l => l.dateSubmitted && l.dateSubmitted <= `${month}-31` && !["Closed Won", "Closed Lost", "Went Dark", "Duplicate", "Disqualified"].includes(l.stage));
+    const pipelineLeads = brandLeads.filter(l => l.dateSubmitted && l.dateSubmitted <= `${month}-31` && !["Closed Won", "Lost", "Went Dark", "Duplicate", "Disqualified"].includes(l.stage));
 
     const mrr = wonThisMonth.reduce((s, l) => {
       if (!l.subscriptionValue) return s;
@@ -527,7 +527,7 @@ function SignalToCloseMatrix({ leads, onDrillDown }: { leads: Lead[]; onDrillDow
       const matching = meetingLeadPairs.filter(p => p.intel.dealSignals?.buyingIntent === level);
       const uniqueLeadIds = new Set(matching.map(p => p.lead.id));
       const wonIds = new Set(matching.filter(p => p.lead.stage === "Closed Won").map(p => p.lead.id));
-      const lostIds = new Set(matching.filter(p => ["Closed Lost", "Went Dark"].includes(p.lead.stage)).map(p => p.lead.id));
+      const lostIds = new Set(matching.filter(p => ["Lost", "Went Dark"].includes(p.lead.stage)).map(p => p.lead.id));
       const uniqueLeads = Array.from(uniqueLeadIds).map(id => leads.find(l => l.id === id)!).filter(Boolean);
       return {
         signal: level,
@@ -546,7 +546,7 @@ function SignalToCloseMatrix({ leads, onDrillDown }: { leads: Lead[]; onDrillDow
       const matching = meetingLeadPairs.filter(p => p.intel.engagementLevel === level);
       const uniqueLeadIds = new Set(matching.map(p => p.lead.id));
       const wonIds = new Set(matching.filter(p => p.lead.stage === "Closed Won").map(p => p.lead.id));
-      const lostIds = new Set(matching.filter(p => ["Closed Lost", "Went Dark"].includes(p.lead.stage)).map(p => p.lead.id));
+      const lostIds = new Set(matching.filter(p => ["Lost", "Went Dark"].includes(p.lead.stage)).map(p => p.lead.id));
       const uniqueLeads = Array.from(uniqueLeadIds).map(id => leads.find(l => l.id === id)!).filter(Boolean);
       return {
         signal: level,
@@ -717,7 +717,7 @@ function UrgencyDriverTaxonomy({ leads }: { leads: Lead[] }) {
           categories[cat].count++;
           categories[cat].drivers.push(driver.length > 80 ? driver.slice(0, 80) + "…" : driver);
           if (lead.stage === "Closed Won") categories[cat].wonCount++;
-          if (["Closed Lost", "Went Dark"].includes(lead.stage)) categories[cat].lostCount++;
+          if (["Lost", "Went Dark"].includes(lead.stage)) categories[cat].lostCount++;
         }
       }
     }
@@ -783,7 +783,7 @@ function ValuePropEffectiveness({ leads }: { leads: Lead[] }) {
         propMap[normalized].total++;
 
         if (lead.stage === "Closed Won") propMap[normalized].won++;
-        else if (["Closed Lost", "Went Dark"].includes(lead.stage)) propMap[normalized].lost++;
+        else if (["Lost", "Went Dark"].includes(lead.stage)) propMap[normalized].lost++;
         else propMap[normalized].active++;
       }
     }
@@ -865,7 +865,7 @@ function CompetitiveDisplacementPlaybook({ leads }: { leads: Lead[] }) {
           for (const w of cd.weaknessesMentioned || []) { if (w && !competitors[cd.name].weaknesses.includes(w)) competitors[cd.name].weaknesses.push(w); }
 
           if (lead.stage === "Closed Won") competitors[cd.name].wonAgainst++;
-          if (["Closed Lost", "Went Dark"].includes(lead.stage)) competitors[cd.name].lostTo++;
+          if (["Lost", "Went Dark"].includes(lead.stage)) competitors[cd.name].lostTo++;
         }
 
         // Process current solution mentions

@@ -77,11 +77,11 @@ export function Dashboard() {
 
   // Recompute metrics based on filtered leads
   const m = useMemo(() => {
-    const closedStages = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+    const closedStages = new Set(["Closed Won", "Lost", "Went Dark"]);
     const activeLeads = filteredLeads.filter(l => !closedStages.has(l.stage));
     const totalPipelineValue = activeLeads.reduce((s, l) => s + l.dealValue, 0);
     const wonLeads = filteredLeads.filter(l => l.stage === "Closed Won");
-    const lostLeads = filteredLeads.filter(l => l.stage === "Closed Lost");
+    const lostLeads = filteredLeads.filter(l => l.stage === "Lost");
     const wentDark = filteredLeads.filter(l => l.stage === "Went Dark");
     const totalClosed = wonLeads.length + lostLeads.length;
     const conversionRate = totalClosed > 0 ? Math.round((wonLeads.length / totalClosed) * 100) : 0;
@@ -272,7 +272,7 @@ export function Dashboard() {
     const lvrChange = lvrPrior > 0 ? Math.round(((lvrCurrent - lvrPrior) / lvrPrior) * 100) : 0;
 
     // Stale leads
-    const closedStages = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+    const closedStages = new Set(["Closed Won", "Lost", "Went Dark"]);
     const staleLeads = filteredLeads
       .filter((l) => !closedStages.has(l.stage) && computeDaysInStage(l.stageEnteredDate) > 14)
       .sort((a, b) => computeDaysInStage(b.stageEnteredDate) - computeDaysInStage(a.stageEnteredDate));
@@ -375,7 +375,7 @@ export function Dashboard() {
     // Sales velocity for overview
     const activeDeals = filteredLeads.filter(l => !closedStages.has(l.stage));
     const wonLeads2 = filteredLeads.filter(l => l.stage === "Closed Won");
-    const lostLeads2 = filteredLeads.filter(l => l.stage === "Closed Lost");
+    const lostLeads2 = filteredLeads.filter(l => l.stage === "Lost");
     const totalClosed = wonLeads2.length + lostLeads2.length;
     const winRateVal = totalClosed > 0 ? wonLeads2.length / totalClosed : 0;
     const avgDealVal = activeDeals.length > 0
@@ -471,9 +471,9 @@ export function Dashboard() {
           <div className="grid grid-cols-4 gap-4">
             {[
               { label: "Total Leads", value: String(m.totalLeads), drillLeads: filteredLeads, drillTitle: "All Leads" },
-              { label: "Pipeline Value", value: `$${m.totalPipelineValue.toLocaleString()}`, drillLeads: filteredLeads.filter(l => !["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)), drillTitle: "Active Pipeline" },
+              { label: "Pipeline Value", value: `$${m.totalPipelineValue.toLocaleString()}`, drillLeads: filteredLeads.filter(l => !["Closed Won", "Lost", "Went Dark"].includes(l.stage)), drillTitle: "Active Pipeline" },
               { label: "MRR (Won)", value: `$${Math.round(analytics.totalMRR).toLocaleString()}`, drillLeads: filteredLeads.filter(l => l.stage === "Closed Won"), drillTitle: "Closed Won" },
-              { label: "Win Rate", value: `${m.conversionRate}%`, drillLeads: filteredLeads.filter(l => ["Closed Won", "Closed Lost"].includes(l.stage)), drillTitle: "Closed Deals" },
+              { label: "Win Rate", value: `${m.conversionRate}%`, drillLeads: filteredLeads.filter(l => ["Closed Won", "Lost"].includes(l.stage)), drillTitle: "Closed Deals" },
             ].map((stat) => (
               <div
                 key={stat.label}
@@ -791,7 +791,7 @@ export function Dashboard() {
                         </div>
                         <div className="grid grid-cols-3 gap-2 text-sm">
                           <div><p className="text-xs text-muted-foreground">Total</p><p className="font-semibold tabular-nums">{data.length}</p></div>
-                          <div><p className="text-xs text-muted-foreground">Pipeline</p><p className="font-semibold tabular-nums">${data.filter((l) => !["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)).reduce((s, l) => s + l.dealValue, 0).toLocaleString()}</p></div>
+                          <div><p className="text-xs text-muted-foreground">Pipeline</p><p className="font-semibold tabular-nums">${data.filter((l) => !["Closed Won", "Lost", "Went Dark"].includes(l.stage)).reduce((s, l) => s + l.dealValue, 0).toLocaleString()}</p></div>
                           <div><p className="text-xs text-muted-foreground">Won</p><p className="font-semibold tabular-nums">{data.filter((l) => l.stage === "Closed Won").length}</p></div>
                         </div>
                       </div>

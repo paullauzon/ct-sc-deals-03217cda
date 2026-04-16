@@ -207,7 +207,7 @@ const INTELLIGENCE_TOOL = {
           properties: {
             stage: {
               ...SUGGESTED_UPDATE_FIELD,
-              description: "Pipeline stage. Values: 'Meeting Held', 'Proposal Sent', 'Negotiation', 'Contract Sent', 'Closed Won', 'Closed Lost', 'Went Dark'. A transcript of a meeting that happened = at minimum 'Meeting Held'.",
+              description: "Pipeline stage. Values: 'Meeting Held', 'Proposal Sent', 'Negotiation', 'Contract Sent', 'Closed Won', 'Lost', 'Went Dark', 'Revisit/Reconnect', 'Long Term Follow Up'. A transcript of a meeting that happened = at minimum 'Meeting Held'.",
             },
             meetingOutcome: {
               ...SUGGESTED_UPDATE_FIELD,
@@ -364,7 +364,7 @@ You MUST also recommend CRM field updates based on transcript evidence. Follow t
 - Negotiating terms, pushing back on pricing, discussing contract details → stage = "Negotiation" (Certain if explicit negotiation; Likely if just pricing pushback)
 - "Send us the contract" / "let's get the paperwork going" → stage = "Contract Sent" (Certain)
 - Verbal commitment, "we're moving forward", "let's do this" → stage = "Closed Won" (Certain only if unambiguous commitment with no caveats)
-- "We've decided to go another direction" / clear rejection → stage = "Closed Lost" (Certain)
+- "We've decided to go another direction" / clear rejection → stage = "Lost" (Certain)
 
 ### Priority Mapping
 - Strong buying intent + Highly Engaged + clear timeline → "High" (Likely)

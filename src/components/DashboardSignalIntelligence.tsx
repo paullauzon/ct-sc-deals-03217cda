@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { Radar, Target, Shield, Users } from "lucide-react";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
 
 interface Props {
   leads: Lead[];
@@ -90,7 +90,7 @@ export function DashboardSignalIntelligence({ leads, onDrillDown }: Props) {
     for (const l of leads) {
       const tracker = l.dealIntelligence?.objectionTracker || [];
       const isWon = l.stage === "Closed Won";
-      const isLost = l.stage === "Closed Lost";
+      const isLost = l.stage === "Lost";
       for (const obj of tracker) {
         if (!objMap.has(obj.objection)) objMap.set(obj.objection, { total: 0, addressed: 0, wonWith: 0, lostWith: 0 });
         const entry = objMap.get(obj.objection)!;

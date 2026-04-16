@@ -23,7 +23,7 @@ const ACTIVE_STAGES: LeadStage[] = [
   "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
 ];
 
-const TERMINAL_STAGES = ["Closed Won", "Closed Lost", "Went Dark", "Duplicate", "Disqualified"];
+const TERMINAL_STAGES = ["Closed Won", "Lost", "Went Dark", "Duplicate", "Disqualified"];
 const REP_CAPACITY_THRESHOLD = 25;
 const QUARTERLY_TARGET_DEFAULT = 100000;
 
@@ -137,7 +137,7 @@ export function DashboardOperations({ leads, onDrillDown }: Props) {
 
     // Deals lost/closed this month
     const closedOut = leads.filter(l =>
-      ["Closed Lost", "Went Dark", "Disqualified"].includes(l.stage) &&
+      ["Lost", "Went Dark", "Disqualified"].includes(l.stage) &&
       l.closedDate?.startsWith(thisMonth)
     );
     const lostValue = closedOut.reduce((s, l) => s + l.dealValue, 0);
@@ -912,7 +912,7 @@ function MeetingCountOutcome({ leads }: { leads: Lead[] }) {
       const key = count >= 4 ? "4+" : String(count);
       buckets[key].total++;
       if (l.stage === "Closed Won") buckets[key].won++;
-      else if (["Closed Lost", "Went Dark"].includes(l.stage)) buckets[key].lost++;
+      else if (["Lost", "Went Dark"].includes(l.stage)) buckets[key].lost++;
       else buckets[key].active++;
     }
 

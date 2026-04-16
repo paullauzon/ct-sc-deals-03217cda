@@ -38,7 +38,7 @@ function synthesizeLossReason(lead: Lead): SynthesizedCategory {
   const hasCompetitorSignals = meetings.some(m =>
     m.intelligence?.dealSignals?.competitors?.length
   ) || (di?.competitiveTimeline?.length ?? 0) > 0;
-  if (hasCompetitorSignals && (lead.stage === "Closed Lost")) return "Competitor Displacement";
+  if (hasCompetitorSignals && (lead.stage === "Lost")) return "Competitor Displacement";
 
   // 2. Blocker/champion issues
   if (lead.closeReason === "Champion Left") return "Blocker / Champion Issues";
@@ -88,7 +88,7 @@ function getReengageAngle(lead: Lead, synthesized: SynthesizedCategory): string 
 }
 
 export function DashboardLossIntelligence({ leads, onDrillDown }: Props) {
-  const lostLeads = useMemo(() => leads.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark"), [leads]);
+  const lostLeads = useMemo(() => leads.filter(l => l.stage === "Lost" || l.stage === "Went Dark"), [leads]);
   const darkLeads = useMemo(() => leads.filter(l => l.stage === "Went Dark"), [leads]);
 
   // Block 1: Synthesized Loss Reasons
@@ -206,7 +206,7 @@ export function DashboardLossIntelligence({ leads, onDrillDown }: Props) {
         if (r.mitigationStatus === "Mitigated" || r.mitigationStatus === "Partially Mitigated") {
           riskMap[key].mitigated++;
           riskMap[key].totalOutcomed++;
-          if (l.stage === "Closed Lost") riskMap[key].lostWhenMitigated++;
+          if (l.stage === "Lost") riskMap[key].lostWhenMitigated++;
         } else {
           riskMap[key].unmitigated++;
         }

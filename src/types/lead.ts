@@ -17,9 +17,11 @@ export type LeadStage =
   | "Proposal Sent"
   | "Negotiation"
   | "Contract Sent"
-  | "Closed Won"
-  | "Closed Lost"
-  | "Went Dark";
+  | "Revisit/Reconnect"
+  | "Long Term Follow Up"
+  | "Lost"
+  | "Went Dark"
+  | "Closed Won";
 
 export type ServiceInterest =
   | "Off-Market Email Origination"

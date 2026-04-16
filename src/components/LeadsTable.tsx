@@ -32,7 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
-const STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Closed Lost", "Went Dark"];
+const STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Long Term Follow Up", "Lost", "Went Dark", "Closed Won"];
 const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 const SERVICES: ServiceInterest[] = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"];
 const PRIORITIES = ["High", "Medium", "Low"] as const;
@@ -57,7 +57,7 @@ const PRIORITY_ORDER: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
 
 function DealProgressBar({ currentStage }: { currentStage: LeadStage }) {
   const currentIdx = ACTIVE_STAGES.indexOf(currentStage);
-  const isClosed = ["Closed Won", "Closed Lost", "Went Dark"].includes(currentStage);
+  const isClosed = ["Closed Won", "Lost", "Went Dark"].includes(currentStage);
 
   return (
     <div className="space-y-1.5">
@@ -524,7 +524,7 @@ export function LeadDetail({ leadId, open, onClose }: { leadId: string | null; o
             </Section>
           )}
 
-          {(lead.stage === "Closed Lost" || lead.stage === "Went Dark") && (
+          {(lead.stage === "Lost" || lead.stage === "Went Dark") && (
             <Section title="Lost / Dark Details">
               <div className="grid grid-cols-2 gap-4">
                 <ClearableSelectField label="Close Reason" value={lead.closeReason} options={CLOSE_REASONS} onChange={(v) => save({ closeReason: v as CloseReason })} />
@@ -568,7 +568,7 @@ function DealHealthAlerts({ lead }: { lead: Lead }) {
 
   // Stalling: no meetings in 14+ days
   const meetings = lead.meetings || [];
-  if (meetings.length > 0 && !["Closed Won", "Closed Lost", "Went Dark"].includes(lead.stage)) {
+  if (meetings.length > 0 && !["Closed Won", "Lost", "Went Dark"].includes(lead.stage)) {
     const latestMeetingDate = meetings.map(m => m.date).filter(Boolean).sort().pop();
     if (latestMeetingDate) {
       const daysSince = Math.floor((today.getTime() - new Date(latestMeetingDate).getTime()) / (1000 * 60 * 60 * 24));
@@ -603,7 +603,7 @@ function DealHealthAlerts({ lead }: { lead: Lead }) {
   }
 
   // No follow-up scheduled or overdue
-  if (!["Closed Won", "Closed Lost", "Went Dark"].includes(lead.stage)) {
+  if (!["Closed Won", "Lost", "Went Dark"].includes(lead.stage)) {
     if (!lead.nextFollowUp) {
       alerts.push({ message: "No follow-up scheduled", severity: "warning" });
     } else if (new Date(lead.nextFollowUp) < today) {

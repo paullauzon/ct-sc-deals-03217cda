@@ -59,6 +59,28 @@ export const PLAYBOOKS: Playbook[] = [
     ],
   },
   {
+    id: "revisit-reconnect",
+    label: "Revisit/Reconnect",
+    triggerStage: "Revisit/Reconnect",
+    steps: [
+      { dayOffset: 0, taskType: "email", title: "Re-engagement outreach", description: "Personalized outreach referencing previous conversations and any new developments.", actionType: "re-engagement" },
+      { dayOffset: 7, taskType: "email", title: "Value-add touchpoint", description: "Share relevant industry insight, case study, or market update tied to their needs.", actionType: "re-engagement" },
+      { dayOffset: 14, taskType: "call", title: "Direct reconnect call", description: "Phone outreach to re-establish the relationship and gauge current interest." },
+      { dayOffset: 21, taskType: "internal", title: "Evaluate next steps", description: "Review response and decide whether to move to active pipeline or long-term follow up." },
+    ],
+  },
+  {
+    id: "long-term-follow-up",
+    label: "Long Term Follow Up",
+    triggerStage: "Long Term Follow Up",
+    steps: [
+      { dayOffset: 0, taskType: "email", title: "Quarterly check-in", description: "Low-pressure touchpoint to stay top-of-mind and surface any timing changes.", actionType: "re-engagement" },
+      { dayOffset: 30, taskType: "email", title: "Industry update share", description: "Forward a relevant market report or insight that demonstrates ongoing value.", actionType: "re-engagement" },
+      { dayOffset: 60, taskType: "email", title: "New capability announcement", description: "Share new service offerings or case studies that might reignite interest.", actionType: "re-engagement" },
+      { dayOffset: 90, taskType: "internal", title: "Re-evaluate opportunity", description: "Assess whether to move back to active pipeline, continue nurturing, or archive." },
+    ],
+  },
+  {
     id: "new-lead-no-response",
     label: "New Lead — No Response",
     triggerStage: "Contacted",

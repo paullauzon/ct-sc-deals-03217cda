@@ -14,7 +14,7 @@ const STAGE_WEIGHTS: Record<string, number> = {
   "Meeting Held": 0.40, "Proposal Sent": 0.50, "Negotiation": 0.70, "Contract Sent": 0.90,
 };
 
-const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
 
 interface Props {
   leads: Lead[];
@@ -30,7 +30,7 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead, section, onDrill
     // ─── Sales Velocity ───
     const activeDeals = leads.filter(l => !CLOSED_STAGES.has(l.stage));
     const wonLeads = leads.filter(l => l.stage === "Closed Won");
-    const lostLeads = leads.filter(l => l.stage === "Closed Lost");
+    const lostLeads = leads.filter(l => l.stage === "Lost");
     const totalClosed = wonLeads.length + lostLeads.length;
     const winRate = totalClosed > 0 ? wonLeads.length / totalClosed : 0;
     const avgDealValue = activeDeals.length > 0
@@ -82,7 +82,7 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead, section, onDrill
     const repScorecard = owners.map(owner => {
       const ownerLeads = leads.filter(l => l.assignedTo === owner);
       const ownerWon = ownerLeads.filter(l => l.stage === "Closed Won");
-      const ownerLost = ownerLeads.filter(l => l.stage === "Closed Lost");
+      const ownerLost = ownerLeads.filter(l => l.stage === "Lost");
       const ownerClosed = ownerWon.length + ownerLost.length;
       const ownerActive = ownerLeads.filter(l => !CLOSED_STAGES.has(l.stage));
       const ownerWonWithCycle = ownerWon.filter(l => l.dateSubmitted && l.closedDate);
