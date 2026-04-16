@@ -917,7 +917,7 @@ function TalkRatioDeepDive({ leads }: { leads: Lead[] }) {
         count: ratios.length,
       }))
       .sort((a, b) => {
-        const order = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Long Term Follow Up", "Lost", "Went Dark", "Closed Won"];
+        const order = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Lost", "Went Dark", "Closed Won"];
         return order.indexOf(a.stage) - order.indexOf(b.stage);
       });
 

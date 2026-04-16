@@ -18,7 +18,6 @@ export type LeadStage =
   | "Negotiation"
   | "Contract Sent"
   | "Revisit/Reconnect"
-  | "Long Term Follow Up"
   | "Lost"
   | "Went Dark"
   | "Closed Won";

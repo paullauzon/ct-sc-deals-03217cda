@@ -70,17 +70,6 @@ export const PLAYBOOKS: Playbook[] = [
     ],
   },
   {
-    id: "long-term-follow-up",
-    label: "Long Term Follow Up",
-    triggerStage: "Long Term Follow Up",
-    steps: [
-      { dayOffset: 0, taskType: "email", title: "Quarterly check-in", description: "Low-pressure touchpoint to stay top-of-mind and surface any timing changes.", actionType: "re-engagement" },
-      { dayOffset: 30, taskType: "email", title: "Industry update share", description: "Forward a relevant market report or insight that demonstrates ongoing value.", actionType: "re-engagement" },
-      { dayOffset: 60, taskType: "email", title: "New capability announcement", description: "Share new service offerings or case studies that might reignite interest.", actionType: "re-engagement" },
-      { dayOffset: 90, taskType: "internal", title: "Re-evaluate opportunity", description: "Assess whether to move back to active pipeline, continue nurturing, or archive." },
-    ],
-  },
-  {
     id: "new-lead-no-response",
     label: "New Lead — No Response",
     triggerStage: "Contacted",
