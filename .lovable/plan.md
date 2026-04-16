@@ -1,94 +1,63 @@
 
-# Fix why Woody Cissel still is not enriching
 
-## What I found in the code
+# Add Pipeline Stages: Revisit/Reconnect & Long Term Follow Up + Rename Closed Lost → Lost
 
-The most likely blocker is not the nickname logic anymore.
-
-The main Leads toolbar is calling:
-
-```ts
-supabase.functions.invoke("backfill-linkedin", { body: { retry_failed: true } })
-```
-
-But in `backfill-linkedin`, `retry_failed: true` means:
-
-```ts
-leadsQuery = leadsQuery.eq("linkedin_url", "")
-```
-
-So that batch button only processes leads already marked as failed (`linkedin_url = ""`), not leads that are still missing LinkedIn (`linkedin_url is null`).
-
-That means:
-- the “LinkedIn Enrich” button label is misleading
-- “Enrich Missing” is also currently wrong
-- “Re-enrich Stale” is also wrong because it still uses `retry_failed: true`
-- Woody may simply not be entering the batch pipeline at all unless manually retried from Deal Room
-
-There is also a second possible issue:
-- Preview and Live use separate backend data, so Woody may have been fixed in one environment but not the other
-
-## Plan
-
-### 1) Fix the toolbar actions so they hit the correct backfill modes
-Update `src/components/LeadsTable.tsx`:
-
-- **LinkedIn Enrich** → call `backfill-linkedin` with no `retry_failed`
-- **Enrich Missing** → same: process `linkedin_url is null`
-- **Re-enrich Stale** → call with `minAge: 30` and no `retry_failed`
-- If we still want a failed-only retry flow, add a clearly named option like:
-  - `Retry Failed Only`
-
-This is the biggest functional bug I found.
-
-### 2) Make the response/toasts match the real function output
-The UI is reading `data.results`, but `backfill-linkedin` batch mode returns:
-- `processed`
-- `found`
-- `gaveUp`
-- `gaveUpReasons`
-- `chainsRun`
-
-Update the success messages to use the actual payload so results are truthful.
-
-### 3) Add one explicit single-lead retry path in the table
-Keep Deal Room single-lead retry, but also expose a crystal-clear per-lead/manual retry path for cases like Woody.
-That prevents batch ambiguity and makes debugging specific misses much easier.
-
-### 4) Verify Woody in both environments
-Check whether Woody exists in:
-- Preview backend
-- Live backend
-
-Because code deploys everywhere, but the lead records do not sync automatically across environments.
-
-### 5) Run a focused end-to-end verification for Woody
-After the UI fix:
-- trigger single-lead enrichment for Woody
-- confirm the function now includes him in the correct mode
-- inspect logs for the exact search/verification path
-- confirm whether the nickname-aware path now lands on the William/Woody profile and writes `linkedin_url`
-
-## Files likely affected
-
-- `src/components/LeadsTable.tsx`
-- possibly `src/pages/DealRoom.tsx` only if we want to align labels/messages
-- `supabase/functions/backfill-linkedin/index.ts` only if logs reveal another backend miss after the UI fix
-
-## Technical notes
-
-Current mismatch:
+## New Stage Order (13 stages)
 
 ```text
-UI label: Enrich Missing
-Actual request: retry_failed: true
-Actual backend behavior: only linkedin_url = ""
-Expected behavior: linkedin_url is null
+1. New Lead
+2. Qualified
+3. Contacted
+4. Meeting Set
+5. Meeting Held
+6. Proposal Sent
+7. Negotiation
+8. Contract Sent
+9. Revisit/Reconnect     ← NEW
+10. Long Term Follow Up   ← NEW
+11. Lost                  ← RENAMED from "Closed Lost"
+12. Went Dark
+13. Closed Won            ← MOVED to end
 ```
 
-So the most probable explanation is:
-```text
-Woody still not enriched because the button you are using is not targeting missing leads.
-```
+Active stages (progress bar): 1–8. Terminal/post-active: 9–13.
 
-If you approve, I’ll fix the toolbar calls, align the success states with real backend output, then verify Woody specifically end to end in the correct environment.
+## Changes Required
+
+### 1. Type definition (`src/types/lead.ts`)
+- Add `"Revisit/Reconnect"` and `"Long Term Follow Up"` to `LeadStage` union
+- Rename `"Closed Lost"` → `"Lost"`
+- Reorder so `"Closed Won"` is last
+
+### 2. Every file referencing "Closed Lost" or stage arrays (~24 files)
+Global find-and-replace `"Closed Lost"` → `"Lost"` across all `.ts` and `.tsx` files. Then update all stage order arrays. Key files:
+
+| File | What changes |
+|---|---|
+| `src/types/lead.ts` | LeadStage type |
+| `src/contexts/LeadContext.tsx` | STAGES array, closed-stage checks, metrics |
+| `src/components/Pipeline.tsx` | ALL_STAGES, CLOSED_STAGES |
+| `src/components/LeadsTable.tsx` | STAGES, ACTIVE_STAGES, DealProgressBar |
+| `src/pages/DealRoom.tsx` | ACTIVE_STAGES, DealProgressBar |
+| `src/components/Dashboard*.tsx` | All dashboard modules (~8 files) with CLOSED_STAGES sets and stage filters |
+| `src/components/PipelineFilters.tsx` | Stage filter options |
+| `src/lib/dealHealthUtils.ts` | Stage references |
+| `src/lib/leadUtils.ts` | Stage logic |
+| `src/lib/playbooks.ts` | Add playbooks for new stages |
+| `src/lib/newLeadUtils.ts` | Stage defaults |
+| `supabase/functions/process-meeting/index.ts` | Stage enum in AI prompt |
+| `supabase/functions/enrich-lead/index.ts` | Stage enum in AI prompt |
+
+### 3. Database migration
+- Update any existing leads with `stage = 'Closed Lost'` → `'Lost'` in the database
+
+### 4. Playbooks for new stages
+- Add a "Revisit/Reconnect" playbook (re-engagement sequence)
+- Add a "Long Term Follow Up" playbook (periodic nurture touchpoints)
+
+### 5. Memory update
+- Update `mem://features/pipeline-workflow` with the new 13-stage definition
+
+## No backend schema changes needed
+The `stage` column is a plain `text` field — no enum constraint to alter.
+
