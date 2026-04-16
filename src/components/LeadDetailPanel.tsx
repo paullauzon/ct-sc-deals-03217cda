@@ -50,9 +50,6 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
     }
   }, [leadId, open]);
 
-  // ---- All hooks above this line. Early return is now safe. ----
-  if (!lead) return null;
-
   const handleEnrich = useCallback(async () => {
     if (!lead || lead.enrichmentStatus === "running") return;
     setEnriching(true);
