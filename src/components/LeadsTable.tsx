@@ -24,8 +24,9 @@ import { format, parseISO } from "date-fns";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight, Clock, GitCommit, MessageSquare, Calendar, Search as SearchIcon, Linkedin, CalendarCheck, Archive } from "lucide-react";
+import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight, Clock, GitCommit, MessageSquare, Calendar, Search as SearchIcon, Linkedin, CalendarCheck, Archive, MoreHorizontal } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -1169,27 +1170,24 @@ export function LeadsTable() {
           <p className="text-sm text-muted-foreground mt-1">{sorted.length} of {leads.length} leads</p>
         </div>
         <div className="flex gap-2">
+          {/* Sync All — Calendly + Fireflies + bulk process */}
           <Button variant="outline" size="sm" disabled={backfilling} onClick={async () => {
             setBackfilling(true);
-            toast.info("Starting backfill — syncing Calendly then scanning Fireflies...");
+            toast.info("Syncing — Calendly → Fireflies → processing...");
             try {
-              // 1. Clean up zombie jobs (stuck >15min)
               const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
               await supabase.from("processing_jobs")
                 .update({ acknowledged: true, status: "failed", error: "Timed out (zombie cleanup)" })
                 .in("status", ["queued", "processing"])
                 .lt("created_at", fifteenMinAgo);
 
-              // 2. Calendly sync
               toast.info("Running Calendly sync...");
               const res = await supabase.functions.invoke("backfill-calendly");
               const calendlyResults = res.data?.results?.filter((r: any) => r.status === "advanced_to_meeting_set" || r.status === "stamped_only") || [];
               toast.success(`Calendly: ${calendlyResults.length} matches found`);
 
-               // 3. Refresh context so startBulkProcessing uses fresh data
                await refreshLeads();
 
-               // 4. Fresh DB query for unprocessed leads (all stages, not just New Lead)
                const { data: freshLeads } = await supabase.from("leads").select("id, meetings").is("archived_at", null);
                const { data: doneJobs } = await supabase.from("processing_jobs").select("lead_id").in("status", ["done", "completed"]).neq("new_meetings", "[]");
                const doneIds = new Set((doneJobs || []).map((r: any) => r.lead_id));
@@ -1205,86 +1203,136 @@ export function LeadsTable() {
                 toast.success("All leads already processed!");
               }
             } catch (err) {
-              toast.error("Backfill failed: " + (err as Error).message);
+              toast.error("Sync failed: " + (err as Error).message);
             } finally {
               setBackfilling(false);
             }
           }}>
             {backfilling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-            {backfilling ? "Backfilling..." : "Backfill All Meetings"}
+            {backfilling ? "Syncing..." : "Sync All"}
           </Button>
-          {unscoredCount > 0 && (
-            <Button variant="outline" size="sm" onClick={handleScoreAll} disabled={scoringAll}>
-              <Target className="w-4 h-4" />
-              {scoringAll ? "Scoring..." : `Score ${unscoredCount} Leads`}
+
+          {/* LinkedIn Enrich — split button with Re-enrich Stale */}
+          <div className="flex">
+            <Button variant="outline" size="sm" disabled={linkedinEnriching} className="rounded-r-none border-r-0" onClick={async () => {
+              setLinkedinEnriching(true);
+              toast.info("Starting LinkedIn enrichment...");
+              try {
+                const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { retry_failed: true } });
+                if (error) throw error;
+                if (data?.error) throw new Error(data.error);
+                const found = data?.results?.filter((r: any) => r.linkedin_url)?.length || 0;
+                const total = data?.results?.length || 0;
+                toast.success(`LinkedIn: ${found}/${total} profiles found`);
+                refreshLeads();
+              } catch (err) {
+                toast.error("LinkedIn enrichment failed: " + (err as Error).message);
+              } finally {
+                setLinkedinEnriching(false);
+              }
+            }}>
+              {linkedinEnriching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Linkedin className="w-4 h-4" />}
+              {linkedinEnriching ? "Enriching..." : "LinkedIn Enrich"}
+              {linkedinStats.total > 0 && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-[10px] text-muted-foreground ml-1 cursor-help">({linkedinStats.found}/{linkedinStats.total})</span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-xs space-y-1 max-w-[220px]">
+                      <p className="font-medium">LinkedIn Coverage</p>
+                      <p>Found: {linkedinStats.found}</p>
+                      <p>Not found: {linkedinStats.notFound}</p>
+                      <p>Pending: {linkedinStats.pending}</p>
+                      {linkedinStats.notFound > 0 && (
+                        <>
+                          <p className="font-medium pt-1 border-t border-border mt-1">Failure Patterns</p>
+                          {linkedinStats.noCompany > 0 && <p>No company info: {linkedinStats.noCompany}</p>}
+                          {linkedinStats.singleName > 0 && <p>Single name only: {linkedinStats.singleName}</p>}
+                          {linkedinStats.personalEmail > 0 && <p>Personal email: {linkedinStats.personalEmail}</p>}
+                          {linkedinStats.otherFailures > 0 && <p>Other: {linkedinStats.otherFailures}</p>}
+                        </>
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
             </Button>
-          )}
-          <Button variant="outline" size="sm" disabled={linkedinEnriching} onClick={async () => {
-            setLinkedinEnriching(true);
-            toast.info("Starting LinkedIn enrichment for all unenriched leads...");
-            try {
-              const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { retry_failed: true } });
-              if (error) throw error;
-              if (data?.error) throw new Error(data.error);
-              const found = data?.results?.filter((r: any) => r.linkedin_url)?.length || 0;
-              const total = data?.results?.length || 0;
-              toast.success(`LinkedIn enrichment complete: ${found}/${total} profiles found`);
-              refreshLeads();
-            } catch (err) {
-              toast.error("LinkedIn enrichment failed: " + (err as Error).message);
-            } finally {
-              setLinkedinEnriching(false);
-            }
-          }}>
-            {linkedinEnriching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Linkedin className="w-4 h-4" />}
-            {linkedinEnriching ? "Enriching..." : `LinkedIn Enrich`}
-            {linkedinStats.total > 0 && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="text-[10px] text-muted-foreground ml-1 cursor-help">({linkedinStats.found}/{linkedinStats.total} · {linkedinStats.pct}%)</span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs space-y-1 max-w-[220px]">
-                    <p className="font-medium">LinkedIn Coverage</p>
-                    <p>Found: {linkedinStats.found}</p>
-                    <p>Not found: {linkedinStats.notFound}</p>
-                    <p>Pending: {linkedinStats.pending}</p>
-                    {linkedinStats.notFound > 0 && (
-                      <>
-                        <p className="font-medium pt-1 border-t border-border mt-1">Failure Patterns</p>
-                        {linkedinStats.noCompany > 0 && <p>No company info: {linkedinStats.noCompany}</p>}
-                        {linkedinStats.singleName > 0 && <p>Single name only: {linkedinStats.singleName}</p>}
-                        {linkedinStats.personalEmail > 0 && <p>Personal email: {linkedinStats.personalEmail}</p>}
-                        {linkedinStats.otherFailures > 0 && <p>Other: {linkedinStats.otherFailures}</p>}
-                      </>
-                    )}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-          </Button>
-          <Button variant="outline" size="sm" disabled={linkedinEnriching} onClick={async () => {
-            setLinkedinEnriching(true);
-            toast.info("Re-enriching leads searched 30+ days ago...");
-            try {
-              const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { retry_failed: true, minAge: 30 } });
-              if (error) throw error;
-              if (data?.error) throw new Error(data.error);
-              toast.success(`Stale re-enrichment: ${data?.found || 0}/${data?.processed || 0} found`);
-              refreshLeads();
-            } catch (err) {
-              toast.error("Re-enrichment failed: " + (err as Error).message);
-            } finally {
-              setLinkedinEnriching(false);
-            }
-          }}>
-            <RefreshCw className="w-4 h-4" />
-            Re-enrich Stale
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowBulk(true)}>
-            <Zap className="w-4 h-4" /> Process Leads
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowFireflies(true)}><img src="/fireflies-icon.svg" alt="" className="w-4 h-4" /> Import Fireflies</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="rounded-l-none px-1.5" disabled={linkedinEnriching}>
+                  <ChevronRight className="w-3.5 h-3.5 rotate-90" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={async () => {
+                  setLinkedinEnriching(true);
+                  toast.info("Enriching leads without LinkedIn profiles...");
+                  try {
+                    const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { retry_failed: true } });
+                    if (error) throw error;
+                    if (data?.error) throw new Error(data.error);
+                    const found = data?.results?.filter((r: any) => r.linkedin_url)?.length || 0;
+                    const total = data?.results?.length || 0;
+                    toast.success(`LinkedIn: ${found}/${total} profiles found`);
+                    refreshLeads();
+                  } catch (err) {
+                    toast.error("Enrichment failed: " + (err as Error).message);
+                  } finally {
+                    setLinkedinEnriching(false);
+                  }
+                }}>
+                  <Linkedin className="w-4 h-4 mr-2" />
+                  Enrich Missing
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={async () => {
+                  setLinkedinEnriching(true);
+                  toast.info("Re-enriching leads searched 30+ days ago...");
+                  try {
+                    const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { retry_failed: true, minAge: 30 } });
+                    if (error) throw error;
+                    if (data?.error) throw new Error(data.error);
+                    toast.success(`Stale re-enrichment: ${data?.found || 0}/${data?.processed || 0} found`);
+                    refreshLeads();
+                  } catch (err) {
+                    toast.error("Re-enrichment failed: " + (err as Error).message);
+                  } finally {
+                    setLinkedinEnriching(false);
+                  }
+                }}>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Re-enrich Stale (30+ days)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* More — secondary actions */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <MoreHorizontal className="w-4 h-4" />
+                More
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {unscoredCount > 0 && (
+                <DropdownMenuItem onClick={handleScoreAll} disabled={scoringAll}>
+                  <Target className="w-4 h-4 mr-2" />
+                  {scoringAll ? "Scoring..." : `Score ${unscoredCount} Leads`}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => setShowBulk(true)}>
+                <Zap className="w-4 h-4 mr-2" />
+                Process Leads
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowFireflies(true)}>
+                <img src="/fireflies-icon.svg" alt="" className="w-4 h-4 mr-2" />
+                Import Fireflies
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button variant="outline" size="sm" onClick={exportCSV}>Export CSV</Button>
           <Button size="sm" onClick={() => setShowNewLead(true)}>New Lead</Button>
         </div>
