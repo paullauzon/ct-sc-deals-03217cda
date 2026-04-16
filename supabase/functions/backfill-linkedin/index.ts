@@ -606,18 +606,18 @@ async function aiSearchAgent(
         }
       }
       
-      // Serper fallback for quick-match if Firecrawl found nothing
-      if (linkedinResults.length === 0 && serperKey) {
-        console.log(`  Quick-match Serper fallback: ${query}`);
-        const serperResults = await serperSearch(query, serperKey, 5);
-        const serperLinkedins = serperResults.filter(r => r.url.includes("linkedin.com/in/"));
+      // Firecrawl retry fallback for quick-match if first search found nothing
+      if (linkedinResults.length === 0) {
+        console.log(`  Quick-match Firecrawl retry: ${query}`);
+        const retryResults = await firecrawlSearch(query, firecrawlKey, 5, false);
+        const retryLinkedins = retryResults.filter(r => r.url.includes("linkedin.com/in/"));
         
         const companyVariants = [
           lead.company?.toLowerCase(),
           ...(rationalization.company_variants || []).map(c => c.toLowerCase()),
         ].filter(Boolean) as string[];
         
-        for (const result of serperLinkedins) {
+        for (const result of retryLinkedins) {
           const snippet = `${result.title || ""} ${result.description || ""}`.toLowerCase();
           const companyMatch = companyVariants.some(cv => snippet.includes(cv)) || companyVariants.some(cv => fuzzyCompanyMatch(cv, snippet.substring(0, 200)));
           const lastName = lead.name.split(/\s+/).pop()?.toLowerCase() || "";
@@ -626,14 +626,14 @@ async function aiSearchAgent(
           if (companyMatch && nameMatch) {
             const url = result.url.split("?")[0];
             const snippetFull = `${result.title || ""} ${result.description || ""}`;
-            console.log(`  Quick-match Serper candidate: ${url} — running inline verification...`);
+            console.log(`  Quick-match retry candidate: ${url} — running inline verification...`);
             
             const verification = await inlineVerify(lead, url, snippetFull, openaiKey);
             if (verification.verdict === "wrong") {
-              console.log(`  Quick-match Serper REJECTED: ${verification.reason}`);
+              console.log(`  Quick-match retry REJECTED: ${verification.reason}`);
               continue;
             }
-            console.log(`  Quick-match Serper VERIFIED (${verification.verdict}): ${url}`);
+            console.log(`  Quick-match retry VERIFIED (${verification.verdict}): ${url}`);
             return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: snippetFull };
           }
         }
