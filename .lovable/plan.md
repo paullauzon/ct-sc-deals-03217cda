@@ -1,62 +1,59 @@
 
 
-# LinkedIn Enrichment: Critical Blocker — Firecrawl Search Returns Empty
+# Optimize Leads Toolbar Buttons
 
-## What the Tests Revealed
+## Current State (8 buttons — too many, unclear labels)
 
-I deployed the function and tested on 2 leads (CT-222 Erik Ott, CT-220 Wasif Khan). The entire pipeline works correctly:
-- Deployment: confirmed
-- Auto-trigger from ingest-lead: confirmed
-- AI rationalization: working (Gemini fallback succeeds when OpenAI 429s)
-- Agent turns: running 7-8 turns with smart query evolution
-- Direct slug guessing: working
-- Company website scraping: working
+| Button | What it actually does | Usage |
+|---|---|---|
+| Backfill All Meetings | Calendly sync → Fireflies scan → bulk process unprocessed leads | Core workflow |
+| Score N Leads | Batch-scores unscored leads (conditional) | Occasional |
+| LinkedIn Enrich | Batch LinkedIn profile search for unenriched leads | Core workflow |
+| Re-enrich Stale | Re-runs LinkedIn on leads searched 30+ days ago | Rare |
+| Process Leads | Opens BulkProcessingDialog for selective processing | Occasional |
+| Import Fireflies | Opens FirefliesImportDialog for manual transcript import | Rare |
+| Export CSV | Downloads CSV export | Utility |
+| New Lead | Opens new lead form | Primary action |
 
-**But every single Firecrawl Search call returns zero results.** Not an error — HTTP 200 with an empty data array. This happened on 20+ searches across both leads, including simple queries like `"Wasif Khan" Zaphyr site:linkedin.com/in`.
+## Problems
+- "Backfill All Meetings" is jargon — unclear what "backfill" means
+- "Re-enrich Stale" overlaps with "LinkedIn Enrich" — both call the same edge function
+- "Process Leads" overlaps with "Backfill All Meetings" — both trigger bulk processing
+- "Import Fireflies" is redundant since Backfill already runs Fireflies scan
+- 8 buttons create visual clutter and decision paralysis
 
-## Root Cause
+## Proposed Layout (5 visible buttons + 1 dropdown)
 
-Firecrawl Search and Serper are fundamentally different products:
-- **Serper** = direct Google SERP API (same results as google.com)
-- **Firecrawl Search** = web search with optional scraping, but may use a different search index or have restricted Google access for `site:linkedin.com` queries
+```text
+[⚡ Sync All] [in LinkedIn Enrich (138/226)] [▼ More] [Export CSV] [New Lead]
+```
 
-The replacement worked syntactically (drop-in interface) but not functionally — Firecrawl's search doesn't return LinkedIn results the way Serper did.
+### Button 1: "Sync All" (was "Backfill All Meetings")
+Clearer name. Does Calendly sync + Fireflies scan + bulk processing. The main "refresh everything" action.
 
-## Two Issues to Fix
+### Button 2: "LinkedIn Enrich" (merged with Re-enrich Stale)
+Keep the coverage stats tooltip. Add a small dropdown chevron that reveals two options:
+- **Enrich Missing** — current LinkedIn Enrich behavior (unenriched only)
+- **Re-enrich Stale** — current Re-enrich Stale behavior (30+ days)
 
-### Issue 1: Firecrawl Search returns empty (the blocker)
-Add debug logging to see the raw Firecrawl response body, and consider whether Firecrawl's search needs different query formatting (e.g., without `site:` operators which it may not support).
+### Button 3: "More ▼" dropdown menu containing:
+- **Score Leads** (N) — only shown when unscored leads exist
+- **Process Leads** — opens BulkProcessingDialog
+- **Import Fireflies** — opens FirefliesImportDialog
 
-### Issue 2: OpenAI is persistently 429'd
-Every single OpenAI call fails. The Gemini fallback works, but the 7-second retry delay (2s + 5s) on every AI call adds ~7s of wasted time per turn. With 8 turns, that's ~56 seconds of pure backoff.
+### Button 4: "Export CSV" — stays as-is (utility)
 
-## Proposed Fix
+### Button 5: "New Lead" — stays as-is (primary action)
 
-### File: `supabase/functions/backfill-linkedin/index.ts`
+## Technical Details
 
-**Fix 1: Debug Firecrawl responses**
-Add `console.log` of the raw Firecrawl response body (first 500 chars) when results are empty, so we can see what Firecrawl is actually returning. This will tell us if the response structure changed, or if we need to adjust query formatting.
+### File: `src/components/LeadsTable.tsx`
 
-**Fix 2: Try Firecrawl without `site:` operators**
-Firecrawl's search API may not support Google `site:` operators. Adjust queries to include "linkedin.com/in" as a keyword instead of a `site:` filter, e.g.:
-- Before: `"Erik Ott" Shield8 site:linkedin.com/in`
-- After: `"Erik Ott" Shield8 linkedin.com/in`
+- Replace the 8-button row (lines 1171-1290) with the new 5-button layout
+- LinkedIn Enrich becomes a split button using `DropdownMenu` from shadcn
+- "More" uses `DropdownMenu` to house Score, Process Leads, Import Fireflies
+- All existing click handlers remain unchanged — this is purely a UI reorganization
+- Score button moves into dropdown but retains the conditional count badge
 
-**Fix 3: Skip OpenAI retries entirely when persistently 429'd**
-If the first call to OpenAI returns 429, set a session flag and go straight to Gemini for all subsequent calls. This saves ~7s per AI call and prevents the function from burning its timeout on backoff.
-
-**Fix 4: Add Serper back as primary search, Firecrawl as fallback**
-Since Firecrawl search clearly doesn't match Serper's Google coverage for LinkedIn queries, the best architecture is:
-- Use Serper as the primary search engine (once credits are topped up)
-- Use Firecrawl as a scraping tool only (for slug verification, website mining, etc.)
-- Keep the `_serperExhausted` graceful degradation flag
-
-This is the honest conclusion: Serper and Firecrawl serve different purposes. Serper is a Google results API. Firecrawl is a web scraping API with a search feature that has weaker coverage.
-
-## Recommendation
-
-The fastest path to getting enrichment working again:
-1. Apply Fixes 1-3 immediately to diagnose and optimize
-2. If Firecrawl search truly cannot find LinkedIn profiles, restore Serper as the search engine and top up credits (~$50 for 10K searches, covers months of usage)
-3. Keep Firecrawl for what it's good at: scraping profile pages, company websites, and team pages
+### No other files change. No backend changes.
 
