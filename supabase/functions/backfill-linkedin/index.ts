@@ -1256,7 +1256,7 @@ async function processLead(
     const slugResult = await tryDirectSlugGuess(rationalization.linkedin_slug_guesses, leadContext, firecrawlKey, openaiKey);
     if (slugResult) {
       // Inline verify before accepting
-      const verification = await inlineVerify(leadContext, slugResult.url, slugResult.snippet, openaiKey);
+      const verification = await inlineVerify(leadContext, slugResult.url, slugResult.snippet, openaiKey, rationalization?.name_variants);
       if (verification.verdict === "correct") {
         console.log(`  Direct slug VERIFIED: ${slugResult.url}`);
         return await writeLinkedInResult(lead, slugResult.url, firecrawlKey, supabase, rationalization, 0, null);
