@@ -131,10 +131,12 @@ export function LeadPanelHeader({
           )}
           <Link
             to={`/deal/${lead.id}`}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80 px-2 py-1 rounded hover:bg-secondary/40 transition-colors"
-            onClick={onClose}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors"
+            title="Open as full page"
           >
-            <Maximize2 className="h-3 w-3" /> Deal Room <ChevronRight className="h-3 w-3" />
+            <Maximize2 className="h-3.5 w-3.5" />
           </Link>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -147,8 +149,8 @@ export function LeadPanelHeader({
                 <Sparkles className="h-3.5 w-3.5 mr-2" /> {enriching ? "Researching…" : "Research & Recommend"}
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link to={`/deal/${lead.id}`} onClick={onClose}>
-                  <ExternalLink className="h-3.5 w-3.5 mr-2" /> Open Deal Room
+                <Link to={`/deal/${lead.id}`} target="_blank" rel="noreferrer">
+                  <ExternalLink className="h-3.5 w-3.5 mr-2" /> Open in new tab
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onArchive} className="text-destructive focus:text-destructive">

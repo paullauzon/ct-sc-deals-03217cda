@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/contexts/LeadContext";
 import { Lead } from "@/types/lead";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,40 +13,41 @@ import { MeetingsSection } from "@/components/MeetingsSection";
 import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { ArchiveDialog } from "@/components/ArchiveDialog";
-import { Activity as ActivityIcon, Calendar, Mail, Brain, FolderOpen, MessageSquare, Layers, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
+import {
+  Activity as ActivityIcon, Calendar, Mail, Brain, FolderOpen, MessageSquare,
+  Zap, Trophy, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen,
+} from "lucide-react";
 import { LeadPanelHeader } from "./lead-panel/LeadPanelHeader";
 import { LeadPanelLeftRail } from "./lead-panel/LeadPanelLeftRail";
 import { LeadPanelRightRail } from "./lead-panel/LeadPanelRightRail";
-import { LeadOverviewTab } from "./lead-panel/LeadOverviewTab";
 import { LeadActivityTab } from "./lead-panel/LeadActivityTab";
 import { LeadFilesTab } from "./lead-panel/LeadFilesTab";
+import { LeadActionsTab } from "./lead-panel/LeadActionsTab";
+import { LeadDebriefTab } from "./lead-panel/LeadDebriefTab";
+import { DealHealthAlerts } from "./lead-panel/shared";
 
 interface LeadDetailPanelProps {
   leadId: string | null;
   open: boolean;
   onClose: () => void;
+  /** "sheet" (default) renders inside an overlay; "page" renders in-place for /deal/:id */
+  mode?: "sheet" | "page";
 }
 
-export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps) {
+export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet" }: LeadDetailPanelProps) {
   const { leads, updateLead, archiveLead } = useLeads();
+  const navigate = useNavigate();
   const lead = leads.find(l => l.id === leadId) || null;
   const [enriching, setEnriching] = useState(false);
   const [draftingAI, setDraftingAI] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState("overview");
-  const [noteDraft, setNoteDraft] = useState("");
-  const [taskDraft, setTaskDraft] = useState("");
-  const [callDraft, setCallDraft] = useState("");
+  const [activeTab, setActiveTab] = useState("activity");
+  const [draftSignal, setDraftSignal] = useState(0);
 
   useEffect(() => {
-    if (open) {
-      setActiveTab("overview");
-      setNoteDraft("");
-      setTaskDraft("");
-      setCallDraft("");
-    }
+    if (open) setActiveTab("activity");
   }, [leadId, open]);
 
   const handleEnrich = useCallback(async () => {
@@ -104,81 +104,18 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
     } finally { clearTimeout(timeout); setEnriching(false); }
   }, [lead, updateLead]);
 
-  const handleDraftAI = useCallback(async () => {
-    if (!lead) return;
+  const handleDraftAI = useCallback(() => {
+    setActiveTab("actions");
+    setDraftSignal(s => s + 1);
     setDraftingAI(true);
-    try {
-      const latestMeeting = lead.meetings?.filter(m => m.intelligence).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())?.[0];
-      const meetingPayload = latestMeeting || { title: "Follow-up", date: new Date().toISOString().split("T")[0], intelligence: { summary: "Follow up on this deal.", nextSteps: [{ action: "Follow up", owner: lead.assignedTo }] } };
-      const { data, error } = await supabase.functions.invoke("draft-followup", {
-        body: {
-          meeting: meetingPayload,
-          leadFields: { name: lead.name, role: lead.role, company: lead.company, brand: lead.brand, serviceInterest: lead.serviceInterest, targetCriteria: lead.targetCriteria, targetRevenue: lead.targetRevenue, geography: lead.geography, stage: lead.stage, assignedTo: lead.assignedTo },
-          dealIntelligence: lead.dealIntelligence,
-          actionType: "default",
-        },
-      });
-      if (error) throw error;
-      if (data?.email) {
-        await supabase.from("lead_drafts").upsert({
-          lead_id: lead.id, action_key: "panel-quick-draft", content: data.email,
-          draft_type: "default", context_label: "Quick AI draft", status: "draft", updated_at: new Date().toISOString(),
-        } as any, { onConflict: "lead_id,action_key" });
-        toast.success("Draft saved — view in Deal Room → Actions");
-      }
-    } catch { toast.error("Failed to generate draft"); }
-    finally { setDraftingAI(false); }
-  }, [lead]);
+    setTimeout(() => setDraftingAI(false), 1500);
+  }, []);
 
-  // ---- Now safe: all hooks above this line ----
   if (!lead) return null;
 
   const days = computeDaysInStage(lead.stageEnteredDate);
   const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
-
-  // Quick action: append a timestamped note → writes to lead.notes + activity log
-  const handleAddNote = async () => {
-    const text = noteDraft.trim();
-    if (!text) { toast.error("Note is empty"); return; }
-    const stamp = new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-    const newBlock = `[${stamp}] ${text}`;
-    const merged = lead.notes ? `${newBlock}\n\n${lead.notes}` : newBlock;
-    save({ notes: merged });
-    await logActivity(lead.id, "note_added", `Note: ${text.length > 80 ? text.slice(0, 77) + "…" : text}`);
-    setNoteDraft("");
-    toast.success("Note added");
-  };
-
-  // Quick action: create a row in lead_tasks
-  const handleAddTask = async () => {
-    const title = taskDraft.trim();
-    if (!title) { toast.error("Task is empty"); return; }
-    const today = new Date().toISOString().split("T")[0];
-    const { error } = await supabase.from("lead_tasks").insert({
-      lead_id: lead.id,
-      playbook: "manual",
-      sequence_order: 0,
-      task_type: "manual",
-      title,
-      description: "",
-      due_date: today,
-      status: "pending",
-    } as any);
-    if (error) { toast.error("Failed to add task"); return; }
-    await logActivity(lead.id, "field_update", `Task added: ${title}`);
-    setTaskDraft("");
-    toast.success("Task added");
-  };
-
-  // Quick action: log a phone/video call → activity log
-  const handleLogCall = async () => {
-    const summary = callDraft.trim();
-    if (!summary) { toast.error("Call summary is empty"); return; }
-    await logActivity(lead.id, "field_update", `Call logged: ${summary}`);
-    save({ lastContactDate: new Date().toISOString().split("T")[0] });
-    setCallDraft("");
-    toast.success("Call logged");
-  };
+  const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost" || lead.stage === "Went Dark";
 
   const onEmail = () => setActiveTab("emails");
   const onSchedule = () => {
@@ -186,9 +123,172 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
     else window.open("https://calendly.com", "_blank");
   };
   const onNote = () => setActiveTab("notes");
-  const onTask = () => setActiveTab("notes");
-  const onLogCall = () => setActiveTab("notes");
+  const onTask = async () => {
+    const title = window.prompt("Task title:");
+    if (!title?.trim()) return;
+    const today = new Date().toISOString().split("T")[0];
+    const { error } = await supabase.from("lead_tasks").insert({
+      lead_id: lead.id, playbook: "manual", sequence_order: 0, task_type: "manual",
+      title: title.trim(), description: "", due_date: today, status: "pending",
+    } as any);
+    if (error) { toast.error("Failed to add task"); return; }
+    await logActivity(lead.id, "field_update", `Task added: ${title.trim()}`);
+    toast.success("Task added");
+  };
+  const onLogCall = async () => {
+    const summary = window.prompt("Call summary:");
+    if (!summary?.trim()) return;
+    await logActivity(lead.id, "field_update", `Call logged: ${summary.trim()}`);
+    save({ lastContactDate: new Date().toISOString().split("T")[0] });
+    toast.success("Call logged");
+  };
   const onArchive = () => setArchiveTarget({ id: lead.id, name: lead.name });
+
+  const workspace = (
+    <div className="h-full w-full flex flex-col bg-background overflow-hidden">
+      <LeadPanelHeader
+        lead={lead}
+        daysInStage={days}
+        onClose={onClose}
+        onEmail={onEmail}
+        onSchedule={onSchedule}
+        onNote={onNote}
+        onTask={onTask}
+        onDraftAI={handleDraftAI}
+        onLogCall={onLogCall}
+        onEnrich={handleEnrich}
+        onArchive={onArchive}
+        draftingAI={draftingAI}
+        enriching={enriching}
+      />
+
+      <div className="flex-1 flex min-h-0">
+        {!leftOpen && (
+          <button onClick={() => setLeftOpen(true)} className="w-7 shrink-0 border-r border-border flex items-start justify-center pt-3 text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors" title="Show panel">
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+        )}
+        {leftOpen && (
+          <div className="relative">
+            <LeadPanelLeftRail lead={lead} daysInStage={days} save={save} />
+            <button onClick={() => setLeftOpen(false)} className="absolute top-2.5 right-2 text-muted-foreground hover:text-foreground p-1 rounded hover:bg-secondary/40" title="Hide panel">
+              <PanelLeftClose className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
+        <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+            <div className="border-b border-border px-4 shrink-0">
+              <TabsList className="bg-transparent h-10 p-0 gap-0">
+                <TabsTrigger value="activity" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
+                  <ActivityIcon className="h-3.5 w-3.5" /> Activity
+                </TabsTrigger>
+                {!isClosed && (
+                  <TabsTrigger value="actions" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
+                    <Zap className="h-3.5 w-3.5" /> Actions
+                  </TabsTrigger>
+                )}
+                <TabsTrigger value="meetings" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
+                  <Calendar className="h-3.5 w-3.5" /> Meetings ({lead.meetings?.length || 0})
+                </TabsTrigger>
+                <TabsTrigger value="emails" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
+                  <Mail className="h-3.5 w-3.5" /> Emails
+                </TabsTrigger>
+                <TabsTrigger value="intelligence" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
+                  <Brain className="h-3.5 w-3.5" /> Intelligence
+                </TabsTrigger>
+                <TabsTrigger value="files" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
+                  <FolderOpen className="h-3.5 w-3.5" /> Files
+                </TabsTrigger>
+                <TabsTrigger value="notes" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
+                  <MessageSquare className="h-3.5 w-3.5" /> Notes
+                </TabsTrigger>
+                {isClosed && (
+                  <TabsTrigger value="debrief" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
+                    <Trophy className="h-3.5 w-3.5" /> Debrief
+                  </TabsTrigger>
+                )}
+              </TabsList>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              <TabsContent value="activity" className="mt-0">
+                <div className="px-6 pt-4 max-w-3xl mx-auto">
+                  <DealHealthAlerts lead={lead} />
+                </div>
+                <LeadActivityTab lead={lead} />
+              </TabsContent>
+              {!isClosed && (
+                <TabsContent value="actions" className="mt-0">
+                  <LeadActionsTab lead={lead} allLeads={leads} save={save} draftSignal={draftSignal} />
+                </TabsContent>
+              )}
+              <TabsContent value="meetings" className="p-6 mt-0 max-w-5xl mx-auto">
+                <MeetingsSection lead={lead} />
+              </TabsContent>
+              <TabsContent value="emails" className="p-6 mt-0 max-w-4xl mx-auto">
+                <EmailsSection leadId={lead.id} />
+              </TabsContent>
+              <TabsContent value="intelligence" className="p-6 mt-0 max-w-5xl mx-auto">
+                {lead.dealIntelligence ? (
+                  <DealIntelligencePanel intel={lead.dealIntelligence} lead={lead} />
+                ) : (
+                  <div className="text-center py-12 text-sm text-muted-foreground">
+                    <Brain className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                    <p>No deal intelligence synthesized yet.</p>
+                    <p className="text-xs mt-1">Process meetings to surface stakeholder maps, momentum, and win strategy.</p>
+                  </div>
+                )}
+              </TabsContent>
+              <TabsContent value="files" className="mt-0">
+                <LeadFilesTab lead={lead} />
+              </TabsContent>
+              <TabsContent value="notes" className="p-6 mt-0 max-w-3xl mx-auto">
+                <Textarea
+                  value={lead.notes}
+                  onChange={(e) => save({ notes: e.target.value })}
+                  placeholder="Add notes about this lead..."
+                  rows={20}
+                  className="min-h-[400px] text-sm"
+                />
+              </TabsContent>
+              {isClosed && (
+                <TabsContent value="debrief" className="mt-0">
+                  <LeadDebriefTab lead={lead} />
+                </TabsContent>
+              )}
+            </div>
+          </Tabs>
+        </main>
+
+        {!rightOpen && (
+          <button onClick={() => setRightOpen(true)} className="w-7 shrink-0 border-l border-border flex items-start justify-center pt-3 text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors" title="Show panel">
+            <PanelRightOpen className="h-4 w-4" />
+          </button>
+        )}
+        {rightOpen && (
+          <div className="relative">
+            <LeadPanelRightRail lead={lead} allLeads={leads} enriching={enriching} onEnrich={handleEnrich} save={save} />
+            <button onClick={() => setRightOpen(false)} className="absolute top-2.5 right-2 text-muted-foreground hover:text-foreground p-1 rounded hover:bg-secondary/40" title="Hide panel">
+              <PanelRightClose className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <ArchiveDialog
+        open={!!archiveTarget}
+        leadName={archiveTarget?.name || ""}
+        onConfirm={(reason) => { if (archiveTarget) { archiveLead(archiveTarget.id, reason); setArchiveTarget(null); onClose(); } }}
+        onCancel={() => setArchiveTarget(null)}
+      />
+    </div>
+  );
+
+  if (mode === "page") {
+    return <div className="h-screen w-screen overflow-hidden">{workspace}</div>;
+  }
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -197,132 +297,11 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
         className="w-screen max-w-none p-0 sm:max-w-none border-0"
         aria-describedby={undefined}
       >
-        <div className="h-full w-full flex flex-col bg-background overflow-hidden">
-          <LeadPanelHeader
-            lead={lead}
-            daysInStage={days}
-            onClose={onClose}
-            onEmail={onEmail}
-            onSchedule={onSchedule}
-            onNote={onNote}
-            onTask={onTask}
-            onDraftAI={handleDraftAI}
-            onLogCall={onLogCall}
-            onEnrich={handleEnrich}
-            onArchive={onArchive}
-            draftingAI={draftingAI}
-            enriching={enriching}
-          />
-
-          <div className="flex-1 flex min-h-0">
-            {!leftOpen && (
-              <button onClick={() => setLeftOpen(true)} className="w-7 shrink-0 border-r border-border flex items-start justify-center pt-3 text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors" title="Show panel">
-                <PanelLeftOpen className="h-4 w-4" />
-              </button>
-            )}
-            {leftOpen && (
-              <div className="relative">
-                <LeadPanelLeftRail lead={lead} daysInStage={days} save={save} />
-                <button onClick={() => setLeftOpen(false)} className="absolute top-2.5 right-2 text-muted-foreground hover:text-foreground p-1 rounded hover:bg-secondary/40" title="Hide panel">
-                  <PanelLeftClose className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
-
-            <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-                <div className="border-b border-border px-4 shrink-0">
-                  <TabsList className="bg-transparent h-10 p-0 gap-0">
-                    <TabsTrigger value="overview" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
-                      <Layers className="h-3.5 w-3.5" /> Overview
-                    </TabsTrigger>
-                    <TabsTrigger value="activity" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
-                      <ActivityIcon className="h-3.5 w-3.5" /> Activity
-                    </TabsTrigger>
-                    <TabsTrigger value="meetings" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
-                      <Calendar className="h-3.5 w-3.5" /> Meetings ({lead.meetings?.length || 0})
-                    </TabsTrigger>
-                    <TabsTrigger value="emails" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
-                      <Mail className="h-3.5 w-3.5" /> Emails
-                    </TabsTrigger>
-                    <TabsTrigger value="intelligence" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
-                      <Brain className="h-3.5 w-3.5" /> Intelligence
-                    </TabsTrigger>
-                    <TabsTrigger value="files" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
-                      <FolderOpen className="h-3.5 w-3.5" /> Files
-                    </TabsTrigger>
-                    <TabsTrigger value="notes" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
-                      <MessageSquare className="h-3.5 w-3.5" /> Notes
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
-
-                <div className="flex-1 overflow-y-auto">
-                  <TabsContent value="overview" className="mt-0">
-                    <LeadOverviewTab lead={lead} daysInStage={days} enriching={enriching} onEnrich={handleEnrich} save={save} />
-                  </TabsContent>
-                  <TabsContent value="activity" className="mt-0">
-                    <LeadActivityTab lead={lead} />
-                  </TabsContent>
-                  <TabsContent value="meetings" className="p-6 mt-0 max-w-5xl mx-auto">
-                    <MeetingsSection lead={lead} />
-                  </TabsContent>
-                  <TabsContent value="emails" className="p-6 mt-0 max-w-4xl mx-auto">
-                    <EmailsSection leadId={lead.id} />
-                  </TabsContent>
-                  <TabsContent value="intelligence" className="p-6 mt-0 max-w-5xl mx-auto">
-                    {lead.dealIntelligence ? (
-                      <DealIntelligencePanel intel={lead.dealIntelligence} lead={lead} />
-                    ) : (
-                      <div className="text-center py-12 text-sm text-muted-foreground">
-                        <Brain className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                        <p>No deal intelligence synthesized yet.</p>
-                        <p className="text-xs mt-1">Process meetings to surface stakeholder maps, momentum, and win strategy.</p>
-                      </div>
-                    )}
-                  </TabsContent>
-                  <TabsContent value="files" className="mt-0">
-                    <LeadFilesTab lead={lead} />
-                  </TabsContent>
-                  <TabsContent value="notes" className="p-6 mt-0 max-w-3xl mx-auto">
-                    <Textarea
-                      value={lead.notes}
-                      onChange={(e) => save({ notes: e.target.value })}
-                      placeholder="Add notes about this lead..."
-                      rows={20}
-                      className="min-h-[400px] text-sm"
-                    />
-                  </TabsContent>
-                </div>
-              </Tabs>
-            </main>
-
-            {!rightOpen && (
-              <button onClick={() => setRightOpen(true)} className="w-7 shrink-0 border-l border-border flex items-start justify-center pt-3 text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors" title="Show panel">
-                <PanelRightOpen className="h-4 w-4" />
-              </button>
-            )}
-            {rightOpen && (
-              <div className="relative">
-                <LeadPanelRightRail lead={lead} allLeads={leads} />
-                <button onClick={() => setRightOpen(false)} className="absolute top-2.5 right-2 text-muted-foreground hover:text-foreground p-1 rounded hover:bg-secondary/40" title="Hide panel">
-                  <PanelRightClose className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <ArchiveDialog
-          open={!!archiveTarget}
-          leadName={archiveTarget?.name || ""}
-          onConfirm={(reason) => { if (archiveTarget) { archiveLead(archiveTarget.id, reason); setArchiveTarget(null); onClose(); } }}
-          onCancel={() => setArchiveTarget(null)}
-        />
+        {workspace}
       </SheetContent>
     </Sheet>
   );
 }
 
-// Backward-compatible alias used by all 6 import sites
+// Backward-compatible alias used by all import sites
 export const LeadDetail = LeadDetailPanel;
