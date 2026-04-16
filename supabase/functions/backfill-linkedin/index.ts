@@ -74,7 +74,16 @@ async function firecrawlSearch(
   scrape = true,
 ): Promise<SearchResult[]> {
   try {
-    const body: Record<string, unknown> = { query, limit };
+    // Fix 2: Strip site: operators — Firecrawl doesn't support them well.
+    // Convert "site:linkedin.com/in" to "linkedin.com/in" as a keyword.
+    const cleanQuery = query
+      .replace(/site:linkedin\.com\/in\b/gi, "linkedin.com/in")
+      .replace(/site:linkedin\.com\/company\b/gi, "linkedin.com/company")
+      .replace(/site:linkedin\.com\b/gi, "linkedin.com")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+
+    const body: Record<string, unknown> = { query: cleanQuery, limit };
     if (scrape) {
       body.scrapeOptions = { formats: ["markdown"] };
     }
@@ -97,6 +106,12 @@ async function firecrawlSearch(
     const data = await res.json();
     const raw = data.data || data.results || [];
     const results = Array.isArray(raw) ? raw : [];
+
+    // Fix 1: Debug logging when results are empty
+    if (results.length === 0) {
+      console.warn(`  Firecrawl search returned 0 results for: "${cleanQuery}" | Raw response keys: ${Object.keys(data).join(",")} | Raw snippet: ${JSON.stringify(data).substring(0, 300)}`);
+    }
+
     return results.map((r: any) => ({
       url: r.url || "",
       title: r.title || "",
@@ -156,13 +171,16 @@ async function firecrawlScrape(
 
 // ─── AI Call Helper (OpenAI with Lovable AI Gateway fallback) ───
 
+// Fix 3: Session-level flag — once OpenAI 429s, skip retries for all subsequent calls
+let _openAIExhausted = false;
+
 async function callAI(
   messages: Array<{ role: string; content: string }>,
   openaiKey: string,
   model: string,
 ): Promise<string> {
-  // Try OpenAI first
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // Fix 3: If OpenAI already 429'd this session, go straight to Gemini
+  if (!_openAIExhausted) {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -171,32 +189,29 @@ async function callAI(
       },
       body: JSON.stringify({ model, messages }),
     });
-    if (res.status === 429 && attempt < 2) {
-      const delays = [2000, 5000];
-      const delay = delays[attempt];
-      console.warn(`  OpenAI 429 — retrying in ${delay / 1000}s (attempt ${attempt + 1}/3)...`);
+    if (res.status === 429) {
       await res.text();
-      await new Promise(r => setTimeout(r, delay));
-      continue;
+      _openAIExhausted = true;
+      console.warn(`  OpenAI 429 — session flag set, all subsequent calls go to Gemini`);
+    } else if (!res.ok) {
+      throw new Error(`OpenAI HTTP ${res.status}`);
+    } else {
+      const data = await res.json();
+      return (data.choices?.[0]?.message?.content || "").trim();
     }
-    if (res.status === 429 && attempt === 2) {
-      // All OpenAI retries exhausted — fall back to Lovable AI Gateway
-      await res.text();
-      break;
-    }
-    if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
-    const data = await res.json();
-    return (data.choices?.[0]?.message?.content || "").trim();
   }
 
-  // Phase C: Fallback to Lovable AI Gateway (Gemini)
+  // Fallback to Lovable AI Gateway (Gemini)
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
-    throw new Error("OpenAI 429 after 3 retries and no LOVABLE_API_KEY for fallback");
+    throw new Error("OpenAI 429 and no LOVABLE_API_KEY for fallback");
   }
   
   const fallbackModel = model.includes("4o-mini") ? "google/gemini-2.5-flash" : "google/gemini-2.5-pro";
-  console.warn(`  OpenAI exhausted — falling back to Lovable AI (${fallbackModel})`);
+  if (!_openAIExhausted) {
+    // This path only hit on first fallback
+    console.warn(`  Falling back to Lovable AI (${fallbackModel})`);
+  }
   
   const fallbackRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
