@@ -111,7 +111,16 @@ async function firecrawlSearch(
 
 // ─── Serper (Google) Search Fallback ───
 
+let _serperExhausted = false;
+
+function isSerperExhausted(): boolean {
+  return _serperExhausted;
+}
+
 async function serperSearch(query: string, serperKey: string, limit = 5): Promise<SearchResult[]> {
+  // Short-circuit if credits are already known to be exhausted
+  if (_serperExhausted) return [];
+
   try {
     const res = await fetch("https://google.serper.dev/search", {
       method: "POST",
@@ -124,6 +133,14 @@ async function serperSearch(query: string, serperKey: string, limit = 5): Promis
 
     if (!res.ok) {
       const errBody = await res.text();
+      // Detect credit exhaustion and skip all future Serper calls
+      if (res.status === 400 && errBody.includes("Not enough credits")) {
+        if (!_serperExhausted) {
+          console.warn("⚠ Serper credits exhausted — skipping all remaining Serper searches this run");
+          _serperExhausted = true;
+        }
+        return [];
+      }
       console.error(`Serper search error ${res.status}: ${errBody.slice(0, 200)}`);
       return [];
     }
