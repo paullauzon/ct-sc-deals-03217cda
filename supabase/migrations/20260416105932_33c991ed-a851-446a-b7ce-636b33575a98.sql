@@ -1,0 +1,1 @@
+UPDATE leads SET linkedin_url = NULL WHERE id = 'CT-200';
