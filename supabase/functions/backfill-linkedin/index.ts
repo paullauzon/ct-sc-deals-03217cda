@@ -629,27 +629,91 @@ async function aiSearchAgent(
     }
   }
 
-  // Strategy A: Search company LinkedIn page for employees
+  // Strategy A: Search company LinkedIn page for employees (with cache)
+  const companyCacheKey = lead.company ? normalizeCompanyName(lead.company) : "";
+  const cachedCompany = companyCacheKey && companyCache ? companyCache.get(companyCacheKey) : undefined;
+  
   if (lead.company) {
-    const companyQuery = `"${lead.company}" site:linkedin.com/company`;
-    preSearchQueriesDone.push(companyQuery);
-    console.log(`  Pre-search: Company LinkedIn page for "${lead.company}"`);
-    const companyResults = await firecrawlSearch(companyQuery, firecrawlKey, 3, false);
-    const companyLinkedinUrl = companyResults.find(r => r.url.includes("linkedin.com/company/"))?.url;
-    if (companyLinkedinUrl) {
-      const scraped = await firecrawlScrape(companyLinkedinUrl, firecrawlKey);
-      if (scraped) {
-        const linkedinProfileLinks = scraped.match(/linkedin\.com\/in\/[a-zA-Z0-9_-]+/g) || [];
-        const uniqueLinks = [...new Set(linkedinProfileLinks)];
-        if (uniqueLinks.length > 0) {
-          preSearchResults.push(`Company LinkedIn page (${companyLinkedinUrl}) employee profiles found:\n${uniqueLinks.map(l => `https://${l}`).join("\n")}`);
-        }
-        const allNames = rationalization
-          ? [lead.name, ...rationalization.name_variants]
-          : [lead.name];
-        const anyNameMention = allNames.some(n => scraped.toLowerCase().includes(n.split(/\s+/)[0]?.toLowerCase()));
-        if (anyNameMention) {
-          preSearchResults.push(`The company LinkedIn page mentions a name variant — check the profile links above.`);
+    if (cachedCompany?.linkedinPage) {
+      console.log(`  Pre-search: Using cached company LinkedIn page for "${lead.company}"`);
+      if (cachedCompany.employeeSlugs && cachedCompany.employeeSlugs.length > 0) {
+        preSearchResults.push(`Company LinkedIn page (cached) employee profiles found:\n${cachedCompany.employeeSlugs.map(l => `https://linkedin.com/in/${l}`).join("\n")}`);
+      }
+    } else {
+      const companyQuery = `"${lead.company}" site:linkedin.com/company`;
+      preSearchQueriesDone.push(companyQuery);
+      console.log(`  Pre-search: Company LinkedIn page for "${lead.company}"`);
+      const companyResults = await firecrawlSearch(companyQuery, firecrawlKey, 3, false);
+      const companyLinkedinUrl = companyResults.find(r => r.url.includes("linkedin.com/company/"))?.url;
+      if (companyLinkedinUrl) {
+        const scraped = await firecrawlScrape(companyLinkedinUrl, firecrawlKey);
+        if (scraped) {
+          const linkedinProfileLinks = scraped.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/g) || [];
+          const uniqueSlugs = [...new Set(linkedinProfileLinks.map(l => l.replace("linkedin.com/in/", "")))];
+          
+          // Cache for future leads
+          if (companyCache && companyCacheKey) {
+            const entry = companyCache.get(companyCacheKey) || {};
+            entry.linkedinPage = companyLinkedinUrl;
+            entry.employeeSlugs = uniqueSlugs;
+            companyCache.set(companyCacheKey, entry);
+          }
+          
+          if (uniqueSlugs.length > 0) {
+            preSearchResults.push(`Company LinkedIn page (${companyLinkedinUrl}) employee profiles found:\n${uniqueSlugs.map(l => `https://linkedin.com/in/${l}`).join("\n")}`);
+            
+            // H: Cross-lead mining — resolve other leads from same company
+            if (supabaseForCrossLead && uniqueSlugs.length > 0) {
+              try {
+                const { data: sameCompanyLeads } = await supabaseForCrossLead
+                  .from("leads")
+                  .select("id, name, company, email")
+                  .is("linkedin_url", null)
+                  .neq("name", "")
+                  .limit(50);
+                
+                const companyLeads = (sameCompanyLeads || []).filter((cl: any) => 
+                  cl.id !== lead.name && cl.company && fuzzyCompanyMatch(cl.company, lead.company || "")
+                );
+                
+                for (const cl of companyLeads) {
+                  const clFirstName = cl.name.split(/\s+/)[0]?.toLowerCase() || "";
+                  const clLastName = cl.name.split(/\s+/).pop()?.toLowerCase() || "";
+                  const matchingSlugs = uniqueSlugs.filter(slug => {
+                    const slugLower = slug.toLowerCase();
+                    return (clFirstName && slugLower.includes(clFirstName)) || 
+                           (clLastName && clLastName.length >= 3 && slugLower.includes(clLastName));
+                  });
+                  
+                  if (matchingSlugs.length === 1) {
+                    const crossUrl = `https://www.linkedin.com/in/${matchingSlugs[0]}`;
+                    const crossSnippet = `Cross-lead match from ${lead.company} company page`;
+                    const crossVerify = await inlineVerify(
+                      { name: cl.name, company: cl.company, email: cl.email, companyUrl: null, websiteUrl: null, role: null, message: null, buyerType: null, serviceInterest: null, dealsPlanned: null, targetCriteria: null, targetRevenue: null, geography: null },
+                      crossUrl, crossSnippet, openaiKey,
+                    );
+                    if (crossVerify.verdict !== "wrong") {
+                      console.log(`  Cross-lead RESOLVED: ${cl.name} → ${crossUrl}`);
+                      await supabaseForCrossLead.from("leads").update({
+                        linkedin_url: crossUrl,
+                        linkedin_search_log: { cross_lead_match: true, source_lead: lead.name, url: crossUrl, resolved_at: new Date().toISOString() },
+                      }).eq("id", cl.id);
+                    }
+                  }
+                }
+              } catch (e) {
+                console.error(`  Cross-lead mining error:`, e);
+              }
+            }
+          }
+          
+          const allNames = rationalization
+            ? [lead.name, ...rationalization.name_variants]
+            : [lead.name];
+          const anyNameMention = allNames.some(n => scraped.toLowerCase().includes(n.split(/\s+/)[0]?.toLowerCase()));
+          if (anyNameMention) {
+            preSearchResults.push(`The company LinkedIn page mentions a name variant — check the profile links above.`);
+          }
         }
       }
     }
