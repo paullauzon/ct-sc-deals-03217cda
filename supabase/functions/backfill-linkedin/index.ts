@@ -1551,6 +1551,8 @@ Deno.serve(async (req) => {
     let totalTurns = 0;
     let totalGaveUp = 0;
     let chainsRun = 0;
+    const globalStartTime = Date.now();
+    const GLOBAL_TIMEOUT_MS = 130000; // Return before 150s edge function limit
 
     for (let chain = 0; chain < MAX_AUTO_CHAINS; chain++) {
       chainsRun++;
