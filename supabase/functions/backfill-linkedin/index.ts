@@ -1177,7 +1177,7 @@ async function processLead(
   supabase: any,
   model: string,
   maxTurns: number,
-  serperKey: string | null = null,
+  _deprecated_serperKey: string | null = null, // kept for signature compat
   companyCache: CompanyCache | null = null,
   startTime: number = Date.now(),
 ): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
