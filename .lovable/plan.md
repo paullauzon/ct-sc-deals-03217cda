@@ -1,44 +1,62 @@
 
 
-# Replace Serper with Firecrawl Search — Zero New Dependencies
+# LinkedIn Enrichment: Critical Blocker — Firecrawl Search Returns Empty
 
-## The Insight
+## What the Tests Revealed
 
-You already have **Firecrawl Search** (`firecrawlSearch`) as the primary search engine in `backfill-linkedin`. Serper is only used as a fallback in 5 specific places. Since Firecrawl Search hits the same Google results via its own API, we can **eliminate the Serper dependency entirely** by routing all Serper calls through the existing `firecrawlSearch` function.
+I deployed the function and tested on 2 leads (CT-222 Erik Ott, CT-220 Wasif Khan). The entire pipeline works correctly:
+- Deployment: confirmed
+- Auto-trigger from ingest-lead: confirmed
+- AI rationalization: working (Gemini fallback succeeds when OpenAI 429s)
+- Agent turns: running 7-8 turns with smart query evolution
+- Direct slug guessing: working
+- Company website scraping: working
 
-You already pay for Firecrawl. No new keys, no new costs, no new configuration.
+**But every single Firecrawl Search call returns zero results.** Not an error — HTTP 200 with an empty data array. This happened on 20+ searches across both leads, including simple queries like `"Wasif Khan" Zaphyr site:linkedin.com/in`.
 
-## What Changes
+## Root Cause
 
-There are exactly 5 places where `serperSearch()` is called:
+Firecrawl Search and Serper are fundamentally different products:
+- **Serper** = direct Google SERP API (same results as google.com)
+- **Firecrawl Search** = web search with optional scraping, but may use a different search index or have restricted Google access for `site:linkedin.com` queries
 
-1. **Quick-match fallback** (line ~695) — when primary Firecrawl search finds no LinkedIn results
-2. **Strategy D role-filtered search** (line ~959) — `site:linkedin.com/in "Company" "Role"`
-3. **Agent give-up Serper fallback** (line ~1068) — last-resort after agent exhausts turns
-4. **Agent open web search** (line ~1082) — broad search without `site:` restriction
-5. **Agent tool call Serper** (line ~1143) — when agent explicitly requests a search
+The replacement worked syntactically (drop-in interface) but not functionally — Firecrawl's search doesn't return LinkedIn results the way Serper did.
 
-All 5 use the same `SearchResult[]` interface that `firecrawlSearch` already returns. It's a drop-in replacement.
+## Two Issues to Fix
 
-## Technical Details
+### Issue 1: Firecrawl Search returns empty (the blocker)
+Add debug logging to see the raw Firecrawl response body, and consider whether Firecrawl's search needs different query formatting (e.g., without `site:` operators which it may not support).
+
+### Issue 2: OpenAI is persistently 429'd
+Every single OpenAI call fails. The Gemini fallback works, but the 7-second retry delay (2s + 5s) on every AI call adds ~7s of wasted time per turn. With 8 turns, that's ~56 seconds of pure backoff.
+
+## Proposed Fix
 
 ### File: `supabase/functions/backfill-linkedin/index.ts`
 
-- Replace all 5 `serperSearch(query, serperKey, limit)` calls with `firecrawlSearch(query, firecrawlKey, limit, false)` (the `false` skips full page scraping — we only need URLs and titles, same as Serper)
-- Remove the `serperKey` parameter from `aiSearchAgent` and `processLead` signatures
-- Remove the `SERPER_API_KEY` env read (line ~1464)
-- Remove the `_serperExhausted` flag and `serperSearch` function entirely (lines 112-192)
-- Keep the `isSerperExhausted` concept but rename to a generic `_searchExhausted` flag tied to Firecrawl 402/429 responses (already partially handled by `firecrawlFetchWithRetry`)
+**Fix 1: Debug Firecrawl responses**
+Add `console.log` of the raw Firecrawl response body (first 500 chars) when results are empty, so we can see what Firecrawl is actually returning. This will tell us if the response structure changed, or if we need to adjust query formatting.
 
-### What About Firecrawl Credits?
+**Fix 2: Try Firecrawl without `site:` operators**
+Firecrawl's search API may not support Google `site:` operators. Adjust queries to include "linkedin.com/in" as a keyword instead of a `site:` filter, e.g.:
+- Before: `"Erik Ott" Shield8 site:linkedin.com/in`
+- After: `"Erik Ott" Shield8 linkedin.com/in`
 
-Firecrawl Search costs 1 credit per search. The 5 fallback points fire only when the primary search fails, so in practice this adds 1-3 extra searches per hard-to-find lead. For a batch of 30 leads, worst case ~90 extra credits. Firecrawl's free tier includes 500 credits/month; paid plans start at 3,000.
+**Fix 3: Skip OpenAI retries entirely when persistently 429'd**
+If the first call to OpenAI returns 429, set a session flag and go straight to Gemini for all subsequent calls. This saves ~7s per AI call and prevents the function from burning its timeout on backoff.
 
-### Bonus: Firecrawl Search Returns Richer Data
+**Fix 4: Add Serper back as primary search, Firecrawl as fallback**
+Since Firecrawl search clearly doesn't match Serper's Google coverage for LinkedIn queries, the best architecture is:
+- Use Serper as the primary search engine (once credits are topped up)
+- Use Firecrawl as a scraping tool only (for slug verification, website mining, etc.)
+- Keep the `_serperExhausted` graceful degradation flag
 
-Unlike Serper which returns title + snippet + URL, Firecrawl Search can optionally return full markdown content. This means the quick-match verification step gets more data to work with — potentially improving match accuracy on the same call.
+This is the honest conclusion: Serper and Firecrawl serve different purposes. Serper is a Google results API. Firecrawl is a web scraping API with a search feature that has weaker coverage.
 
-## Summary
+## Recommendation
 
-One file change. Remove ~80 lines of Serper code, replace 5 call sites with the existing `firecrawlSearch`. No new APIs, no new secrets, no new costs beyond existing Firecrawl usage.
+The fastest path to getting enrichment working again:
+1. Apply Fixes 1-3 immediately to diagnose and optimize
+2. If Firecrawl search truly cannot find LinkedIn profiles, restore Serper as the search engine and top up credits (~$50 for 10K searches, covers months of usage)
+3. Keep Firecrawl for what it's good at: scraping profile pages, company websites, and team pages
 
