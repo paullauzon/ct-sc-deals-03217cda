@@ -157,6 +157,7 @@ Deno.serve(async (req) => {
     let wrong = 0;
     let uncertain = 0;
     const clearedLeadIds: string[] = [];
+    const uncertainLeadIds: string[] = [];
 
     for (let i = 0; i < leads.length; i += BATCH_SIZE) {
       const batch = leads.slice(i, i + BATCH_SIZE);
