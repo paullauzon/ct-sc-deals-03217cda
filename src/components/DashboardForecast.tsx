@@ -30,7 +30,7 @@ const DEFAULT_DAYS_TO_CLOSE: Record<string, number> = {
   "Contract Sent": 7,
 };
 
-const TERMINAL = ["Closed Won", "Closed Lost", "Went Dark", "Duplicate", "Disqualified"];
+const TERMINAL = ["Closed Won", "Lost", "Went Dark", "Duplicate", "Disqualified"];
 const MONTHLY_TARGET = 15000;
 
 interface Props {
@@ -439,7 +439,7 @@ function ObjectionCompetitorHeatmap({ leads }: { leads: Lead[] }) {
 function WinLossAnalysis({ leads }: { leads: Lead[] }) {
   const analysis = useMemo(() => {
     const won = leads.filter(l => l.stage === "Closed Won" && l.wonReason);
-    const lost = leads.filter(l => l.stage === "Closed Lost" && l.lostReason);
+    const lost = leads.filter(l => l.stage === "Lost" && l.lostReason);
 
     const countReasons = (items: Lead[], field: "wonReason" | "lostReason") => {
       const map: Record<string, number> = {};
@@ -457,7 +457,7 @@ function WinLossAnalysis({ leads }: { leads: Lead[] }) {
       wonReasons: countReasons(won, "wonReason"),
       lostReasons: countReasons(lost, "lostReason"),
       wonCount: leads.filter(l => l.stage === "Closed Won").length,
-      lostCount: leads.filter(l => l.stage === "Closed Lost").length,
+      lostCount: leads.filter(l => l.stage === "Lost").length,
     };
   }, [leads]);
 
@@ -541,7 +541,7 @@ function WinLossAnalysis({ leads }: { leads: Lead[] }) {
 // ── Stakeholder Risk Heatmap ──
 function StakeholderRiskHeatmap({ leads, onDrillDown }: { leads: Lead[]; onDrillDown: (title: string, leads: Lead[]) => void }) {
   const data = useMemo(() => {
-    const TERMINAL_SET = new Set(["Closed Won", "Closed Lost", "Went Dark", "Duplicate", "Disqualified"]);
+    const TERMINAL_SET = new Set(["Closed Won", "Lost", "Went Dark", "Duplicate", "Disqualified"]);
     const atRisk: { lead: Lead; issue: string; value: number }[] = [];
     let totalStakeholders = 0;
     const stanceCounts: Record<string, number> = {};
@@ -678,7 +678,7 @@ function DecisionProcessComplexity({ leads }: { leads: Lead[] }) {
 
         categories[cat].count++;
         if (lead.stage === "Closed Won") categories[cat].won++;
-        if (["Closed Lost", "Went Dark"].includes(lead.stage)) categories[cat].lost++;
+        if (["Lost", "Went Dark"].includes(lead.stage)) categories[cat].lost++;
 
         if (lead.dateSubmitted && lead.closedDate) {
           const days = differenceInDays(parseISO(lead.closedDate), parseISO(lead.dateSubmitted));
@@ -745,7 +745,7 @@ function DecisionProcessComplexity({ leads }: { leads: Lead[] }) {
 // ── Risk Portfolio View ──
 function RiskPortfolioView({ leads, onDrillDown }: { leads: Lead[]; onDrillDown: (title: string, leads: Lead[]) => void }) {
   const data = useMemo(() => {
-    const TERMINAL_SET = new Set(["Closed Won", "Closed Lost", "Went Dark", "Duplicate", "Disqualified"]);
+    const TERMINAL_SET = new Set(["Closed Won", "Lost", "Went Dark", "Duplicate", "Disqualified"]);
     const severityCounts: Record<string, number> = { Critical: 0, High: 0, Medium: 0, Low: 0 };
     const mitigationCounts: Record<string, number> = { Unmitigated: 0, "Partially Mitigated": 0, Mitigated: 0 };
     const riskPatterns: Record<string, number> = {};

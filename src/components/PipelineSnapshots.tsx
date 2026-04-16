@@ -7,7 +7,7 @@ const STAGE_WEIGHTS: Record<string, number> = {
   "Meeting Held": 0.40, "Proposal Sent": 0.50, "Negotiation": 0.70, "Contract Sent": 0.90,
 };
 
-const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
 
 interface Snapshot {
   snapshot_date: string;

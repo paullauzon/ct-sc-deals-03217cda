@@ -50,7 +50,7 @@ export function DashboardTrends({ leads }: Props) {
   const winRateData = useMemo(() => {
     const months: Record<string, { won: number; lost: number }> = {};
     for (const l of leads) {
-      if (!["Closed Won", "Closed Lost"].includes(l.stage)) continue;
+      if (!["Closed Won", "Lost"].includes(l.stage)) continue;
       const d = parseDate(l.closedDate);
       if (!d) continue;
       const mk = monthKey(d);
@@ -111,7 +111,7 @@ export function DashboardTrends({ leads }: Props) {
       cohorts[qk].count++;
       if (l.meetingDate || l.meetingSetDate) cohorts[qk].metSet++;
       if (l.stage === "Closed Won") { cohorts[qk].won++; cohorts[qk].totalDealValue += l.dealValue; }
-      if (["Closed Won", "Closed Lost"].includes(l.stage)) cohorts[qk].closed++;
+      if (["Closed Won", "Lost"].includes(l.stage)) cohorts[qk].closed++;
     }
     return Object.entries(cohorts)
       .sort(([a], [b]) => a.localeCompare(b))

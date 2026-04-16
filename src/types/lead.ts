@@ -18,7 +18,7 @@ export type LeadStage =
   | "Negotiation"
   | "Contract Sent"
   | "Closed Won"
-  | "Closed Lost"
+  | "Lost"
   | "Went Dark";
 
 export type ServiceInterest =

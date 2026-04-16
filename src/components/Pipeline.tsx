@@ -31,10 +31,10 @@ import { supabase } from "@/integrations/supabase/client";
 
 const ALL_STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
-  "Closed Won", "Closed Lost", "Went Dark",
+  "Closed Won", "Lost", "Went Dark",
 ];
 
-const CLOSED_STAGES: LeadStage[] = ["Closed Won", "Closed Lost", "Went Dark"];
+const CLOSED_STAGES: LeadStage[] = ["Closed Won", "Lost", "Went Dark"];
 
 const OWNER_COLORS: Record<string, string> = {
   Malik: "bg-foreground text-background",

@@ -42,7 +42,7 @@ const LeadContext = createContext<LeadContextType | null>(null);
 
 const STAGES: LeadStage[] = [
   "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held",
-  "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Closed Lost", "Went Dark",
+  "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Lost", "Went Dark",
 ];
 
 async function fetchLeadsFromDb(): Promise<Lead[] | null> {
@@ -283,7 +283,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
               dbPayload.meetingSetDate = today;
             }
           }
-          if (["Closed Won", "Closed Lost", "Went Dark"].includes(updates.stage)) {
+          if (["Closed Won", "Lost", "Went Dark"].includes(updates.stage)) {
             updated.closedDate = today;
             dbPayload.closedDate = today;
           } else {
@@ -403,7 +403,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
       };
     }
     const activePipeline = leads.filter(
-      (l) => !["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)
+      (l) => !["Closed Won", "Lost", "Went Dark"].includes(l.stage)
     );
     const meetingLeads = leads.filter((l) => l.hoursToMeetingSet !== null);
     const avgDaysToMeeting = meetingLeads.length
@@ -418,7 +418,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
         : 0,
       meetingsSet: stageValues["Meeting Set"].count + stageValues["Meeting Held"].count,
       closedWon: stageValues["Closed Won"].count,
-      closedLost: stageValues["Closed Lost"].count,
+      closedLost: stageValues["Lost"].count,
       wentDark: stageValues["Went Dark"].count,
       conversionRate: leads.length
         ? Math.round((stageValues["Closed Won"].count / leads.length) * 100)

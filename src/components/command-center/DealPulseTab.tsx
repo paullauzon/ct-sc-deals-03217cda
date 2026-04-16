@@ -8,7 +8,7 @@ import { format, parseISO, differenceInDays, addDays, isBefore } from "date-fns"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { computeDealHealthScore } from "@/lib/dealHealthUtils";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
 const ACTIVE_STAGES = new Set(["Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"]);
 
 function KpiCard({ label, value, subValue, icon: Icon, accent }: { label: string; value: string; subValue?: string; icon: typeof Activity; accent?: string }) {

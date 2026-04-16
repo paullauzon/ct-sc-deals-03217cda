@@ -214,7 +214,7 @@ function LinkedInCandidates({ lead, onSelect }: { lead: Lead; onSelect: (url: st
 
 function DealProgressBar({ currentStage }: { currentStage: LeadStage }) {
   const currentIdx = ACTIVE_STAGES.indexOf(currentStage);
-  const isClosed = ["Closed Won", "Closed Lost", "Went Dark"].includes(currentStage);
+  const isClosed = ["Closed Won", "Lost", "Went Dark"].includes(currentStage);
   return (
     <div className="space-y-1">
       <div className="flex gap-0.5">
@@ -459,7 +459,7 @@ export default function DealRoom() {
   const dealHealth = computeDealHealthScore(lead);
   const winLose = getWinLoseCard(lead);
   const coverage = getStakeholderCoverage(lead);
-  const isClosed = lead.stage === "Closed Won" || lead.stage === "Closed Lost";
+  const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost";
   const similarWon = isClosed ? [] : findSimilarWonDeals(lead, leads);
   const droppedPromises = getDroppedPromises(lead);
   const nextBestAction = isClosed ? null : getNextBestAction(lead);
@@ -753,7 +753,7 @@ export default function DealRoom() {
                     <div><span className="text-muted-foreground block text-xs">Cycle Days</span><span className="font-medium">{lead.closedDate && lead.dateSubmitted ? Math.max(1, Math.floor((new Date(lead.closedDate).getTime() - new Date(lead.dateSubmitted).getTime()) / 86400000)) : "—"}</span></div>
                   </div>
                   {lead.stage === "Closed Won" && lead.wonReason && <p className="text-sm"><span className="text-muted-foreground">Won because: </span>{lead.wonReason}</p>}
-                  {lead.stage === "Closed Lost" && lead.lostReason && <p className="text-sm"><span className="text-muted-foreground">Lost because: </span>{lead.lostReason}</p>}
+                  {lead.stage === "Lost" && lead.lostReason && <p className="text-sm"><span className="text-muted-foreground">Lost because: </span>{lead.lostReason}</p>}
                 </div>
 
                 {/* What Went Right / Wrong */}

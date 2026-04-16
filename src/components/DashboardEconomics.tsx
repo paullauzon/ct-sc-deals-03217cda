@@ -180,7 +180,7 @@ export function DashboardEconomics({ leads }: Props) {
 
     for (const brand of BRANDS) {
       const brandLeads = leads.filter(
-        (l) => l.brand === brand && !["Closed Lost", "Went Dark"].includes(l.stage) && l.serviceInterest && l.serviceInterest !== "TBD"
+        (l) => l.brand === brand && !["Lost", "Went Dark"].includes(l.stage) && l.serviceInterest && l.serviceInterest !== "TBD"
       );
       const byService = new Map<string, Lead[]>();
       for (const l of brandLeads) {
@@ -548,7 +548,7 @@ function PricingIntelligence({ leads }: { leads: Lead[] }) {
             const val = parseInt(p.replace(/[$,]/g, ""), 10);
             if (val > 500 && val < 100000) {
               if (lead.stage === "Closed Won" && brandPricing[brand]) brandPricing[brand].wonPrices.push(val);
-              if (["Closed Lost", "Went Dark"].includes(lead.stage) && brandPricing[brand]) brandPricing[brand].lostPrices.push(val);
+              if (["Lost", "Went Dark"].includes(lead.stage) && brandPricing[brand]) brandPricing[brand].lostPrices.push(val);
             }
           }
         }
@@ -560,9 +560,9 @@ function PricingIntelligence({ leads }: { leads: Lead[] }) {
 
     // Budget-to-close correlation
     const budgetWon = budgetLeads.filter(l => l.stage === "Closed Won").length;
-    const budgetClosed = budgetLeads.filter(l => ["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)).length;
+    const budgetClosed = budgetLeads.filter(l => ["Closed Won", "Lost", "Went Dark"].includes(l.stage)).length;
     const noBudgetWon = noBudgetLeads.filter(l => l.stage === "Closed Won").length;
-    const noBudgetClosed = noBudgetLeads.filter(l => ["Closed Won", "Closed Lost", "Went Dark"].includes(l.stage)).length;
+    const noBudgetClosed = noBudgetLeads.filter(l => ["Closed Won", "Lost", "Went Dark"].includes(l.stage)).length;
 
     return {
       brandPricing,

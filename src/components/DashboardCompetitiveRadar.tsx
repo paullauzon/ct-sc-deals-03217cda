@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { Crosshair, TrendingUp, Mic } from "lucide-react";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
+const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
 
 const SENTIMENT_COLORS: Record<string, string> = {
   "Very Positive": "bg-emerald-500",
@@ -27,7 +27,7 @@ interface Props {
 
 export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: Props) {
   const activeLeads = useMemo(() => leads.filter(l => !CLOSED_STAGES.has(l.stage)), [leads]);
-  const lostLeads = useMemo(() => leads.filter(l => l.stage === "Closed Lost"), [leads]);
+  const lostLeads = useMemo(() => leads.filter(l => l.stage === "Lost"), [leads]);
 
   // ─── Block 1: Competitor Mentions ───
   const competitorData = useMemo(() => {
@@ -61,7 +61,7 @@ export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: 
         if (!compMap.has(c)) compMap.set(c, { active: [], lost: [], won: [], topStrength: "", topWeakness: "" });
         const entry = compMap.get(c)!;
         if (l.stage === "Closed Won") entry.won.push(l);
-        else if (l.stage === "Closed Lost") entry.lost.push(l);
+        else if (l.stage === "Lost") entry.lost.push(l);
         else if (!CLOSED_STAGES.has(l.stage)) entry.active.push(l);
 
         // Aggregate top strength/weakness from details
@@ -121,7 +121,7 @@ export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: 
       const avg = Math.round(ratios.reduce((s, r) => s + r, 0) / ratios.length);
 
       if (l.stage === "Closed Won") wonRatios.push(avg);
-      else if (l.stage === "Closed Lost") lostRatios.push(avg);
+      else if (l.stage === "Lost") lostRatios.push(avg);
       else if (!CLOSED_STAGES.has(l.stage)) activeRatios.push(avg);
     }
 

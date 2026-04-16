@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { Lead } from "@/types/lead";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Closed Lost", "Went Dark"]);
-const POST_MEETING_STAGES = new Set(["Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Closed Lost", "Went Dark"]);
+const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
+const POST_MEETING_STAGES = new Set(["Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Lost", "Went Dark"]);
 const ACTIVE_STAGE_ORDER = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 
 function pct(n: number, d: number) { return d > 0 ? Math.round((n / d) * 100) : 0; }
@@ -59,7 +59,7 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
       .map(([type, group]) => {
         const active = group.filter(l => !CLOSED_STAGES.has(l.stage));
         const won = group.filter(l => l.stage === "Closed Won");
-        const lost = group.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark");
+        const lost = group.filter(l => l.stage === "Lost" || l.stage === "Went Dark");
         const closed = won.length + lost.length;
         const wonCycleDays = won
           .map(l => {
@@ -101,7 +101,7 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
     function intentRow(label: string, group: Lead[]) {
       const active = group.filter(l => !CLOSED_STAGES.has(l.stage));
       const won = group.filter(l => l.stage === "Closed Won");
-      const closed = won.length + group.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark").length;
+      const closed = won.length + group.filter(l => l.stage === "Lost" || l.stage === "Went Dark").length;
       return {
         label,
         count: group.length,
@@ -142,7 +142,7 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
     const channelRows = Array.from(channelMap.entries())
       .map(([channel, group]) => {
         const won = group.filter(l => l.stage === "Closed Won");
-        const closed = won.length + group.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark").length;
+        const closed = won.length + group.filter(l => l.stage === "Lost" || l.stage === "Went Dark").length;
         return {
           channel,
           count: group.length,
@@ -159,7 +159,7 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
       const group = leads.filter(l => l.tier === t);
       const active = group.filter(l => !CLOSED_STAGES.has(l.stage));
       const won = group.filter(l => l.stage === "Closed Won");
-      const closed = won.length + group.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark").length;
+      const closed = won.length + group.filter(l => l.stage === "Lost" || l.stage === "Went Dark").length;
       return {
         tier: t,
         count: group.length,
@@ -192,7 +192,7 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
       .map(([region, group]) => {
         const active = group.filter(l => !CLOSED_STAGES.has(l.stage));
         const won = group.filter(l => l.stage === "Closed Won");
-        const closed = won.length + group.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark").length;
+        const closed = won.length + group.filter(l => l.stage === "Lost" || l.stage === "Went Dark").length;
         return {
           region,
           count: group.length,
@@ -231,7 +231,7 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
         return rev !== null && rev >= bucket.min && rev < bucket.max;
       });
       const won = group.filter(l => l.stage === "Closed Won");
-      const closed = won.length + group.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark").length;
+      const closed = won.length + group.filter(l => l.stage === "Lost" || l.stage === "Went Dark").length;
       return {
         label: bucket.label,
         count: group.length,
@@ -254,7 +254,7 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
       const group = leads.filter(l => l.dealValue >= bucket.min && l.dealValue < bucket.max && l.dealValue > 0);
       const active = group.filter(l => !CLOSED_STAGES.has(l.stage));
       const won = group.filter(l => l.stage === "Closed Won");
-      const closed = won.length + group.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark").length;
+      const closed = won.length + group.filter(l => l.stage === "Lost" || l.stage === "Went Dark").length;
       const wonCycleDays = won
         .map(l => {
           if (!l.dateSubmitted || !l.closedDate) return null;
@@ -279,7 +279,7 @@ export function DashboardPersonaMetrics({ leads, onSelectLead, onDrillDown }: Pr
       const group = leads.filter(l => l.icpFit === fit);
       const active = group.filter(l => !CLOSED_STAGES.has(l.stage));
       const won = group.filter(l => l.stage === "Closed Won");
-      const closed = won.length + group.filter(l => l.stage === "Closed Lost" || l.stage === "Went Dark").length;
+      const closed = won.length + group.filter(l => l.stage === "Lost" || l.stage === "Went Dark").length;
       const wonCycleDays = won
         .map(l => {
           if (!l.dateSubmitted || !l.closedDate) return null;
