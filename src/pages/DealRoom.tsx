@@ -161,6 +161,57 @@ function LinkedInOverride({ leadId, currentUrl, onSuccess }: { leadId: string; c
 
 const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 
+// Step 2: Multi-candidate disambiguation component
+function LinkedInCandidates({ lead, onSelect }: { lead: Lead; onSelect: (url: string) => void }) {
+  const [saving, setSaving] = useState<string | null>(null);
+  
+  // Parse candidates from linkedin_search_log (raw DB field)
+  const searchLog = (lead as any).linkedinSearchLog || (lead as any).linkedin_search_log;
+  const candidates: Array<{ url: string; snippet: string }> = searchLog?.candidates || [];
+  
+  if (candidates.length === 0) return null;
+  
+  const handleSelect = async (url: string) => {
+    setSaving(url);
+    try {
+      const { data, error } = await supabase.functions.invoke("backfill-linkedin", {
+        body: { leadId: lead.id, manualUrl: url },
+      });
+      if (error) throw error;
+      toast.success(`LinkedIn profile saved${data?.title ? `: ${data.title}` : ""}`);
+      onSelect(url);
+    } catch {
+      toast.error("Failed to save LinkedIn URL");
+    } finally {
+      setSaving(null);
+    }
+  };
+  
+  return (
+    <div className="mt-2 space-y-1">
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Possible Matches</p>
+      {candidates.map((c, i) => {
+        const slug = c.url.split("/in/")[1]?.split("?")[0] || c.url;
+        return (
+          <button
+            key={i}
+            onClick={() => handleSelect(c.url)}
+            disabled={saving === c.url}
+            className="w-full text-left rounded border border-border px-2 py-1.5 hover:bg-muted/50 transition-colors group"
+          >
+            <div className="flex items-center gap-1.5">
+              <Linkedin className="h-3 w-3 text-[#0A66C2] shrink-0" />
+              <span className="text-xs font-medium truncate">{slug}</span>
+              {saving === c.url && <Loader2 className="h-3 w-3 animate-spin ml-auto" />}
+            </div>
+            {c.snippet && <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{c.snippet.replace(/\(rejected:.*?\)|\(uncertain:.*?\)/g, "").trim()}</p>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function DealProgressBar({ currentStage }: { currentStage: LeadStage }) {
   const currentIdx = ACTIVE_STAGES.indexOf(currentStage);
   const isClosed = ["Closed Won", "Closed Lost", "Went Dark"].includes(currentStage);
@@ -609,9 +660,15 @@ export default function DealRoom() {
                 {lead.linkedinTitle || "LinkedIn Profile"}
               </a>
             ) : (
-              <LinkedInOverride leadId={lead.id} currentUrl={lead.linkedinUrl} onSuccess={(url, title) => {
-                updateLead(lead.id, { linkedinUrl: url, linkedinTitle: title || "" });
-              }} />
+              <>
+                <LinkedInOverride leadId={lead.id} currentUrl={lead.linkedinUrl} onSuccess={(url, title) => {
+                  updateLead(lead.id, { linkedinUrl: url, linkedinTitle: title || "" });
+                }} />
+                {/* Step 2: Multi-candidate disambiguation UI */}
+                <LinkedInCandidates lead={lead} onSelect={(url) => {
+                  updateLead(lead.id, { linkedinUrl: url });
+                }} />
+              </>
             )}
           </div>
           <div className="border-t border-border pt-3">
