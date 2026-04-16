@@ -257,7 +257,7 @@ async function callAI(
   // Phase C: Fallback to Lovable AI Gateway (Gemini)
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
-    throw new Error("OpenAI 429 after 4 retries and no LOVABLE_API_KEY for fallback");
+    throw new Error("OpenAI 429 after 3 retries and no LOVABLE_API_KEY for fallback");
   }
   
   const fallbackModel = model.includes("4o-mini") ? "google/gemini-2.5-flash" : "google/gemini-2.5-pro";
