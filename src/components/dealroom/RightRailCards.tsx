@@ -124,7 +124,7 @@ export function RightRailCards({ lead, allLeads }: RightRailCardsProps) {
               <div key={i} className="text-xs border border-border/60 rounded p-2">
                 <p className="font-medium truncate">{p.item}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {p.owner}{p.deadline ? ` · due ${p.deadline}` : ""}
+                  {p.owner}{p.daysOverdue > 0 ? ` · ${p.daysOverdue}d pending` : ""}
                 </p>
               </div>
             ))}
