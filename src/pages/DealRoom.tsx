@@ -165,8 +165,8 @@ const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeti
 function LinkedInCandidates({ lead, onSelect }: { lead: Lead; onSelect: (url: string) => void }) {
   const [saving, setSaving] = useState<string | null>(null);
   
-  // Parse candidates from linkedin_search_log (raw DB field)
-  const searchLog = (lead as any).linkedinSearchLog || (lead as any).linkedin_search_log;
+  // Parse candidates from linkedinSearchLog
+  const searchLog = lead.linkedinSearchLog;
   const candidates: Array<{ url: string; snippet: string }> = searchLog?.candidates || [];
   
   if (candidates.length === 0) return null;
