@@ -1042,6 +1042,15 @@ export function LeadsTable() {
   const [sortKey, setSortKey] = useState<SortKey>("dateSubmitted");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
+  const linkedinStats = useMemo(() => {
+    const total = leads.length;
+    const found = leads.filter(l => l.linkedinUrl && l.linkedinUrl.includes("linkedin.com/in/")).length;
+    const notFound = leads.filter(l => l.linkedinUrl === "").length;
+    const pending = total - found - notFound;
+    const pct = total > 0 ? Math.round((found / total) * 100) : 0;
+    return { total, found, notFound, pending, pct };
+  }, [leads]);
+
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -1217,7 +1226,10 @@ export function LeadsTable() {
             }
           }}>
             {linkedinEnriching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Linkedin className="w-4 h-4" />}
-            {linkedinEnriching ? "Enriching..." : "LinkedIn Enrich"}
+            {linkedinEnriching ? "Enriching..." : `LinkedIn Enrich`}
+            {linkedinStats.total > 0 && (
+              <span className="text-[10px] text-muted-foreground ml-1">({linkedinStats.found}/{linkedinStats.total})</span>
+            )}
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowBulk(true)}>
             <Zap className="w-4 h-4" /> Process Leads

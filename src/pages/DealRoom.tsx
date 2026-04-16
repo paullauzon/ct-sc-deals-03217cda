@@ -73,9 +73,10 @@ function DraftCard({ content, onSave, onRegenerate, onDiscard, isRegenerating }:
 
 // ─── Manual LinkedIn URL Override ───
 
-function LinkedInOverride({ leadId, onSuccess }: { leadId: string; onSuccess: (url: string, title: string | null) => void }) {
+function LinkedInOverride({ leadId, currentUrl, onSuccess }: { leadId: string; currentUrl?: string | null; onSuccess: (url: string, title: string | null) => void }) {
   const [url, setUrl] = useState("");
   const [saving, setSaving] = useState(false);
+  const [searching, setSearching] = useState(false);
 
   const handleSave = async () => {
     const trimmed = url.trim();
@@ -99,19 +100,59 @@ function LinkedInOverride({ leadId, onSuccess }: { leadId: string; onSuccess: (u
     }
   };
 
+  const handleResearch = async () => {
+    setSearching(true);
+    try {
+      // Clear existing URL first so the function re-searches
+      await supabase.from("leads").update({ linkedin_url: null }).eq("id", leadId);
+      const { data, error } = await supabase.functions.invoke("backfill-linkedin", {
+        body: { leadId, retryFailed: false },
+      });
+      if (error) throw error;
+      if (data?.found) {
+        toast.success("LinkedIn profile found");
+        // Refresh the lead data
+        const { data: updated } = await supabase.from("leads").select("linkedin_url, linkedin_title").eq("id", leadId).single();
+        if (updated?.linkedin_url) {
+          onSuccess(updated.linkedin_url, updated.linkedin_title);
+        }
+      } else {
+        toast("No LinkedIn profile found", { description: "Try pasting the URL manually" });
+      }
+    } catch (e) {
+      toast.error("Search failed");
+    } finally {
+      setSearching(false);
+    }
+  };
+
   return (
-    <div className="flex items-center gap-1.5 mt-1">
-      <Linkedin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-      <Input
-        value={url}
-        onChange={e => setUrl(e.target.value)}
-        placeholder="Paste LinkedIn URL"
-        className="h-6 text-xs px-2 flex-1"
-        onKeyDown={e => e.key === "Enter" && handleSave()}
-      />
-      {url.trim() && (
-        <Button variant="ghost" size="sm" className="h-6 px-1.5" onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+    <div className="space-y-1 mt-1">
+      <div className="flex items-center gap-1.5">
+        <Linkedin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <Input
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          placeholder="Paste LinkedIn URL"
+          className="h-6 text-xs px-2 flex-1"
+          onKeyDown={e => e.key === "Enter" && handleSave()}
+        />
+        {url.trim() && (
+          <Button variant="ghost" size="sm" className="h-6 px-1.5" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+          </Button>
+        )}
+      </div>
+      {!currentUrl && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 text-[10px] gap-1 w-full"
+          onClick={handleResearch}
+          disabled={searching}
+        >
+          {searching ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          Search Again
         </Button>
       )}
     </div>
@@ -568,7 +609,7 @@ export default function DealRoom() {
                 {lead.linkedinTitle || "LinkedIn Profile"}
               </a>
             ) : (
-              <LinkedInOverride leadId={lead.id} onSuccess={(url, title) => {
+              <LinkedInOverride leadId={lead.id} currentUrl={lead.linkedinUrl} onSuccess={(url, title) => {
                 updateLead(lead.id, { linkedinUrl: url, linkedinTitle: title || "" });
               }} />
             )}

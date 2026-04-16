@@ -8,7 +8,40 @@ const corsHeaders = {
 const BATCH_SIZE = 3;
 const DELAY_MS = 2000;
 const FLASH_MAX_TURNS = 7;
-const MAX_LEADS_PER_RUN = 5;
+const MAX_LEADS_PER_RUN = 10;
+const MAX_AUTO_CHAINS = 3; // up to 30 leads per button press
+
+// ─── Company Cache (shared across batch) ───
+interface CompanyCacheEntry {
+  linkedinPage?: string;
+  websiteLinks?: string[];
+  employeeSlugs?: string[];
+}
+type CompanyCache = Map<string, CompanyCacheEntry>;
+
+// ─── Fuzzy Company Name Matching ───
+function normalizeCompanyName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[,.'"""'']/g, "")
+    .replace(/\b(inc|incorporated|llc|llp|ltd|limited|corp|corporation|co|company|group|holdings|partners|lp|plc|gmbh|ag|sa|nv|bv)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fuzzyCompanyMatch(a: string, b: string): boolean {
+  const normA = normalizeCompanyName(a);
+  const normB = normalizeCompanyName(b);
+  if (normA === normB) return true;
+  if (!normA || !normB) return false;
+  // Check if one contains the other
+  if (normA.includes(normB) || normB.includes(normA)) return true;
+  // Word overlap: 2+ shared significant words
+  const wordsA = normA.split(" ").filter(w => w.length >= 3);
+  const wordsB = normB.split(" ").filter(w => w.length >= 3);
+  const shared = wordsA.filter(w => wordsB.includes(w));
+  return shared.length >= 2 || (shared.length >= 1 && Math.max(wordsA.length, wordsB.length) <= 2);
+}
 
 
 // ─── Firecrawl Search (v2 + 429 retry) ───
@@ -466,6 +499,8 @@ async function aiSearchAgent(
   rationalization: RationalizationResult | null = null,
   serperKey: string | null = null,
   previousSearchLog: any = null,
+  companyCache: CompanyCache | null = null,
+  supabaseForCrossLead: any = null,
 ): Promise<AgentResult> {
   const contextParts: string[] = [];
   contextParts.push(`Name: ${lead.name}`);
@@ -497,7 +532,7 @@ async function aiSearchAgent(
         
         for (const result of linkedinResults) {
           const snippet = `${result.title || ""} ${result.description || ""}`.toLowerCase();
-          const companyMatch = companyVariants.some(cv => snippet.includes(cv));
+          const companyMatch = companyVariants.some(cv => snippet.includes(cv)) || companyVariants.some(cv => fuzzyCompanyMatch(cv, snippet.substring(0, 200)));
           const allNames = [lead.name, ...(rationalization.name_variants || [])];
           const lastName = lead.name.split(/\s+/).pop()?.toLowerCase() || "";
           const nameMatch = lastName && snippet.includes(lastName);
@@ -532,7 +567,7 @@ async function aiSearchAgent(
         
         for (const result of serperLinkedins) {
           const snippet = `${result.title || ""} ${result.description || ""}`.toLowerCase();
-          const companyMatch = companyVariants.some(cv => snippet.includes(cv));
+          const companyMatch = companyVariants.some(cv => snippet.includes(cv)) || companyVariants.some(cv => fuzzyCompanyMatch(cv, snippet.substring(0, 200)));
           const lastName = lead.name.split(/\s+/).pop()?.toLowerCase() || "";
           const nameMatch = lastName && snippet.includes(lastName);
           
@@ -594,27 +629,91 @@ async function aiSearchAgent(
     }
   }
 
-  // Strategy A: Search company LinkedIn page for employees
+  // Strategy A: Search company LinkedIn page for employees (with cache)
+  const companyCacheKey = lead.company ? normalizeCompanyName(lead.company) : "";
+  const cachedCompany = companyCacheKey && companyCache ? companyCache.get(companyCacheKey) : undefined;
+  
   if (lead.company) {
-    const companyQuery = `"${lead.company}" site:linkedin.com/company`;
-    preSearchQueriesDone.push(companyQuery);
-    console.log(`  Pre-search: Company LinkedIn page for "${lead.company}"`);
-    const companyResults = await firecrawlSearch(companyQuery, firecrawlKey, 3, false);
-    const companyLinkedinUrl = companyResults.find(r => r.url.includes("linkedin.com/company/"))?.url;
-    if (companyLinkedinUrl) {
-      const scraped = await firecrawlScrape(companyLinkedinUrl, firecrawlKey);
-      if (scraped) {
-        const linkedinProfileLinks = scraped.match(/linkedin\.com\/in\/[a-zA-Z0-9_-]+/g) || [];
-        const uniqueLinks = [...new Set(linkedinProfileLinks)];
-        if (uniqueLinks.length > 0) {
-          preSearchResults.push(`Company LinkedIn page (${companyLinkedinUrl}) employee profiles found:\n${uniqueLinks.map(l => `https://${l}`).join("\n")}`);
-        }
-        const allNames = rationalization
-          ? [lead.name, ...rationalization.name_variants]
-          : [lead.name];
-        const anyNameMention = allNames.some(n => scraped.toLowerCase().includes(n.split(/\s+/)[0]?.toLowerCase()));
-        if (anyNameMention) {
-          preSearchResults.push(`The company LinkedIn page mentions a name variant — check the profile links above.`);
+    if (cachedCompany?.linkedinPage) {
+      console.log(`  Pre-search: Using cached company LinkedIn page for "${lead.company}"`);
+      if (cachedCompany.employeeSlugs && cachedCompany.employeeSlugs.length > 0) {
+        preSearchResults.push(`Company LinkedIn page (cached) employee profiles found:\n${cachedCompany.employeeSlugs.map(l => `https://linkedin.com/in/${l}`).join("\n")}`);
+      }
+    } else {
+      const companyQuery = `"${lead.company}" site:linkedin.com/company`;
+      preSearchQueriesDone.push(companyQuery);
+      console.log(`  Pre-search: Company LinkedIn page for "${lead.company}"`);
+      const companyResults = await firecrawlSearch(companyQuery, firecrawlKey, 3, false);
+      const companyLinkedinUrl = companyResults.find(r => r.url.includes("linkedin.com/company/"))?.url;
+      if (companyLinkedinUrl) {
+        const scraped = await firecrawlScrape(companyLinkedinUrl, firecrawlKey);
+        if (scraped) {
+          const linkedinProfileLinks = scraped.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/g) || [];
+          const uniqueSlugs = [...new Set(linkedinProfileLinks.map(l => l.replace("linkedin.com/in/", "")))];
+          
+          // Cache for future leads
+          if (companyCache && companyCacheKey) {
+            const entry = companyCache.get(companyCacheKey) || {};
+            entry.linkedinPage = companyLinkedinUrl;
+            entry.employeeSlugs = uniqueSlugs;
+            companyCache.set(companyCacheKey, entry);
+          }
+          
+          if (uniqueSlugs.length > 0) {
+            preSearchResults.push(`Company LinkedIn page (${companyLinkedinUrl}) employee profiles found:\n${uniqueSlugs.map(l => `https://linkedin.com/in/${l}`).join("\n")}`);
+            
+            // H: Cross-lead mining — resolve other leads from same company
+            if (supabaseForCrossLead && uniqueSlugs.length > 0) {
+              try {
+                const { data: sameCompanyLeads } = await supabaseForCrossLead
+                  .from("leads")
+                  .select("id, name, company, email")
+                  .is("linkedin_url", null)
+                  .neq("name", "")
+                  .limit(50);
+                
+                const companyLeads = (sameCompanyLeads || []).filter((cl: any) => 
+                  cl.id !== lead.name && cl.company && fuzzyCompanyMatch(cl.company, lead.company || "")
+                );
+                
+                for (const cl of companyLeads) {
+                  const clFirstName = cl.name.split(/\s+/)[0]?.toLowerCase() || "";
+                  const clLastName = cl.name.split(/\s+/).pop()?.toLowerCase() || "";
+                  const matchingSlugs = uniqueSlugs.filter(slug => {
+                    const slugLower = slug.toLowerCase();
+                    return (clFirstName && slugLower.includes(clFirstName)) || 
+                           (clLastName && clLastName.length >= 3 && slugLower.includes(clLastName));
+                  });
+                  
+                  if (matchingSlugs.length === 1) {
+                    const crossUrl = `https://www.linkedin.com/in/${matchingSlugs[0]}`;
+                    const crossSnippet = `Cross-lead match from ${lead.company} company page`;
+                    const crossVerify = await inlineVerify(
+                      { name: cl.name, company: cl.company, email: cl.email, companyUrl: null, websiteUrl: null, role: null, message: null, buyerType: null, serviceInterest: null, dealsPlanned: null, targetCriteria: null, targetRevenue: null, geography: null },
+                      crossUrl, crossSnippet, openaiKey,
+                    );
+                    if (crossVerify.verdict !== "wrong") {
+                      console.log(`  Cross-lead RESOLVED: ${cl.name} → ${crossUrl}`);
+                      await supabaseForCrossLead.from("leads").update({
+                        linkedin_url: crossUrl,
+                        linkedin_search_log: { cross_lead_match: true, source_lead: lead.name, url: crossUrl, resolved_at: new Date().toISOString() },
+                      }).eq("id", cl.id);
+                    }
+                  }
+                }
+              } catch (e) {
+                console.error(`  Cross-lead mining error:`, e);
+              }
+            }
+          }
+          
+          const allNames = rationalization
+            ? [lead.name, ...rationalization.name_variants]
+            : [lead.name];
+          const anyNameMention = allNames.some(n => scraped.toLowerCase().includes(n.split(/\s+/)[0]?.toLowerCase()));
+          if (anyNameMention) {
+            preSearchResults.push(`The company LinkedIn page mentions a name variant — check the profile links above.`);
+          }
         }
       }
     }
@@ -653,22 +752,42 @@ async function aiSearchAgent(
     }
   }
 
-  // Strategy C: Scrape company website for LinkedIn links
+  // Strategy C: Scrape company website for LinkedIn links (with cache)
   const companyWebsite = lead.companyUrl || lead.websiteUrl;
   if (companyWebsite && !companyWebsite.includes("linkedin.com")) {
-    console.log(`  Pre-search: Scraping company website "${companyWebsite}" for LinkedIn links`);
-    const websiteContent = await firecrawlScrape(companyWebsite, firecrawlKey);
-    if (websiteContent) {
-      const websiteLinkedIns = websiteContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/g) || [];
-      const uniqueWebsiteLinks = [...new Set(websiteLinkedIns)];
-      if (uniqueWebsiteLinks.length > 0) {
-        const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
-        const matchingLinks = uniqueWebsiteLinks.filter(l => {
-          const slug = l.split("/in/")[1]?.toLowerCase() || "";
-          return slug.includes(nameFirst) || slug.includes(nameFirst.substring(0, 3));
-        });
-        const linksToReport = matchingLinks.length > 0 ? matchingLinks : uniqueWebsiteLinks;
-        preSearchResults.push(`IMPORTANT — LinkedIn URLs found on company website (${companyWebsite}):\n${linksToReport.join("\n")}\nThese are HIGH-PRIORITY candidates. Try to verify these FIRST by searching for the slug.`);
+    const cachedWebsite = companyCacheKey && companyCache ? companyCache.get(companyCacheKey) : undefined;
+    if (cachedWebsite?.websiteLinks && cachedWebsite.websiteLinks.length > 0) {
+      console.log(`  Pre-search: Using cached website LinkedIn links for "${lead.company}"`);
+      const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
+      const matchingLinks = cachedWebsite.websiteLinks.filter(l => {
+        const slug = l.split("/in/")[1]?.toLowerCase() || "";
+        return slug.includes(nameFirst) || slug.includes(nameFirst.substring(0, 3));
+      });
+      const linksToReport = matchingLinks.length > 0 ? matchingLinks : cachedWebsite.websiteLinks;
+      preSearchResults.push(`IMPORTANT — LinkedIn URLs found on company website (cached):\n${linksToReport.join("\n")}\nThese are HIGH-PRIORITY candidates.`);
+    } else {
+      console.log(`  Pre-search: Scraping company website "${companyWebsite}" for LinkedIn links`);
+      const websiteContent = await firecrawlScrape(companyWebsite, firecrawlKey);
+      if (websiteContent) {
+        const websiteLinkedIns = websiteContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/g) || [];
+        const uniqueWebsiteLinks = [...new Set(websiteLinkedIns)];
+        
+        // Cache for future leads
+        if (companyCache && companyCacheKey) {
+          const entry = companyCache.get(companyCacheKey) || {};
+          entry.websiteLinks = uniqueWebsiteLinks;
+          companyCache.set(companyCacheKey, entry);
+        }
+        
+        if (uniqueWebsiteLinks.length > 0) {
+          const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
+          const matchingLinks = uniqueWebsiteLinks.filter(l => {
+            const slug = l.split("/in/")[1]?.toLowerCase() || "";
+            return slug.includes(nameFirst) || slug.includes(nameFirst.substring(0, 3));
+          });
+          const linksToReport = matchingLinks.length > 0 ? matchingLinks : uniqueWebsiteLinks;
+          preSearchResults.push(`IMPORTANT — LinkedIn URLs found on company website (${companyWebsite}):\n${linksToReport.join("\n")}\nThese are HIGH-PRIORITY candidates. Try to verify these FIRST by searching for the slug.`);
+        }
       }
     }
   }
@@ -892,6 +1011,7 @@ async function processLead(
   model: string,
   maxTurns: number,
   serperKey: string | null = null,
+  companyCache: CompanyCache | null = null,
 ): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
   const leadContext: LeadContext = {
     name: lead.name,
@@ -943,7 +1063,7 @@ async function processLead(
     }
   }
 
-  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, serperKey, previousSearchLog);
+  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, serperKey, previousSearchLog, companyCache, supabase);
 
   // ─── Phase 1B: Inline verification before writing ───
   if (agentResult.url) {
@@ -1174,8 +1294,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ─── Batch mode ───
-    console.log(`Single pass: gpt-4o-mini (${FLASH_MAX_TURNS} turns), max ${MAX_LEADS_PER_RUN} leads per run`);
+    // ─── Batch mode with auto-continuation ───
+    console.log(`Batch mode: gpt-4o-mini (${FLASH_MAX_TURNS} turns), max ${MAX_LEADS_PER_RUN} leads per run, up to ${MAX_AUTO_CHAINS} chains`);
 
     // Step 0: Extract LinkedIn URLs already stored in company_url
     const { data: linkedinInCompanyUrl } = await supabase
@@ -1191,87 +1311,105 @@ Deno.serve(async (req) => {
       console.log(`Extracted ${linkedinInCompanyUrl.length} LinkedIn URLs from company_url field`);
     }
 
-    // Get leads needing LinkedIn lookup
-    let leadsQuery = supabase
-      .from("leads")
-      .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience, linkedin_search_log");
+    // D: Company-level cache shared across all leads in batch
+    const companyCache: CompanyCache = new Map();
+    
+    let totalFound = 0;
+    let totalProcessed = 0;
+    const allGaveUpReasons: string[] = [];
+    let totalTurns = 0;
+    let totalGaveUp = 0;
+    let chainsRun = 0;
 
-    if (retryFailed) {
-      leadsQuery = leadsQuery.eq("linkedin_url", "");
-      console.log("retryFailed=true: re-processing previously failed leads");
-    } else {
-      leadsQuery = leadsQuery.is("linkedin_url", null);
-    }
+    for (let chain = 0; chain < MAX_AUTO_CHAINS; chain++) {
+      chainsRun++;
+      
+      // Get leads needing LinkedIn lookup
+      let leadsQuery = supabase
+        .from("leads")
+        .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience, linkedin_search_log");
 
-    const { data: leads, error } = await leadsQuery
-      .neq("name", "")
-      .order("created_at", { ascending: false })
-      .limit(MAX_LEADS_PER_RUN);
-
-    if (error) throw error;
-
-    // Use relaxed name filter
-    const validLeads = (leads || []).filter(isValidLeadForSearch);
-
-    if (validLeads.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, processed: 0, message: "No leads need LinkedIn backfill" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    console.log(`\n=== Processing ${validLeads.length} leads with gpt-4o-mini ===`);
-    let found = 0;
-    let processed = 0;
-    const agentStats = { totalTurns: 0, gaveUp: 0, gaveUpReasons: [] as string[] };
-
-    for (const lead of validLeads) {
-      processed++;
-      console.log(`\n[${processed}/${validLeads.length}] ${lead.name} (${lead.company})`);
-
-      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, SERPER_API_KEY);
-      agentStats.totalTurns += result.turnsUsed;
-
-      if (result.found) {
-        found++;
-        console.log(`  MATCHED (${result.turnsUsed} turns)`);
+      if (retryFailed) {
+        leadsQuery = leadsQuery.eq("linkedin_url", "");
+        if (chain === 0) console.log("retryFailed=true: re-processing previously failed leads");
       } else {
-        agentStats.gaveUp++;
-        if (result.gaveUpReason) {
-          agentStats.gaveUpReasons.push(`${lead.name}: ${result.gaveUpReason}`);
-        }
-        console.log(`  NO MATCH (${result.turnsUsed} turns): ${result.gaveUpReason}`);
+        leadsQuery = leadsQuery.is("linkedin_url", null);
       }
 
-      await new Promise((r) => setTimeout(r, 500));
+      const { data: leads, error } = await leadsQuery
+        .neq("name", "")
+        .order("created_at", { ascending: false })
+        .limit(MAX_LEADS_PER_RUN);
+
+      if (error) throw error;
+
+      const validLeads = (leads || []).filter(isValidLeadForSearch);
+
+      if (validLeads.length === 0) {
+        if (chain === 0) {
+          return new Response(
+            JSON.stringify({ success: true, processed: 0, message: "No leads need LinkedIn backfill" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        break; // No more leads to process
+      }
+
+      console.log(`\n=== Chain ${chain + 1}/${MAX_AUTO_CHAINS}: Processing ${validLeads.length} leads with gpt-4o-mini ===`);
+
+      for (const lead of validLeads) {
+        totalProcessed++;
+        console.log(`\n[${totalProcessed}] ${lead.name} (${lead.company})`);
+
+        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, SERPER_API_KEY, companyCache);
+        totalTurns += result.turnsUsed;
+
+        if (result.found) {
+          totalFound++;
+          console.log(`  MATCHED (${result.turnsUsed} turns)`);
+        } else {
+          totalGaveUp++;
+          if (result.gaveUpReason) {
+            allGaveUpReasons.push(`${lead.name}: ${result.gaveUpReason}`);
+          }
+          console.log(`  NO MATCH (${result.turnsUsed} turns): ${result.gaveUpReason}`);
+        }
+
+        await new Promise((r) => setTimeout(r, 500));
+      }
+
+      // Check if more remain
+      let remainingQuery = supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .neq("name", "");
+
+      if (retryFailed) {
+        remainingQuery = remainingQuery.eq("linkedin_url", "");
+      } else {
+        remainingQuery = remainingQuery.is("linkedin_url", null);
+      }
+
+      const { count: remaining } = await remainingQuery;
+      console.log(`Chain ${chain + 1} complete: ${remaining || 0} leads remaining`);
+      
+      if (!remaining || remaining <= 0) break;
     }
 
-    // Check how many remain
-    let remainingQuery = supabase
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .neq("name", "");
-
-    if (retryFailed) {
-      remainingQuery = remainingQuery.eq("linkedin_url", "");
-    } else {
-      remainingQuery = remainingQuery.is("linkedin_url", null);
-    }
-
-    const { count: remaining } = await remainingQuery;
-
-    const avgTurns = processed > 0 ? (agentStats.totalTurns / processed).toFixed(1) : "0";
-    console.log(`\nRun complete: ${found}/${processed} matched, ${remaining || 0} leads remaining`);
+    const avgTurns = totalProcessed > 0 ? (totalTurns / totalProcessed).toFixed(1) : "0";
+    console.log(`\nAll chains complete: ${totalFound}/${totalProcessed} matched across ${chainsRun} chains, cache had ${companyCache.size} companies`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        processed,
-        found,
-        remaining: remaining || 0,
+        processed: totalProcessed,
+        found: totalFound,
+        remaining: 0,
         avgTurnsPerLead: parseFloat(avgTurns),
-        gaveUp: agentStats.gaveUp,
-        gaveUpReasons: agentStats.gaveUpReasons,
+        gaveUp: totalGaveUp,
+        gaveUpReasons: allGaveUpReasons,
+        chainsRun,
+        companyCacheHits: companyCache.size,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
