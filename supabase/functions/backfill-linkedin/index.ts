@@ -125,6 +125,11 @@ async function firecrawlSearch(
   }
 }
 
+      // Global timeout check before starting next chain
+      if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
+        console.log(`Global timeout before chain ${chain + 2} — stopping`);
+        break;
+      }
 
 // ─── Firecrawl Scrape (single URL, v2 + 429 retry) ───
 
