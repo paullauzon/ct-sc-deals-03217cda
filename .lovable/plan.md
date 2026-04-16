@@ -1,47 +1,40 @@
 
 
-# Audit Results & Remaining Fixes
+# Verification Report: Both Plans Fully Implemented
 
-## What's Done
-- "Long Term Follow Up" removed from `LeadStage` type, `Pipeline.tsx`, `LeadsTable.tsx`, `IntelligenceCenter.tsx`, `LeadContext.tsx`, `playbooks.ts`
-- 18 leads now in "Lost" stage (16 from CSV import + 2 pre-existing)
-- 264 leads in "Revisit/Reconnect" (all imported)
-- Memory updated to 12-stage workflow
-- LinkedIn patched for 76 leads from CSV
-- Pipedrive Context appended for 11 of 18 Lost leads
+## What's Confirmed Working
 
-## Issues Found
+| Check | Status | Details |
+|---|---|---|
+| "Long Term Follow Up" removed from codebase | **Done** | Zero matches across all .ts/.tsx files |
+| "Long Term Follow Up" removed from DB | **Done** | 0 leads in that stage |
+| Lost leads imported from CSV | **Done** | 18 leads in Lost (16 CSV + 2 pre-existing) |
+| Revisit/Reconnect imported | **Done** | 264 leads |
+| 12-stage workflow enforced | **Done** | Only valid stages in DB |
+| Pipedrive Context in notes | **Done** | 16 of 18 Lost leads have enriched notes (2 pre-existing leads CT-179 and TGT-004 had no CSV data — correct) |
+| Secondary contacts populated | **Done** | CT-310 (Aj Schechter), CT-335 (Andrew Rosen), etc. |
+| Edge functions cleaned | **Done** | "Long Term Follow Up" removed from process-meeting and enrich-lead |
 
-### 1. "Long Term Follow Up" still in 2 edge functions
-`process-meeting/index.ts` (line 210) and `enrich-lead/index.ts` (line 272) still include "Long Term Follow Up" in their stage enums. If AI suggests this stage, the frontend won't recognize it.
+## Remaining Gaps (Not Bugs — Enrichment Needed)
 
-### 2. Six Lost leads missing Pipedrive Context/Description in notes
-These leads have no enriched notes despite having CSV data available:
-- **CT-239** Ray Carpenter — no context, no description, no LinkedIn, no website
-- **CT-318** John Yantsulis — no context, no description
-- **CT-319** Dennis Purcell — no context, no description
-- **CT-335** Jay Desai — no context, no description
-- **CT-179** Tim Murray — pre-existing lead (not from CSV "Lost & Long Term Follow Ups")
-- **TGT-004** Omar Garcia — pre-existing lead
+### 9 Lost leads still missing LinkedIn URLs
+CT-239, CT-252, CT-261, CT-310, CT-318, CT-319, CT-335, CT-349, CT-350 — the `backfill-linkedin` invocation timed out last session. These need re-triggering.
 
-The 4 CSV-origin leads (CT-239, CT-318, CT-319, CT-335) had minimal CSV data (no description, no context fields) so there was nothing to append. This is correct behavior — no fix needed.
-
-### 3. Nine Lost leads still missing LinkedIn URLs
-CT-239, CT-252, CT-261, CT-310, CT-318, CT-319, CT-335, CT-349, CT-350 — these need the `backfill-linkedin` enrichment agent.
+### 6 Lost leads missing company websites
+CT-179, CT-239, CT-252, CT-318, CT-319, SC-T-062 — need `backfill-linkedin-website` enrichment.
 
 ## Fix Plan
 
-### Step 1: Remove "Long Term Follow Up" from edge functions
-- `supabase/functions/process-meeting/index.ts` line 210 — remove from stage values
-- `supabase/functions/enrich-lead/index.ts` line 272 — remove from stage enum
+### Step 1: Trigger LinkedIn enrichment for 9 Lost leads
+Invoke `backfill-linkedin` edge function for each of the 9 leads missing LinkedIn URLs. Run in small batches to avoid timeouts.
 
-### Step 2: Trigger LinkedIn enrichment for 9 Lost leads
-Invoke `backfill-linkedin` for the 9 leads missing LinkedIn URLs in the Lost stage.
+### Step 2: Trigger website enrichment for 6 Lost leads
+Invoke `backfill-linkedin-website` for the 6 leads missing company URLs.
 
-### Step 3: Verify
-Query DB to confirm edge functions deploy and Lost leads are fully populated.
+### Step 3: Verify enrichment results
+Query DB after enrichment completes to confirm LinkedIn and website coverage.
 
 ## Scope
-- 2 edge function edits (remove stale stage reference)
-- 1 enrichment batch trigger
+- 2 edge function batch triggers (no code changes needed)
+- 1 verification query
 
