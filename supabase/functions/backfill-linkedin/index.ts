@@ -619,13 +619,14 @@ async function aiSearchAgent(
             console.log(`  Quick-match candidate: ${url} — running inline verification...`);
             
             // A: Add inline verification to quick-match path
-            const verification = await inlineVerify(lead, url, snippetFull, openaiKey);
+            const nameVars = rationalization?.name_variants || [];
+            const verification = await inlineVerify(lead, url, snippetFull, openaiKey, nameVars);
             if (verification.verdict === "wrong") {
               console.log(`  Quick-match REJECTED by inline verify: ${verification.reason}`);
               continue; // try next result
             }
             console.log(`  Quick-match VERIFIED (${verification.verdict}): ${url}`);
-            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: snippetFull };
+            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: snippetFull, verified: true };
           }
         }
       }
@@ -652,13 +653,14 @@ async function aiSearchAgent(
             const snippetFull = `${result.title || ""} ${result.description || ""}`;
             console.log(`  Quick-match retry candidate: ${url} — running inline verification...`);
             
-            const verification = await inlineVerify(lead, url, snippetFull, openaiKey);
+            const nameVars2 = rationalization?.name_variants || [];
+            const verification = await inlineVerify(lead, url, snippetFull, openaiKey, nameVars2);
             if (verification.verdict === "wrong") {
               console.log(`  Quick-match retry REJECTED: ${verification.reason}`);
               continue;
             }
             console.log(`  Quick-match retry VERIFIED (${verification.verdict}): ${url}`);
-            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: snippetFull };
+            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: snippetFull, verified: true };
           }
         }
       }
