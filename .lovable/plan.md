@@ -1,56 +1,48 @@
 
 
-# Import Gap Fix: LinkedIn, Kick-Off Meetings, and Missing Context
+# Remove "Long Term Follow Up" Stage & Import CSV "Lost & Long Term Follow Ups" as "Lost"
 
-## Current State (280 leads in Revisit/Reconnect)
+## What the user wants
 
-| Field | Has Data | Missing | Issue |
-|---|---|---|---|
-| LinkedIn URL | 47 | **233** | CSV column 38 ("Main LinkedIn Profile") was never mapped during import |
-| Kick-Off Meetings | **0** | ~15+ | Fix script ran but `meetings_added: 0` — likely column index mismatch |
-| Pipedrive Context in notes | 159 | 121 | 121 had no data in context columns — correct |
-| Billing/contract data | 9 | 271 | Fix script only found 0 new billing rows — column parsing issue |
-| Scoring | 280 | 0 | Done |
-| Owners | 280 | 0 | Done |
-| Websites | 172 | 108 | Need AI enrichment for these |
-| Fireflies URL | 110 | 170 | Already captured what CSV had |
+1. **Remove** the "Long Term Follow Up" stage entirely from the system
+2. **Import** all CSV rows with stage "Lost & Long Term Follow Ups" into our "Lost" stage — with the same full data enrichment treatment (notes, LinkedIn, secondary contacts, billing, Pipedrive context, etc.) that Revisit/Reconnect leads received
+3. Confirm all existing Revisit/Reconnect imports are complete
 
-## Root Causes
+## Current state
 
-1. **LinkedIn URLs from CSV never imported.** The original Python import script didn't map CSV column 38 to `linkedin_url`. The fix script also didn't address it. ~80+ leads in the CSV have a LinkedIn URL that's sitting unimported.
+- **280 leads** in Revisit/Reconnect (imported and enriched)
+- **2 leads** in Lost (pre-existing)
+- **0 leads** in Long Term Follow Up
+- CSV has "Lost & Long Term Follow Ups" stage rows that were **never imported** (the original script only targeted Revisit/Reconnect)
 
-2. **Kick-Off Call URLs not stored.** The fix script reported `meetings_added: 0` — the column index for "FireFlies Kick-Off Call" (col 43) may have been misread due to multi-line CSV fields causing row/column misalignment.
+## Implementation
 
-3. **Contract billing amounts barely populated (9 total).** Same multi-line CSV parsing issue likely shifted columns for many rows.
+### Step 1: Remove "Long Term Follow Up" from the codebase
 
-## Fix Plan
+Files to edit:
+- `src/types/lead.ts` — remove from `LeadStage` union
+- `src/components/Pipeline.tsx` — remove from `ALL_STAGES` and `CLOSED_STAGES`
+- `src/components/LeadsTable.tsx` — remove from `STAGES`
+- `src/components/IntelligenceCenter.tsx` — remove from stage order array
+- `src/contexts/LeadContext.tsx` — remove from stage list
+- `src/lib/playbooks.ts` — remove the "long-term-follow-up" playbook
 
-### Step 1: Re-parse CSV and patch LinkedIn, kick-off calls, and billing
-Write a corrected Python script that:
-- Uses Python `csv` module (handles multi-line correctly)
-- For each CSV row matched by email to a DB lead, **UPDATE**:
-  - `linkedin_url` from column 38 ("Main LinkedIn Profile") — only if lead currently has no LinkedIn
-  - `meetings` array — append kick-off call from column 43 ("FireFlies Kick-Off Call") if it's a URL
-  - `subscription_value` from column 34 ("Contract Billing Amount") — if currently 0
-  - `contract_start` from column 32 ("First Payment Date")
-  - `contract_end` from column 33 ("Contractual End Date")
-- Match by email (lowercase) against existing DB leads
-- Log counts for each field updated
+### Step 2: Import "Lost & Long Term Follow Ups" CSV rows into "Lost"
 
-### Step 2: Trigger `backfill-linkedin` for remaining gaps
-After importing CSV LinkedIn URLs, ~150+ leads will still lack LinkedIn. These need the AI enrichment agent. Run `backfill-linkedin` in batches (5 per run, ~30 runs needed).
+Python script via `code--exec` that:
+- Parses the full CSV with proper multi-line field handling
+- Filters rows where Stage = "Lost & Long Term Follow Ups"
+- For each row, either matches an existing DB lead by email (update) or creates a new lead with `CT-` prefix
+- Sets `stage = 'Lost'`
+- Maps all fields identically to the Revisit/Reconnect import: name, email, company, deal value, owner, LinkedIn, website, secondary contacts, service interest, EBITDA/revenue, referral source, meetings, contract data
+- Appends "Pipedrive Context" block to notes with: Firm Type, Next Steps, Onboarding Guide, Deal Term, Credit Details, EBITDA
+- Folds the full CSV Description into notes (this contains the "why they didn't buy" narrative)
 
-### Step 3: Trigger `backfill-linkedin-website` for 108 leads missing websites
-Run the website enrichment for leads with no `company_url`.
+### Step 3: Update memory
 
-### Step 4: Update pipeline memory
-Update `mem://features/pipeline-workflow` from 11 to 13 stages.
+Update `mem://features/pipeline-workflow` to reflect 12 stages (Long Term Follow Up removed).
 
-## No schema changes needed
-All fields already exist in the database.
+### Step 4: Verify
 
-## Estimated scope
-- 1 Python script via `code--exec` (CSV re-parse + DB patch)
-- 2-3 edge function invocations for enrichment batches
-- 1 memory file update
+Query DB to confirm all "Lost & Long Term Follow Ups" rows are now in the Lost stage with complete data.
 
