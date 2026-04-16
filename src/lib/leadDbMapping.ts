@@ -69,6 +69,9 @@ export function leadToRow(lead: Lead): Record<string, any> {
     calendly_event_name: lead.calendlyEventName,
     calendly_event_type: lead.calendlyEventType,
     calendly_event_duration: lead.calendlyEventDuration,
+    secondary_contacts: lead.secondaryContacts || [],
+    google_drive_link: lead.googleDriveLink,
+    forecasted_close_date: lead.forecastedCloseDate,
   };
 }
 
