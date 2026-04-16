@@ -1644,6 +1644,11 @@ Deno.serve(async (req) => {
       console.log(`Chain ${chain + 1} complete: ${remaining || 0} leads remaining`);
       
       if (!remaining || remaining <= 0) break;
+      // Global timeout check before starting next chain
+      if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
+        console.log(`Global timeout before chain ${chain + 2} — stopping`);
+        break;
+      }
     }
 
     const avgTurns = totalProcessed > 0 ? (totalTurns / totalProcessed).toFixed(1) : "0";
