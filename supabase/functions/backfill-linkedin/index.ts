@@ -1462,6 +1462,7 @@ Deno.serve(async (req) => {
   }
 
   const SERPER_API_KEY = Deno.env.get("SERPER_API_KEY") || null;
+  _serperExhausted = false; // Reset per invocation
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -1570,7 +1571,7 @@ Deno.serve(async (req) => {
       const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o", 8, SERPER_API_KEY, null, Date.now());
       console.log(`[single-lead] ${lead.name}: ${result.found ? "FOUND" : "NOT FOUND"} (${result.turnsUsed} turns)`);
 
-      return new Response(JSON.stringify({ success: true, found: result.found, turnsUsed: result.turnsUsed }), {
+      return new Response(JSON.stringify({ success: true, found: result.found, turnsUsed: result.turnsUsed, serper_exhausted: _serperExhausted }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -1704,6 +1705,7 @@ Deno.serve(async (req) => {
         gaveUpReasons: allGaveUpReasons,
         chainsRun,
         companyCacheHits: companyCache.size,
+        serper_exhausted: _serperExhausted,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
