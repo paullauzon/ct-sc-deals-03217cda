@@ -1048,7 +1048,18 @@ export function LeadsTable() {
     const notFound = leads.filter(l => l.linkedinUrl === "").length;
     const pending = total - found - notFound;
     const pct = total > 0 ? Math.round((found / total) * 100) : 0;
-    return { total, found, notFound, pending, pct };
+    
+    // Failure pattern breakdown for not-found leads
+    const failedLeads = leads.filter(l => l.linkedinUrl === "");
+    const noCompany = failedLeads.filter(l => !l.company || l.company.trim() === "").length;
+    const singleName = failedLeads.filter(l => l.name.split(/\s+/).filter(p => p.length >= 2).length < 2 && l.company).length;
+    const personalEmail = failedLeads.filter(l => {
+      const domain = l.email?.split("@")[1]?.toLowerCase() || "";
+      return ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com", "icloud.com", "protonmail.com"].includes(domain);
+    }).length;
+    const otherFailures = notFound - noCompany - singleName;
+    
+    return { total, found, notFound, pending, pct, noCompany, singleName, personalEmail, otherFailures: Math.max(0, otherFailures) };
   }, [leads]);
 
   const toggleSort = (key: SortKey) => {
