@@ -1053,12 +1053,12 @@ async function aiSearchAgent(
         console.log(`  Turn ${turn + 1}: Searching "${parsed.query}"`);
         let results = await firecrawlSearch(parsed.query, firecrawlKey, 5, true);
 
-        // Serper fallback if Firecrawl returns 0 results
-        if (results.length === 0 && serperKey) {
-          console.log(`  Turn ${turn + 1}: Firecrawl empty, trying Serper fallback`);
-          const serperResults = await serperSearch(parsed.query, serperKey, 5);
-          if (serperResults.length > 0) {
-            results = serperResults;
+        // Firecrawl retry if first search returned 0 results
+        if (results.length === 0) {
+          console.log(`  Turn ${turn + 1}: Firecrawl empty, retrying with metadata-only`);
+          const retryResults = await firecrawlSearch(parsed.query, firecrawlKey, 5, false);
+          if (retryResults.length > 0) {
+            results = retryResults;
           }
         }
 
