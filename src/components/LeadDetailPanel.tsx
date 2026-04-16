@@ -53,7 +53,6 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
   // ---- All hooks above this line. Early return is now safe. ----
   if (!lead) return null;
 
-  // Move callbacks ABOVE the early return so hook order is stable
   const handleEnrich = useCallback(async () => {
     if (!lead || lead.enrichmentStatus === "running") return;
     setEnriching(true);
@@ -75,7 +74,6 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
         if (intel.dealSignals?.buyingIntent) intents.push(intel.dealSignals.buyingIntent);
       }
       const meetingIntelligence = { objections: [...new Set(allObjections)], painPoints: [...new Set(allPainPoints)], competitors: [...new Set(allCompetitors)], champions: [...new Set(allChampions)], actionItems: allActionItems, sentiments, intents };
-
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
       const days = computeDaysInStage(lead.stageEnteredDate);
@@ -135,7 +133,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
     finally { setDraftingAI(false); }
   }, [lead]);
 
-  // ---- Now safe to early-return; all hooks have run ----
+  // ---- Now safe: all hooks above this line ----
   if (!lead) return null;
 
   const days = computeDaysInStage(lead.stageEnteredDate);

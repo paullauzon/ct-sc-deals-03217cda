@@ -12,17 +12,27 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
-import { Sparkles, RefreshCw, Linkedin, CalendarCheck, Archive, MoreHorizontal } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Sparkles, RefreshCw, Linkedin, CalendarCheck, Archive, MoreHorizontal, Zap, Target, ChevronRight } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+import { format, parseISO } from "date-fns";
 
 // Re-export the new HubSpot-style full-screen lead panel so all 6 import sites
 // (Pipeline, ActionQueue, Dashboard, BusinessSystem, IntelligenceCenter, Index/Cmd+K)
 // pick it up without changing their import paths.
 export { LeadDetailPanel as LeadDetail } from "@/components/LeadDetailPanel";
+
+// Local alias for the JSX self-reference inside <LeadsTable />.
+import { LeadDetailPanel as LeadDetail } from "@/components/LeadDetailPanel";
+
+const STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Lost", "Went Dark", "Closed Won"];
 
 const SOURCE_LABELS: Record<LeadSource, string> = {
   "CT Contact Form": "CT Contact",
