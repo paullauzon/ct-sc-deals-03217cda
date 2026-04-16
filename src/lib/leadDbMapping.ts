@@ -127,6 +127,7 @@ export function rowToLead(row: Record<string, any>): Lead {
     firefliesNextSteps: row.fireflies_next_steps || "",
     linkedinUrl: row.linkedin_url || "",
     linkedinTitle: row.linkedin_title || "",
+    linkedinSearchLog: row.linkedin_search_log || undefined,
     meetings: Array.isArray(row.meetings) ? row.meetings : [],
     submissions: Array.isArray(row.submissions) ? row.submissions : [],
     enrichment: row.enrichment || undefined,

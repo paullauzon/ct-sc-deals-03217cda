@@ -461,6 +461,7 @@ export interface Lead {
   // LinkedIn
   linkedinUrl: string;
   linkedinTitle: string;
+  linkedinSearchLog?: any;
   createdAt: string;
   calendlyBookedAt: string;
   calendlyEventName: string;
