@@ -1221,9 +1221,7 @@ export function LeadsTable() {
                 const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { retry_failed: true } });
                 if (error) throw error;
                 if (data?.error) throw new Error(data.error);
-                const found = data?.results?.filter((r: any) => r.linkedin_url)?.length || 0;
-                const total = data?.results?.length || 0;
-                toast.success(`LinkedIn: ${found}/${total} profiles found`);
+                toast.success(`LinkedIn: ${data?.found || 0}/${data?.processed || 0} profiles found (${data?.chainsRun || 1} chains)`);
                 refreshLeads();
               } catch (err) {
                 toast.error("LinkedIn enrichment failed: " + (err as Error).message);
@@ -1267,14 +1265,12 @@ export function LeadsTable() {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={async () => {
                   setLinkedinEnriching(true);
-                  toast.info("Enriching leads without LinkedIn profiles...");
+                  toast.info("Enriching leads with no LinkedIn profile (never searched)...");
                   try {
-                    const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { retry_failed: true } });
+                    const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: {} });
                     if (error) throw error;
                     if (data?.error) throw new Error(data.error);
-                    const found = data?.results?.filter((r: any) => r.linkedin_url)?.length || 0;
-                    const total = data?.results?.length || 0;
-                    toast.success(`LinkedIn: ${found}/${total} profiles found`);
+                    toast.success(`Enrich Missing: ${data?.found || 0}/${data?.processed || 0} found (${data?.chainsRun || 1} chains)`);
                     refreshLeads();
                   } catch (err) {
                     toast.error("Enrichment failed: " + (err as Error).message);
@@ -1289,10 +1285,10 @@ export function LeadsTable() {
                   setLinkedinEnriching(true);
                   toast.info("Re-enriching leads searched 30+ days ago...");
                   try {
-                    const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { retry_failed: true, minAge: 30 } });
+                    const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { minAge: 30 } });
                     if (error) throw error;
                     if (data?.error) throw new Error(data.error);
-                    toast.success(`Stale re-enrichment: ${data?.found || 0}/${data?.processed || 0} found`);
+                    toast.success(`Stale re-enrichment: ${data?.found || 0}/${data?.processed || 0} found (${data?.chainsRun || 1} chains)`);
                     refreshLeads();
                   } catch (err) {
                     toast.error("Re-enrichment failed: " + (err as Error).message);

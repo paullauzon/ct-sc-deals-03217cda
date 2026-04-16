@@ -1553,6 +1553,7 @@ Deno.serve(async (req) => {
     let chainsRun = 0;
     const globalStartTime = Date.now();
     const GLOBAL_TIMEOUT_MS = 130000; // Return before 150s edge function limit
+    const processedIds: string[] = []; // Track across chains to avoid re-processing
 
     for (let chain = 0; chain < MAX_AUTO_CHAINS; chain++) {
       chainsRun++;
@@ -1569,6 +1570,12 @@ Deno.serve(async (req) => {
         if (chain === 0) console.log("retryFailed=true: re-processing previously failed leads");
       } else {
         leadsQuery = leadsQuery.is("linkedin_url", null);
+      }
+
+      // Exclude already-processed leads from previous chains
+      if (processedIds.length > 0) {
+        // Use .not('id', 'in', ...) to skip leads we already handled this run
+        leadsQuery = leadsQuery.not("id", "in", `(${processedIds.map(id => `"${id}"`).join(",")})`);
       }
 
       let { data: leads, error } = await leadsQuery
@@ -1609,6 +1616,7 @@ Deno.serve(async (req) => {
           break;
         }
         totalProcessed++;
+        processedIds.push(lead.id);
         console.log(`\n[${totalProcessed}] ${lead.name} (${lead.company})`);
 
         const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, null, companyCache, chainStartTime);
