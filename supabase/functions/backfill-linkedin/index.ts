@@ -1551,6 +1551,8 @@ Deno.serve(async (req) => {
     let totalTurns = 0;
     let totalGaveUp = 0;
     let chainsRun = 0;
+    const globalStartTime = Date.now();
+    const GLOBAL_TIMEOUT_MS = 130000; // Return before 150s edge function limit
 
     for (let chain = 0; chain < MAX_AUTO_CHAINS; chain++) {
       chainsRun++;
@@ -1601,6 +1603,11 @@ Deno.serve(async (req) => {
       console.log(`\n=== Chain ${chain + 1}/${MAX_AUTO_CHAINS}: Processing ${validLeads.length} leads with gpt-4o-mini ===`);
 
       for (const lead of validLeads) {
+        // Global timeout guard — return results before edge function 150s limit
+        if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
+          console.log(`\nGlobal timeout (${Math.round((Date.now() - globalStartTime) / 1000)}s) — returning partial results`);
+          break;
+        }
         totalProcessed++;
         console.log(`\n[${totalProcessed}] ${lead.name} (${lead.company})`);
 
@@ -1637,6 +1644,11 @@ Deno.serve(async (req) => {
       console.log(`Chain ${chain + 1} complete: ${remaining || 0} leads remaining`);
       
       if (!remaining || remaining <= 0) break;
+      // Global timeout check before starting next chain
+      if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
+        console.log(`Global timeout before chain ${chain + 2} — stopping`);
+        break;
+      }
     }
 
     const avgTurns = totalProcessed > 0 ? (totalTurns / totalProcessed).toFixed(1) : "0";
