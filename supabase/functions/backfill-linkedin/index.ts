@@ -380,6 +380,7 @@ async function inlineVerify(
   linkedinUrl: string,
   linkedinSnippet: string,
   openaiKey: string,
+  nameVariants?: string[],
 ): Promise<{ verdict: "correct" | "wrong" | "uncertain"; reason: string }> {
   const contextParts: string[] = [];
   if (lead.company) contextParts.push(`Company: ${lead.company}`);
@@ -387,12 +388,18 @@ async function inlineVerify(
   if (lead.companyUrl) contextParts.push(`Company URL: ${lead.companyUrl}`);
   if (lead.role) contextParts.push(`Role: ${lead.role}`);
 
+  const nameVariantBlock = nameVariants && nameVariants.length > 0
+    ? `\nKNOWN NAME VARIANTS (confirmed by analysis): ${nameVariants.join(", ")}
+- If the LinkedIn name matches ANY of these variants, the name is CORRECT.
+- Common nickname mappings (Woody→William, Bob→Robert, Bill→William, Mike→Michael, etc.) are valid matches.\n`
+    : "";
+
   const prompt = `You are verifying whether a LinkedIn profile URL belongs to the correct person. Be strict — only say "correct" if the LinkedIn snippet clearly matches.
 
 PERSON TO FIND:
 Name: ${lead.name}
 ${contextParts.join("\n")}
-
+${nameVariantBlock}
 LINKEDIN MATCH:
 URL: ${linkedinUrl}
 Snippet: ${linkedinSnippet || "No snippet available"}
@@ -401,7 +408,7 @@ RULES:
 - The LinkedIn profile MUST be for someone at the SAME company (or a clearly related entity).
 - If the email domain matches the LinkedIn company, that's a strong signal for CORRECT.
 - Consider company name abbreviations (e.g., "GMAX" vs "G-Max Industries").
-- If the LinkedIn URL contains a completely different name, that's WRONG.
+- If the LinkedIn URL contains a completely different name, that's WRONG — UNLESS it matches a known name variant listed above.
 - If not enough info to verify, say "uncertain".
 
 Respond with ONLY: {"verdict": "correct"|"wrong"|"uncertain", "reason": "brief explanation"}`;
@@ -499,6 +506,7 @@ interface AgentResult {
   turnsUsed: number;
   gaveUpReason: string | null;
   snippet?: string;
+  verified?: boolean;
 }
 
 function buildSystemPrompt(maxTurns: number): string {
@@ -611,13 +619,14 @@ async function aiSearchAgent(
             console.log(`  Quick-match candidate: ${url} — running inline verification...`);
             
             // A: Add inline verification to quick-match path
-            const verification = await inlineVerify(lead, url, snippetFull, openaiKey);
+            const nameVars = rationalization?.name_variants || [];
+            const verification = await inlineVerify(lead, url, snippetFull, openaiKey, nameVars);
             if (verification.verdict === "wrong") {
               console.log(`  Quick-match REJECTED by inline verify: ${verification.reason}`);
               continue; // try next result
             }
             console.log(`  Quick-match VERIFIED (${verification.verdict}): ${url}`);
-            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: snippetFull };
+            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: snippetFull, verified: true };
           }
         }
       }
@@ -644,13 +653,14 @@ async function aiSearchAgent(
             const snippetFull = `${result.title || ""} ${result.description || ""}`;
             console.log(`  Quick-match retry candidate: ${url} — running inline verification...`);
             
-            const verification = await inlineVerify(lead, url, snippetFull, openaiKey);
+            const nameVars2 = rationalization?.name_variants || [];
+            const verification = await inlineVerify(lead, url, snippetFull, openaiKey, nameVars2);
             if (verification.verdict === "wrong") {
               console.log(`  Quick-match retry REJECTED: ${verification.reason}`);
               continue;
             }
             console.log(`  Quick-match retry VERIFIED (${verification.verdict}): ${url}`);
-            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: snippetFull };
+            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: snippetFull, verified: true };
           }
         }
       }
@@ -926,10 +936,11 @@ async function aiSearchAgent(
         
         if (slugMatchesName) {
           console.log(`  Confidence gate: slug "${slug}" matches name — verifying directly...`);
-          const verification = await inlineVerify(lead, candidateUrl.replace(/\/$/, "").split("?")[0], `Pre-search match with name-matching slug`, openaiKey);
+          const nameVarsGate = rationalization?.name_variants || [];
+          const verification = await inlineVerify(lead, candidateUrl.replace(/\/$/, "").split("?")[0], `Pre-search match with name-matching slug`, openaiKey, nameVarsGate);
           if (verification.verdict !== "wrong") {
             console.log(`  Confidence gate VERIFIED (${verification.verdict}): ${candidateUrl} — SKIPPING agent`);
-            return { url: candidateUrl.replace(/\/$/, "").split("?")[0], profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: `Confidence gate: ${verification.reason}` };
+            return { url: candidateUrl.replace(/\/$/, "").split("?")[0], profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: `Confidence gate: ${verification.reason}`, verified: true };
           } else {
             console.log(`  Confidence gate rejected: ${verification.reason}`);
           }
@@ -1019,7 +1030,7 @@ async function aiSearchAgent(
                 const cUrl = candidate.url.split("?")[0];
                 const cSnippet = `${candidate.title || ""} ${candidate.description || ""}`;
                 console.log(`  Open web candidate: ${cUrl}`);
-                const verification = await inlineVerify(lead, cUrl, cSnippet, openaiKey);
+                const verification = await inlineVerify(lead, cUrl, cSnippet, openaiKey, rationalization?.name_variants);
                 if (verification.verdict !== "wrong") {
                   console.log(`  Open web VERIFIED (${verification.verdict}): ${cUrl}`);
                   return { url: cUrl, profileContent: "", turnsUsed: turn + 1, gaveUpReason: null, snippet: cSnippet };
@@ -1245,7 +1256,7 @@ async function processLead(
     const slugResult = await tryDirectSlugGuess(rationalization.linkedin_slug_guesses, leadContext, firecrawlKey, openaiKey);
     if (slugResult) {
       // Inline verify before accepting
-      const verification = await inlineVerify(leadContext, slugResult.url, slugResult.snippet, openaiKey);
+      const verification = await inlineVerify(leadContext, slugResult.url, slugResult.snippet, openaiKey, rationalization?.name_variants);
       if (verification.verdict === "correct") {
         console.log(`  Direct slug VERIFIED: ${slugResult.url}`);
         return await writeLinkedInResult(lead, slugResult.url, firecrawlKey, supabase, rationalization, 0, null);
@@ -1267,13 +1278,19 @@ async function processLead(
   }
   
   if (agentResult.url) {
+    // Fix B: Skip redundant second verification if agent already verified
+    if (agentResult.verified) {
+      console.log(`  Skipping redundant inline verify — already verified in agent`);
+      return await writeLinkedInResult(lead, agentResult.url, firecrawlKey, supabase, rationalization, agentResult.turnsUsed, null);
+    }
+    
     const snippet = agentResult.snippet || "";
-    const verification = await inlineVerify(leadContext, agentResult.url, snippet, openaiKey);
+    const nameVarsForVerify = rationalization?.name_variants || [];
+    const verification = await inlineVerify(leadContext, agentResult.url, snippet, openaiKey, nameVarsForVerify);
     
     if (verification.verdict === "wrong") {
       console.log(`  Inline verify REJECTED: ${agentResult.url} — ${verification.reason}`);
       candidates.push({ url: agentResult.url, snippet: `${snippet} (rejected: ${verification.reason})` });
-      // Don't write this bad match — mark as not found
       await writeSearchLog(supabase, lead.id, rationalization, agentResult, `Rejected by inline verify: ${verification.reason}`, candidates);
       await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
       return { found: false, turnsUsed: agentResult.turnsUsed, gaveUpReason: `Inline verify rejected: ${verification.reason}` };
