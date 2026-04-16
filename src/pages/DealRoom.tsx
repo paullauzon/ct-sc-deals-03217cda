@@ -609,7 +609,7 @@ export default function DealRoom() {
                 {lead.linkedinTitle || "LinkedIn Profile"}
               </a>
             ) : (
-              <LinkedInOverride leadId={lead.id} onSuccess={(url, title) => {
+              <LinkedInOverride leadId={lead.id} currentUrl={lead.linkedinUrl} onSuccess={(url, title) => {
                 updateLead(lead.id, { linkedinUrl: url, linkedinTitle: title || "" });
               }} />
             )}
