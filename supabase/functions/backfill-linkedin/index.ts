@@ -7,7 +7,7 @@ const corsHeaders = {
 
 const BATCH_SIZE = 3;
 const DELAY_MS = 2000;
-const FLASH_MAX_TURNS = 5;
+const FLASH_MAX_TURNS = 7;
 const MAX_LEADS_PER_RUN = 5; // Process only 5 leads per invocation to stay within timeout
 
 
