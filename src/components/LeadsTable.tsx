@@ -1285,10 +1285,10 @@ export function LeadsTable() {
                   setLinkedinEnriching(true);
                   toast.info("Re-enriching leads searched 30+ days ago...");
                   try {
-                    const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { retry_failed: true, minAge: 30 } });
+                    const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { minAge: 30 } });
                     if (error) throw error;
                     if (data?.error) throw new Error(data.error);
-                    toast.success(`Stale re-enrichment: ${data?.found || 0}/${data?.processed || 0} found`);
+                    toast.success(`Stale re-enrichment: ${data?.found || 0}/${data?.processed || 0} found (${data?.chainsRun || 1} chains)`);
                     refreshLeads();
                   } catch (err) {
                     toast.error("Re-enrichment failed: " + (err as Error).message);
