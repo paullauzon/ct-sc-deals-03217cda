@@ -227,7 +227,7 @@ async function callAI(
   model: string,
 ): Promise<string> {
   // Try OpenAI first
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -236,15 +236,15 @@ async function callAI(
       },
       body: JSON.stringify({ model, messages }),
     });
-    if (res.status === 429 && attempt < 3) {
-      const delays = [5000, 15000, 30000];
+    if (res.status === 429 && attempt < 2) {
+      const delays = [2000, 5000];
       const delay = delays[attempt];
-      console.warn(`  OpenAI 429 — retrying in ${delay / 1000}s (attempt ${attempt + 1}/4)...`);
+      console.warn(`  OpenAI 429 — retrying in ${delay / 1000}s (attempt ${attempt + 1}/3)...`);
       await res.text();
       await new Promise(r => setTimeout(r, delay));
       continue;
     }
-    if (res.status === 429 && attempt === 3) {
+    if (res.status === 429 && attempt === 2) {
       // All OpenAI retries exhausted — fall back to Lovable AI Gateway
       await res.text();
       break;
