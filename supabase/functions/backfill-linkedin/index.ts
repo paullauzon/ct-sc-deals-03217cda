@@ -752,22 +752,42 @@ async function aiSearchAgent(
     }
   }
 
-  // Strategy C: Scrape company website for LinkedIn links
+  // Strategy C: Scrape company website for LinkedIn links (with cache)
   const companyWebsite = lead.companyUrl || lead.websiteUrl;
   if (companyWebsite && !companyWebsite.includes("linkedin.com")) {
-    console.log(`  Pre-search: Scraping company website "${companyWebsite}" for LinkedIn links`);
-    const websiteContent = await firecrawlScrape(companyWebsite, firecrawlKey);
-    if (websiteContent) {
-      const websiteLinkedIns = websiteContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/g) || [];
-      const uniqueWebsiteLinks = [...new Set(websiteLinkedIns)];
-      if (uniqueWebsiteLinks.length > 0) {
-        const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
-        const matchingLinks = uniqueWebsiteLinks.filter(l => {
-          const slug = l.split("/in/")[1]?.toLowerCase() || "";
-          return slug.includes(nameFirst) || slug.includes(nameFirst.substring(0, 3));
-        });
-        const linksToReport = matchingLinks.length > 0 ? matchingLinks : uniqueWebsiteLinks;
-        preSearchResults.push(`IMPORTANT — LinkedIn URLs found on company website (${companyWebsite}):\n${linksToReport.join("\n")}\nThese are HIGH-PRIORITY candidates. Try to verify these FIRST by searching for the slug.`);
+    const cachedWebsite = companyCacheKey && companyCache ? companyCache.get(companyCacheKey) : undefined;
+    if (cachedWebsite?.websiteLinks && cachedWebsite.websiteLinks.length > 0) {
+      console.log(`  Pre-search: Using cached website LinkedIn links for "${lead.company}"`);
+      const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
+      const matchingLinks = cachedWebsite.websiteLinks.filter(l => {
+        const slug = l.split("/in/")[1]?.toLowerCase() || "";
+        return slug.includes(nameFirst) || slug.includes(nameFirst.substring(0, 3));
+      });
+      const linksToReport = matchingLinks.length > 0 ? matchingLinks : cachedWebsite.websiteLinks;
+      preSearchResults.push(`IMPORTANT — LinkedIn URLs found on company website (cached):\n${linksToReport.join("\n")}\nThese are HIGH-PRIORITY candidates.`);
+    } else {
+      console.log(`  Pre-search: Scraping company website "${companyWebsite}" for LinkedIn links`);
+      const websiteContent = await firecrawlScrape(companyWebsite, firecrawlKey);
+      if (websiteContent) {
+        const websiteLinkedIns = websiteContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/g) || [];
+        const uniqueWebsiteLinks = [...new Set(websiteLinkedIns)];
+        
+        // Cache for future leads
+        if (companyCache && companyCacheKey) {
+          const entry = companyCache.get(companyCacheKey) || {};
+          entry.websiteLinks = uniqueWebsiteLinks;
+          companyCache.set(companyCacheKey, entry);
+        }
+        
+        if (uniqueWebsiteLinks.length > 0) {
+          const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
+          const matchingLinks = uniqueWebsiteLinks.filter(l => {
+            const slug = l.split("/in/")[1]?.toLowerCase() || "";
+            return slug.includes(nameFirst) || slug.includes(nameFirst.substring(0, 3));
+          });
+          const linksToReport = matchingLinks.length > 0 ? matchingLinks : uniqueWebsiteLinks;
+          preSearchResults.push(`IMPORTANT — LinkedIn URLs found on company website (${companyWebsite}):\n${linksToReport.join("\n")}\nThese are HIGH-PRIORITY candidates. Try to verify these FIRST by searching for the slug.`);
+        }
       }
     }
   }
