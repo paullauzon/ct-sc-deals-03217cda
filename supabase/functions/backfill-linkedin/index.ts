@@ -976,30 +976,29 @@ async function aiSearchAgent(
       if (parsed.action === "give_up") {
         console.log(`  Turn ${turn + 1}: GAVE UP — ${parsed.reason} (${agentEncounteredUrls.length} candidates collected)`);
         
-        // Serper fallback before truly giving up (site:linkedin.com)
-        if (serperKey && lead.company) {
-          console.log(`  Serper fallback before giving up...`);
+        // Firecrawl fallback before truly giving up (site:linkedin.com)
+        if (lead.company) {
+          console.log(`  Firecrawl fallback before giving up...`);
           const allNames = rationalization ? [lead.name, ...rationalization.name_variants] : [lead.name];
           for (const nameVariant of allNames.slice(0, 3)) {
-            const serperQuery = `"${nameVariant}" "${lead.company}" site:linkedin.com/in`;
-            const serperResults = await serperSearch(serperQuery, serperKey, 5);
-            const serperLinkedin = serperResults.find(r => r.url.includes("linkedin.com/in/"));
-            if (serperLinkedin) {
-              const sUrl = serperLinkedin.url.split("?")[0];
-              console.log(`  Serper rescue: ${sUrl}`);
-              return { url: sUrl, profileContent: "", turnsUsed: turn + 1, gaveUpReason: null, snippet: `${serperLinkedin.title || ""} ${serperLinkedin.description || ""}` };
+            const fallbackQuery = `"${nameVariant}" "${lead.company}" site:linkedin.com/in`;
+            const fallbackResults = await firecrawlSearch(fallbackQuery, firecrawlKey, 5, false);
+            const fallbackLinkedin = fallbackResults.find(r => r.url.includes("linkedin.com/in/"));
+            if (fallbackLinkedin) {
+              const sUrl = fallbackLinkedin.url.split("?")[0];
+              console.log(`  Firecrawl rescue: ${sUrl}`);
+              return { url: sUrl, profileContent: "", turnsUsed: turn + 1, gaveUpReason: null, snippet: `${fallbackLinkedin.title || ""} ${fallbackLinkedin.description || ""}` };
             }
           }
           
-          // Step 1: Open web LinkedIn mention search (no site: restriction)
+          // Open web LinkedIn mention search (no site: restriction)
           console.log(`  Open web fallback — searching without site:linkedin.com...`);
           for (const nameVariant of allNames.slice(0, 2)) {
             const openWebQuery = `"${nameVariant}" "${lead.company}" linkedin profile`;
             console.log(`  Open web search: ${openWebQuery}`);
-            const openResults = await serperSearch(openWebQuery, serperKey, 8);
+            const openResults = await firecrawlSearch(openWebQuery, firecrawlKey, 8, false);
             const openLinkedins = openResults.filter(r => r.url.includes("linkedin.com/in/"));
             if (openLinkedins.length > 0) {
-              // Verify each candidate
               for (const candidate of openLinkedins.slice(0, 3)) {
                 const cUrl = candidate.url.split("?")[0];
                 const cSnippet = `${candidate.title || ""} ${candidate.description || ""}`;
