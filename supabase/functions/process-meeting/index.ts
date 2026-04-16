@@ -207,7 +207,7 @@ const INTELLIGENCE_TOOL = {
           properties: {
             stage: {
               ...SUGGESTED_UPDATE_FIELD,
-              description: "Pipeline stage. Values: 'Meeting Held', 'Proposal Sent', 'Negotiation', 'Contract Sent', 'Closed Won', 'Lost', 'Went Dark', 'Revisit/Reconnect', 'Long Term Follow Up'. A transcript of a meeting that happened = at minimum 'Meeting Held'.",
+              description: "Pipeline stage. Values: 'Meeting Held', 'Proposal Sent', 'Negotiation', 'Contract Sent', 'Closed Won', 'Lost', 'Went Dark', 'Revisit/Reconnect'. A transcript of a meeting that happened = at minimum 'Meeting Held'.",
             },
             meetingOutcome: {
               ...SUGGESTED_UPDATE_FIELD,
