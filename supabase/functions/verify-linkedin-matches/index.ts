@@ -118,10 +118,12 @@ Deno.serve(async (req) => {
     // Parse optional parameters
     let dryRun = false;
     let reSearch = false;
+    let reverifyUncertain = false;
     try {
       const body = await req.json();
       dryRun = body?.dry_run === true;
       reSearch = body?.re_search === true;
+      reverifyUncertain = body?.reverify_uncertain === true;
     } catch { /* no body is fine */ }
 
     // Get all leads with existing linkedin_url (non-empty)
@@ -140,7 +142,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Verifying ${leads.length} LinkedIn matches (dry_run: ${dryRun}, re_search: ${reSearch})`);
+    console.log(`Verifying ${leads.length} LinkedIn matches (dry_run: ${dryRun}, re_search: ${reSearch}, reverify_uncertain: ${reverifyUncertain})`);
 
     const results: Array<{
       name: string;
