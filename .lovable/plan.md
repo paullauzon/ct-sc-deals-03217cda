@@ -1,59 +1,47 @@
 
 
-# Optimize Leads Toolbar Buttons
+# Fix: LinkedIn Verification Rejects Valid Nickname Matches
 
-## Current State (8 buttons — too many, unclear labels)
+## Root Cause
 
-| Button | What it actually does | Usage |
-|---|---|---|
-| Backfill All Meetings | Calendly sync → Fireflies scan → bulk process unprocessed leads | Core workflow |
-| Score N Leads | Batch-scores unscored leads (conditional) | Occasional |
-| LinkedIn Enrich | Batch LinkedIn profile search for unenriched leads | Core workflow |
-| Re-enrich Stale | Re-runs LinkedIn on leads searched 30+ days ago | Rare |
-| Process Leads | Opens BulkProcessingDialog for selective processing | Occasional |
-| Import Fireflies | Opens FirefliesImportDialog for manual transcript import | Rare |
-| Export CSV | Downloads CSV export | Utility |
-| New Lead | Opens new lead form | Primary action |
+The Woody Cissel case reveals two bugs working together:
 
-## Problems
-- "Backfill All Meetings" is jargon — unclear what "backfill" means
-- "Re-enrich Stale" overlaps with "LinkedIn Enrich" — both call the same edge function
-- "Process Leads" overlaps with "Backfill All Meetings" — both trigger bulk processing
-- "Import Fireflies" is redundant since Backfill already runs Fireflies scan
-- 8 buttons create visual clutter and decision paralysis
+1. **Double verification with contradictory results.** The quick-match path inside `aiSearchAgent` calls `inlineVerify` and gets "correct." Then `processLead` calls `inlineVerify` again on the exact same URL and gets "wrong." Two AI calls, two different answers — and the second one wins.
 
-## Proposed Layout (5 visible buttons + 1 dropdown)
+2. **Verification prompt is nickname-blind.** The `inlineVerify` prompt says `Name: Woody Cissel` but the LinkedIn shows "William Cissel." The prompt has no rule about nicknames. The rationalization step already figured out William = Woody, but that context is never passed to the verification step.
+
+## Timeline of the Bug
 
 ```text
-[⚡ Sync All] [in LinkedIn Enrich (138/226)] [▼ More] [Export CSV] [New Lead]
+13:32:32  Rationalize: "Woody is a nickname for William/Woodrow" ✓
+13:32:39  Quick-match search finds william-cissel-95562023 ✓
+13:32:41  inlineVerify #1 (inside aiSearchAgent): "correct" ✓
+13:32:41  aiSearchAgent returns URL ✓
+13:32:42  inlineVerify #2 (inside processLead): "wrong — William ≠ Woody" ✗
+13:32:42  Result: NOT FOUND  ← profile was found and verified, then thrown away
 ```
 
-### Button 1: "Sync All" (was "Backfill All Meetings")
-Clearer name. Does Calendly sync + Fireflies scan + bulk processing. The main "refresh everything" action.
+## Fix (1 file)
 
-### Button 2: "LinkedIn Enrich" (merged with Re-enrich Stale)
-Keep the coverage stats tooltip. Add a small dropdown chevron that reveals two options:
-- **Enrich Missing** — current LinkedIn Enrich behavior (unenriched only)
-- **Re-enrich Stale** — current Re-enrich Stale behavior (30+ days)
+### File: `supabase/functions/backfill-linkedin/index.ts`
 
-### Button 3: "More ▼" dropdown menu containing:
-- **Score Leads** (N) — only shown when unscored leads exist
-- **Process Leads** — opens BulkProcessingDialog
-- **Import Fireflies** — opens FirefliesImportDialog
+**Fix A: Pass name variants to inlineVerify**
 
-### Button 4: "Export CSV" — stays as-is (utility)
+Add an optional `nameVariants` parameter to `inlineVerify`. When provided, inject a line into the prompt:
 
-### Button 5: "New Lead" — stays as-is (primary action)
+```
+KNOWN NAME VARIANTS (confirmed by analysis): William Cissel, Woodrow Cissel, Woody Cissel
+- If the LinkedIn name matches ANY of these variants, the name is CORRECT.
+- Common nickname mappings (Woody→William, Bob→Robert, etc.) are valid matches.
+```
 
-## Technical Details
+Update all call sites to pass `rationalization?.name_variants` when available.
 
-### File: `src/components/LeadsTable.tsx`
+**Fix B: Remove redundant second verification in processLead**
 
-- Replace the 8-button row (lines 1171-1290) with the new 5-button layout
-- LinkedIn Enrich becomes a split button using `DropdownMenu` from shadcn
-- "More" uses `DropdownMenu` to house Score, Process Leads, Import Fireflies
-- All existing click handlers remain unchanged — this is purely a UI reorganization
-- Score button moves into dropdown but retains the conditional count badge
+When `aiSearchAgent` returns a URL that was already verified inside the agent (quick-match path), skip the second `inlineVerify` call in `processLead`. Add a `verified` boolean flag to the `AgentResult` interface. When the quick-match path verifies and accepts a URL, set `verified: true`. In `processLead`, only run `inlineVerify` if `agentResult.verified !== true`.
 
-### No other files change. No backend changes.
+This eliminates the contradiction risk and saves an AI call per lead.
+
+## No other files change. No UI changes.
 
