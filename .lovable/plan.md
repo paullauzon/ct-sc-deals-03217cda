@@ -1,157 +1,57 @@
 
 
-# Lead Side Panel — HubSpot-Grade Full-Screen Rebuild
+# Finish the Lead Panel rebuild — surgical wrap-up
 
-## Scope clarification
-This is the **side-panel modal** (`LeadDetail` in `src/components/LeadsTable.tsx`, opened from Pipeline / Leads / Dashboard / Action Queue / Intelligence Center / Business / Cmd+K) — NOT the standalone `/deal/:id` Deal Room route (that was rebuilt last turn).
+## What's actually broken right now
+The new panel was built but **is not being used**. Two `LeadDetail` exports exist:
+- `LeadsTable.tsx` line 96 — old 1500-line version (still wins because all 6 import sites pull from `@/components/LeadsTable`)
+- `LeadDetailPanel.tsx` line 272 — new full-screen version (orphaned)
 
-Currently a 4xl-capped right-side `Sheet` with ~1500 lines of stacked sections. Will be rebuilt as a true full-screen workspace.
+Result: every place that opens a lead — Pipeline, Leads, Dashboard, ActionQueue, IntelligenceCenter, BusinessSystem, Cmd+K — still shows the old 4xl Sheet. The user has not actually seen the new panel yet.
 
-## What's wrong with today
-- Capped at `sm:max-w-4xl` → cramped on a 1296px viewport
-- Single scrolling column → lose context as you scroll
-- Mixes editable forms, intelligence, meetings, emails, activity in one giant stream
-- No quick actions (email, schedule, note, task)
-- No unified activity timeline (only stage events)
-- "External Research" / "Auto-Find Suggestions" / "AI Suggested Updates" / "Deal Health Alerts" all scream for attention at the top — too noisy
-- EmailMetricsCard never surfaced here
-- Can't compare deal health, stakeholders, risks at a glance
+## Step 1 — wire up the new panel (the unblock)
+In `src/components/LeadsTable.tsx`:
+- **Delete** the old `LeadDetail` function (lines 96–~1024 — everything between `export function LeadDetail` and `export function LeadsTable`)
+- **Re-export** `LeadDetail` from the new file at the top: `export { LeadDetail } from "./LeadDetailPanel"`
+- Keep `LeadsTable` and all helpers it actually uses
+- Verify the `<LeadDetail>` self-render at line 1528 still resolves
 
-## New layout — full-bleed three-column, mirrors `/deal/:id` exactly
+This single change activates the entire HubSpot rebuild for all 6 entry points.
 
-```text
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│ STICKY HEADER                                                            [⛶][✕] │
-│ avatar · name · LinkedIn · brand · stage pill · health badge                     │
-│ company · role · email/phone · "Open Deal Room ↗" link                           │
-│ DEAL PROGRESS BAR (8 active stages)                                              │
-│ [✉ Email] [📅 Schedule] [📝 Note] [✓ Task] [⚡ Draft AI] [⚙ Edit] [⋯ More]     │
-├──────────────────┬──────────────────────────────────────┬────────────────────────┤
-│ LEFT (300px)     │ CENTER (flex)                        │ RIGHT (320px)          │
-│ Identity         │ TABS: Overview · Activity · Actions  │ Deal Health (score)    │
-│ Key Information  │       Meetings · Emails · Intel.     │ Open Commitments       │
-│ Email Activity   │       Files · Notes                  │ Stakeholders           │
-│ Engagement       │ ─────────────────────────────────── │ Risks                  │
-│ M&A Criteria     │ [Tab content]                        │ Win Strategy           │
-│ Dates & Contract │                                      │ Buying Committee       │
-│ Original Message │                                      │ Similar Won Deals      │
-│ Pre-Screen       │                                      │ Company Activity       │
-│                  │                                      │ Submission History     │
-└──────────────────┴──────────────────────────────────────┴────────────────────────┘
-```
+## Step 2 — replace the stub Activity tab with real timeline
+`LeadActivityTab.tsx` currently just renders `<UnifiedTimeline lead={lead} />` from the dealroom folder — that's actually fine and already merges meetings + emails + stage + Calendly + submissions. **Verify it works** inside the panel context (it's the same Lead object), no rebuild needed.
 
-- `Sheet` widened to `w-screen max-w-none` (true full-screen)
-- Three independently-scrolling columns, sticky header
-- Left/right collapsible toggles (chevron) — same UX as `/deal/:id`
-- All existing intelligence reused — re-organized, not rebuilt
+## Step 3 — fix hook-order bug
+`LeadDetailPanel.tsx` calls `useEffect` (line 38) before the `if (!lead) return null` guard (line 40), but `useState` and `useCallback` come after. Move the early return **after** all hooks, or render an empty `<Sheet>` shell when `!lead` to keep hook order stable.
 
-## Center tabs (tuned for our actual workflow)
+## Step 4 — fill remaining HubSpot-parity gaps
+Surface what we have but never showed:
 
-| Tab | Purpose |
-|---|---|
-| **Overview** *(default)* | Above-the-fold scannable summary: Deal Health Alerts banner, AI Suggested Updates (when present), Auto-Find Suggestions, Deal Management form (stage / priority / forecast / ICP / owner / service / deal value / close date), Revenue & Contract, Meeting Management, Won/Lost details, Tracking |
-| **Activity** | Unified chronological timeline merging stage changes, meetings, emails, Calendly bookings, submissions, notes (filter chips: All · Emails · Meetings · Stage · Notes · System) |
-| **Actions** | Live priority queue / commitments / objections (reads existing Next Steps Engine, mirrors Deal Room Actions tab) |
-| **Meetings** | Existing `MeetingsSection` — recordings, transcripts, prep briefs |
-| **Emails** | Existing `EmailsSection` (Zapier-fed today, Outlook/Gmail when admin approves) |
-| **Intelligence** | Existing `DealIntelligencePanel` (full deep-dive view) |
-| **Files** | Drive link + meeting attachments aggregated |
-| **Notes** | Existing notes textarea |
+1. **Quick action bar wiring** — `onTask` currently just toasts "live in Deal Room". Wire it to actually create a row in `lead_tasks` via a small inline prompt (toast with input → insert). Same for `onLogCall` → write a `lead_activity_log` entry of type `manual_event` with category `call`.
+2. **Notes tab** — currently a bare textarea. Add an "Append note" button that timestamps the entry and writes a synthetic `lead_activity_log` row so notes appear in the Activity timeline.
+3. **Email quick-compose** — `onEmail` jumps to the Emails tab. Add a "Compose" CTA inside `EmailsSection` that opens a drawer writing to `lead_drafts` (drafting infra already exists via `draft-followup`).
+4. **Stakeholders / Buying Committee panels in right rail** — confirm `RightRailCards` already renders these from `lead.dealIntelligence`. If a card is empty, show a one-line "Process meetings to surface" hint instead of hiding silently.
+5. **Pre-Screen status visibility** — already in `KeyInformationCard`; verify the toggle propagates back to `save()`.
 
-Removed (not relevant to us): playbooks, tickets, calls, subscriptions, website activity, communication subscriptions, attribution.
-
-## Header — quick-action row
-
-Below identity row, horizontal strip:
-`[✉ Email] [📅 Schedule] [📝 Note] [✓ Task] [⚡ Draft AI] [📞 Log Call] [⚙ Enrich] [⋯ Archive/Delete]`
-
-- **Email** → opens compose drawer (writes draft to `lead_drafts`)
-- **Schedule** → Calendly link / shows next booked
-- **Note** → inline appender → writes to `notes` + `lead_activity_log`
-- **Task** → adds to `lead_tasks`
-- **Draft AI** → triggers `draft-followup` edge function
-- **Log Call** → quick form → activity log
-- **Enrich** → existing Research & Recommend
-- **More** → Archive (existing `ArchiveDialog`), expand-to-deal-room
-
-## Left rail — "About this contact" pattern
-
-Reorganized into collapsible sections (reuse `CollapsibleCard` from `src/components/dealroom/`):
-
-1. **Identity** — Avatar, Name, Title, Company pill, Brand, LinkedIn, Email, Phone, Website, Drive link
-2. **Key Information** — Stage, Priority, Forecast, ICP Fit, Owner, Service, Deal Value, Subscription, Tier, Pre-Screen status
-3. **Email Activity** — `<EmailMetricsCard>` (already built, never mounted here)
-4. **Engagement** — Days in stage · Last contact · Next follow-up · # meetings · # submissions · Hours-to-meeting-set
-5. **M&A Criteria** *(SourceCo only)* — Target criteria, Revenue range, Geography, Acquisition strategy, Buyer type, Deals planned, Current sourcing
-6. **Dates & Contract** — Submitted, Stage entered, Meeting set/date, Closed date, Contract start/end, Forecast close
-7. **Original Message** — collapsed by default
-
-## Right rail — intelligence cards (reuse `RightRailCards`)
-
-1. **Deal Health** — score, trend, momentum, sentiment trajectory
-2. **Open Commitments** — what we owe (from action item tracker)
-3. **Stakeholders** — stakeholder map
-4. **Risks** — unmitigated only
-5. **Win Strategy** — #1 closer, power move, landmines
-6. **Buying Committee** — DM, champion, blockers
-7. **Similar Won Deals** — pattern matching
-8. **Company Activity** — cross-synced associates from same company (existing `CompanyActivitySection`)
-9. **Submission History** — multi-form submitters (existing `SubmissionHistory`)
-
-All collapsible, default-open if non-empty.
-
-## Activity timeline (Overview-adjacent, full Activity tab)
-
-Build `LeadActivityTimeline` merging:
-- `lead_activity_log` (stage changes, manual events)
-- `lead.meetings` (Fireflies meetings + intel)
-- `lead_emails` (inbound/outbound from Zapier; Outlook/Gmail later)
-- `lead.calendlyBookedAt` + `calendlyEventName`
-- `lead.submissions` (multiple form submissions)
-- Notes added (when timestamped via `notes` updates)
-
-Group by month. Filter chips. Compact icon · type · timestamp · summary · expand pattern.
-
-## Key design constraints (per memory rules)
-- Hyper-minimalist, monochrome — no traffic-light colors except severity badges already in use
-- Lucide icons only, no emojis
-- Tailwind tokens (`bg-secondary`, `border-border`, `text-muted-foreground`)
-- Same density and font scale as Deal Room rebuild
-- Cmd+K + prev/next preserved
-- "Pending" language over alarm reds where possible
-
-## What I'm NOT changing
-- `LeadContext`, all data plumbing
-- `MeetingsSection`, `EmailsSection`, `DealIntelligencePanel`, `EmailMetricsCard`
-- AI enrichment / Research & Recommend logic — verbatim
-- Auto-find / suggested updates logic — verbatim
-- `ArchiveDialog`, save handlers, all field mutations
-- Edge functions, DB schemas, types
+## Step 5 — investigate things that could still be done (not in v1)
+Documenting for follow-up; **not building now**:
+- Per-rep email connection UI (waiting on Outlook tenant approval)
+- Inline call logging with duration + outcome dropdown
+- "Pin" an activity to the top of the timeline (HubSpot pinned activity)
+- Card customization per user (drag to reorder right-rail cards)
+- Associated Companies card (right rail) — we already compute associates, could elevate to a top-level card
 
 ## Files touched
+- `src/components/LeadsTable.tsx` — **major delete** (old LeadDetail removed), add re-export at top
+- `src/components/LeadDetailPanel.tsx` — fix hook order, wire `onTask` + `onLogCall` + note-as-activity
+- `src/components/lead-panel/LeadOverviewTab.tsx` — minor: ensure DealHealthAlerts visible
+- `src/components/lead-panel/LeadPanelRightRail.tsx` — graceful empty-state hints
 
-**Major rewrite** (new file replacing `LeadDetail`):
-- `src/components/LeadDetailPanel.tsx` — new, full-screen workspace shell
-- `src/components/LeadsTable.tsx` — re-export `LeadDetail` from new file (keeps all 6 import sites working unchanged)
+## What stays untouched
+- All 6 import sites (Pipeline, ActionQueue, Dashboard, BusinessSystem, IntelligenceCenter, Index)
+- `LeadContext`, edge functions, types, DB schema
+- `MeetingsSection`, `EmailsSection`, `DealIntelligencePanel`, `EmailMetricsCard`, `UnifiedTimeline`
 
-**New helper components** (in `src/components/lead-panel/`):
-- `LeadPanelHeader.tsx` — sticky header + quick action bar
-- `LeadPanelLeftRail.tsx` — Identity / Key Info / Engagement / M&A / Dates
-- `LeadPanelRightRail.tsx` — intelligence cards (wraps existing logic)
-- `LeadOverviewTab.tsx` — hosts Deal Health Alerts, AI Suggestions, Deal Management, Revenue & Contract, Meeting Management, Tracking, Won/Lost
-- `LeadActivityTab.tsx` — unified timeline
-- `LeadFilesTab.tsx` — Drive + attachments aggregator
-- `LeadActionsTab.tsx` — actions queue (reads same lib used in Deal Room)
-
-**Reused without modification:**
-- `MeetingsSection`, `EmailsSection`, `EmailMetricsCard`, `DealIntelligencePanel`, `ArchiveDialog`
-- `dealroom/CollapsibleCard.tsx`, `dealroom/RightRailCards.tsx` (where applicable)
-- `ActivityTimeline`, `CompanyActivitySection`, `SubmissionHistory`, `EnrichmentSection` (extracted from current `LeadsTable.tsx` if needed)
-
-**Sheet container:**
-- `LeadDetailPanel` uses `<Sheet>` with `SheetContent` className overridden to `w-screen max-w-none p-0` for true full-screen
-
-## Risk / mitigation
-- 6 components import `LeadDetail` from `LeadsTable.tsx` → keep the export name and signature identical, swap internals only. Zero downstream changes.
-- Existing helper components inside `LeadsTable.tsx` (EnrichmentSection, ActivityTimeline, CompanyActivitySection, SubmissionHistory, AISuggestionsPanel, DealHealthAlerts, Section, Field, SelectField, ClearableSelectField) → either extract to `src/components/lead-panel/shared/` or leave in place and import from there.
+## Risk
+The old `LeadDetail` in `LeadsTable.tsx` defines several helper components inline (`EnrichmentSection`, `ActivityTimeline`, `CompanyActivitySection`, `SubmissionHistory`, `AISuggestionsPanel`, `DealHealthAlerts`, `Section`, `Field`, `SelectField`, `ClearableSelectField`). The new panel already has its own copies in `lead-panel/shared.tsx`. Confirmed: nothing outside that file imports the inline helpers, so deletion is safe.
 
