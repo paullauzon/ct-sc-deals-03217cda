@@ -1239,7 +1239,7 @@ async function processLead(
     }
   }
 
-  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, serperKey, previousSearchLog, companyCache, supabase);
+  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, null, previousSearchLog, companyCache, supabase);
 
   // ─── Phase 1B: Inline verification before writing ───
   // Collect candidates for multi-candidate UI — merge agent-collected candidates
@@ -1377,8 +1377,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const SERPER_API_KEY = Deno.env.get("SERPER_API_KEY") || null;
-  _serperExhausted = false; // Reset per invocation
+  // Serper removed — all search now via Firecrawl
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -1484,10 +1483,10 @@ Deno.serve(async (req) => {
         });
       }
 
-      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o", 8, SERPER_API_KEY, null, Date.now());
+      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o", 8, null, null, Date.now());
       console.log(`[single-lead] ${lead.name}: ${result.found ? "FOUND" : "NOT FOUND"} (${result.turnsUsed} turns)`);
 
-      return new Response(JSON.stringify({ success: true, found: result.found, turnsUsed: result.turnsUsed, serper_exhausted: _serperExhausted }), {
+      return new Response(JSON.stringify({ success: true, found: result.found, turnsUsed: result.turnsUsed }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -1572,7 +1571,7 @@ Deno.serve(async (req) => {
         totalProcessed++;
         console.log(`\n[${totalProcessed}] ${lead.name} (${lead.company})`);
 
-        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, SERPER_API_KEY, companyCache, chainStartTime);
+        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, null, companyCache, chainStartTime);
         totalTurns += result.turnsUsed;
 
         if (result.found) {
@@ -1621,7 +1620,7 @@ Deno.serve(async (req) => {
         gaveUpReasons: allGaveUpReasons,
         chainsRun,
         companyCacheHits: companyCache.size,
-        serper_exhausted: _serperExhausted,
+        
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
