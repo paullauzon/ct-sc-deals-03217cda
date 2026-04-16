@@ -128,13 +128,47 @@ async function serperSearch(query: string, serperKey: string, limit = 5): Promis
     }
 
     const data = await res.json();
+    const results: SearchResult[] = [];
+    
+    // Standard organic results
     const organic = data.organic || [];
-    return organic.map((r: any) => ({
-      url: r.link || "",
-      title: r.title || "",
-      description: r.snippet || "",
-      markdown: "",
-    }));
+    for (const r of organic) {
+      results.push({
+        url: r.link || "",
+        title: r.title || "",
+        description: r.snippet || "",
+        markdown: "",
+      });
+    }
+    
+    // Fix 3: Mine Knowledge Graph for LinkedIn URLs
+    if (data.knowledgeGraph) {
+      const kg = data.knowledgeGraph;
+      const kgUrl = kg.website || kg.link || "";
+      if (kgUrl.includes("linkedin.com/in/")) {
+        results.push({ url: kgUrl, title: kg.title || "", description: kg.description || "", markdown: "" });
+      }
+      // Check social profiles in knowledge graph
+      if (Array.isArray(kg.profiles)) {
+        for (const p of kg.profiles) {
+          if (p.link?.includes("linkedin.com/in/")) {
+            results.push({ url: p.link, title: p.name || kg.title || "", description: "", markdown: "" });
+          }
+        }
+      }
+    }
+    
+    // Fix 3: Mine People Also Ask for LinkedIn URLs
+    if (Array.isArray(data.peopleAlsoAsk)) {
+      for (const paa of data.peopleAlsoAsk) {
+        const link = paa.link || "";
+        if (link.includes("linkedin.com/in/")) {
+          results.push({ url: link, title: paa.title || "", description: paa.snippet || "", markdown: "" });
+        }
+      }
+    }
+    
+    return results;
   } catch (e) {
     console.error("Serper search failed:", e);
     return [];
@@ -899,6 +933,18 @@ async function aiSearchAgent(
     }
   }
 
+  // ─── Strategy D: Role-filtered Serper search ───
+  if (serperKey && lead.company && lead.role) {
+    const roleQuery = `site:linkedin.com/in "${lead.company}" "${lead.role}"`;
+    console.log(`  Pre-search Strategy D (role-filtered): ${roleQuery}`);
+    preSearchQueriesDone.push(roleQuery);
+    const roleResults = await serperSearch(roleQuery, serperKey, 5);
+    const roleLinkedins = roleResults.filter(r => r.url.includes("linkedin.com/in/"));
+    if (roleLinkedins.length > 0) {
+      preSearchResults.push(`STRATEGY D — Role-filtered search (${lead.role} at ${lead.company}):\n${roleLinkedins.map(r => `${r.url} — ${r.title || ""} ${r.description || ""}`).join("\n")}`);
+    }
+  }
+
   // ─── Phase A: Pre-Agent Confidence Gate ───
   // If pre-search found LinkedIn URLs from the company website where the slug
   // contains BOTH the person's first AND last name, verify directly and skip the agent.
@@ -963,6 +1009,9 @@ async function aiSearchAgent(
     },
   ];
 
+  // Fix 2: Collect ALL LinkedIn URLs encountered during agent search for candidate UI
+  const agentEncounteredUrls: Array<{ url: string; snippet: string }> = [];
+
   for (let turn = 0; turn < maxTurns; turn++) {
     try {
       const content = await callAI(messages, openaiKey, model);
@@ -990,7 +1039,7 @@ async function aiSearchAgent(
       }
 
       if (parsed.action === "give_up") {
-        console.log(`  Turn ${turn + 1}: GAVE UP — ${parsed.reason}`);
+        console.log(`  Turn ${turn + 1}: GAVE UP — ${parsed.reason} (${agentEncounteredUrls.length} candidates collected)`);
         
         // Serper fallback before truly giving up (site:linkedin.com)
         if (serperKey && lead.company) {
@@ -1030,7 +1079,10 @@ async function aiSearchAgent(
           }
         }
         
-        return { url: null, profileContent: "", turnsUsed: turn + 1, gaveUpReason: parsed.reason };
+        // Attach collected candidates to the result
+        const result: AgentResult = { url: null, profileContent: "", turnsUsed: turn + 1, gaveUpReason: parsed.reason, snippet: "" };
+        (result as any).candidates = agentEncounteredUrls;
+        return result;
       }
 
       if (parsed.action === "scrape" && parsed.url) {
@@ -1073,6 +1125,16 @@ async function aiSearchAgent(
           const serperResults = await serperSearch(parsed.query, serperKey, 5);
           if (serperResults.length > 0) {
             results = serperResults;
+          }
+        }
+
+        // Fix 2: Collect all LinkedIn /in/ URLs from search results
+        for (const r of results) {
+          if (r.url.includes("linkedin.com/in/")) {
+            const cleanUrl = r.url.split("?")[0];
+            if (!agentEncounteredUrls.some(c => c.url === cleanUrl)) {
+              agentEncounteredUrls.push({ url: cleanUrl, snippet: `${r.title || ""} ${r.description || ""}`.trim() });
+            }
           }
         }
 
@@ -1246,8 +1308,13 @@ async function processLead(
   const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, serperKey, previousSearchLog, companyCache, supabase);
 
   // ─── Phase 1B: Inline verification before writing ───
-  // Collect candidates for multi-candidate UI (Step 2)
+  // Collect candidates for multi-candidate UI — merge agent-collected candidates
   const candidates: Array<{ url: string; snippet: string }> = [];
+  if ((agentResult as any).candidates) {
+    for (const c of (agentResult as any).candidates) {
+      if (!candidates.some(x => x.url === c.url)) candidates.push(c);
+    }
+  }
   
   if (agentResult.url) {
     const snippet = agentResult.snippet || "";
@@ -1509,7 +1576,7 @@ Deno.serve(async (req) => {
 
     // D: Company-level cache shared across all leads in batch
     const companyCache: CompanyCache = new Map();
-    const batchStartTime = Date.now();
+    // batchStartTime moved inside chain loop (Fix 1)
     
     let totalFound = 0;
     let totalProcessed = 0;
@@ -1520,6 +1587,8 @@ Deno.serve(async (req) => {
 
     for (let chain = 0; chain < MAX_AUTO_CHAINS; chain++) {
       chainsRun++;
+      // Fix 1: Reset timeout per chain so chains 2-3 get fresh 45s windows
+      const chainStartTime = Date.now();
       
       // Get leads needing LinkedIn lookup
       let leadsQuery = supabase
@@ -1568,7 +1637,7 @@ Deno.serve(async (req) => {
         totalProcessed++;
         console.log(`\n[${totalProcessed}] ${lead.name} (${lead.company})`);
 
-        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, SERPER_API_KEY, companyCache, batchStartTime);
+        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, SERPER_API_KEY, companyCache, chainStartTime);
         totalTurns += result.turnsUsed;
 
         if (result.found) {
