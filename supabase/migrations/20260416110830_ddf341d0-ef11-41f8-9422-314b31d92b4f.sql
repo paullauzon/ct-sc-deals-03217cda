@@ -1,0 +1,1 @@
+ALTER TABLE public.leads ADD COLUMN linkedin_search_log jsonb DEFAULT NULL;

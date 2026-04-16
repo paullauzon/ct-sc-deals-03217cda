@@ -8,7 +8,7 @@ const corsHeaders = {
 const BATCH_SIZE = 3;
 const DELAY_MS = 2000;
 const FLASH_MAX_TURNS = 7;
-const MAX_LEADS_PER_RUN = 5; // Process only 5 leads per invocation to stay within timeout
+const MAX_LEADS_PER_RUN = 5;
 
 
 // ─── Firecrawl Search ───
@@ -61,6 +61,38 @@ async function firecrawlSearch(
   }
 }
 
+// ─── Serper (Google) Search Fallback ───
+
+async function serperSearch(query: string, serperKey: string, limit = 5): Promise<SearchResult[]> {
+  try {
+    const res = await fetch("https://google.serper.dev/search", {
+      method: "POST",
+      headers: {
+        "X-API-KEY": serperKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ q: query, num: limit }),
+    });
+
+    if (!res.ok) {
+      console.error(`Serper search error ${res.status}`);
+      return [];
+    }
+
+    const data = await res.json();
+    const organic = data.organic || [];
+    return organic.map((r: any) => ({
+      url: r.link || "",
+      title: r.title || "",
+      description: r.snippet || "",
+      markdown: "",
+    }));
+  } catch (e) {
+    console.error("Serper search failed:", e);
+    return [];
+  }
+}
+
 // ─── Firecrawl Scrape (single URL) ───
 
 async function firecrawlScrape(
@@ -94,7 +126,6 @@ async function firecrawlScrape(
     const markdown = data.data?.markdown || data.markdown || "";
     const links = data.data?.links || data.links || [];
     
-    // Append any LinkedIn links found
     const linkedinLinks = links.filter((l: string) => l.includes("linkedin.com/in/"));
     if (linkedinLinks.length > 0) {
       return markdown + "\n\nLinkedIn profile links found on page:\n" + linkedinLinks.join("\n");
@@ -153,6 +184,7 @@ interface RationalizationResult {
   linkedin_slug_guesses: string[];
   best_search_queries: string[];
   confidence_notes: string;
+  confidence_level?: "high" | "medium" | "low";
 }
 
 async function rationalizeLead(
@@ -194,6 +226,8 @@ ANALYSIS RULES:
 
 6. LINKEDIN SLUG GUESSES: Common patterns: firstnamelastname, flastname, firstname-lastname, firstlast
 
+7. CONFIDENCE LEVEL: Assess "high" (unique name + clear company), "medium" (common name or ambiguous company), or "low" (very common name, no company, personal email)
+
 Respond with ONLY a JSON object:
 {
   "name_variants": ["formal/legal name variants to search"],
@@ -201,7 +235,8 @@ Respond with ONLY a JSON object:
   "email_inference": {"first_initial": "x", "likely_names": ["Name1", "Name2"]} or null,
   "linkedin_slug_guesses": ["possible-slug-1", "possible-slug-2"],
   "best_search_queries": ["query1 site:linkedin.com/in", "query2 site:linkedin.com/in"],
-  "confidence_notes": "Brief reasoning about name/company analysis"
+  "confidence_notes": "Brief reasoning about name/company analysis",
+  "confidence_level": "high"|"medium"|"low"
 }`;
 
   try {
@@ -215,7 +250,7 @@ Respond with ONLY a JSON object:
     const parsed = JSON.parse(jsonStr);
     console.log(`  Rationalization: ${parsed.confidence_notes}`);
     console.log(`  Name variants: ${(parsed.name_variants || []).join(", ")}`);
-    console.log(`  Best queries: ${(parsed.best_search_queries || []).join(" | ")}`);
+    console.log(`  Confidence: ${parsed.confidence_level || "unknown"}`);
     return parsed as RationalizationResult;
   } catch (e) {
     console.error(`  Rationalization failed:`, e);
@@ -223,11 +258,89 @@ Respond with ONLY a JSON object:
   }
 }
 
+// ─── Inline Verification ───
+
+async function inlineVerify(
+  lead: LeadContext,
+  linkedinUrl: string,
+  linkedinSnippet: string,
+  openaiKey: string,
+): Promise<{ verdict: "correct" | "wrong" | "uncertain"; reason: string }> {
+  const contextParts: string[] = [];
+  if (lead.company) contextParts.push(`Company: ${lead.company}`);
+  if (lead.email) contextParts.push(`Email: ${lead.email}`);
+  if (lead.companyUrl) contextParts.push(`Company URL: ${lead.companyUrl}`);
+  if (lead.role) contextParts.push(`Role: ${lead.role}`);
+
+  const prompt = `You are verifying whether a LinkedIn profile URL belongs to the correct person. Be strict — only say "correct" if the LinkedIn snippet clearly matches.
+
+PERSON TO FIND:
+Name: ${lead.name}
+${contextParts.join("\n")}
+
+LINKEDIN MATCH:
+URL: ${linkedinUrl}
+Snippet: ${linkedinSnippet || "No snippet available"}
+
+RULES:
+- The LinkedIn profile MUST be for someone at the SAME company (or a clearly related entity).
+- If the email domain matches the LinkedIn company, that's a strong signal for CORRECT.
+- Consider company name abbreviations (e.g., "GMAX" vs "G-Max Industries").
+- If the LinkedIn URL contains a completely different name, that's WRONG.
+- If not enough info to verify, say "uncertain".
+
+Respond with ONLY: {"verdict": "correct"|"wrong"|"uncertain", "reason": "brief explanation"}`;
+
+  try {
+    const content = await callAI(
+      [{ role: "user", content: prompt }],
+      openaiKey,
+      "gpt-4o-mini",
+    );
+    const jsonStr = content.replace(/```json\s*/g, "").replace(/```/g, "").trim();
+    const parsed = JSON.parse(jsonStr);
+    return { verdict: parsed.verdict || "uncertain", reason: parsed.reason || "" };
+  } catch (e) {
+    console.error(`  Inline verify error:`, e);
+    return { verdict: "uncertain", reason: "Parse error" };
+  }
+}
+
+// ─── Direct LinkedIn URL Guessing ───
+
+async function tryDirectSlugGuess(
+  slugs: string[],
+  lead: LeadContext,
+  firecrawlKey: string,
+  openaiKey: string,
+): Promise<{ url: string; snippet: string } | null> {
+  for (const slug of slugs.slice(0, 4)) {
+    const candidateUrl = `https://www.linkedin.com/in/${slug}`;
+    console.log(`  Direct slug guess: ${candidateUrl}`);
+    
+    // Search for the slug to get snippet (scraping LinkedIn directly usually fails)
+    const results = await firecrawlSearch(`"${slug}" site:linkedin.com/in`, firecrawlKey, 2, false);
+    const match = results.find(r => r.url.includes(`/in/${slug}`));
+    
+    if (match) {
+      const snippet = `${match.title || ""} ${match.description || ""}`;
+      // Check if company name appears in snippet
+      const companyLower = lead.company?.toLowerCase() || "";
+      if (companyLower && snippet.toLowerCase().includes(companyLower)) {
+        console.log(`  Direct slug HIT: ${match.url} (company match in snippet)`);
+        return { url: match.url.split("?")[0], snippet };
+      }
+    }
+  }
+  return null;
+}
+
 interface AgentResult {
   url: string | null;
   profileContent: string;
   turnsUsed: number;
   gaveUpReason: string | null;
+  snippet?: string;
 }
 
 function buildSystemPrompt(maxTurns: number): string {
@@ -294,6 +407,7 @@ async function aiSearchAgent(
   model: string = "gpt-4o-mini",
   maxTurns: number = FLASH_MAX_TURNS,
   rationalization: RationalizationResult | null = null,
+  serperKey: string | null = null,
 ): Promise<AgentResult> {
   const contextParts: string[] = [];
   contextParts.push(`Name: ${lead.name}`);
@@ -311,7 +425,6 @@ async function aiSearchAgent(
   if (lead.message) contextParts.push(`Submission Message: "${lead.message.substring(0, 600)}"`);
 
   // ─── Rationalization-driven quick-match ───
-  // Before any expensive strategies, try the rationalization's best search queries
   if (rationalization && rationalization.best_search_queries?.length > 0) {
     for (const query of rationalization.best_search_queries.slice(0, 2)) {
       console.log(`  Quick-match search: ${query}`);
@@ -319,7 +432,6 @@ async function aiSearchAgent(
       const linkedinResults = results.filter(r => r.url.includes("linkedin.com/in/"));
       
       if (linkedinResults.length > 0) {
-        // Check if any result's title/description contains the company name (any variant)
         const companyVariants = [
           lead.company?.toLowerCase(),
           ...(rationalization.company_variants || []).map(c => c.toLowerCase()),
@@ -328,7 +440,6 @@ async function aiSearchAgent(
         for (const result of linkedinResults) {
           const snippet = `${result.title || ""} ${result.description || ""}`.toLowerCase();
           const companyMatch = companyVariants.some(cv => snippet.includes(cv));
-          // Also check if any name variant appears in the result
           const allNames = [lead.name, ...(rationalization.name_variants || [])];
           const lastName = lead.name.split(/\s+/).pop()?.toLowerCase() || "";
           const nameMatch = lastName && snippet.includes(lastName);
@@ -336,7 +447,32 @@ async function aiSearchAgent(
           if (companyMatch && nameMatch) {
             const url = result.url.split("?")[0];
             console.log(`  Quick-match HIT: ${url} (company+name match in snippet)`);
-            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null };
+            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: `${result.title || ""} ${result.description || ""}` };
+          }
+        }
+      }
+      
+      // Serper fallback for quick-match if Firecrawl found nothing
+      if (linkedinResults.length === 0 && serperKey) {
+        console.log(`  Quick-match Serper fallback: ${query}`);
+        const serperResults = await serperSearch(query, serperKey, 5);
+        const serperLinkedins = serperResults.filter(r => r.url.includes("linkedin.com/in/"));
+        
+        const companyVariants = [
+          lead.company?.toLowerCase(),
+          ...(rationalization.company_variants || []).map(c => c.toLowerCase()),
+        ].filter(Boolean) as string[];
+        
+        for (const result of serperLinkedins) {
+          const snippet = `${result.title || ""} ${result.description || ""}`.toLowerCase();
+          const companyMatch = companyVariants.some(cv => snippet.includes(cv));
+          const lastName = lead.name.split(/\s+/).pop()?.toLowerCase() || "";
+          const nameMatch = lastName && snippet.includes(lastName);
+          
+          if (companyMatch && nameMatch) {
+            const url = result.url.split("?")[0];
+            console.log(`  Quick-match Serper HIT: ${url}`);
+            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: `${result.title || ""} ${result.description || ""}` };
           }
         }
       }
@@ -378,11 +514,9 @@ async function aiSearchAgent(
         if (uniqueLinks.length > 0) {
           preSearchResults.push(`Company LinkedIn page (${companyLinkedinUrl}) employee profiles found:\n${uniqueLinks.map(l => `https://${l}`).join("\n")}`);
         }
-        // Check for any name variant mentions
         const allNames = rationalization
           ? [lead.name, ...rationalization.name_variants]
           : [lead.name];
-        const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
         const anyNameMention = allNames.some(n => scraped.toLowerCase().includes(n.split(/\s+/)[0]?.toLowerCase()));
         if (anyNameMention) {
           preSearchResults.push(`The company LinkedIn page mentions a name variant — check the profile links above.`);
@@ -447,7 +581,6 @@ async function aiSearchAgent(
     ? `\n\nPRE-SEARCH RESULTS (from automated priority strategies):\n${preSearchResults.join("\n\n")}\n\nIMPORTANT: Analyze these results first. If any LinkedIn URL was found on the company website, try to verify it by searching for the slug (e.g. search for "slug_name" site:linkedin.com). If a profile matches ${lead.name}, report it as found. Do NOT skip these just because the slug looks unusual.`
     : "";
 
-  // Build the user prompt — include name variants prominently
   const nameVariantNote = rationalization && rationalization.name_variants.length > 0
     ? `\n\nCRITICAL: This person may go by different names. Search for ALL of these: ${[lead.name, ...rationalization.name_variants].join(", ")}`
     : "";
@@ -488,6 +621,23 @@ async function aiSearchAgent(
 
       if (parsed.action === "give_up") {
         console.log(`  Turn ${turn + 1}: GAVE UP — ${parsed.reason}`);
+        
+        // Serper fallback before truly giving up
+        if (serperKey && lead.company) {
+          console.log(`  Serper fallback before giving up...`);
+          const allNames = rationalization ? [lead.name, ...rationalization.name_variants] : [lead.name];
+          for (const nameVariant of allNames.slice(0, 3)) {
+            const serperQuery = `"${nameVariant}" "${lead.company}" site:linkedin.com/in`;
+            const serperResults = await serperSearch(serperQuery, serperKey, 5);
+            const serperLinkedin = serperResults.find(r => r.url.includes("linkedin.com/in/"));
+            if (serperLinkedin) {
+              const sUrl = serperLinkedin.url.split("?")[0];
+              console.log(`  Serper rescue: ${sUrl}`);
+              return { url: sUrl, profileContent: "", turnsUsed: turn + 1, gaveUpReason: null, snippet: `${serperLinkedin.title || ""} ${serperLinkedin.description || ""}` };
+            }
+          }
+        }
+        
         return { url: null, profileContent: "", turnsUsed: turn + 1, gaveUpReason: parsed.reason };
       }
 
@@ -495,7 +645,6 @@ async function aiSearchAgent(
         console.log(`  Turn ${turn + 1}: Scraping "${parsed.url}"`);
         let scraped = await firecrawlScrape(parsed.url, firecrawlKey);
         
-        // Fallback: if scraping a LinkedIn profile returned empty (403 block), search for the slug instead
         if (!scraped && parsed.url.includes("linkedin.com/in/")) {
           const slug = parsed.url.split("/in/")[1]?.split("/")[0]?.split("?")[0];
           if (slug) {
@@ -524,7 +673,16 @@ async function aiSearchAgent(
 
       if (parsed.action === "search" && parsed.query) {
         console.log(`  Turn ${turn + 1}: Searching "${parsed.query}"`);
-        const results = await firecrawlSearch(parsed.query, firecrawlKey, 5, true);
+        let results = await firecrawlSearch(parsed.query, firecrawlKey, 5, true);
+
+        // Serper fallback if Firecrawl returns 0 results
+        if (results.length === 0 && serperKey) {
+          console.log(`  Turn ${turn + 1}: Firecrawl empty, trying Serper fallback`);
+          const serperResults = await serperSearch(parsed.query, serperKey, 5);
+          if (serperResults.length > 0) {
+            results = serperResults;
+          }
+        }
 
         let resultsSummary: string;
         if (results.length === 0) {
@@ -607,6 +765,21 @@ function getSeniorityScore(title: string | null): number {
   return 8;
 }
 
+// ─── Validate lead name (relaxed for single-name with company+email) ───
+
+function isValidLeadForSearch(lead: any): boolean {
+  const nameParts = lead.name.split(/\s+/).filter((p: string) => p.length >= 2);
+  // Standard: 2+ name parts
+  if (nameParts.length >= 2) return true;
+  // Relaxed: single name but has company AND non-personal email
+  if (nameParts.length >= 1 && lead.company && lead.email) {
+    const personalDomains = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com", "icloud.com", "me.com", "protonmail.com", "mozmail.com"];
+    const emailDomain = lead.email.split("@")[1]?.toLowerCase() || "";
+    if (!personalDomains.includes(emailDomain)) return true;
+  }
+  return false;
+}
+
 // ─── Process a single lead (used in both passes) ───
 
 async function processLead(
@@ -616,6 +789,7 @@ async function processLead(
   supabase: any,
   model: string,
   maxTurns: number,
+  serperKey: string | null = null,
 ): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
   const leadContext: LeadContext = {
     name: lead.name,
@@ -637,14 +811,59 @@ async function processLead(
   console.log(`  Running AI rationalization for ${lead.name}...`);
   const rationalization = await rationalizeLead(leadContext, openaiKey);
 
-  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization);
-
-  if (!agentResult.url) {
-    await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
-    return { found: false, turnsUsed: agentResult.turnsUsed, gaveUpReason: agentResult.gaveUpReason };
+  // ─── Phase 1A: Direct LinkedIn URL guessing from rationalization slugs ───
+  if (rationalization && rationalization.linkedin_slug_guesses?.length > 0) {
+    console.log(`  Trying direct slug guesses: ${rationalization.linkedin_slug_guesses.join(", ")}`);
+    const slugResult = await tryDirectSlugGuess(rationalization.linkedin_slug_guesses, leadContext, firecrawlKey, openaiKey);
+    if (slugResult) {
+      // Inline verify before accepting
+      const verification = await inlineVerify(leadContext, slugResult.url, slugResult.snippet, openaiKey);
+      if (verification.verdict === "correct") {
+        console.log(`  Direct slug VERIFIED: ${slugResult.url}`);
+        return await writeLinkedInResult(lead, slugResult.url, firecrawlKey, supabase, rationalization, 0, null);
+      } else {
+        console.log(`  Direct slug REJECTED (${verification.verdict}): ${verification.reason}`);
+      }
+    }
   }
 
-  const profileContent = await scrapeLinkedInProfile(agentResult.url, firecrawlKey);
+  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, serperKey);
+
+  // ─── Phase 1B: Inline verification before writing ───
+  if (agentResult.url) {
+    const snippet = agentResult.snippet || "";
+    const verification = await inlineVerify(leadContext, agentResult.url, snippet, openaiKey);
+    
+    if (verification.verdict === "wrong") {
+      console.log(`  Inline verify REJECTED: ${agentResult.url} — ${verification.reason}`);
+      // Don't write this bad match — mark as not found
+      await writeSearchLog(supabase, lead.id, rationalization, agentResult, `Rejected by inline verify: ${verification.reason}`);
+      await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
+      return { found: false, turnsUsed: agentResult.turnsUsed, gaveUpReason: `Inline verify rejected: ${verification.reason}` };
+    }
+    
+    console.log(`  Inline verify: ${verification.verdict} — ${verification.reason}`);
+    return await writeLinkedInResult(lead, agentResult.url, firecrawlKey, supabase, rationalization, agentResult.turnsUsed, null);
+  }
+
+  // Not found
+  await writeSearchLog(supabase, lead.id, rationalization, agentResult, agentResult.gaveUpReason || "Not found");
+  await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
+  return { found: false, turnsUsed: agentResult.turnsUsed, gaveUpReason: agentResult.gaveUpReason };
+}
+
+// ─── Write LinkedIn result to DB ───
+
+async function writeLinkedInResult(
+  lead: any,
+  url: string,
+  firecrawlKey: string,
+  supabase: any,
+  rationalization: RationalizationResult | null,
+  turnsUsed: number,
+  gaveUpReason: string | null,
+): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
+  const profileContent = await scrapeLinkedInProfile(url, firecrawlKey);
   const finalTitle = extractTitle(profileContent);
   const finalMa = detectMaExperience(profileContent);
 
@@ -656,16 +875,54 @@ async function processLead(
   const oldStage2 = lead.stage2_score || 0;
   const newStage2 = Math.max(0, Math.min(100, oldStage2 - oldLinkedinScore + seniorityScoreValue));
 
+  const searchLog = rationalization ? {
+    rationalization: {
+      name_variants: rationalization.name_variants,
+      company_variants: rationalization.company_variants,
+      confidence_notes: rationalization.confidence_notes,
+      confidence_level: rationalization.confidence_level,
+    },
+    found_url: url,
+    turns_used: turnsUsed,
+    searched_at: new Date().toISOString(),
+  } : null;
+
   await supabase.from("leads").update({
-    linkedin_url: agentResult.url,
+    linkedin_url: url,
     linkedin_title: finalTitle,
     linkedin_ma_experience: finalMa,
     linkedin_score: seniorityScoreValue,
     seniority_score: seniorityScoreValue,
     stage2_score: newStage2,
+    ...(searchLog ? { linkedin_search_log: searchLog } : {}),
   }).eq("id", lead.id);
 
-  return { found: true, turnsUsed: agentResult.turnsUsed, gaveUpReason: null };
+  return { found: true, turnsUsed, gaveUpReason };
+}
+
+// ─── Write search log on failure ───
+
+async function writeSearchLog(
+  supabase: any,
+  leadId: string,
+  rationalization: RationalizationResult | null,
+  agentResult: AgentResult,
+  failReason: string,
+) {
+  const searchLog = {
+    rationalization: rationalization ? {
+      name_variants: rationalization.name_variants,
+      company_variants: rationalization.company_variants,
+      confidence_notes: rationalization.confidence_notes,
+      confidence_level: rationalization.confidence_level,
+      queries_tried: rationalization.best_search_queries,
+    } : null,
+    turns_used: agentResult.turnsUsed,
+    fail_reason: failReason,
+    searched_at: new Date().toISOString(),
+  };
+
+  await supabase.from("leads").update({ linkedin_search_log: searchLog }).eq("id", leadId);
 }
 
 // ─── Main Handler ───
@@ -689,6 +946,8 @@ Deno.serve(async (req) => {
     });
   }
 
+  const SERPER_API_KEY = Deno.env.get("SERPER_API_KEY") || null;
+
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -697,15 +956,61 @@ Deno.serve(async (req) => {
   // Parse request body
   let singleLeadId: string | null = null;
   let retryFailed = false;
+  let manualUrl: string | null = null;
   try {
     const body = await req.json();
     singleLeadId = body?.leadId || null;
-    retryFailed = body?.retryFailed === true;
+    retryFailed = body?.retryFailed === true || body?.retry_failed === true;
+    manualUrl = body?.manualUrl || null;
   } catch {
     // No body or invalid JSON — proceed with batch mode
   }
 
   try {
+    // ─── Manual URL override mode ───
+    if (singleLeadId && manualUrl) {
+      console.log(`[manual-url] Setting LinkedIn URL for ${singleLeadId}: ${manualUrl}`);
+      
+      const { data: leadRows } = await supabase
+        .from("leads")
+        .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience")
+        .eq("id", singleLeadId)
+        .limit(1);
+      
+      const lead = leadRows?.[0];
+      if (!lead) {
+        return new Response(JSON.stringify({ error: "Lead not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Scrape and enrich the manually provided URL
+      const profileContent = await scrapeLinkedInProfile(manualUrl, FIRECRAWL_API_KEY);
+      const finalTitle = extractTitle(profileContent);
+      const finalMa = detectMaExperience(profileContent);
+      let seniorityScoreValue = getSeniorityScore(finalTitle);
+      if (finalMa) seniorityScoreValue += 2;
+      seniorityScoreValue = Math.max(-2, Math.min(20, seniorityScoreValue));
+
+      const oldLinkedinScore = lead.linkedin_score || 0;
+      const oldStage2 = lead.stage2_score || 0;
+      const newStage2 = Math.max(0, Math.min(100, oldStage2 - oldLinkedinScore + seniorityScoreValue));
+
+      await supabase.from("leads").update({
+        linkedin_url: manualUrl,
+        linkedin_title: finalTitle,
+        linkedin_ma_experience: finalMa,
+        linkedin_score: seniorityScoreValue,
+        seniority_score: seniorityScoreValue,
+        stage2_score: newStage2,
+        linkedin_search_log: { manual_override: true, url: manualUrl, set_at: new Date().toISOString() },
+      }).eq("id", lead.id);
+
+      return new Response(JSON.stringify({ success: true, found: true, url: manualUrl, title: finalTitle }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ─── Single-lead mode ───
     if (singleLeadId) {
       console.log(`[single-lead] Processing lead ${singleLeadId}`);
@@ -737,16 +1042,15 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Validate name has at least 2 parts
-      const nameParts = lead.name.split(/\s+/).filter((p: string) => p.length >= 2);
-      if (nameParts.length < 2) {
+      // Validate name (relaxed)
+      if (!isValidLeadForSearch(lead)) {
         await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
         return new Response(JSON.stringify({ success: true, found: false, reason: "Insufficient name" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o", 8);
+      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o", 8, SERPER_API_KEY);
       console.log(`[single-lead] ${lead.name}: ${result.found ? "FOUND" : "NOT FOUND"} (${result.turnsUsed} turns)`);
 
       return new Response(JSON.stringify({ success: true, found: result.found, turnsUsed: result.turnsUsed }), {
@@ -754,7 +1058,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ─── Batch mode (existing behavior) ───
+    // ─── Batch mode ───
     console.log(`Single pass: gpt-4o-mini (${FLASH_MAX_TURNS} turns), max ${MAX_LEADS_PER_RUN} leads per run`);
 
     // Step 0: Extract LinkedIn URLs already stored in company_url
@@ -772,8 +1076,6 @@ Deno.serve(async (req) => {
     }
 
     // Get leads needing LinkedIn lookup
-    // retryFailed=true: re-process leads where linkedin_url='' (previously failed with old rules)
-    // default: only process leads where linkedin_url IS NULL (never searched)
     let leadsQuery = supabase
       .from("leads")
       .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience");
@@ -792,7 +1094,8 @@ Deno.serve(async (req) => {
 
     if (error) throw error;
 
-    const validLeads = (leads || []).filter(l => l.name.split(/\s+/).filter((p: string) => p.length >= 2).length >= 2);
+    // Use relaxed name filter
+    const validLeads = (leads || []).filter(isValidLeadForSearch);
 
     if (validLeads.length === 0) {
       return new Response(
@@ -810,7 +1113,7 @@ Deno.serve(async (req) => {
       processed++;
       console.log(`\n[${processed}/${validLeads.length}] ${lead.name} (${lead.company})`);
 
-      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS);
+      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, SERPER_API_KEY);
       agentStats.totalTurns += result.turnsUsed;
 
       if (result.found) {

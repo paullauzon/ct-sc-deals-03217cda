@@ -11,7 +11,8 @@ import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
-import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle, Zap, Check, Loader2, Copy, Mail, AlertCircle, UserCheck, FileText, BarChart3, RefreshCw, Trash2, Save, Archive } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, GitCommit, MessageSquare, Calendar, Target, Shield, AlertTriangle, Users, ChevronLeft, ChevronRight, CalendarCheck, Heart, Crown, ShieldAlert, Trophy, TrendingUp, TrendingDown, CheckCircle2, XCircle, Zap, Check, Loader2, Copy, Mail, AlertCircle, UserCheck, FileText, BarChart3, RefreshCw, Trash2, Save, Archive, Linkedin } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +67,53 @@ function DraftCard({ content, onSave, onRegenerate, onDiscard, isRegenerating }:
           <Trash2 className="h-3 w-3" /> Discard
         </Button>
       </div>
+    </div>
+  );
+}
+
+// ─── Manual LinkedIn URL Override ───
+
+function LinkedInOverride({ leadId, onSuccess }: { leadId: string; onSuccess: (url: string, title: string | null) => void }) {
+  const [url, setUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    const trimmed = url.trim();
+    if (!trimmed || !trimmed.includes("linkedin.com/in/")) {
+      toast.error("Please paste a valid LinkedIn profile URL");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("backfill-linkedin", {
+        body: { leadId, manualUrl: trimmed },
+      });
+      if (error) throw error;
+      toast.success(`LinkedIn profile saved${data?.title ? `: ${data.title}` : ""}`);
+      onSuccess(trimmed, data?.title || null);
+      setUrl("");
+    } catch (e) {
+      toast.error("Failed to save LinkedIn URL");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 mt-1">
+      <Linkedin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+      <Input
+        value={url}
+        onChange={e => setUrl(e.target.value)}
+        placeholder="Paste LinkedIn URL"
+        className="h-6 text-xs px-2 flex-1"
+        onKeyDown={e => e.key === "Enter" && handleSave()}
+      />
+      {url.trim() && (
+        <Button variant="ghost" size="sm" className="h-6 px-1.5" onClick={handleSave} disabled={saving}>
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+        </Button>
+      )}
     </div>
   );
 }
@@ -514,6 +562,16 @@ export default function DealRoom() {
             <p className="text-sm">{lead.email}</p>
             {lead.phone && <p className="text-sm text-muted-foreground">{lead.phone}</p>}
             {lead.companyUrl && <p className="text-xs text-muted-foreground truncate">{lead.companyUrl}</p>}
+            {lead.linkedinUrl ? (
+              <a href={lead.linkedinUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-[#0A66C2] hover:underline mt-1">
+                <Linkedin className="h-3.5 w-3.5" />
+                {lead.linkedinTitle || "LinkedIn Profile"}
+              </a>
+            ) : (
+              <LinkedInOverride leadId={lead.id} onSuccess={(url, title) => {
+                updateLead(lead.id, { linkedinUrl: url, linkedinTitle: title || "" });
+              }} />
+            )}
           </div>
           <div className="border-t border-border pt-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Dates</p>
