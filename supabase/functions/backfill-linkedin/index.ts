@@ -936,10 +936,11 @@ async function aiSearchAgent(
         
         if (slugMatchesName) {
           console.log(`  Confidence gate: slug "${slug}" matches name — verifying directly...`);
-          const verification = await inlineVerify(lead, candidateUrl.replace(/\/$/, "").split("?")[0], `Pre-search match with name-matching slug`, openaiKey);
+          const nameVarsGate = rationalization?.name_variants || [];
+          const verification = await inlineVerify(lead, candidateUrl.replace(/\/$/, "").split("?")[0], `Pre-search match with name-matching slug`, openaiKey, nameVarsGate);
           if (verification.verdict !== "wrong") {
             console.log(`  Confidence gate VERIFIED (${verification.verdict}): ${candidateUrl} — SKIPPING agent`);
-            return { url: candidateUrl.replace(/\/$/, "").split("?")[0], profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: `Confidence gate: ${verification.reason}` };
+            return { url: candidateUrl.replace(/\/$/, "").split("?")[0], profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: `Confidence gate: ${verification.reason}`, verified: true };
           } else {
             console.log(`  Confidence gate rejected: ${verification.reason}`);
           }
@@ -1277,13 +1278,19 @@ async function processLead(
   }
   
   if (agentResult.url) {
+    // Fix B: Skip redundant second verification if agent already verified
+    if (agentResult.verified) {
+      console.log(`  Skipping redundant inline verify — already verified in agent`);
+      return await writeLinkedInResult(lead, agentResult.url, firecrawlKey, supabase, rationalization, agentResult.turnsUsed, null);
+    }
+    
     const snippet = agentResult.snippet || "";
-    const verification = await inlineVerify(leadContext, agentResult.url, snippet, openaiKey);
+    const nameVarsForVerify = rationalization?.name_variants || [];
+    const verification = await inlineVerify(leadContext, agentResult.url, snippet, openaiKey, nameVarsForVerify);
     
     if (verification.verdict === "wrong") {
       console.log(`  Inline verify REJECTED: ${agentResult.url} — ${verification.reason}`);
       candidates.push({ url: agentResult.url, snippet: `${snippet} (rejected: ${verification.reason})` });
-      // Don't write this bad match — mark as not found
       await writeSearchLog(supabase, lead.id, rationalization, agentResult, `Rejected by inline verify: ${verification.reason}`, candidates);
       await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
       return { found: false, turnsUsed: agentResult.turnsUsed, gaveUpReason: `Inline verify rejected: ${verification.reason}` };
