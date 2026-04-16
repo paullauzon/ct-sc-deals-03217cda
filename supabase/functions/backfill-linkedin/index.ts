@@ -185,13 +185,14 @@ async function firecrawlScrape(
   }
 }
 
-// ─── AI Call Helper (OpenAI only) ───
+// ─── AI Call Helper (OpenAI with Lovable AI Gateway fallback) ───
 
 async function callAI(
   messages: Array<{ role: string; content: string }>,
   openaiKey: string,
   model: string,
 ): Promise<string> {
+  // Try OpenAI first
   for (let attempt = 0; attempt < 4; attempt++) {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -205,15 +206,85 @@ async function callAI(
       const delays = [5000, 15000, 30000];
       const delay = delays[attempt];
       console.warn(`  OpenAI 429 — retrying in ${delay / 1000}s (attempt ${attempt + 1}/4)...`);
-      await res.text(); // consume body
+      await res.text();
       await new Promise(r => setTimeout(r, delay));
       continue;
+    }
+    if (res.status === 429 && attempt === 3) {
+      // All OpenAI retries exhausted — fall back to Lovable AI Gateway
+      await res.text();
+      break;
     }
     if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
     const data = await res.json();
     return (data.choices?.[0]?.message?.content || "").trim();
   }
-  throw new Error("OpenAI 429 after 4 retries");
+
+  // Phase C: Fallback to Lovable AI Gateway (Gemini)
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) {
+    throw new Error("OpenAI 429 after 4 retries and no LOVABLE_API_KEY for fallback");
+  }
+  
+  const fallbackModel = model.includes("4o-mini") ? "google/gemini-2.5-flash" : "google/gemini-2.5-pro";
+  console.warn(`  OpenAI exhausted — falling back to Lovable AI (${fallbackModel})`);
+  
+  const fallbackRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ model: fallbackModel, messages }),
+  });
+  
+  if (!fallbackRes.ok) {
+    const errText = await fallbackRes.text();
+    throw new Error(`Lovable AI fallback HTTP ${fallbackRes.status}: ${errText}`);
+  }
+  
+  const fallbackData = await fallbackRes.json();
+  return (fallbackData.choices?.[0]?.message?.content || "").trim();
+}
+
+// ─── Firecrawl Map (discover URLs on a site) ───
+
+async function firecrawlMap(
+  url: string,
+  apiKey: string,
+  search?: string,
+  limit = 100,
+): Promise<string[]> {
+  try {
+    let formattedUrl = url.trim();
+    if (!formattedUrl.startsWith("http")) formattedUrl = `https://${formattedUrl}`;
+
+    const res = await firecrawlFetchWithRetry("https://api.firecrawl.dev/v2/map", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url: formattedUrl,
+        ...(search ? { search } : {}),
+        limit,
+        includeSubdomains: false,
+      }),
+    });
+
+    if (!res.ok) {
+      console.error(`Firecrawl map error ${res.status}`);
+      return [];
+    }
+
+    const data = await res.json();
+    const links = data.links || data.data || [];
+    return Array.isArray(links) ? links : [];
+  } catch (e) {
+    console.error("Firecrawl map failed:", e);
+    return [];
+  }
 }
 
 // ─── AI Search Agent ───
@@ -764,7 +835,7 @@ async function aiSearchAgent(
     }
   }
 
-  // Strategy C: Scrape company website for LinkedIn links (with cache)
+  // Strategy C: Discover company website pages via Map, then scrape for LinkedIn links (with cache)
   const companyWebsite = lead.companyUrl || lead.websiteUrl;
   if (companyWebsite && !companyWebsite.includes("linkedin.com")) {
     const cachedWebsite = companyCacheKey && companyCache ? companyCache.get(companyCacheKey) : undefined;
@@ -778,27 +849,93 @@ async function aiSearchAgent(
       const linksToReport = matchingLinks.length > 0 ? matchingLinks : cachedWebsite.websiteLinks;
       preSearchResults.push(`IMPORTANT — LinkedIn URLs found on company website (cached):\n${linksToReport.join("\n")}\nThese are HIGH-PRIORITY candidates.`);
     } else {
-      console.log(`  Pre-search: Scraping company website "${companyWebsite}" for LinkedIn links`);
-      const websiteContent = await firecrawlScrape(companyWebsite, firecrawlKey);
-      if (websiteContent) {
-        const websiteLinkedIns = websiteContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/g) || [];
-        const uniqueWebsiteLinks = [...new Set(websiteLinkedIns)];
-        
-        // Cache for future leads
-        if (companyCache && companyCacheKey) {
-          const entry = companyCache.get(companyCacheKey) || {};
-          entry.websiteLinks = uniqueWebsiteLinks;
-          companyCache.set(companyCacheKey, entry);
+      // Phase B: Use Firecrawl Map to discover team/about/leadership pages first
+      console.log(`  Pre-search: Mapping company website "${companyWebsite}" for team pages`);
+      const allSiteUrls = await firecrawlMap(companyWebsite, firecrawlKey, "team about leadership people", 50);
+      const teamPagePatterns = /\/(team|about|leadership|people|staff|our-team|management|who-we-are|partners)\b/i;
+      const teamPages = allSiteUrls.filter(u => teamPagePatterns.test(u));
+      
+      // Scrape team pages + root for LinkedIn links
+      const pagesToScrape = teamPages.length > 0 ? teamPages.slice(0, 3) : [companyWebsite];
+      if (teamPages.length > 0) {
+        console.log(`  Found ${teamPages.length} team pages: ${teamPages.slice(0, 3).join(", ")}`);
+      }
+      
+      const allLinkedInLinks: string[] = [];
+      for (const pageUrl of pagesToScrape) {
+        const websiteContent = await firecrawlScrape(pageUrl, firecrawlKey);
+        if (websiteContent) {
+          const websiteLinkedIns = websiteContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/g) || [];
+          allLinkedInLinks.push(...websiteLinkedIns);
         }
+      }
+      // Also scrape root page if we scraped team pages (root might have additional links)
+      if (teamPages.length > 0 && !pagesToScrape.includes(companyWebsite)) {
+        const rootContent = await firecrawlScrape(companyWebsite, firecrawlKey);
+        if (rootContent) {
+          const rootLinkedIns = rootContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/g) || [];
+          allLinkedInLinks.push(...rootLinkedIns);
+        }
+      }
+      
+      const uniqueWebsiteLinks = [...new Set(allLinkedInLinks)];
+      
+      // Cache for future leads
+      if (companyCache && companyCacheKey) {
+        const entry = companyCache.get(companyCacheKey) || {};
+        entry.websiteLinks = uniqueWebsiteLinks;
+        companyCache.set(companyCacheKey, entry);
+      }
+      
+      if (uniqueWebsiteLinks.length > 0) {
+        const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
+        const matchingLinks = uniqueWebsiteLinks.filter(l => {
+          const slug = l.split("/in/")[1]?.toLowerCase() || "";
+          return slug.includes(nameFirst) || slug.includes(nameFirst.substring(0, 3));
+        });
+        const linksToReport = matchingLinks.length > 0 ? matchingLinks : uniqueWebsiteLinks;
+        preSearchResults.push(`IMPORTANT — LinkedIn URLs found on company website (${companyWebsite}):\n${linksToReport.join("\n")}\nThese are HIGH-PRIORITY candidates. Try to verify these FIRST by searching for the slug.`);
+      }
+    }
+  }
+
+  // ─── Phase A: Pre-Agent Confidence Gate ───
+  // If pre-search found LinkedIn URLs from the company website where the slug
+  // contains BOTH the person's first AND last name, verify directly and skip the agent.
+  {
+    const namePartsLower = lead.name.toLowerCase().split(/\s+/).filter(p => p.length >= 2);
+    const firstName = namePartsLower[0] || "";
+    const lastName = namePartsLower[namePartsLower.length - 1] || "";
+    const allNames = rationalization ? [lead.name, ...rationalization.name_variants] : [lead.name];
+    
+    // Collect all LinkedIn URLs found in pre-search
+    const preSearchLinkedInUrls: string[] = [];
+    for (const section of preSearchResults) {
+      const urls = section.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/g) || [];
+      preSearchLinkedInUrls.push(...urls);
+    }
+    const uniquePreSearchUrls = [...new Set(preSearchLinkedInUrls)];
+    
+    if (uniquePreSearchUrls.length > 0 && firstName && lastName) {
+      for (const candidateUrl of uniquePreSearchUrls) {
+        const slug = (candidateUrl.split("/in/")[1] || "").toLowerCase().replace(/\/$/, "");
+        // Check if slug contains both first and last name (or name variants)
+        const slugMatchesName = allNames.some(fullName => {
+          const parts = fullName.toLowerCase().split(/\s+/);
+          const fn = parts[0] || "";
+          const ln = parts[parts.length - 1] || "";
+          return fn.length >= 2 && ln.length >= 2 && slug.includes(fn) && slug.includes(ln);
+        });
         
-        if (uniqueWebsiteLinks.length > 0) {
-          const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
-          const matchingLinks = uniqueWebsiteLinks.filter(l => {
-            const slug = l.split("/in/")[1]?.toLowerCase() || "";
-            return slug.includes(nameFirst) || slug.includes(nameFirst.substring(0, 3));
-          });
-          const linksToReport = matchingLinks.length > 0 ? matchingLinks : uniqueWebsiteLinks;
-          preSearchResults.push(`IMPORTANT — LinkedIn URLs found on company website (${companyWebsite}):\n${linksToReport.join("\n")}\nThese are HIGH-PRIORITY candidates. Try to verify these FIRST by searching for the slug.`);
+        if (slugMatchesName) {
+          console.log(`  Confidence gate: slug "${slug}" matches name — verifying directly...`);
+          const verification = await inlineVerify(lead, candidateUrl.replace(/\/$/, "").split("?")[0], `Pre-search match with name-matching slug`, openaiKey);
+          if (verification.verdict !== "wrong") {
+            console.log(`  Confidence gate VERIFIED (${verification.verdict}): ${candidateUrl} — SKIPPING agent`);
+            return { url: candidateUrl.replace(/\/$/, "").split("?")[0], profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: `Confidence gate: ${verification.reason}` };
+          } else {
+            console.log(`  Confidence gate rejected: ${verification.reason}`);
+          }
         }
       }
     }

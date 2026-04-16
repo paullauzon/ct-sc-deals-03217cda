@@ -1048,7 +1048,18 @@ export function LeadsTable() {
     const notFound = leads.filter(l => l.linkedinUrl === "").length;
     const pending = total - found - notFound;
     const pct = total > 0 ? Math.round((found / total) * 100) : 0;
-    return { total, found, notFound, pending, pct };
+    
+    // Failure pattern breakdown for not-found leads
+    const failedLeads = leads.filter(l => l.linkedinUrl === "");
+    const noCompany = failedLeads.filter(l => !l.company || l.company.trim() === "").length;
+    const singleName = failedLeads.filter(l => l.name.split(/\s+/).filter(p => p.length >= 2).length < 2 && l.company).length;
+    const personalEmail = failedLeads.filter(l => {
+      const domain = l.email?.split("@")[1]?.toLowerCase() || "";
+      return ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com", "icloud.com", "protonmail.com"].includes(domain);
+    }).length;
+    const otherFailures = notFound - noCompany - singleName;
+    
+    return { total, found, notFound, pending, pct, noCompany, singleName, personalEmail, otherFailures: Math.max(0, otherFailures) };
   }, [leads]);
 
   const toggleSort = (key: SortKey) => {
@@ -1228,7 +1239,28 @@ export function LeadsTable() {
             {linkedinEnriching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Linkedin className="w-4 h-4" />}
             {linkedinEnriching ? "Enriching..." : `LinkedIn Enrich`}
             {linkedinStats.total > 0 && (
-              <span className="text-[10px] text-muted-foreground ml-1">({linkedinStats.found}/{linkedinStats.total})</span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-[10px] text-muted-foreground ml-1 cursor-help">({linkedinStats.found}/{linkedinStats.total} · {linkedinStats.pct}%)</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs space-y-1 max-w-[220px]">
+                    <p className="font-medium">LinkedIn Coverage</p>
+                    <p>Found: {linkedinStats.found}</p>
+                    <p>Not found: {linkedinStats.notFound}</p>
+                    <p>Pending: {linkedinStats.pending}</p>
+                    {linkedinStats.notFound > 0 && (
+                      <>
+                        <p className="font-medium pt-1 border-t border-border mt-1">Failure Patterns</p>
+                        {linkedinStats.noCompany > 0 && <p>No company info: {linkedinStats.noCompany}</p>}
+                        {linkedinStats.singleName > 0 && <p>Single name only: {linkedinStats.singleName}</p>}
+                        {linkedinStats.personalEmail > 0 && <p>Personal email: {linkedinStats.personalEmail}</p>}
+                        {linkedinStats.otherFailures > 0 && <p>Other: {linkedinStats.otherFailures}</p>}
+                      </>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowBulk(true)}>
