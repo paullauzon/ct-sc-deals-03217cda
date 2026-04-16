@@ -860,15 +860,6 @@ function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcceptSugg
   );
 }
 
-  // M: LinkedIn coverage stats
-  const linkedinStats = useMemo(() => {
-    const total = leads.length;
-    const found = leads.filter(l => l.linkedinUrl && l.linkedinUrl.includes("linkedin.com/in/")).length;
-    const notFound = leads.filter(l => l.linkedinUrl === "").length;
-    const pending = total - found - notFound;
-    const pct = total > 0 ? Math.round((found / total) * 100) : 0;
-    return { total, found, notFound, pending, pct };
-  }, [leads]);
 
 function CollapsibleResearchSection({ icon, label, content, highlight }: { icon?: React.ReactNode; label: string; content: string; highlight?: boolean }) {
   const [open, setOpen] = useState(false);
