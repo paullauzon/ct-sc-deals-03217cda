@@ -269,7 +269,7 @@ CRITICAL RULES:
                     properties: {
                       stage: {
                         type: "object",
-                        properties: { value: { type: "string", enum: ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Long Term Follow Up", "Lost", "Went Dark", "Closed Won"] }, reason: { type: "string" } },
+                        properties: { value: { type: "string", enum: ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Lost", "Went Dark", "Closed Won"] }, reason: { type: "string" } },
                         required: ["value", "reason"],
                       },
                       priority: {
