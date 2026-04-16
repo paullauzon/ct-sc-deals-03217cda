@@ -104,7 +104,8 @@ async function firecrawlSearch(
     }
 
     const data = await res.json();
-    const raw = data.data || data.results || [];
+    // Firecrawl v2 nests results under data.web[] (not data[] directly)
+    const raw = data.data?.web || data.data || data.results || [];
     const results = Array.isArray(raw) ? raw : [];
 
     // Fix 1: Debug logging when results are empty
