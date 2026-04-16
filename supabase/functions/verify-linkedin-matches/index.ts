@@ -197,6 +197,7 @@ Deno.serve(async (req) => {
           }
         } else {
           uncertain++;
+          uncertainLeadIds.push(lead.id);
           console.log(`UNCERTAIN: ${lead.name} (${lead.company}) — ${result.reason}`);
         }
       }
