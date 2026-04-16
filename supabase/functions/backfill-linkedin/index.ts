@@ -185,13 +185,14 @@ async function firecrawlScrape(
   }
 }
 
-// ─── AI Call Helper (OpenAI only) ───
+// ─── AI Call Helper (OpenAI with Lovable AI Gateway fallback) ───
 
 async function callAI(
   messages: Array<{ role: string; content: string }>,
   openaiKey: string,
   model: string,
 ): Promise<string> {
+  // Try OpenAI first
   for (let attempt = 0; attempt < 4; attempt++) {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -205,15 +206,85 @@ async function callAI(
       const delays = [5000, 15000, 30000];
       const delay = delays[attempt];
       console.warn(`  OpenAI 429 — retrying in ${delay / 1000}s (attempt ${attempt + 1}/4)...`);
-      await res.text(); // consume body
+      await res.text();
       await new Promise(r => setTimeout(r, delay));
       continue;
+    }
+    if (res.status === 429 && attempt === 3) {
+      // All OpenAI retries exhausted — fall back to Lovable AI Gateway
+      await res.text();
+      break;
     }
     if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
     const data = await res.json();
     return (data.choices?.[0]?.message?.content || "").trim();
   }
-  throw new Error("OpenAI 429 after 4 retries");
+
+  // Phase C: Fallback to Lovable AI Gateway (Gemini)
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) {
+    throw new Error("OpenAI 429 after 4 retries and no LOVABLE_API_KEY for fallback");
+  }
+  
+  const fallbackModel = model.includes("4o-mini") ? "google/gemini-2.5-flash" : "google/gemini-2.5-pro";
+  console.warn(`  OpenAI exhausted — falling back to Lovable AI (${fallbackModel})`);
+  
+  const fallbackRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ model: fallbackModel, messages }),
+  });
+  
+  if (!fallbackRes.ok) {
+    const errText = await fallbackRes.text();
+    throw new Error(`Lovable AI fallback HTTP ${fallbackRes.status}: ${errText}`);
+  }
+  
+  const fallbackData = await fallbackRes.json();
+  return (fallbackData.choices?.[0]?.message?.content || "").trim();
+}
+
+// ─── Firecrawl Map (discover URLs on a site) ───
+
+async function firecrawlMap(
+  url: string,
+  apiKey: string,
+  search?: string,
+  limit = 100,
+): Promise<string[]> {
+  try {
+    let formattedUrl = url.trim();
+    if (!formattedUrl.startsWith("http")) formattedUrl = `https://${formattedUrl}`;
+
+    const res = await firecrawlFetchWithRetry("https://api.firecrawl.dev/v2/map", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url: formattedUrl,
+        ...(search ? { search } : {}),
+        limit,
+        includeSubdomains: false,
+      }),
+    });
+
+    if (!res.ok) {
+      console.error(`Firecrawl map error ${res.status}`);
+      return [];
+    }
+
+    const data = await res.json();
+    const links = data.links || data.data || [];
+    return Array.isArray(links) ? links : [];
+  } catch (e) {
+    console.error("Firecrawl map failed:", e);
+    return [];
+  }
 }
 
 // ─── AI Search Agent ───
