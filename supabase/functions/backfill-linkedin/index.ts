@@ -1603,6 +1603,11 @@ Deno.serve(async (req) => {
       console.log(`\n=== Chain ${chain + 1}/${MAX_AUTO_CHAINS}: Processing ${validLeads.length} leads with gpt-4o-mini ===`);
 
       for (const lead of validLeads) {
+        // Global timeout guard — return results before edge function 150s limit
+        if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
+          console.log(`\nGlobal timeout (${Math.round((Date.now() - globalStartTime) / 1000)}s) — returning partial results`);
+          break;
+        }
         totalProcessed++;
         console.log(`\n[${totalProcessed}] ${lead.name} (${lead.company})`);
 
