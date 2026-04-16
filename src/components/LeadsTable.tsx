@@ -1280,6 +1280,7 @@ export function LeadsTable() {
           }}>
             <RefreshCw className="w-4 h-4" />
             Re-enrich Stale
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowBulk(true)}>
             <Zap className="w-4 h-4" /> Process Leads
           </Button>
