@@ -8,7 +8,40 @@ const corsHeaders = {
 const BATCH_SIZE = 3;
 const DELAY_MS = 2000;
 const FLASH_MAX_TURNS = 7;
-const MAX_LEADS_PER_RUN = 5;
+const MAX_LEADS_PER_RUN = 10;
+const MAX_AUTO_CHAINS = 3; // up to 30 leads per button press
+
+// ─── Company Cache (shared across batch) ───
+interface CompanyCacheEntry {
+  linkedinPage?: string;
+  websiteLinks?: string[];
+  employeeSlugs?: string[];
+}
+type CompanyCache = Map<string, CompanyCacheEntry>;
+
+// ─── Fuzzy Company Name Matching ───
+function normalizeCompanyName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[,.'"""'']/g, "")
+    .replace(/\b(inc|incorporated|llc|llp|ltd|limited|corp|corporation|co|company|group|holdings|partners|lp|plc|gmbh|ag|sa|nv|bv)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fuzzyCompanyMatch(a: string, b: string): boolean {
+  const normA = normalizeCompanyName(a);
+  const normB = normalizeCompanyName(b);
+  if (normA === normB) return true;
+  if (!normA || !normB) return false;
+  // Check if one contains the other
+  if (normA.includes(normB) || normB.includes(normA)) return true;
+  // Word overlap: 2+ shared significant words
+  const wordsA = normA.split(" ").filter(w => w.length >= 3);
+  const wordsB = normB.split(" ").filter(w => w.length >= 3);
+  const shared = wordsA.filter(w => wordsB.includes(w));
+  return shared.length >= 2 || (shared.length >= 1 && Math.max(wordsA.length, wordsB.length) <= 2);
+}
 
 
 // ─── Firecrawl Search (v2 + 429 retry) ───
