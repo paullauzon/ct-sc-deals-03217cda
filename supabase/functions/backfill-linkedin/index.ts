@@ -1324,8 +1324,9 @@ async function writeSearchLog(
   rationalization: RationalizationResult | null,
   agentResult: AgentResult,
   failReason: string,
+  candidates?: Array<{ url: string; snippet: string }>,
 ) {
-  const searchLog = {
+  const searchLog: Record<string, any> = {
     rationalization: rationalization ? {
       name_variants: rationalization.name_variants,
       company_variants: rationalization.company_variants,
@@ -1337,6 +1338,11 @@ async function writeSearchLog(
     fail_reason: failReason,
     searched_at: new Date().toISOString(),
   };
+  
+  // Step 2: Store candidates for multi-candidate disambiguation UI
+  if (candidates && candidates.length > 0) {
+    searchLog.candidates = candidates.slice(0, 5); // Max 5 candidates
+  }
 
   await supabase.from("leads").update({ linkedin_search_log: searchLog }).eq("id", leadId);
 }
