@@ -259,6 +259,7 @@ export type Database = {
           last_contact_date: string
           linkedin_ma_experience: boolean | null
           linkedin_score: number | null
+          linkedin_search_log: Json | null
           linkedin_title: string | null
           linkedin_url: string | null
           lost_reason: string
@@ -342,6 +343,7 @@ export type Database = {
           last_contact_date?: string
           linkedin_ma_experience?: boolean | null
           linkedin_score?: number | null
+          linkedin_search_log?: Json | null
           linkedin_title?: string | null
           linkedin_url?: string | null
           lost_reason?: string
@@ -425,6 +427,7 @@ export type Database = {
           last_contact_date?: string
           linkedin_ma_experience?: boolean | null
           linkedin_score?: number | null
+          linkedin_search_log?: Json | null
           linkedin_title?: string | null
           linkedin_url?: string | null
           lost_reason?: string
