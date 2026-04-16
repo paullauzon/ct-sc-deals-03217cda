@@ -4,14 +4,17 @@ import { Lead } from "@/types/lead";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { supabase } from "@/integrations/supabase/client";
+import { logActivity } from "@/lib/activityLog";
 import { MeetingsSection } from "@/components/MeetingsSection";
 import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { ArchiveDialog } from "@/components/ArchiveDialog";
-import { Activity as ActivityIcon, Calendar, Mail, Brain, FolderOpen, MessageSquare, Layers, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Activity as ActivityIcon, Calendar, Mail, Brain, FolderOpen, MessageSquare, Layers, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
 import { LeadPanelHeader } from "./lead-panel/LeadPanelHeader";
 import { LeadPanelLeftRail } from "./lead-panel/LeadPanelLeftRail";
 import { LeadPanelRightRail } from "./lead-panel/LeadPanelRightRail";
@@ -34,9 +37,20 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [taskDraft, setTaskDraft] = useState("");
+  const [callDraft, setCallDraft] = useState("");
 
-  useEffect(() => { if (open) setActiveTab("overview"); }, [leadId, open]);
+  useEffect(() => {
+    if (open) {
+      setActiveTab("overview");
+      setNoteDraft("");
+      setTaskDraft("");
+      setCallDraft("");
+    }
+  }, [leadId, open]);
 
+  // ---- All hooks above this line. Early return is now safe. ----
   if (!lead) return null;
 
   const days = computeDaysInStage(lead.stageEnteredDate);

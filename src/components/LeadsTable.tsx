@@ -1,47 +1,28 @@
-import { useState, useMemo, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { useState, useMemo } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
-import { Lead, LeadStage, LeadSource, ServiceInterest, CloseReason, MeetingOutcome, ForecastCategory, IcpFit, Brand, DealOwner, LeadEnrichment, BillingFrequency, SuggestedUpdates, SuggestedFieldUpdate, Submission } from "@/types/lead";
+import { Lead, LeadStage, LeadSource, Brand } from "@/types/lead";
 import { toast } from "sonner";
-import { MeetingsSection } from "@/components/MeetingsSection";
-import { EmailsSection } from "@/components/EmailsSection";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
 import { ArchiveDialog } from "@/components/ArchiveDialog";
 import { BrandLogo } from "@/components/BrandLogo";
 import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { getBrandBorderClass } from "@/lib/brandColors";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { computeDaysInStage, getCompanyAssociates, getSharedIntelligence } from "@/lib/leadUtils";
-import { fetchActivityLog, type ActivityLogEntry } from "@/lib/activityLog";
-import { format, parseISO } from "date-fns";
-
+import { computeDaysInStage } from "@/lib/leadUtils";
 import { FirefliesImportDialog } from "@/components/FirefliesImport";
 import { BulkProcessingDialog } from "@/components/BulkProcessingDialog";
-import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, RefreshCw, AlertTriangle, Shield, Users, Target, Check, X, ArrowRight, Zap, ChevronRight, Clock, GitCommit, MessageSquare, Calendar, Search as SearchIcon, Linkedin, CalendarCheck, Archive, MoreHorizontal } from "lucide-react";
+import { Sparkles, RefreshCw, Linkedin, CalendarCheck, Archive, MoreHorizontal } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
-const STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Lost", "Went Dark", "Closed Won"];
-const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
-const SERVICES: ServiceInterest[] = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"];
-const PRIORITIES = ["High", "Medium", "Low"] as const;
-const OWNERS: DealOwner[] = ["Malik", "Valeria", "Tomos"];
-const CLOSE_REASONS: CloseReason[] = ["Budget", "Timing", "Competitor", "No Fit", "No Response", "Not Qualified", "Champion Left", "Other"];
-const MEETING_OUTCOMES: MeetingOutcome[] = ["Scheduled", "Held", "No-Show", "Rescheduled", "Cancelled"];
-const FORECAST_CATEGORIES: ForecastCategory[] = ["Commit", "Best Case", "Pipeline", "Omit"];
-const ICP_FITS: IcpFit[] = ["Strong", "Moderate", "Weak"];
-const BILLING_FREQUENCIES: BillingFrequency[] = ["Monthly", "Quarterly", "Annually"];
+// Re-export the new HubSpot-style full-screen lead panel so all 6 import sites
+// (Pipeline, ActionQueue, Dashboard, BusinessSystem, IntelligenceCenter, Index/Cmd+K)
+// pick it up without changing their import paths.
+export { LeadDetailPanel as LeadDetail } from "@/components/LeadDetailPanel";
 
 const SOURCE_LABELS: Record<LeadSource, string> = {
   "CT Contact Form": "CT Contact",
@@ -55,7 +36,8 @@ type SortDir = "asc" | "desc";
 
 const PRIORITY_ORDER: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
 
-function DealProgressBar({ currentStage }: { currentStage: LeadStage }) {
+// (DealProgressBar removed — old LeadDetail is gone, see LeadDetailPanel.)
+function _DealProgressBarPlaceholder({ currentStage }: { currentStage: LeadStage }) {
   const currentIdx = ACTIVE_STAGES.indexOf(currentStage);
   const isClosed = ["Closed Won", "Lost", "Went Dark"].includes(currentStage);
 
