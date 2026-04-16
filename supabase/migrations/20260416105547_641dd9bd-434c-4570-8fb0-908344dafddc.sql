@@ -1,0 +1,1 @@
+UPDATE leads SET linkedin_url = NULL, linkedin_score = NULL, linkedin_title = NULL, linkedin_ma_experience = NULL, seniority_score = NULL WHERE id = 'CT-200';

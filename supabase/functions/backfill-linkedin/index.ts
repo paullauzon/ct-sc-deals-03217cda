@@ -7,7 +7,7 @@ const corsHeaders = {
 
 const BATCH_SIZE = 3;
 const DELAY_MS = 2000;
-const FLASH_MAX_TURNS = 5;
+const FLASH_MAX_TURNS = 7;
 const MAX_LEADS_PER_RUN = 5; // Process only 5 leads per invocation to stay within timeout
 
 
@@ -144,6 +144,85 @@ interface LeadContext {
   geography: string | null;
 }
 
+// ─── Pre-Search Rationalization ───
+
+interface RationalizationResult {
+  name_variants: string[];
+  company_variants: string[];
+  email_inference: { first_initial: string; likely_names: string[] } | null;
+  linkedin_slug_guesses: string[];
+  best_search_queries: string[];
+  confidence_notes: string;
+}
+
+async function rationalizeLead(
+  lead: LeadContext,
+  openaiKey: string,
+): Promise<RationalizationResult | null> {
+  const contextParts: string[] = [];
+  contextParts.push(`Name: ${lead.name}`);
+  if (lead.company) contextParts.push(`Company: ${lead.company}`);
+  if (lead.email) contextParts.push(`Email: ${lead.email}`);
+  if (lead.companyUrl) contextParts.push(`Company URL: ${lead.companyUrl}`);
+  if (lead.websiteUrl) contextParts.push(`Website: ${lead.websiteUrl}`);
+  if (lead.role) contextParts.push(`Role: ${lead.role}`);
+  if (lead.geography) contextParts.push(`Geography: ${lead.geography}`);
+
+  const prompt = `You are a pre-search analyst. Given a person's data, produce a structured search plan for finding their LinkedIn profile. Think step-by-step about who this person really is before any search happens.
+
+PERSON DATA:
+${contextParts.join("\n")}
+
+ANALYSIS RULES:
+1. NICKNAME EXPANSION: If the first name is a common nickname, list ALL formal/legal name variants. Common mappings include but aren't limited to:
+   Woody→William/Woodrow, Bill/Billy→William, Bob/Bobby→Robert, Dick→Richard, Ted→Edward/Theodore, Chuck→Charles, Jack→John/Jackson, Jim/Jimmy→James, Mike→Michael, Joe→Joseph, Tom/Tommy→Thomas, Dave→David, Dan→Daniel, Pat→Patrick/Patricia, Chris→Christopher/Christine, Alex→Alexander/Alexandra, Sam→Samuel/Samantha, Ben→Benjamin, Matt→Matthew, Nick→Nicholas, Rick/Ricky→Richard, Steve→Stephen/Steven, Andy→Andrew, Tony→Anthony, Larry→Lawrence, Jerry→Gerald/Jerome, Terry→Terrence/Teresa, Jeff→Jeffrey, Greg→Gregory, Phil→Philip, Ron→Ronald, Ray→Raymond, Ken→Kenneth, Don→Donald, Hank→Henry, Peggy→Margaret, Beth→Elizabeth, Kate/Katie→Katherine, Liz→Elizabeth, Maggie→Margaret, Sally→Sarah, Jenny→Jennifer, Molly→Mary, Patty→Patricia, Sandy→Sandra, Barb→Barbara, Meg→Margaret, Sue→Susan, Vicky→Victoria, Wendy→Gwendolyn, Penny→Penelope, Cathy→Catherine, Debbie→Deborah, Cindy→Cynthia, Nancy→Ann/Anne, Mandy→Amanda
+
+2. EMAIL USERNAME ANALYSIS: Parse the email username carefully:
+   - "wcissel@" → first initial is "w", surname is "cissel" → likely names starting with W (William, Walter, Warren, Wesley, Wayne, etc.)
+   - "jsmith@" → first initial is "j" → James, John, Joseph, Jeffrey, etc.
+   - "firstname.lastname@" → confirms exact spelling
+   - "flastname@" or "firstl@" → extract initial + name fragment
+
+3. COMPANY NAME NORMALIZATION: Break concatenated names into words (e.g., "Treatyoakequity" → "Treaty Oak Equity"), expand abbreviations, consider DBA names
+
+4. DOMAIN CROSS-REFERENCE: If email domain differs from company URL domain, note this — both are valid search signals
+
+5. SEARCH QUERY GENERATION: Produce 2-3 ranked search queries from most-to-least specific. Always include:
+   - A query using the MOST LIKELY legal/formal name with company
+   - A query using the original name as given
+   Format: "FirstName LastName" OR "VariantName" "Company" site:linkedin.com/in
+
+6. LINKEDIN SLUG GUESSES: Common patterns: firstnamelastname, flastname, firstname-lastname, firstlast
+
+Respond with ONLY a JSON object:
+{
+  "name_variants": ["formal/legal name variants to search"],
+  "company_variants": ["company name variants"],
+  "email_inference": {"first_initial": "x", "likely_names": ["Name1", "Name2"]} or null,
+  "linkedin_slug_guesses": ["possible-slug-1", "possible-slug-2"],
+  "best_search_queries": ["query1 site:linkedin.com/in", "query2 site:linkedin.com/in"],
+  "confidence_notes": "Brief reasoning about name/company analysis"
+}`;
+
+  try {
+    const content = await callAI(
+      [{ role: "user", content: prompt }],
+      openaiKey,
+      "gpt-4o-mini",
+    );
+
+    const jsonStr = content.replace(/```json\s*/g, "").replace(/```/g, "").trim();
+    const parsed = JSON.parse(jsonStr);
+    console.log(`  Rationalization: ${parsed.confidence_notes}`);
+    console.log(`  Name variants: ${(parsed.name_variants || []).join(", ")}`);
+    console.log(`  Best queries: ${(parsed.best_search_queries || []).join(" | ")}`);
+    return parsed as RationalizationResult;
+  } catch (e) {
+    console.error(`  Rationalization failed:`, e);
+    return null;
+  }
+}
+
 interface AgentResult {
   url: string | null;
   profileContent: string;
@@ -214,6 +293,7 @@ async function aiSearchAgent(
   openaiKey: string,
   model: string = "gpt-4o-mini",
   maxTurns: number = FLASH_MAX_TURNS,
+  rationalization: RationalizationResult | null = null,
 ): Promise<AgentResult> {
   const contextParts: string[] = [];
   contextParts.push(`Name: ${lead.name}`);
@@ -230,8 +310,60 @@ async function aiSearchAgent(
   if (lead.targetRevenue) contextParts.push(`Target Revenue: ${lead.targetRevenue}`);
   if (lead.message) contextParts.push(`Submission Message: "${lead.message.substring(0, 600)}"`);
 
+  // ─── Rationalization-driven quick-match ───
+  // Before any expensive strategies, try the rationalization's best search queries
+  if (rationalization && rationalization.best_search_queries?.length > 0) {
+    for (const query of rationalization.best_search_queries.slice(0, 2)) {
+      console.log(`  Quick-match search: ${query}`);
+      const results = await firecrawlSearch(query, firecrawlKey, 5, false);
+      const linkedinResults = results.filter(r => r.url.includes("linkedin.com/in/"));
+      
+      if (linkedinResults.length > 0) {
+        // Check if any result's title/description contains the company name (any variant)
+        const companyVariants = [
+          lead.company?.toLowerCase(),
+          ...(rationalization.company_variants || []).map(c => c.toLowerCase()),
+        ].filter(Boolean) as string[];
+        
+        for (const result of linkedinResults) {
+          const snippet = `${result.title || ""} ${result.description || ""}`.toLowerCase();
+          const companyMatch = companyVariants.some(cv => snippet.includes(cv));
+          // Also check if any name variant appears in the result
+          const allNames = [lead.name, ...(rationalization.name_variants || [])];
+          const lastName = lead.name.split(/\s+/).pop()?.toLowerCase() || "";
+          const nameMatch = lastName && snippet.includes(lastName);
+          
+          if (companyMatch && nameMatch) {
+            const url = result.url.split("?")[0];
+            console.log(`  Quick-match HIT: ${url} (company+name match in snippet)`);
+            return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null };
+          }
+        }
+      }
+    }
+  }
+
   // ─── Pre-execute priority strategies programmatically ───
   const preSearchResults: string[] = [];
+
+  // Inject rationalization context
+  if (rationalization) {
+    const ratContext: string[] = [];
+    if (rationalization.name_variants.length > 0) {
+      ratContext.push(`KNOWN NAME VARIANTS (from AI analysis): ${rationalization.name_variants.join(", ")}`);
+    }
+    if (rationalization.company_variants.length > 0) {
+      ratContext.push(`COMPANY VARIANTS: ${rationalization.company_variants.join(", ")}`);
+    }
+    if (rationalization.email_inference) {
+      ratContext.push(`EMAIL ANALYSIS: First initial "${rationalization.email_inference.first_initial}", likely formal names: ${rationalization.email_inference.likely_names.join(", ")}`);
+    }
+    if (rationalization.linkedin_slug_guesses.length > 0) {
+      ratContext.push(`LIKELY LINKEDIN SLUGS: ${rationalization.linkedin_slug_guesses.join(", ")}`);
+    }
+    ratContext.push(`ANALYSIS NOTES: ${rationalization.confidence_notes}`);
+    preSearchResults.push(`AI RATIONALIZATION (use these name variants in your searches!):\n${ratContext.join("\n")}`);
+  }
 
   // Strategy A: Search company LinkedIn page for employees
   if (lead.company) {
@@ -241,16 +373,19 @@ async function aiSearchAgent(
     if (companyLinkedinUrl) {
       const scraped = await firecrawlScrape(companyLinkedinUrl, firecrawlKey);
       if (scraped) {
-        // Extract any linkedin.com/in/ links from the scraped content
         const linkedinProfileLinks = scraped.match(/linkedin\.com\/in\/[a-zA-Z0-9_-]+/g) || [];
         const uniqueLinks = [...new Set(linkedinProfileLinks)];
         if (uniqueLinks.length > 0) {
           preSearchResults.push(`Company LinkedIn page (${companyLinkedinUrl}) employee profiles found:\n${uniqueLinks.map(l => `https://${l}`).join("\n")}`);
         }
-        // Also include any name mentions near linkedin links
+        // Check for any name variant mentions
+        const allNames = rationalization
+          ? [lead.name, ...rationalization.name_variants]
+          : [lead.name];
         const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
-        if (nameFirst && scraped.toLowerCase().includes(nameFirst)) {
-          preSearchResults.push(`The company LinkedIn page mentions "${nameFirst}" — check the profile links above.`);
+        const anyNameMention = allNames.some(n => scraped.toLowerCase().includes(n.split(/\s+/)[0]?.toLowerCase()));
+        if (anyNameMention) {
+          preSearchResults.push(`The company LinkedIn page mentions a name variant — check the profile links above.`);
         }
       }
     }
@@ -264,25 +399,17 @@ async function aiSearchAgent(
       const firstInitial = parts[0][0];
       const lastInitial = parts[parts.length - 1][0];
       
-      // Generate all possible initial combinations:
-      // 1. Two-letter: first+last initial (e.g. "eb")
       const initials2 = firstInitial + lastInitial;
-      // 2. Three-letter with middle initial: try all 26 letters between first and last
-      //    This catches cases like "emb" for "Ellie M. Burei" where middle initial is unknown
       const initialsVariants = [initials2];
       const alphabet = "abcdefghijklmnopqrstuvwxyz";
       for (const mid of alphabet) {
         initialsVariants.push(firstInitial + mid + lastInitial);
       }
-      // 3. Also try first 2 chars of first name + last initial (e.g. "elb")
       if (parts[0].length > 1) {
         initialsVariants.push(parts[0].substring(0, 2) + lastInitial);
       }
-      // 4. Full local part without dots (e.g. "ellieburei")
       initialsVariants.push(localPart.replace(/\./g, ""));
       
-      // Search using the most likely variants (2-letter + all 3-letter middle-initial combos)
-      // Use a compact search: just search the slug patterns with company name
       const searchVariants = [initials2, ...alphabet.split("").map(m => firstInitial + m + lastInitial)];
       const searchQuery = searchVariants.slice(0, 5).map(v => `"${v}"`).join(" OR ") + ` "${lead.company || ""}" site:linkedin.com/in`;
       console.log(`  Pre-search: Email initials "${initials2}", middle-initial variants (${firstInitial}[a-z]${lastInitial})`);
@@ -292,7 +419,6 @@ async function aiSearchAgent(
         preSearchResults.push(`LinkedIn profiles matching email initials patterns:\n${initialsLinkedins.map(r => `${r.url} — ${r.title || ""} ${r.description || ""}`).join("\n")}`);
       }
       
-      // Also provide the initials variants to the agent context
       preSearchResults.push(`Email initials hint: The email "${lead.email}" suggests possible LinkedIn slugs starting with: ${initials2}, ${firstInitial}[a-z]${lastInitial} (e.g. ${firstInitial}a${lastInitial}, ${firstInitial}m${lastInitial}), ${localPart.replace(/\./g, "")}, ${localPart.replace(/\./g, "-")}`);
     }
   }
@@ -306,7 +432,6 @@ async function aiSearchAgent(
       const websiteLinkedIns = websiteContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/g) || [];
       const uniqueWebsiteLinks = [...new Set(websiteLinkedIns)];
       if (uniqueWebsiteLinks.length > 0) {
-        // Check if any contain the person's first name
         const nameFirst = lead.name.split(/\s+/)[0]?.toLowerCase();
         const matchingLinks = uniqueWebsiteLinks.filter(l => {
           const slug = l.split("/in/")[1]?.toLowerCase() || "";
@@ -322,11 +447,16 @@ async function aiSearchAgent(
     ? `\n\nPRE-SEARCH RESULTS (from automated priority strategies):\n${preSearchResults.join("\n\n")}\n\nIMPORTANT: Analyze these results first. If any LinkedIn URL was found on the company website, try to verify it by searching for the slug (e.g. search for "slug_name" site:linkedin.com). If a profile matches ${lead.name}, report it as found. Do NOT skip these just because the slug looks unusual.`
     : "";
 
+  // Build the user prompt — include name variants prominently
+  const nameVariantNote = rationalization && rationalization.name_variants.length > 0
+    ? `\n\nCRITICAL: This person may go by different names. Search for ALL of these: ${[lead.name, ...rationalization.name_variants].join(", ")}`
+    : "";
+
   const messages: Array<{ role: string; content: string }> = [
     { role: "system", content: buildSystemPrompt(maxTurns) },
     {
       role: "user",
-      content: `Find the LinkedIn profile for this person:\n\n${contextParts.join("\n")}${preSearchContext}\n\nWhat would you like to do first?`,
+      content: `Find the LinkedIn profile for this person:\n\n${contextParts.join("\n")}${nameVariantNote}${preSearchContext}\n\nWhat would you like to do first?`,
     },
   ];
 
@@ -503,7 +633,11 @@ async function processLead(
     geography: lead.geography,
   };
 
-  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns);
+  // Run AI rationalization before search
+  console.log(`  Running AI rationalization for ${lead.name}...`);
+  const rationalization = await rationalizeLead(leadContext, openaiKey);
+
+  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization);
 
   if (!agentResult.url) {
     await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
