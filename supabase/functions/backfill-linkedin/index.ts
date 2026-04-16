@@ -1495,6 +1495,7 @@ Deno.serve(async (req) => {
 
     // D: Company-level cache shared across all leads in batch
     const companyCache: CompanyCache = new Map();
+    const batchStartTime = Date.now();
     
     let totalFound = 0;
     let totalProcessed = 0;
