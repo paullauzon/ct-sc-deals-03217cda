@@ -1552,7 +1552,8 @@ Deno.serve(async (req) => {
     let totalGaveUp = 0;
     let chainsRun = 0;
     const globalStartTime = Date.now();
-    const GLOBAL_TIMEOUT_MS = 130000; // Return before 150s edge function limit
+    const GLOBAL_TIMEOUT_MS = 110000; // Must return well before 150s limit
+    const PER_LEAD_CUTOFF_MS = 90000; // Don't START a new lead after 90s
     const processedIds: string[] = []; // Track across chains to avoid re-processing
 
     for (let chain = 0; chain < MAX_AUTO_CHAINS; chain++) {
