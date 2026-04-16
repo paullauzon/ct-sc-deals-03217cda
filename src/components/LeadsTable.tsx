@@ -1226,7 +1226,10 @@ export function LeadsTable() {
             }
           }}>
             {linkedinEnriching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Linkedin className="w-4 h-4" />}
-            {linkedinEnriching ? "Enriching..." : "LinkedIn Enrich"}
+            {linkedinEnriching ? "Enriching..." : `LinkedIn Enrich`}
+            {linkedinStats.total > 0 && (
+              <span className="text-[10px] text-muted-foreground ml-1">({linkedinStats.found}/{linkedinStats.total})</span>
+            )}
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowBulk(true)}>
             <Zap className="w-4 h-4" /> Process Leads
