@@ -992,7 +992,7 @@ async function aiSearchAgent(
       if (parsed.action === "give_up") {
         console.log(`  Turn ${turn + 1}: GAVE UP — ${parsed.reason}`);
         
-        // Serper fallback before truly giving up
+        // Serper fallback before truly giving up (site:linkedin.com)
         if (serperKey && lead.company) {
           console.log(`  Serper fallback before giving up...`);
           const allNames = rationalization ? [lead.name, ...rationalization.name_variants] : [lead.name];
@@ -1004,6 +1004,28 @@ async function aiSearchAgent(
               const sUrl = serperLinkedin.url.split("?")[0];
               console.log(`  Serper rescue: ${sUrl}`);
               return { url: sUrl, profileContent: "", turnsUsed: turn + 1, gaveUpReason: null, snippet: `${serperLinkedin.title || ""} ${serperLinkedin.description || ""}` };
+            }
+          }
+          
+          // Step 1: Open web LinkedIn mention search (no site: restriction)
+          console.log(`  Open web fallback — searching without site:linkedin.com...`);
+          for (const nameVariant of allNames.slice(0, 2)) {
+            const openWebQuery = `"${nameVariant}" "${lead.company}" linkedin profile`;
+            console.log(`  Open web search: ${openWebQuery}`);
+            const openResults = await serperSearch(openWebQuery, serperKey, 8);
+            const openLinkedins = openResults.filter(r => r.url.includes("linkedin.com/in/"));
+            if (openLinkedins.length > 0) {
+              // Verify each candidate
+              for (const candidate of openLinkedins.slice(0, 3)) {
+                const cUrl = candidate.url.split("?")[0];
+                const cSnippet = `${candidate.title || ""} ${candidate.description || ""}`;
+                console.log(`  Open web candidate: ${cUrl}`);
+                const verification = await inlineVerify(lead, cUrl, cSnippet, openaiKey);
+                if (verification.verdict !== "wrong") {
+                  console.log(`  Open web VERIFIED (${verification.verdict}): ${cUrl}`);
+                  return { url: cUrl, profileContent: "", turnsUsed: turn + 1, gaveUpReason: null, snippet: cSnippet };
+                }
+              }
             }
           }
         }
@@ -1161,7 +1183,16 @@ async function processLead(
   maxTurns: number,
   serperKey: string | null = null,
   companyCache: CompanyCache | null = null,
+  startTime: number = Date.now(),
 ): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
+  // Step 3: Timeout guard — save progress before edge function times out
+  const TIMEOUT_MS = 45000;
+  if (Date.now() - startTime > TIMEOUT_MS) {
+    console.log(`  Timeout guard: skipping ${lead.name} (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`);
+    await writeSearchLog(supabase, lead.id, null, { url: null, profileContent: "", turnsUsed: 0, gaveUpReason: "timeout" }, "timeout");
+    await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
+    return { found: false, turnsUsed: 0, gaveUpReason: "timeout" };
+  }
   const leadContext: LeadContext = {
     name: lead.name,
     company: lead.company,
@@ -1215,24 +1246,32 @@ async function processLead(
   const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, serperKey, previousSearchLog, companyCache, supabase);
 
   // ─── Phase 1B: Inline verification before writing ───
+  // Collect candidates for multi-candidate UI (Step 2)
+  const candidates: Array<{ url: string; snippet: string }> = [];
+  
   if (agentResult.url) {
     const snippet = agentResult.snippet || "";
     const verification = await inlineVerify(leadContext, agentResult.url, snippet, openaiKey);
     
     if (verification.verdict === "wrong") {
       console.log(`  Inline verify REJECTED: ${agentResult.url} — ${verification.reason}`);
+      candidates.push({ url: agentResult.url, snippet: `${snippet} (rejected: ${verification.reason})` });
       // Don't write this bad match — mark as not found
-      await writeSearchLog(supabase, lead.id, rationalization, agentResult, `Rejected by inline verify: ${verification.reason}`);
+      await writeSearchLog(supabase, lead.id, rationalization, agentResult, `Rejected by inline verify: ${verification.reason}`, candidates);
       await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
       return { found: false, turnsUsed: agentResult.turnsUsed, gaveUpReason: `Inline verify rejected: ${verification.reason}` };
+    }
+    
+    if (verification.verdict === "uncertain") {
+      candidates.push({ url: agentResult.url, snippet: `${snippet} (uncertain: ${verification.reason})` });
     }
     
     console.log(`  Inline verify: ${verification.verdict} — ${verification.reason}`);
     return await writeLinkedInResult(lead, agentResult.url, firecrawlKey, supabase, rationalization, agentResult.turnsUsed, null);
   }
 
-  // Not found
-  await writeSearchLog(supabase, lead.id, rationalization, agentResult, agentResult.gaveUpReason || "Not found");
+  // Not found — include any candidates we collected
+  await writeSearchLog(supabase, lead.id, rationalization, agentResult, agentResult.gaveUpReason || "Not found", candidates);
   await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
   return { found: false, turnsUsed: agentResult.turnsUsed, gaveUpReason: agentResult.gaveUpReason };
 }
@@ -1293,8 +1332,9 @@ async function writeSearchLog(
   rationalization: RationalizationResult | null,
   agentResult: AgentResult,
   failReason: string,
+  candidates?: Array<{ url: string; snippet: string }>,
 ) {
-  const searchLog = {
+  const searchLog: Record<string, any> = {
     rationalization: rationalization ? {
       name_variants: rationalization.name_variants,
       company_variants: rationalization.company_variants,
@@ -1306,6 +1346,11 @@ async function writeSearchLog(
     fail_reason: failReason,
     searched_at: new Date().toISOString(),
   };
+  
+  // Step 2: Store candidates for multi-candidate disambiguation UI
+  if (candidates && candidates.length > 0) {
+    searchLog.candidates = candidates.slice(0, 5); // Max 5 candidates
+  }
 
   await supabase.from("leads").update({ linkedin_search_log: searchLog }).eq("id", leadId);
 }
@@ -1342,11 +1387,13 @@ Deno.serve(async (req) => {
   let singleLeadId: string | null = null;
   let retryFailed = false;
   let manualUrl: string | null = null;
+  let minAgeDays: number | null = null;
   try {
     const body = await req.json();
     singleLeadId = body?.leadId || null;
     retryFailed = body?.retryFailed === true || body?.retry_failed === true;
     manualUrl = body?.manualUrl || null;
+    minAgeDays = body?.minAge ? Number(body.minAge) : null;
   } catch {
     // No body or invalid JSON — proceed with batch mode
   }
@@ -1435,7 +1482,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o", 8, SERPER_API_KEY);
+      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o", 8, SERPER_API_KEY, null, Date.now());
       console.log(`[single-lead] ${lead.name}: ${result.found ? "FOUND" : "NOT FOUND"} (${result.turnsUsed} turns)`);
 
       return new Response(JSON.stringify({ success: true, found: result.found, turnsUsed: result.turnsUsed }), {
@@ -1462,6 +1509,7 @@ Deno.serve(async (req) => {
 
     // D: Company-level cache shared across all leads in batch
     const companyCache: CompanyCache = new Map();
+    const batchStartTime = Date.now();
     
     let totalFound = 0;
     let totalProcessed = 0;
@@ -1485,10 +1533,20 @@ Deno.serve(async (req) => {
         leadsQuery = leadsQuery.is("linkedin_url", null);
       }
 
-      const { data: leads, error } = await leadsQuery
+      let { data: leads, error } = await leadsQuery
         .neq("name", "")
         .order("created_at", { ascending: false })
         .limit(MAX_LEADS_PER_RUN);
+      
+      // Step 4: Stale re-enrichment filter — re-process leads searched > minAgeDays ago
+      if (minAgeDays && leads) {
+        const cutoff = new Date(Date.now() - minAgeDays * 86400000).toISOString();
+        leads = leads.filter((l: any) => {
+          if (!l.linkedin_search_log?.searched_at) return true;
+          return l.linkedin_search_log.searched_at < cutoff;
+        });
+        if (chain === 0) console.log(`Stale filter: ${leads.length} leads searched >${minAgeDays}d ago`);
+      }
 
       if (error) throw error;
 
@@ -1510,7 +1568,7 @@ Deno.serve(async (req) => {
         totalProcessed++;
         console.log(`\n[${totalProcessed}] ${lead.name} (${lead.company})`);
 
-        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, SERPER_API_KEY, companyCache);
+        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, SERPER_API_KEY, companyCache, batchStartTime);
         totalTurns += result.turnsUsed;
 
         if (result.found) {

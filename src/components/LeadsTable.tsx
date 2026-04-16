@@ -1263,6 +1263,24 @@ export function LeadsTable() {
               </TooltipProvider>
             )}
           </Button>
+          <Button variant="outline" size="sm" disabled={linkedinEnriching} onClick={async () => {
+            setLinkedinEnriching(true);
+            toast.info("Re-enriching leads searched 30+ days ago...");
+            try {
+              const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { retry_failed: true, minAge: 30 } });
+              if (error) throw error;
+              if (data?.error) throw new Error(data.error);
+              toast.success(`Stale re-enrichment: ${data?.found || 0}/${data?.processed || 0} found`);
+              refreshLeads();
+            } catch (err) {
+              toast.error("Re-enrichment failed: " + (err as Error).message);
+            } finally {
+              setLinkedinEnriching(false);
+            }
+          }}>
+            <RefreshCw className="w-4 h-4" />
+            Re-enrich Stale
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowBulk(true)}>
             <Zap className="w-4 h-4" /> Process Leads
           </Button>
