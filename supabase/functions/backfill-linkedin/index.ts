@@ -1063,7 +1063,7 @@ async function processLead(
     }
   }
 
-  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, serperKey, previousSearchLog);
+  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, serperKey, previousSearchLog, companyCache, supabase);
 
   // ─── Phase 1B: Inline verification before writing ───
   if (agentResult.url) {
