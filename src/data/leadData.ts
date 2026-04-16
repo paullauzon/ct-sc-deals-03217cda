@@ -186,6 +186,8 @@ function parseTargetLeads(): Lead[] {
     calendlyEventName: "",
     calendlyEventType: "",
     calendlyEventDuration: null,
+    googleDriveLink: "",
+    forecastedCloseDate: "",
   }));
 }
 
@@ -287,6 +289,8 @@ function createLead(r: { date: string; name: string; phone: string; email: strin
     calendlyEventName: "",
     calendlyEventType: "",
     calendlyEventDuration: null,
+    googleDriveLink: "",
+    forecastedCloseDate: "",
   };
 }
 

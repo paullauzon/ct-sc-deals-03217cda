@@ -69,6 +69,9 @@ export function leadToRow(lead: Lead): Record<string, any> {
     calendly_event_name: lead.calendlyEventName,
     calendly_event_type: lead.calendlyEventType,
     calendly_event_duration: lead.calendlyEventDuration,
+    secondary_contacts: lead.secondaryContacts || [],
+    google_drive_link: lead.googleDriveLink,
+    forecasted_close_date: lead.forecastedCloseDate,
   };
 }
 
@@ -142,6 +145,9 @@ export function rowToLead(row: Record<string, any>): Lead {
     calendlyEventName: row.calendly_event_name || "",
     calendlyEventType: row.calendly_event_type || "",
     calendlyEventDuration: row.calendly_event_duration != null ? Number(row.calendly_event_duration) : null,
+    secondaryContacts: Array.isArray(row.secondary_contacts) ? row.secondary_contacts : [],
+    googleDriveLink: row.google_drive_link || "",
+    forecastedCloseDate: row.forecasted_close_date || "",
   };
 }
 
@@ -180,6 +186,9 @@ export function leadUpdatesToRow(updates: Partial<Lead>): Record<string, any> {
     calendlyEventName: "calendly_event_name",
     calendlyEventType: "calendly_event_type",
     calendlyEventDuration: "calendly_event_duration",
+    secondaryContacts: "secondary_contacts",
+    googleDriveLink: "google_drive_link",
+    forecastedCloseDate: "forecasted_close_date",
   };
 
   const row: Record<string, any> = {};

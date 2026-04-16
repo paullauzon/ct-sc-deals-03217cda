@@ -469,6 +469,10 @@ export interface Lead {
   calendlyEventName: string;
   calendlyEventType: string;
   calendlyEventDuration: number | null;
+  // New CRM import fields
+  secondaryContacts?: { name: string; email: string }[];
+  googleDriveLink: string;
+  forecastedCloseDate: string;
   // Legacy fields (kept for migration)
   firefliesUrl: string;
   firefliesTranscript: string;

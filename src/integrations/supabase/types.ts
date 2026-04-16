@@ -247,7 +247,9 @@ export type Database = {
           fireflies_transcript: string
           fireflies_url: string
           forecast_category: string
+          forecasted_close_date: string
           geography: string
+          google_drive_link: string
           hear_about_us: string
           hours_to_meeting_set: number | null
           icp_fit: string
@@ -279,6 +281,7 @@ export type Database = {
           pre_screen_completed: boolean
           priority: string
           role: string
+          secondary_contacts: Json | null
           seniority_score: number | null
           service_interest: string
           source: string
@@ -331,7 +334,9 @@ export type Database = {
           fireflies_transcript?: string
           fireflies_url?: string
           forecast_category?: string
+          forecasted_close_date?: string
           geography?: string
+          google_drive_link?: string
           hear_about_us?: string
           hours_to_meeting_set?: number | null
           icp_fit?: string
@@ -363,6 +368,7 @@ export type Database = {
           pre_screen_completed?: boolean
           priority?: string
           role?: string
+          secondary_contacts?: Json | null
           seniority_score?: number | null
           service_interest?: string
           source?: string
@@ -415,7 +421,9 @@ export type Database = {
           fireflies_transcript?: string
           fireflies_url?: string
           forecast_category?: string
+          forecasted_close_date?: string
           geography?: string
+          google_drive_link?: string
           hear_about_us?: string
           hours_to_meeting_set?: number | null
           icp_fit?: string
@@ -447,6 +455,7 @@ export type Database = {
           pre_screen_completed?: boolean
           priority?: string
           role?: string
+          secondary_contacts?: Json | null
           seniority_score?: number | null
           service_interest?: string
           source?: string
