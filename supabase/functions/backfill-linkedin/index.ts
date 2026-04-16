@@ -1294,8 +1294,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ─── Batch mode ───
-    console.log(`Single pass: gpt-4o-mini (${FLASH_MAX_TURNS} turns), max ${MAX_LEADS_PER_RUN} leads per run`);
+    // ─── Batch mode with auto-continuation ───
+    console.log(`Batch mode: gpt-4o-mini (${FLASH_MAX_TURNS} turns), max ${MAX_LEADS_PER_RUN} leads per run, up to ${MAX_AUTO_CHAINS} chains`);
 
     // Step 0: Extract LinkedIn URLs already stored in company_url
     const { data: linkedinInCompanyUrl } = await supabase
@@ -1311,87 +1311,105 @@ Deno.serve(async (req) => {
       console.log(`Extracted ${linkedinInCompanyUrl.length} LinkedIn URLs from company_url field`);
     }
 
-    // Get leads needing LinkedIn lookup
-    let leadsQuery = supabase
-      .from("leads")
-      .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience, linkedin_search_log");
+    // D: Company-level cache shared across all leads in batch
+    const companyCache: CompanyCache = new Map();
+    
+    let totalFound = 0;
+    let totalProcessed = 0;
+    const allGaveUpReasons: string[] = [];
+    let totalTurns = 0;
+    let totalGaveUp = 0;
+    let chainsRun = 0;
 
-    if (retryFailed) {
-      leadsQuery = leadsQuery.eq("linkedin_url", "");
-      console.log("retryFailed=true: re-processing previously failed leads");
-    } else {
-      leadsQuery = leadsQuery.is("linkedin_url", null);
-    }
+    for (let chain = 0; chain < MAX_AUTO_CHAINS; chain++) {
+      chainsRun++;
+      
+      // Get leads needing LinkedIn lookup
+      let leadsQuery = supabase
+        .from("leads")
+        .select("id, name, company, email, company_url, website_url, role, message, buyer_type, service_interest, deals_planned, target_criteria, target_revenue, geography, stage1_score, stage2_score, website_score, linkedin_score, seniority_score, linkedin_ma_experience, linkedin_search_log");
 
-    const { data: leads, error } = await leadsQuery
-      .neq("name", "")
-      .order("created_at", { ascending: false })
-      .limit(MAX_LEADS_PER_RUN);
-
-    if (error) throw error;
-
-    // Use relaxed name filter
-    const validLeads = (leads || []).filter(isValidLeadForSearch);
-
-    if (validLeads.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, processed: 0, message: "No leads need LinkedIn backfill" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    console.log(`\n=== Processing ${validLeads.length} leads with gpt-4o-mini ===`);
-    let found = 0;
-    let processed = 0;
-    const agentStats = { totalTurns: 0, gaveUp: 0, gaveUpReasons: [] as string[] };
-
-    for (const lead of validLeads) {
-      processed++;
-      console.log(`\n[${processed}/${validLeads.length}] ${lead.name} (${lead.company})`);
-
-      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, SERPER_API_KEY);
-      agentStats.totalTurns += result.turnsUsed;
-
-      if (result.found) {
-        found++;
-        console.log(`  MATCHED (${result.turnsUsed} turns)`);
+      if (retryFailed) {
+        leadsQuery = leadsQuery.eq("linkedin_url", "");
+        if (chain === 0) console.log("retryFailed=true: re-processing previously failed leads");
       } else {
-        agentStats.gaveUp++;
-        if (result.gaveUpReason) {
-          agentStats.gaveUpReasons.push(`${lead.name}: ${result.gaveUpReason}`);
-        }
-        console.log(`  NO MATCH (${result.turnsUsed} turns): ${result.gaveUpReason}`);
+        leadsQuery = leadsQuery.is("linkedin_url", null);
       }
 
-      await new Promise((r) => setTimeout(r, 500));
+      const { data: leads, error } = await leadsQuery
+        .neq("name", "")
+        .order("created_at", { ascending: false })
+        .limit(MAX_LEADS_PER_RUN);
+
+      if (error) throw error;
+
+      const validLeads = (leads || []).filter(isValidLeadForSearch);
+
+      if (validLeads.length === 0) {
+        if (chain === 0) {
+          return new Response(
+            JSON.stringify({ success: true, processed: 0, message: "No leads need LinkedIn backfill" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        break; // No more leads to process
+      }
+
+      console.log(`\n=== Chain ${chain + 1}/${MAX_AUTO_CHAINS}: Processing ${validLeads.length} leads with gpt-4o-mini ===`);
+
+      for (const lead of validLeads) {
+        totalProcessed++;
+        console.log(`\n[${totalProcessed}] ${lead.name} (${lead.company})`);
+
+        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, SERPER_API_KEY, companyCache);
+        totalTurns += result.turnsUsed;
+
+        if (result.found) {
+          totalFound++;
+          console.log(`  MATCHED (${result.turnsUsed} turns)`);
+        } else {
+          totalGaveUp++;
+          if (result.gaveUpReason) {
+            allGaveUpReasons.push(`${lead.name}: ${result.gaveUpReason}`);
+          }
+          console.log(`  NO MATCH (${result.turnsUsed} turns): ${result.gaveUpReason}`);
+        }
+
+        await new Promise((r) => setTimeout(r, 500));
+      }
+
+      // Check if more remain
+      let remainingQuery = supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .neq("name", "");
+
+      if (retryFailed) {
+        remainingQuery = remainingQuery.eq("linkedin_url", "");
+      } else {
+        remainingQuery = remainingQuery.is("linkedin_url", null);
+      }
+
+      const { count: remaining } = await remainingQuery;
+      console.log(`Chain ${chain + 1} complete: ${remaining || 0} leads remaining`);
+      
+      if (!remaining || remaining <= 0) break;
     }
 
-    // Check how many remain
-    let remainingQuery = supabase
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .neq("name", "");
-
-    if (retryFailed) {
-      remainingQuery = remainingQuery.eq("linkedin_url", "");
-    } else {
-      remainingQuery = remainingQuery.is("linkedin_url", null);
-    }
-
-    const { count: remaining } = await remainingQuery;
-
-    const avgTurns = processed > 0 ? (agentStats.totalTurns / processed).toFixed(1) : "0";
-    console.log(`\nRun complete: ${found}/${processed} matched, ${remaining || 0} leads remaining`);
+    const avgTurns = totalProcessed > 0 ? (totalTurns / totalProcessed).toFixed(1) : "0";
+    console.log(`\nAll chains complete: ${totalFound}/${totalProcessed} matched across ${chainsRun} chains, cache had ${companyCache.size} companies`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        processed,
-        found,
-        remaining: remaining || 0,
+        processed: totalProcessed,
+        found: totalFound,
+        remaining: 0,
         avgTurnsPerLead: parseFloat(avgTurns),
-        gaveUp: agentStats.gaveUp,
-        gaveUpReasons: agentStats.gaveUpReasons,
+        gaveUp: totalGaveUp,
+        gaveUpReasons: allGaveUpReasons,
+        chainsRun,
+        companyCacheHits: companyCache.size,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
