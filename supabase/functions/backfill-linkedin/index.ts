@@ -109,89 +109,6 @@ async function firecrawlSearch(
   }
 }
 
-// ─── Serper (Google) Search Fallback ───
-
-let _serperExhausted = false;
-
-function isSerperExhausted(): boolean {
-  return _serperExhausted;
-}
-
-async function serperSearch(query: string, serperKey: string, limit = 5): Promise<SearchResult[]> {
-  // Short-circuit if credits are already known to be exhausted
-  if (_serperExhausted) return [];
-
-  try {
-    const res = await fetch("https://google.serper.dev/search", {
-      method: "POST",
-      headers: {
-        "X-API-KEY": serperKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ q: query, num: limit }),
-    });
-
-    if (!res.ok) {
-      const errBody = await res.text();
-      // Detect credit exhaustion and skip all future Serper calls
-      if (res.status === 400 && errBody.includes("Not enough credits")) {
-        if (!_serperExhausted) {
-          console.warn("⚠ Serper credits exhausted — skipping all remaining Serper searches this run");
-          _serperExhausted = true;
-        }
-        return [];
-      }
-      console.error(`Serper search error ${res.status}: ${errBody.slice(0, 200)}`);
-      return [];
-    }
-
-    const data = await res.json();
-    const results: SearchResult[] = [];
-    
-    // Standard organic results
-    const organic = data.organic || [];
-    for (const r of organic) {
-      results.push({
-        url: r.link || "",
-        title: r.title || "",
-        description: r.snippet || "",
-        markdown: "",
-      });
-    }
-    
-    // Fix 3: Mine Knowledge Graph for LinkedIn URLs
-    if (data.knowledgeGraph) {
-      const kg = data.knowledgeGraph;
-      const kgUrl = kg.website || kg.link || "";
-      if (kgUrl.includes("linkedin.com/in/")) {
-        results.push({ url: kgUrl, title: kg.title || "", description: kg.description || "", markdown: "" });
-      }
-      // Check social profiles in knowledge graph
-      if (Array.isArray(kg.profiles)) {
-        for (const p of kg.profiles) {
-          if (p.link?.includes("linkedin.com/in/")) {
-            results.push({ url: p.link, title: p.name || kg.title || "", description: "", markdown: "" });
-          }
-        }
-      }
-    }
-    
-    // Fix 3: Mine People Also Ask for LinkedIn URLs
-    if (Array.isArray(data.peopleAlsoAsk)) {
-      for (const paa of data.peopleAlsoAsk) {
-        const link = paa.link || "";
-        if (link.includes("linkedin.com/in/")) {
-          results.push({ url: link, title: paa.title || "", description: paa.snippet || "", markdown: "" });
-        }
-      }
-    }
-    
-    return results;
-  } catch (e) {
-    console.error("Serper search failed:", e);
-    return [];
-  }
-}
 
 // ─── Firecrawl Scrape (single URL, v2 + 429 retry) ───
 
@@ -632,7 +549,7 @@ async function aiSearchAgent(
   model: string = "gpt-4o-mini",
   maxTurns: number = FLASH_MAX_TURNS,
   rationalization: RationalizationResult | null = null,
-  serperKey: string | null = null,
+  _deprecated_serperKey: string | null = null, // kept for signature compat
   previousSearchLog: any = null,
   companyCache: CompanyCache | null = null,
   supabaseForCrossLead: any = null,
@@ -689,18 +606,18 @@ async function aiSearchAgent(
         }
       }
       
-      // Serper fallback for quick-match if Firecrawl found nothing
-      if (linkedinResults.length === 0 && serperKey) {
-        console.log(`  Quick-match Serper fallback: ${query}`);
-        const serperResults = await serperSearch(query, serperKey, 5);
-        const serperLinkedins = serperResults.filter(r => r.url.includes("linkedin.com/in/"));
+      // Firecrawl retry fallback for quick-match if first search found nothing
+      if (linkedinResults.length === 0) {
+        console.log(`  Quick-match Firecrawl retry: ${query}`);
+        const retryResults = await firecrawlSearch(query, firecrawlKey, 5, false);
+        const retryLinkedins = retryResults.filter(r => r.url.includes("linkedin.com/in/"));
         
         const companyVariants = [
           lead.company?.toLowerCase(),
           ...(rationalization.company_variants || []).map(c => c.toLowerCase()),
         ].filter(Boolean) as string[];
         
-        for (const result of serperLinkedins) {
+        for (const result of retryLinkedins) {
           const snippet = `${result.title || ""} ${result.description || ""}`.toLowerCase();
           const companyMatch = companyVariants.some(cv => snippet.includes(cv)) || companyVariants.some(cv => fuzzyCompanyMatch(cv, snippet.substring(0, 200)));
           const lastName = lead.name.split(/\s+/).pop()?.toLowerCase() || "";
@@ -709,14 +626,14 @@ async function aiSearchAgent(
           if (companyMatch && nameMatch) {
             const url = result.url.split("?")[0];
             const snippetFull = `${result.title || ""} ${result.description || ""}`;
-            console.log(`  Quick-match Serper candidate: ${url} — running inline verification...`);
+            console.log(`  Quick-match retry candidate: ${url} — running inline verification...`);
             
             const verification = await inlineVerify(lead, url, snippetFull, openaiKey);
             if (verification.verdict === "wrong") {
-              console.log(`  Quick-match Serper REJECTED: ${verification.reason}`);
+              console.log(`  Quick-match retry REJECTED: ${verification.reason}`);
               continue;
             }
-            console.log(`  Quick-match Serper VERIFIED (${verification.verdict}): ${url}`);
+            console.log(`  Quick-match retry VERIFIED (${verification.verdict}): ${url}`);
             return { url, profileContent: "", turnsUsed: 0, gaveUpReason: null, snippet: snippetFull };
           }
         }
@@ -951,12 +868,12 @@ async function aiSearchAgent(
     }
   }
 
-  // ─── Strategy D: Role-filtered Serper search ───
-  if (serperKey && lead.company && lead.role) {
+  // ─── Strategy D: Role-filtered search (via Firecrawl) ───
+  if (lead.company && lead.role) {
     const roleQuery = `site:linkedin.com/in "${lead.company}" "${lead.role}"`;
     console.log(`  Pre-search Strategy D (role-filtered): ${roleQuery}`);
     preSearchQueriesDone.push(roleQuery);
-    const roleResults = await serperSearch(roleQuery, serperKey, 5);
+    const roleResults = await firecrawlSearch(roleQuery, firecrawlKey, 5, false);
     const roleLinkedins = roleResults.filter(r => r.url.includes("linkedin.com/in/"));
     if (roleLinkedins.length > 0) {
       preSearchResults.push(`STRATEGY D — Role-filtered search (${lead.role} at ${lead.company}):\n${roleLinkedins.map(r => `${r.url} — ${r.title || ""} ${r.description || ""}`).join("\n")}`);
@@ -1059,30 +976,29 @@ async function aiSearchAgent(
       if (parsed.action === "give_up") {
         console.log(`  Turn ${turn + 1}: GAVE UP — ${parsed.reason} (${agentEncounteredUrls.length} candidates collected)`);
         
-        // Serper fallback before truly giving up (site:linkedin.com)
-        if (serperKey && lead.company) {
-          console.log(`  Serper fallback before giving up...`);
+        // Firecrawl fallback before truly giving up (site:linkedin.com)
+        if (lead.company) {
+          console.log(`  Firecrawl fallback before giving up...`);
           const allNames = rationalization ? [lead.name, ...rationalization.name_variants] : [lead.name];
           for (const nameVariant of allNames.slice(0, 3)) {
-            const serperQuery = `"${nameVariant}" "${lead.company}" site:linkedin.com/in`;
-            const serperResults = await serperSearch(serperQuery, serperKey, 5);
-            const serperLinkedin = serperResults.find(r => r.url.includes("linkedin.com/in/"));
-            if (serperLinkedin) {
-              const sUrl = serperLinkedin.url.split("?")[0];
-              console.log(`  Serper rescue: ${sUrl}`);
-              return { url: sUrl, profileContent: "", turnsUsed: turn + 1, gaveUpReason: null, snippet: `${serperLinkedin.title || ""} ${serperLinkedin.description || ""}` };
+            const fallbackQuery = `"${nameVariant}" "${lead.company}" site:linkedin.com/in`;
+            const fallbackResults = await firecrawlSearch(fallbackQuery, firecrawlKey, 5, false);
+            const fallbackLinkedin = fallbackResults.find(r => r.url.includes("linkedin.com/in/"));
+            if (fallbackLinkedin) {
+              const sUrl = fallbackLinkedin.url.split("?")[0];
+              console.log(`  Firecrawl rescue: ${sUrl}`);
+              return { url: sUrl, profileContent: "", turnsUsed: turn + 1, gaveUpReason: null, snippet: `${fallbackLinkedin.title || ""} ${fallbackLinkedin.description || ""}` };
             }
           }
           
-          // Step 1: Open web LinkedIn mention search (no site: restriction)
+          // Open web LinkedIn mention search (no site: restriction)
           console.log(`  Open web fallback — searching without site:linkedin.com...`);
           for (const nameVariant of allNames.slice(0, 2)) {
             const openWebQuery = `"${nameVariant}" "${lead.company}" linkedin profile`;
             console.log(`  Open web search: ${openWebQuery}`);
-            const openResults = await serperSearch(openWebQuery, serperKey, 8);
+            const openResults = await firecrawlSearch(openWebQuery, firecrawlKey, 8, false);
             const openLinkedins = openResults.filter(r => r.url.includes("linkedin.com/in/"));
             if (openLinkedins.length > 0) {
-              // Verify each candidate
               for (const candidate of openLinkedins.slice(0, 3)) {
                 const cUrl = candidate.url.split("?")[0];
                 const cSnippet = `${candidate.title || ""} ${candidate.description || ""}`;
@@ -1137,12 +1053,12 @@ async function aiSearchAgent(
         console.log(`  Turn ${turn + 1}: Searching "${parsed.query}"`);
         let results = await firecrawlSearch(parsed.query, firecrawlKey, 5, true);
 
-        // Serper fallback if Firecrawl returns 0 results
-        if (results.length === 0 && serperKey) {
-          console.log(`  Turn ${turn + 1}: Firecrawl empty, trying Serper fallback`);
-          const serperResults = await serperSearch(parsed.query, serperKey, 5);
-          if (serperResults.length > 0) {
-            results = serperResults;
+        // Firecrawl retry if first search returned 0 results
+        if (results.length === 0) {
+          console.log(`  Turn ${turn + 1}: Firecrawl empty, retrying with metadata-only`);
+          const retryResults = await firecrawlSearch(parsed.query, firecrawlKey, 5, false);
+          if (retryResults.length > 0) {
+            results = retryResults;
           }
         }
 
@@ -1261,7 +1177,7 @@ async function processLead(
   supabase: any,
   model: string,
   maxTurns: number,
-  serperKey: string | null = null,
+  _deprecated_serperKey: string | null = null, // kept for signature compat
   companyCache: CompanyCache | null = null,
   startTime: number = Date.now(),
 ): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
@@ -1323,7 +1239,7 @@ async function processLead(
     }
   }
 
-  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, serperKey, previousSearchLog, companyCache, supabase);
+  const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, null, previousSearchLog, companyCache, supabase);
 
   // ─── Phase 1B: Inline verification before writing ───
   // Collect candidates for multi-candidate UI — merge agent-collected candidates
@@ -1461,8 +1377,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const SERPER_API_KEY = Deno.env.get("SERPER_API_KEY") || null;
-  _serperExhausted = false; // Reset per invocation
+  // Serper removed — all search now via Firecrawl
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -1568,10 +1483,10 @@ Deno.serve(async (req) => {
         });
       }
 
-      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o", 8, SERPER_API_KEY, null, Date.now());
+      const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o", 8, null, null, Date.now());
       console.log(`[single-lead] ${lead.name}: ${result.found ? "FOUND" : "NOT FOUND"} (${result.turnsUsed} turns)`);
 
-      return new Response(JSON.stringify({ success: true, found: result.found, turnsUsed: result.turnsUsed, serper_exhausted: _serperExhausted }), {
+      return new Response(JSON.stringify({ success: true, found: result.found, turnsUsed: result.turnsUsed }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -1656,7 +1571,7 @@ Deno.serve(async (req) => {
         totalProcessed++;
         console.log(`\n[${totalProcessed}] ${lead.name} (${lead.company})`);
 
-        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, SERPER_API_KEY, companyCache, chainStartTime);
+        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, null, companyCache, chainStartTime);
         totalTurns += result.turnsUsed;
 
         if (result.found) {
@@ -1705,7 +1620,7 @@ Deno.serve(async (req) => {
         gaveUpReasons: allGaveUpReasons,
         chainsRun,
         companyCacheHits: companyCache.size,
-        serper_exhausted: _serperExhausted,
+        
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
