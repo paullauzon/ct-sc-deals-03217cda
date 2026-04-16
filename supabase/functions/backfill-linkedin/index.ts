@@ -213,7 +213,7 @@ async function callAI(
     const data = await res.json();
     return (data.choices?.[0]?.message?.content || "").trim();
   }
-  throw new Error("OpenAI 429 after 3 retries");
+  throw new Error("OpenAI 429 after 4 retries");
 }
 
 // ─── AI Search Agent ───
