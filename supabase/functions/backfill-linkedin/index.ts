@@ -1246,24 +1246,32 @@ async function processLead(
   const agentResult = await aiSearchAgent(leadContext, firecrawlKey, openaiKey, model, maxTurns, rationalization, serperKey, previousSearchLog, companyCache, supabase);
 
   // ─── Phase 1B: Inline verification before writing ───
+  // Collect candidates for multi-candidate UI (Step 2)
+  const candidates: Array<{ url: string; snippet: string }> = [];
+  
   if (agentResult.url) {
     const snippet = agentResult.snippet || "";
     const verification = await inlineVerify(leadContext, agentResult.url, snippet, openaiKey);
     
     if (verification.verdict === "wrong") {
       console.log(`  Inline verify REJECTED: ${agentResult.url} — ${verification.reason}`);
+      candidates.push({ url: agentResult.url, snippet: `${snippet} (rejected: ${verification.reason})` });
       // Don't write this bad match — mark as not found
-      await writeSearchLog(supabase, lead.id, rationalization, agentResult, `Rejected by inline verify: ${verification.reason}`);
+      await writeSearchLog(supabase, lead.id, rationalization, agentResult, `Rejected by inline verify: ${verification.reason}`, candidates);
       await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
       return { found: false, turnsUsed: agentResult.turnsUsed, gaveUpReason: `Inline verify rejected: ${verification.reason}` };
+    }
+    
+    if (verification.verdict === "uncertain") {
+      candidates.push({ url: agentResult.url, snippet: `${snippet} (uncertain: ${verification.reason})` });
     }
     
     console.log(`  Inline verify: ${verification.verdict} — ${verification.reason}`);
     return await writeLinkedInResult(lead, agentResult.url, firecrawlKey, supabase, rationalization, agentResult.turnsUsed, null);
   }
 
-  // Not found
-  await writeSearchLog(supabase, lead.id, rationalization, agentResult, agentResult.gaveUpReason || "Not found");
+  // Not found — include any candidates we collected
+  await writeSearchLog(supabase, lead.id, rationalization, agentResult, agentResult.gaveUpReason || "Not found", candidates);
   await supabase.from("leads").update({ linkedin_url: "" }).eq("id", lead.id);
   return { found: false, turnsUsed: agentResult.turnsUsed, gaveUpReason: agentResult.gaveUpReason };
 }
