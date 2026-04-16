@@ -1209,7 +1209,7 @@ async function processLead(
   startTime: number = Date.now(),
 ): Promise<{ found: boolean; turnsUsed: number; gaveUpReason: string | null }> {
   // Step 3: Timeout guard — save progress before edge function times out
-  const TIMEOUT_MS = 45000;
+  const TIMEOUT_MS = 30000; // Per-lead hard timeout
   if (Date.now() - startTime > TIMEOUT_MS) {
     console.log(`  Timeout guard: skipping ${lead.name} (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`);
     await writeSearchLog(supabase, lead.id, null, { url: null, profileContent: "", turnsUsed: 0, gaveUpReason: "timeout" }, "timeout");
@@ -1621,7 +1621,7 @@ Deno.serve(async (req) => {
         processedIds.push(lead.id);
         console.log(`\n[${totalProcessed}] ${lead.name} (${lead.company})`);
 
-        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, null, companyCache, chainStartTime);
+        const result = await processLead(lead, FIRECRAWL_API_KEY, OPENAI_API_KEY, supabase, "gpt-4o-mini", FLASH_MAX_TURNS, null, companyCache, globalStartTime);
         totalTurns += result.turnsUsed;
 
         if (result.found) {
