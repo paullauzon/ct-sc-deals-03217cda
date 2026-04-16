@@ -71,6 +71,53 @@ function DraftCard({ content, onSave, onRegenerate, onDiscard, isRegenerating }:
   );
 }
 
+// ─── Manual LinkedIn URL Override ───
+
+function LinkedInOverride({ leadId, onSuccess }: { leadId: string; onSuccess: (url: string, title: string | null) => void }) {
+  const [url, setUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    const trimmed = url.trim();
+    if (!trimmed || !trimmed.includes("linkedin.com/in/")) {
+      toast.error("Please paste a valid LinkedIn profile URL");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("backfill-linkedin", {
+        body: { leadId, manualUrl: trimmed },
+      });
+      if (error) throw error;
+      toast.success(`LinkedIn profile saved${data?.title ? `: ${data.title}` : ""}`);
+      onSuccess(trimmed, data?.title || null);
+      setUrl("");
+    } catch (e) {
+      toast.error("Failed to save LinkedIn URL");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 mt-1">
+      <Linkedin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+      <Input
+        value={url}
+        onChange={e => setUrl(e.target.value)}
+        placeholder="Paste LinkedIn URL"
+        className="h-6 text-xs px-2 flex-1"
+        onKeyDown={e => e.key === "Enter" && handleSave()}
+      />
+      {url.trim() && (
+        <Button variant="ghost" size="sm" className="h-6 px-1.5" onClick={handleSave} disabled={saving}>
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 
 function DealProgressBar({ currentStage }: { currentStage: LeadStage }) {
