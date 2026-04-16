@@ -549,7 +549,7 @@ async function aiSearchAgent(
   model: string = "gpt-4o-mini",
   maxTurns: number = FLASH_MAX_TURNS,
   rationalization: RationalizationResult | null = null,
-  serperKey: string | null = null,
+  _deprecated_serperKey: string | null = null, // kept for signature compat
   previousSearchLog: any = null,
   companyCache: CompanyCache | null = null,
   supabaseForCrossLead: any = null,
