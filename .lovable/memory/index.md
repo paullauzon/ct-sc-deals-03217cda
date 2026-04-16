@@ -21,7 +21,7 @@
 - [Intelligence Labeling](mem://design/intelligence-labeling-standard) — Use concrete, human-readable labels instead of abstract scores
 - [Sales Fields](mem://features/sales-tracking-fields) — Core tracking fields and Deal Value definition
 - [Service Offerings](mem://business/service-offerings) — Specific Captarget and SourceCo service types
-- [Pipeline Workflow](mem://features/pipeline-workflow) — 13 distinct pipeline stages with active, nurture, and terminal groupings
+- [Pipeline Workflow](mem://features/pipeline-workflow) — 12 distinct pipeline stages with active, nurture, and terminal groupings
 - [Lead Unification](mem://features/lead-data-unification) — Email-based deduplication and chronological submission history
 - [Archiving Leads](mem://features/lead-archiving) — Archiving logic and mandatory reason tracking
 - [Internal Data Exclusion](mem://business/data-exclusion-rules) — Exclusion rules for internal domains
