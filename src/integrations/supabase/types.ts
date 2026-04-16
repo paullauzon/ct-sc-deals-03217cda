@@ -116,54 +116,150 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_email_metrics: {
+        Row: {
+          email_quarantined: boolean
+          last_bounce_date: string | null
+          last_clicked_date: string | null
+          last_opened_date: string | null
+          last_received_date: string | null
+          last_replied_date: string | null
+          last_sent_date: string | null
+          lead_id: string
+          total_bounces: number
+          total_clicks: number
+          total_opens: number
+          total_received: number
+          total_replies: number
+          total_sent: number
+          unsubscribed_all: boolean
+          updated_at: string
+        }
+        Insert: {
+          email_quarantined?: boolean
+          last_bounce_date?: string | null
+          last_clicked_date?: string | null
+          last_opened_date?: string | null
+          last_received_date?: string | null
+          last_replied_date?: string | null
+          last_sent_date?: string | null
+          lead_id: string
+          total_bounces?: number
+          total_clicks?: number
+          total_opens?: number
+          total_received?: number
+          total_replies?: number
+          total_sent?: number
+          unsubscribed_all?: boolean
+          updated_at?: string
+        }
+        Update: {
+          email_quarantined?: boolean
+          last_bounce_date?: string | null
+          last_clicked_date?: string | null
+          last_opened_date?: string | null
+          last_received_date?: string | null
+          last_replied_date?: string | null
+          last_sent_date?: string | null
+          lead_id?: string
+          total_bounces?: number
+          total_clicks?: number
+          total_opens?: number
+          total_received?: number
+          total_replies?: number
+          total_sent?: number
+          unsubscribed_all?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_emails: {
         Row: {
+          attachments: Json | null
+          bcc_addresses: string[] | null
+          body_html: string | null
           body_preview: string | null
+          body_text: string | null
+          bounce_reason: string | null
+          cc_addresses: string[] | null
+          clicks: Json | null
           created_at: string | null
           direction: string
           email_date: string
           from_address: string
           from_name: string | null
           id: string
+          is_read: boolean | null
           lead_id: string
+          logged: boolean | null
           message_id: string | null
+          opens: Json | null
+          provider_message_id: string | null
           raw_payload: Json | null
+          replied_at: string | null
           source: string | null
           subject: string | null
           thread_id: string | null
           to_addresses: string[] | null
+          tracked: boolean | null
         }
         Insert: {
+          attachments?: Json | null
+          bcc_addresses?: string[] | null
+          body_html?: string | null
           body_preview?: string | null
+          body_text?: string | null
+          bounce_reason?: string | null
+          cc_addresses?: string[] | null
+          clicks?: Json | null
           created_at?: string | null
           direction?: string
           email_date?: string
           from_address: string
           from_name?: string | null
           id?: string
+          is_read?: boolean | null
           lead_id: string
+          logged?: boolean | null
           message_id?: string | null
+          opens?: Json | null
+          provider_message_id?: string | null
           raw_payload?: Json | null
+          replied_at?: string | null
           source?: string | null
           subject?: string | null
           thread_id?: string | null
           to_addresses?: string[] | null
+          tracked?: boolean | null
         }
         Update: {
+          attachments?: Json | null
+          bcc_addresses?: string[] | null
+          body_html?: string | null
           body_preview?: string | null
+          body_text?: string | null
+          bounce_reason?: string | null
+          cc_addresses?: string[] | null
+          clicks?: Json | null
           created_at?: string | null
           direction?: string
           email_date?: string
           from_address?: string
           from_name?: string | null
           id?: string
+          is_read?: boolean | null
           lead_id?: string
+          logged?: boolean | null
           message_id?: string | null
+          opens?: Json | null
+          provider_message_id?: string | null
           raw_payload?: Json | null
+          replied_at?: string | null
           source?: string | null
           subject?: string | null
           thread_id?: string | null
           to_addresses?: string[] | null
+          tracked?: boolean | null
         }
         Relationships: []
       }
@@ -569,6 +665,51 @@ export type Database = {
           progress_message?: string | null
           status?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      user_email_connections: {
+        Row: {
+          access_token: string | null
+          created_at: string
+          email_address: string
+          history_id: string | null
+          id: string
+          is_active: boolean
+          last_synced_at: string | null
+          provider: string
+          refresh_token: string | null
+          token_expires_at: string | null
+          updated_at: string
+          user_label: string
+        }
+        Insert: {
+          access_token?: string | null
+          created_at?: string
+          email_address: string
+          history_id?: string | null
+          id?: string
+          is_active?: boolean
+          last_synced_at?: string | null
+          provider: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+          user_label: string
+        }
+        Update: {
+          access_token?: string | null
+          created_at?: string
+          email_address?: string
+          history_id?: string | null
+          id?: string
+          is_active?: boolean
+          last_synced_at?: string | null
+          provider?: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+          user_label?: string
         }
         Relationships: []
       }

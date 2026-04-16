@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle } from "lucide-react";
 
 interface LeadEmail {
   id: string;
@@ -14,8 +14,14 @@ interface LeadEmail {
   from_address: string;
   from_name: string;
   to_addresses: string[];
+  cc_addresses?: string[];
   subject: string;
   body_preview: string;
+  body_html?: string;
+  body_text?: string;
+  attachments?: Array<{ name?: string; url?: string; has?: boolean }>;
+  replied_at?: string | null;
+  bounce_reason?: string;
   email_date: string;
   source: string;
   created_at: string;
@@ -175,43 +181,84 @@ function ThreadCard({ thread }: { thread: ThreadGroup }) {
 }
 
 function EmailRow({ email, compact }: { email: LeadEmail; compact?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
   const isOutbound = email.direction === "outbound";
   const Icon = isOutbound ? ArrowUpRight : ArrowDownLeft;
   const dirColor = isOutbound
     ? "text-blue-600 bg-blue-500/10"
     : "text-emerald-600 bg-emerald-500/10";
   const dirLabel = isOutbound ? "Sent" : "Received";
+  const hasAttachments = (email.attachments?.length || 0) > 0;
+  const hasFullBody = !!(email.body_html || email.body_text);
 
   return (
-    <div className={`flex items-start gap-2 p-2 rounded-md hover:bg-secondary/30 transition-colors ${compact ? "py-1.5" : ""}`}>
-      <div className={`rounded-full p-1 shrink-0 mt-0.5 ${dirColor}`}>
-        <Icon className="h-3 w-3" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs font-medium truncate">
-            {compact ? (email.from_name || email.from_address) : (email.subject || "(No subject)")}
-          </span>
+    <div className={`rounded-md hover:bg-secondary/30 transition-colors ${compact ? "py-1" : ""}`}>
+      <button
+        type="button"
+        onClick={() => hasFullBody && setExpanded((v) => !v)}
+        className={`w-full text-left flex items-start gap-2 p-2 ${hasFullBody ? "cursor-pointer" : ""}`}
+      >
+        <div className={`rounded-full p-1 shrink-0 mt-0.5 ${dirColor}`}>
+          <Icon className="h-3 w-3" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-medium truncate">
+              {compact ? (email.from_name || email.from_address) : (email.subject || "(No subject)")}
+            </span>
+            {!compact && (
+              <Badge variant="outline" className={`text-[9px] shrink-0 ${dirColor}`}>
+                {dirLabel}
+              </Badge>
+            )}
+            {email.replied_at && (
+              <Badge variant="outline" className="text-[9px] shrink-0 gap-0.5">
+                <Reply className="h-2.5 w-2.5" />Replied
+              </Badge>
+            )}
+            {hasAttachments && (
+              <Badge variant="outline" className="text-[9px] shrink-0 gap-0.5">
+                <Paperclip className="h-2.5 w-2.5" />
+                {email.attachments?.length || 1}
+              </Badge>
+            )}
+            {email.bounce_reason && (
+              <Badge variant="destructive" className="text-[9px] shrink-0 gap-0.5">
+                <AlertCircle className="h-2.5 w-2.5" />Bounced
+              </Badge>
+            )}
+          </div>
           {!compact && (
-            <Badge variant="outline" className={`text-[9px] shrink-0 ${dirColor}`}>
-              {dirLabel}
-            </Badge>
+            <div className="text-[10px] text-muted-foreground truncate">
+              {isOutbound ? `To: ${email.to_addresses.join(", ")}` : `From: ${email.from_name || email.from_address}`}
+            </div>
+          )}
+          {email.body_preview && !expanded && (
+            <p className="text-[11px] text-muted-foreground/80 line-clamp-2 mt-0.5 leading-relaxed">
+              {email.body_preview}
+            </p>
           )}
         </div>
-        {!compact && (
-          <div className="text-[10px] text-muted-foreground truncate">
-            {isOutbound ? `To: ${email.to_addresses.join(", ")}` : `From: ${email.from_name || email.from_address}`}
-          </div>
-        )}
-        {email.body_preview && (
-          <p className="text-[11px] text-muted-foreground/80 line-clamp-2 mt-0.5 leading-relaxed">
-            {email.body_preview}
-          </p>
-        )}
-      </div>
-      <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
-        {formatDate(email.email_date)}
-      </span>
+        <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
+          {formatDate(email.email_date)}
+        </span>
+      </button>
+      {expanded && hasFullBody && (
+        <div className="px-2 pb-2 ml-7">
+          {email.body_html ? (
+            <iframe
+              srcDoc={`<style>body{font-family:system-ui;font-size:12px;color:#333;margin:0;padding:8px;line-height:1.5}img{max-width:100%}</style>${email.body_html}`}
+              sandbox=""
+              className="w-full min-h-[200px] border rounded bg-background"
+              title="Email body"
+            />
+          ) : (
+            <pre className="text-[11px] whitespace-pre-wrap font-sans text-muted-foreground p-2 bg-secondary/30 rounded">
+              {email.body_text}
+            </pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }
