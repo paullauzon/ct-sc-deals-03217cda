@@ -1611,9 +1611,10 @@ Deno.serve(async (req) => {
       console.log(`\n=== Chain ${chain + 1}/${MAX_AUTO_CHAINS}: Processing ${validLeads.length} leads with gpt-4o-mini ===`);
 
       for (const lead of validLeads) {
-        // Global timeout guard — return results before edge function 150s limit
-        if (Date.now() - globalStartTime > GLOBAL_TIMEOUT_MS) {
-          console.log(`\nGlobal timeout (${Math.round((Date.now() - globalStartTime) / 1000)}s) — returning partial results`);
+        // Don't START processing a new lead if we're past the per-lead cutoff
+        const elapsed = Date.now() - globalStartTime;
+        if (elapsed > PER_LEAD_CUTOFF_MS) {
+          console.log(`\nPer-lead cutoff (${Math.round(elapsed / 1000)}s) — not starting new leads`);
           break;
         }
         totalProcessed++;
