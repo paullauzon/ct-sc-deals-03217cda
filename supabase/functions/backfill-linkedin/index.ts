@@ -868,12 +868,12 @@ async function aiSearchAgent(
     }
   }
 
-  // ─── Strategy D: Role-filtered Serper search ───
-  if (serperKey && lead.company && lead.role) {
+  // ─── Strategy D: Role-filtered search (via Firecrawl) ───
+  if (lead.company && lead.role) {
     const roleQuery = `site:linkedin.com/in "${lead.company}" "${lead.role}"`;
     console.log(`  Pre-search Strategy D (role-filtered): ${roleQuery}`);
     preSearchQueriesDone.push(roleQuery);
-    const roleResults = await serperSearch(roleQuery, serperKey, 5);
+    const roleResults = await firecrawlSearch(roleQuery, firecrawlKey, 5, false);
     const roleLinkedins = roleResults.filter(r => r.url.includes("linkedin.com/in/"));
     if (roleLinkedins.length > 0) {
       preSearchResults.push(`STRATEGY D — Role-filtered search (${lead.role} at ${lead.company}):\n${roleLinkedins.map(r => `${r.url} — ${r.title || ""} ${r.description || ""}`).join("\n")}`);
