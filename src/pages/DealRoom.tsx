@@ -525,6 +525,7 @@ export default function DealRoom() {
                 updateLead(lead.id, { linkedinUrl: url, linkedinTitle: title || "" });
               }} />
             )}
+          </div>
           <div className="border-t border-border pt-3">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Dates</p>
             <div className="space-y-1 text-xs text-muted-foreground">
