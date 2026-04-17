@@ -165,6 +165,8 @@ export function Pipeline() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [backfilling, setBackfilling] = useState(false);
   const [reEnriching, setReEnriching] = useState(false);
+  const [enrichProgress, setEnrichProgress] = useState<{ done: number; total: number; aumFilled: number; cancel: boolean } | null>(null);
+  const enrichCancelRef = useRef(false);
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
   const sourceCoCount = useMemo(
     () => leads.filter(l => l.brand === "SourceCo" && !["Lost", "Went Dark", "Closed Won"].includes(l.stage)).length,
@@ -338,7 +340,9 @@ export function Pipeline() {
                   title="Bulk-fill SourceCo dossier coverage"
                 >
                   {reEnriching ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                  {reEnriching ? "Working..." : "Fill SourceCo Dossiers"}
+                  {enrichProgress
+                    ? `Enriching ${enrichProgress.done}/${enrichProgress.total} · ${enrichProgress.aumFilled} AUM`
+                    : reEnriching ? "Working..." : "Fill SourceCo Dossiers"}
                   <ChevronDown className="h-3 w-3 opacity-60" />
                 </Button>
               </DropdownMenuTrigger>
@@ -398,6 +402,78 @@ export function Pipeline() {
                 >
                   <span className="text-xs font-medium">Re-enrich with AI (top 20)</span>
                   <span className="text-[10px] text-muted-foreground">Costs AI credits · ~30s · fills firm AUM, deal type, txn type, etc.</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="flex-col items-start gap-0.5 py-2 cursor-pointer"
+                  onClick={async () => {
+                    if (enrichProgress) {
+                      // Acts as cancel if a run is in progress
+                      enrichCancelRef.current = true;
+                      toast.info("Stopping after current batch...");
+                      return;
+                    }
+                    enrichCancelRef.current = false;
+                    setReEnriching(true);
+                    // Count active leads missing firm_aum to show a real total
+                    const { count: totalEmpty } = await supabase
+                      .from("leads")
+                      .select("id", { count: "exact", head: true })
+                      .is("archived_at", null)
+                      .or("firm_aum.eq.,firm_aum.is.null")
+                      .not("stage", "in", "(Lost,Went Dark,Closed Won,Revisit/Reconnect)");
+                    const total = totalEmpty ?? 0;
+                    if (total === 0) {
+                      toast.success("All active leads already have AI dossier coverage.");
+                      setReEnriching(false);
+                      return;
+                    }
+                    setEnrichProgress({ done: 0, total, aumFilled: 0, cancel: false });
+                    toast.info(`Starting batched AI enrichment — ~${Math.ceil(total / 10) * 30}s for ${total} leads`);
+                    let done = 0;
+                    let aumFilled = 0;
+                    let totalErrors = 0;
+                    const MAX_BATCHES = 25;
+                    try {
+                      for (let i = 0; i < MAX_BATCHES; i++) {
+                        if (enrichCancelRef.current) break;
+                        const { data, error } = await supabase.functions.invoke("bulk-enrich-sourceco", {
+                          body: { limit: 10, onlyEmptyAum: true },
+                        });
+                        if (error) throw error;
+                        const scanned = data?.scanned ?? 0;
+                        const promoted = data?.promoted ?? 0;
+                        const errs = data?.errors?.length ?? 0;
+                        done += scanned;
+                        aumFilled += promoted;
+                        totalErrors += errs;
+                        setEnrichProgress({ done, total, aumFilled, cancel: false });
+                        await refreshLeads();
+                        if (scanned === 0) break;
+                      }
+                      const stopped = enrichCancelRef.current;
+                      if (stopped) {
+                        toast.warning(`Stopped at ${done}/${total} · ${aumFilled} fields auto-filled`);
+                      } else {
+                        toast.success(`Enrichment complete · ${done} processed · ${aumFilled} fields auto-filled${totalErrors ? ` · ${totalErrors} errors` : ""}`);
+                      }
+                    } catch (err) {
+                      toast.error("Batched enrich failed: " + (err as Error).message);
+                    } finally {
+                      setEnrichProgress(null);
+                      setReEnriching(false);
+                      enrichCancelRef.current = false;
+                    }
+                  }}
+                >
+                  <span className="text-xs font-medium">
+                    {enrichProgress ? "Stop batched enrichment" : "Fill all AI gaps in batches"}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {enrichProgress
+                      ? `Currently ${enrichProgress.done}/${enrichProgress.total} — click to stop after current batch`
+                      : "~$3 · ~8 min for 150 leads · loops 10-lead batches until coverage saturates"}
+                  </span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
