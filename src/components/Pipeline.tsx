@@ -168,12 +168,29 @@ export function Pipeline() {
   const [enrichProgress, setEnrichProgress] = useState<{ done: number; total: number; aumFilled: number; cancel: boolean } | null>(null);
   const enrichCancelRef = useRef(false);
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
+  const [enrichmentGap, setEnrichmentGap] = useState<number | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const sourceCoCount = useMemo(
     () => leads.filter(l => l.brand === "SourceCo" && !["Lost", "Went Dark", "Closed Won"].includes(l.stage)).length,
     [leads]
   );
 
   const newLeadCount = useMemo(() => leads.filter(l => l.stage === "New Lead" && (!l.meetings || l.meetings.length === 0)).length, [leads]);
+
+  // Persistent enrichment nudge: count active leads with no enrichment JSON
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { count } = await supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .is("archived_at", null)
+        .is("enrichment", null)
+        .not("stage", "in", "(Lost,Went Dark,Closed Won,Revisit/Reconnect)");
+      if (!cancelled) setEnrichmentGap(count ?? 0);
+    })();
+    return () => { cancelled = true; };
+  }, [reEnriching, leads.length]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
