@@ -61,8 +61,8 @@ export function AIResearchSection({ lead, enriching, onEnrich, save }: Props) {
           </h2>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             {lead.enrichment
-              ? (lastResearched ? `Last refreshed ${new Date(lastResearched).toLocaleDateString()}` : "Research available")
-              : "Scrape company site, infer signals, and recommend CRM updates."}
+              ? (lastResearched ? `Last refreshed ${lastResearched}` : "Research available")
+              : "Scrape company site, infer signals, and recommend CRM updates. AI fills Firm AUM, EBITDA range, and Deal Type when sources are available."}
           </p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">

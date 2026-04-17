@@ -17,6 +17,7 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { computeDealHealthScore, getStakeholderCoverage } from "@/lib/dealHealthUtils";
 import { computeWinProbability, computeSlipRisk } from "@/lib/dealPredictions";
+import { computeDossierCompleteness } from "@/lib/dealDossier";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -140,6 +141,7 @@ export function LeadPanelHeader({
   const lastContact = lastContactLabel(lead);
   const winProb = computeWinProbability(lead);
   const slipRisk = computeSlipRisk(lead);
+  const dossier = computeDossierCompleteness(lead);
   const domain = lead.companyUrl?.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || (lead.email?.split("@")[1] ?? "");
 
   const tryCopy = async (text: string): Promise<boolean> => {
@@ -285,6 +287,12 @@ export function LeadPanelHeader({
                 {slipRisk.label}
               </span>
             )}
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground font-medium"
+              title={`Dossier ${dossier.filled} / ${dossier.total} fields populated (manual or auto-derived)`}
+            >
+              Dossier {dossier.pct}%
+            </span>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5 flex-wrap">
             <span>{lead.role}{lead.role && lead.company ? " · " : ""}{lead.company || ""}</span>
