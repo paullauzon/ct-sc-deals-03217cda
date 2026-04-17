@@ -475,6 +475,30 @@ export function Pipeline() {
                       : "~$3 · ~8 min for 150 leads · loops 10-lead batches until coverage saturates"}
                   </span>
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="flex-col items-start gap-0.5 py-2 cursor-pointer"
+                  onClick={async () => {
+                    setReEnriching(true);
+                    toast.info("Promoting transcript-derived values across all active leads...");
+                    try {
+                      const { data, error } = await supabase.functions.invoke("bulk-promote-transcript-fields", { body: { brand: "all" } });
+                      if (error) throw error;
+                      const promoted = data?.promoted ?? 0;
+                      const fields = data?.fields_written ?? 0;
+                      const scanned = data?.scanned ?? 0;
+                      toast.success(`Transcript promote: ${promoted}/${scanned} leads · ${fields} fields written`);
+                      await refreshLeads();
+                    } catch (err) {
+                      toast.error("Transcript promote failed: " + (err as Error).message);
+                    } finally {
+                      setReEnriching(false);
+                    }
+                  }}
+                >
+                  <span className="text-xs font-medium">Promote transcript values</span>
+                  <span className="text-[10px] text-muted-foreground">Free · instant · maps deal_intelligence JSON to authority/budget/blocker/stall fields</span>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
