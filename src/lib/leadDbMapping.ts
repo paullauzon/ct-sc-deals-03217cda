@@ -72,6 +72,13 @@ export function leadToRow(lead: Lead): Record<string, any> {
     secondary_contacts: lead.secondaryContacts || [],
     google_drive_link: lead.googleDriveLink,
     forecasted_close_date: lead.forecastedCloseDate,
+    lead_status: lead.leadStatus || "Working",
+    next_mutual_step: lead.nextMutualStep || "",
+    next_mutual_step_date: lead.nextMutualStepDate || "",
+    competing_bankers: lead.competingBankers || "",
+    contract_months: lead.contractMonths ?? null,
+    close_confidence: lead.closeConfidence ?? null,
+    deal_narrative: lead.dealNarrative || "",
   };
 }
 
