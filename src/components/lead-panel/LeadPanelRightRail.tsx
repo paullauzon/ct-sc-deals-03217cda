@@ -10,6 +10,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getCompanyAssociates, getSharedIntelligence } from "@/lib/leadUtils";
 import { EnrichmentSection, SubmissionHistory } from "./shared";
 import { useProcessing } from "@/contexts/ProcessingContext";
+import { StakeholderCard } from "./cards/StakeholderCard";
+import { SourceAttributionCard } from "./cards/SourceAttributionCard";
 
 interface LeadPanelRightRailProps {
   lead: Lead;
