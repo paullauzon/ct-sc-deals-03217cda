@@ -67,6 +67,7 @@
 - [LinkedIn Visibility](mem://features/linkedin-ui-visibility) — UI placement and trigger logic for LinkedIn profiles
 - [Pipeline Filters](mem://features/pipeline-intelligence-filters) — Overdue follow-up visibility and quick-filter styling
 - [SourceCo Fields](mem://features/sourceco-data-fields) — Buyer type and acquisition strategy metadata
+- [Buyer Dossier System](mem://features/buyer-dossier-system) — 4-tier fallback (manual→AI→submission→transcript), HybridField + Dossier % chip
 - [Data Sources](mem://project/data-sources) — Hardcoded tracking sources for Captarget/SourceCo forms
 - [Environment Separation](mem://project/environment-separation) — Lovable Preview vs. Live DB constraints
 - [AI Gateway Constraint](mem://integrations/ai-model-usage) — Strictly use direct OpenAI API
