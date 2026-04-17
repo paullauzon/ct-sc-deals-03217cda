@@ -192,6 +192,62 @@ export function Pipeline() {
     return () => { cancelled = true; };
   }, [reEnriching, leads.length]);
 
+  // Hoisted: triggered both from the dropdown item and the persistent banner
+  const runBatchedAIEnrichment = useCallback(async () => {
+    if (enrichProgress) {
+      enrichCancelRef.current = true;
+      toast.info("Stopping after current batch...");
+      return;
+    }
+    enrichCancelRef.current = false;
+    setReEnriching(true);
+    const { count: totalEmpty } = await supabase
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .is("archived_at", null)
+      .or("firm_aum.eq.,firm_aum.is.null")
+      .not("stage", "in", "(Lost,Went Dark,Closed Won,Revisit/Reconnect)");
+    const total = totalEmpty ?? 0;
+    if (total === 0) {
+      toast.success("All active leads already have AI dossier coverage.");
+      setReEnriching(false);
+      return;
+    }
+    setEnrichProgress({ done: 0, total, aumFilled: 0, cancel: false });
+    toast.info(`Starting batched AI enrichment — ~${Math.ceil(total / 10) * 30}s for ${total} leads`);
+    let done = 0;
+    let aumFilled = 0;
+    let totalErrors = 0;
+    const MAX_BATCHES = 25;
+    try {
+      for (let i = 0; i < MAX_BATCHES; i++) {
+        if (enrichCancelRef.current) break;
+        const { data, error } = await supabase.functions.invoke("bulk-enrich-sourceco", {
+          body: { limit: 10, onlyEmptyAum: true },
+        });
+        if (error) throw error;
+        const scanned = data?.scanned ?? 0;
+        const promoted = data?.promoted ?? 0;
+        const errs = data?.errors?.length ?? 0;
+        done += scanned;
+        aumFilled += promoted;
+        totalErrors += errs;
+        setEnrichProgress({ done, total, aumFilled, cancel: false });
+        await refreshLeads();
+        if (scanned === 0) break;
+      }
+      const stopped = enrichCancelRef.current;
+      if (stopped) toast.warning(`Stopped at ${done}/${total} · ${aumFilled} fields auto-filled`);
+      else toast.success(`Enrichment complete · ${done} processed · ${aumFilled} fields auto-filled${totalErrors ? ` · ${totalErrors} errors` : ""}`);
+    } catch (err) {
+      toast.error("Batched enrich failed: " + (err as Error).message);
+    } finally {
+      setEnrichProgress(null);
+      setReEnriching(false);
+      enrichCancelRef.current = false;
+    }
+  }, [enrichProgress, refreshLeads]);
+
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
