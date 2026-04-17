@@ -413,6 +413,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
       <LogCallDialog lead={lead} open={callOpen} onOpenChange={setCallOpen} save={save} />
       <EmailComposeDrawer lead={lead} open={emailDrawerOpen} onOpenChange={setEmailDrawerOpen} save={save} presetAction={emailDrawerPreset} />
       <KeyboardCheatsheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <AskDealDrawer lead={lead} open={askOpen} onOpenChange={setAskOpen} />
     </div>
   );
 
