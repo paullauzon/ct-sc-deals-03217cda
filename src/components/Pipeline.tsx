@@ -165,6 +165,8 @@ export function Pipeline() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [backfilling, setBackfilling] = useState(false);
   const [reEnriching, setReEnriching] = useState(false);
+  const [enrichProgress, setEnrichProgress] = useState<{ done: number; total: number; aumFilled: number; cancel: boolean } | null>(null);
+  const enrichCancelRef = useRef(false);
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
   const sourceCoCount = useMemo(
     () => leads.filter(l => l.brand === "SourceCo" && !["Lost", "Went Dark", "Closed Won"].includes(l.stage)).length,
