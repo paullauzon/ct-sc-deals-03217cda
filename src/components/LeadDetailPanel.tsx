@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/contexts/LeadContext";
 import { Lead, LeadStage } from "@/types/lead";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { computeDaysInStage } from "@/lib/leadUtils";
@@ -44,7 +45,12 @@ interface LeadDetailPanelProps {
 export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrder, onNavigate }: LeadDetailPanelProps) {
   const { leads, updateLead, archiveLead } = useLeads();
   const navigate = useNavigate();
-  const lead = leads.find(l => l.id === leadId) || null;
+  // Internal lead override — lets prev/next swap the displayed lead without parent cooperation
+  const [internalLeadId, setInternalLeadId] = useState<string | null>(leadId);
+  useEffect(() => { setInternalLeadId(leadId); }, [leadId]);
+  const activeLeadId = internalLeadId ?? leadId;
+  const lead = leads.find(l => l.id === activeLeadId) || null;
+
   const [enriching, setEnriching] = useState(false);
   const [draftingAI, setDraftingAI] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
@@ -65,34 +71,34 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
 
   // Prev/next navigation order
   const order = useMemo(() => leadOrder && leadOrder.length > 0 ? leadOrder : leads.map(l => l.id), [leadOrder, leads]);
-  const idx = leadId ? order.indexOf(leadId) : -1;
+  const idx = activeLeadId ? order.indexOf(activeLeadId) : -1;
   const hasPrev = idx > 0;
   const hasNext = idx >= 0 && idx < order.length - 1;
   const goTo = (id: string) => {
     if (onNavigate) onNavigate(id);
     else if (mode === "page") navigate(`/deal/${id}`);
-    // sheet mode w/o handler: silently no-op (parent should pass handler)
+    else setInternalLeadId(id); // sheet-mode internal swap
   };
   const onPrev = () => { if (hasPrev) goTo(order[idx - 1]); };
   const onNext = () => { if (hasNext) goTo(order[idx + 1]); };
 
   useEffect(() => {
     if (open) setActiveTab("activity");
-  }, [leadId, open]);
+  }, [activeLeadId, open]);
 
   // Fetch email count for tab label
   useEffect(() => {
-    if (!leadId) return;
+    if (!activeLeadId) return;
     let cancelled = false;
     (async () => {
       const { count } = await supabase
         .from("lead_emails")
         .select("id", { count: "exact", head: true })
-        .eq("lead_id", leadId);
+        .eq("lead_id", activeLeadId);
       if (!cancelled && typeof count === "number") setEmailCount(count);
     })();
     return () => { cancelled = true; };
-  }, [leadId]);
+  }, [activeLeadId]);
 
   // Keyboard shortcuts (only when open and not typing in input)
   useEffect(() => {
@@ -379,6 +385,9 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         className="w-screen max-w-none p-0 sm:max-w-none border-0"
         aria-describedby={undefined}
       >
+        <VisuallyHidden>
+          <SheetTitle>{lead.name} — {lead.company}</SheetTitle>
+        </VisuallyHidden>
         {workspace}
       </SheetContent>
     </Sheet>
