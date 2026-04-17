@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { computeDealHealthScore, getStakeholderCoverage } from "@/lib/dealHealthUtils";
+import { computeWinProbability, computeSlipRisk } from "@/lib/dealPredictions";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -92,6 +93,7 @@ interface LeadPanelHeaderProps {
   onArchive: () => void;
   onChangeStage: (stage: LeadStage) => void;
   onShowShortcuts: () => void;
+  onAskAI: () => void;
   draftingAI?: boolean;
   enriching?: boolean;
 }
@@ -124,7 +126,7 @@ function buildDealSummary(lead: Lead, daysInStage: number, lastContact: string |
 export function LeadPanelHeader({
   lead, daysInStage, mode, hasPrev, hasNext,
   onClose, onPrev, onNext, onEmail, onSchedule, onNote, onTask,
-  onDraftAI, onLogCall, onEnrich, onArchive, onChangeStage, onShowShortcuts,
+  onDraftAI, onLogCall, onEnrich, onArchive, onChangeStage, onShowShortcuts, onAskAI,
   draftingAI, enriching,
 }: LeadPanelHeaderProps) {
   const navigate = useNavigate();
@@ -134,6 +136,8 @@ export function LeadPanelHeader({
   const dealHealth = computeDealHealthScore(lead);
   const coverage = getStakeholderCoverage(lead);
   const lastContact = lastContactLabel(lead);
+  const winProb = computeWinProbability(lead);
+  const slipRisk = computeSlipRisk(lead);
   const domain = lead.companyUrl?.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || (lead.email?.split("@")[1] ?? "");
 
   const tryCopy = async (text: string): Promise<boolean> => {
@@ -205,6 +209,7 @@ export function LeadPanelHeader({
     { icon: Zap, label: draftingAI ? "Drafting…" : "Draft AI", onClick: onDraftAI, disabled: draftingAI, animate: draftingAI },
     { icon: Phone, label: "Log call", onClick: onLogCall },
     { icon: Sparkles, label: enriching ? "Enriching…" : "Enrich", onClick: onEnrich, disabled: enriching, animate: enriching },
+    { icon: Sparkles, label: "Ask AI", onClick: onAskAI },
   ];
 
   return (
@@ -255,6 +260,27 @@ export function LeadPanelHeader({
               <span className={cn("text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1", coverage.colorClass)}>
                 {coverage.coverage === "no-champion" ? <ShieldAlert className="h-2.5 w-2.5" /> : <Users className="h-2.5 w-2.5" />}
                 {coverage.label}
+              </span>
+            )}
+            {winProb && winProb.probability > 0 && winProb.probability < 100 && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-foreground/80 font-medium"
+                title={`Win probability ${winProb.probability}% — ${winProb.label}\n\n${winProb.factors.map(f => `${f.impact > 0 ? "+" : ""}${f.impact}  ${f.label}`).join("\n")}`}
+              >
+                Win {winProb.probability}%
+              </span>
+            )}
+            {slipRisk && slipRisk.band !== "on-track" && (
+              <span
+                className={cn(
+                  "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                  slipRisk.band === "critical" ? "bg-red-500/10 text-red-600 dark:text-red-400" :
+                  slipRisk.band === "at-risk" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" :
+                  "bg-secondary text-muted-foreground",
+                )}
+                title={`${slipRisk.label}\n\n${slipRisk.reasons.join("\n")}`}
+              >
+                {slipRisk.label}
               </span>
             )}
           </div>

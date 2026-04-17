@@ -30,6 +30,7 @@ import { TaskDialog } from "./lead-panel/dialogs/TaskDialog";
 import { LogCallDialog } from "./lead-panel/dialogs/LogCallDialog";
 import { EmailComposeDrawer } from "./lead-panel/dialogs/EmailComposeDrawer";
 import { KeyboardCheatsheet } from "./lead-panel/KeyboardCheatsheet";
+import { AskDealDrawer } from "./lead-panel/AskDealDrawer";
 
 interface LeadDetailPanelProps {
   leadId: string | null;
@@ -73,6 +74,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
   const [emailDrawerOpen, setEmailDrawerOpen] = useState(false);
   const [emailDrawerPreset, setEmailDrawerPreset] = useState<"follow-up" | "default" | undefined>(undefined);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
 
   // Email count for tab badge
   const [emailCount, setEmailCount] = useState<number>(0);
@@ -282,6 +284,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         onArchive={onArchive}
         onChangeStage={onChangeStage}
         onShowShortcuts={() => setShortcutsOpen(true)}
+        onAskAI={() => setAskOpen(true)}
         draftingAI={draftingAI}
         enriching={enriching}
       />
@@ -410,6 +413,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
       <LogCallDialog lead={lead} open={callOpen} onOpenChange={setCallOpen} save={save} />
       <EmailComposeDrawer lead={lead} open={emailDrawerOpen} onOpenChange={setEmailDrawerOpen} save={save} presetAction={emailDrawerPreset} />
       <KeyboardCheatsheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <AskDealDrawer lead={lead} open={askOpen} onOpenChange={setAskOpen} />
     </div>
   );
 
