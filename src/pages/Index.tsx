@@ -8,10 +8,11 @@ import { useLeads } from "@/contexts/LeadContext";
 import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";
 import { SystemSwitcher } from "@/components/SystemSwitcher";
 import { BusinessSystem } from "@/components/BusinessSystem";
+import { ClientSuccessSystem } from "@/components/ClientSuccessSystem";
 import { Search, BarChart3, Kanban, Users, CalendarCheck } from "lucide-react";
 
 type View = "dashboard" | "pipeline" | "leads" | "today";
-type System = "crm" | "business";
+type System = "crm" | "business" | "client-success";
 
 const VALID_VIEWS = new Set<View>(["dashboard", "pipeline", "leads", "today"]);
 
@@ -22,7 +23,7 @@ function parseHashState(): { view: View; system: System } {
   const s = params.get("sys");
   return {
     view: v && VALID_VIEWS.has(v as View) ? (v as View) : "dashboard",
-    system: s === "business" ? "business" : "crm",
+    system: s === "business" ? "business" : s === "client-success" ? "client-success" : "crm",
   };
 }
 
@@ -59,7 +60,7 @@ function AppContent() {
     const hash = window.location.hash.replace("#", "");
     const params = new URLSearchParams(hash);
     params.set("sys", s);
-    if (s === "business") { params.delete("view"); params.delete("tab"); }
+    if (s === "business" || s === "client-success") { params.delete("view"); params.delete("tab"); }
     else { params.set("view", view); }
     window.location.hash = params.toString();
   }, [view]);
@@ -130,6 +131,9 @@ function AppContent() {
           {system === "business" && (
             <span className="text-sm text-muted-foreground">Business Operations</span>
           )}
+          {system === "client-success" && (
+            <span className="text-sm text-muted-foreground">Client Success · Account Management</span>
+          )}
         </div>
       </nav>
 
@@ -143,6 +147,7 @@ function AppContent() {
       )}
 
       {system === "business" && <BusinessSystem />}
+      {system === "client-success" && <ClientSuccessSystem />}
 
       <CommandPalette onNavigate={handleCmdNavigate} onSelectLead={handleCmdSelectLead} externalOpen={cmdOpen} onExternalOpenChange={setCmdOpen} />
       <LeadDetail leadId={cmdLeadId} open={!!cmdLeadId} onClose={() => setCmdLeadId(null)} />
