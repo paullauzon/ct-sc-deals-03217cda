@@ -512,6 +512,29 @@ export function Pipeline() {
                   <span className="text-xs font-medium">Process stale transcripts</span>
                   <span className="text-[10px] text-muted-foreground">Finds leads with Fireflies transcripts but no AI intelligence · runs process-meeting + synthesize · ~$0.10/lead</span>
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="flex-col items-start gap-0.5 py-2 cursor-pointer"
+                  onClick={async () => {
+                    toast.info("Re-extracting service interest + stakeholders from transcripts...");
+                    try {
+                      const { data, error } = await supabase.functions.invoke("bulk-process-stale-meetings", { body: { mode: "service_interest", limit: 50 } });
+                      if (error) throw error;
+                      const c = data?.candidates ?? 0;
+                      const r = data?.resynthesized ?? 0;
+                      const s = data?.service_interest_written ?? 0;
+                      const st = data?.stakeholders_written ?? 0;
+                      if (c === 0) toast.success("All leads already have service interest + stakeholders.");
+                      else toast.success(`Re-synthesized ${r} · service interest filled on ${s} · ${st} stakeholder(s) added`);
+                      await refreshLeads();
+                    } catch (err) {
+                      toast.error("Re-extract failed: " + (err as Error).message);
+                    }
+                  }}
+                >
+                  <span className="text-xs font-medium">Re-extract service interest + stakeholders</span>
+                  <span className="text-[10px] text-muted-foreground">For leads with intel but missing serviceInterest · also promotes buyingCommittee → Stakeholder Card · ~$0.50 for 46 leads</span>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
