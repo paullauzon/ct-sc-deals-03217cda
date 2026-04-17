@@ -18,13 +18,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { computeDealHealthScore, getStakeholderCoverage } from "@/lib/dealHealthUtils";
 import { computeWinProbability, computeSlipRisk } from "@/lib/dealPredictions";
 import { computeDossierCompleteness } from "@/lib/dealDossier";
+import { ACTIVE_STAGES } from "@/lib/leadUtils";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { logActivity } from "@/lib/activityLog";
 import { supabase } from "@/integrations/supabase/client";
-
-const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 
 function ClickableProgressBar({ currentStage, onAdvance }: { currentStage: LeadStage; onAdvance: (s: LeadStage) => void }) {
   const currentIdx = ACTIVE_STAGES.indexOf(currentStage);
