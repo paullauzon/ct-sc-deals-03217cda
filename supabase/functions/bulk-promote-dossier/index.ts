@@ -125,10 +125,15 @@ function parseGeographyFromText(text?: string): string {
 }
 
 const SECTOR_DENYLIST = /^(use your tool|use the tool|your tool|deal sourcing|source for( me)?|tbd|n\/?a|test|none|other|unknown)$/i;
-const SECTOR_PHRASE_DENYLIST = /\b(deal sourcing|off-?market(?! [a-z]+ in )|partnership opportunities|sourcing support|sourcing deals|mutual synergies|outsource deal|buyers?\/sellers? matching|buy-?side option|channel partners|learn more|understand off|deploy growth equity|pipeline (of |building)|getting (off-?market )?deals|help to connect|connect with off market)\b/i;
+const SECTOR_PHRASE_DENYLIST = /\b(deal sourcing|off-?market(?! [a-z]+ in )|partnership opportunities|sourcing support|sourcing deals|mutual synergies|outsource deal|buyers?\s?\/\s?sellers?\s+matching|buy-?side option|channel partners|learn more|understand off|deploy growth equity|pipeline (of |building)|getting (off-?market )?deals|help to connect|connect with off market|lead gen(eration)?|help grow|need(s)? deal sourcing|work with sourceco|see off-?market deals|source for (private company|companies)|expand (our|the) (deal )?sourcing|ai-supported deal sourcing|virtual assistant services)\b/i;
 const SECTOR_ANCHOR_VOCAB = /\b(saas|software|tech|fintech|regtech|govtech|insurtech|proptech|healthtech|biotech|medtech|ai|ml|data|analytics|cyber|security|cloud|api|platform|marketplace|ecommerce|e-commerce|retail|consumer|cpg|food|beverage|restaurant|hospitality|leisure|travel|gaming|media|entertainment|sports|education|edtech|training|healthcare|health|medical|dental|veterinary|pharma|pharmaceutical|biopharma|wellness|fitness|services|business services|professional services|managed services|consulting|advisory|accounting|legal|hr|staffing|recruiting|insurance|banking|finance|financial|wealth|asset|investment|real estate|reit|construction|infrastructure|engineering|architecture|industrial|manufacturing|distribution|logistics|transportation|trucking|shipping|warehousing|supply chain|automotive|aerospace|defense|aviation|marine|energy|oil|gas|renewable|solar|wind|utilities|mining|chemicals|materials|packaging|paper|printing|textiles|apparel|furniture|appliances|home services|hvac|plumbing|electrical|landscaping|roofing|cleaning|pest control|security services|alarm|telecom|telecommunications|broadband|wireless|isp|datacenter|iot|hardware|semiconductors|robotics|drones|3d printing|life sciences|nutrition|agriculture|agtech|farm|food processing|cannabis|petcare|childcare|senior care|home care|hospice|behavioral health|mental health|addiction|treatment|laboratory|imaging|diagnostics|devices|equipment|tools|machinery|capital equipment|specialty|niche|vertical|b2b|b2c|b2g|d2c|smb|enterprise|mid[- ]?market|lower middle market|upper middle market|small business|family[- ]owned|founder[- ]led|founder[- ]owned|recurring revenue|subscription|asset[- ]light|cash flow|recession[- ]resistant|fragmented|roll[- ]up|consolidation|add[- ]on|platform play|carve[- ]out|carveout|esops?|franchise|multi[- ]unit|multi[- ]location|integrators?|installers?|wholesalers?|distributors?|operators?|providers?|clinics?|practices?|dealerships?)\b/i;
 const SECTOR_NUMERIC_ANCHOR = /(\$\s?\d|\b\d+\s?(?:m|k|mm|million|billion|bn)\b|\bebitda\b|\bsde\b|\barr\b|\brevenue\b|\bsales\b|\bev\b|\benterprise value\b|\bacquisition\b|\bunits?\b|\b(?:north|south|east|west|central|northern|southern|eastern|western)\s+(?:america|us|usa|europe|asia|canada)\b)/i;
-const STRATEGY_BLEED = /^(we['']re |we are )?(in thesis|thesis[- ]building|exploring|actively sourcing|under loi|in diligence|mid[- ]process|opportunistic|closing|ready to)/i;
+const STRATEGY_BLEED = /^(we['’]re |we are )?(in thesis|thesis[- ]building|exploring( options)?|actively sourcing|under loi|in diligence|mid[- ]process|opportunistic|closing|ready to)/i;
+const SOURCING_FILLER = /^(inbound only|other \(let us know|other$|n\/?a|none|tbd|unknown)/i;
+
+function normalizeQuotes(s: string): string {
+  return s.replace(/[\u2018\u2019\u02bc]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, "-");
+}
 
 function isLowSignalSector(s: string): boolean {
   const trimmed = s.trim();
@@ -173,12 +178,14 @@ function parseActiveSearchesFromText(text?: string): string {
 
 function parseCompetingFromSourcing(currentSourcing?: string): string {
   if (!currentSourcing) return "";
-  const s = currentSourcing.trim();
-  if (!s) return "";
-  const lower = s.toLowerCase();
+  const raw = normalizeQuotes(currentSourcing).trim();
+  if (!raw) return "";
+  const lower = raw.toLowerCase();
   if (["false","true","null","[]","{}","undefined"].includes(lower)) return "";
-  if (STRATEGY_BLEED.test(s)) return "";
-  return s;
+  const segments = raw.split(/\s*,\s*/).map(s => s.trim()).filter(Boolean);
+  const kept = segments.filter(seg => !STRATEGY_BLEED.test(seg) && !SOURCING_FILLER.test(seg));
+  if (kept.length === 0) return "";
+  return kept.join(", ");
 }
 
 /* ─── Main handler ─── */
