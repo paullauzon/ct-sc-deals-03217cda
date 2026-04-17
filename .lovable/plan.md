@@ -1,5 +1,9 @@
 
 
-The left rail aside has `overflow-y-auto` already, but looking at the screenshot and current code, the issue is likely that the parent container of the panel constrains the height in a way that breaks the scroll, OR the aside isn't getting a proper height constraint.
+## Goal
 
-Let me check the LeadDetailPanel structure and the actual current LeadPanelLeftRail to verify.
+Move the **Website Activity** card from the right rail into the **left rail** (under Key Info / Source Attribution / Submissions area), and prep it as a real data-backed card so it's ready for future GA4 / website tracking integration.
+
+## Investigation needed
+
+Let me check what currently exists for Website Activity and Source Attribution in the right rail.
