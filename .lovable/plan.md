@@ -1,100 +1,114 @@
 
 
-## What's actually broken (root cause)
+## End-to-end audit results
 
-Looking at live SourceCo submission JSON:
+### What's working ✓
+1. **Right rail** correctly renamed to "Signals", AI Insights + Stakeholder removed.
+2. **Stakeholders** moved to bottom of Activity tab.
+3. **Intelligence tab** has AI Research section + buttons + EnrichmentSection + DealIntelligencePanel.
+4. **Form-tier inference works for**: `role` → Firm Type (104/104 leads have role), `current_sourcing` → Competing against (75 leads), `target_criteria` → Sector (104 leads), `acquisition_strategy` (65 leads).
 
+### What's broken ✗ (verified against live DB)
+
+**1. Form field values don't match parser keywords.** The form actually sends:
 ```
-buyerType:           ""                 ← form field is empty (Zapier/Webflow not mapping it)
-role:                "Family Office"    ← THE FIRM TYPE IS HERE!
-                     "Private Equity"
-                     "Individual Investor"
-                     "Business Owner"
-                     "Corporate"
-acquisitionStrategy: "We're under LOI"  ← timeline / stage signal
-                     "We're actively sourcing targets"
-currentSourcing:     "Internal BD team" ← this IS "Competing against"
-                     "Manual outreach (Grata, Pitchbook…)"
-message:             "EBITDA between $1-5M, midwestern US, water treatment"
-                     ← targetRevenue/geography/sector buried here, never extracted
-hearAboutUs:         "LinkedIn"         ← attribution, already shown
-targetRevenue:       ""                 ← never sent by form
-geography:           ""                 ← never sent by form
+acquisition_strategy values seen in DB:
+  "We're actively sourcing targets"   ← parser expects "actively sourcing" ✓ works
+  "We're under LOI"                    ← parser expects "under loi" ✓ works
+  "We're exploring options"            ← parser expects "exploring" ✓ works
+  "We're mid-process on 1–2 deals"    ← NOT MATCHED → no timeline derived
 ```
+So timeline is empty for all "mid-process" leads (a common picklist value).
 
-So the dossier reads as empty because **`BuyerProfileCard` only checks `lead.buyerType`** — which the form never populates — instead of `lead.role` (where the firm type actually lives) and the message text. And the `enrich-lead` `buyerProfileSuggested` block was added but no historical lead has been re-enriched, so it's null on every existing record.
+**2. `current_sourcing` is being stored as the literal string `"false"`** for ~30 leads — Zapier sends a boolean when the field is unanswered, ingest writes it raw, and `parseCompetingFromSourcing` then returns `"false"` as the value. The dossier shows "Competing against: false" — actively wrong.
+
+**3. EBITDA backfill never happened.** `has_ebitda = 0` across all 104 SourceCo leads despite messages like *"Target profile is EBITDA between $1-5M"* and *"Minimum SDE is 750 K"* in plain text. The backfill migration ran but the regex didn't catch these phrasings (specifically `"Minimum SDE is 750 K"` has a space before `K`, and `"EBITDA between $1-5M"` is a clean match the regex SHOULD hit but the migration must have failed silently).
+
+**4. Geography backfill mostly empty** — only 21/104. Messages like *"primarily located in the midwestern US"* should match but aren't being parsed (regex returns full sentence with leading text).
+
+**5. "Other" role values bypass firm type inference.** ~10 SourceCo leads picked "Other" → buyer_type stays empty → Firm Type row reads "—" with no fallback.
+
+**6. Date formatting in "Last refreshed"** — using `new Date(researchedAt).toLocaleDateString()` but `researchedAt` may be undefined on legacy enrichment objects, showing "Invalid Date".
+
+### What's missing for max-intuitive workflow
+
+**A. No "Why this value?" tooltip on Sparkles glyphs** — rep can't tell if the value came from the message, a transcript, or AI research. Trust gap.
+
+**B. No write-through on confirm.** Clicking a Sparkles-derived value doesn't promote it to a manual override unless rep retypes. They should be able to one-click "Confirm" to lock the AI value in.
+
+**C. Mutual Plan card is below Sales Process** but the screenshot shows the natural flow is Buyer → Mandate → Process → Mutual Plan. Currently correct, but the **Decision Blocker / Stall Reason** rows in Sales Process are blank for any lead without `dealIntelligence` — and we never show the underlying form-tier signal that says the prospect picked "We're exploring options" (low intent). That's a blocker signal we have but don't surface.
+
+**D. `dealsPlanned` field is unused.** SourceCo form asks "How many acquisitions are you planning?" → stored on lead but never rendered. Belongs in M&A Mandate as "Deals planned".
+
+**E. `acquisition_strategy` raw value is shown nowhere.** It's used to *derive* timeline but the rep can never see "Buyer self-identified as: We're under LOI" — that's the strongest intent signal we get from the form.
+
+**F. No dossier completeness indicator.** Rep opens a lead and can't tell if the dossier is 80% AI-filled vs. 20% — affects trust.
 
 ## Plan
 
-### 1. Map the form fields we already receive — three-tier fallback
+### Phase 1 — Fix the data layer (highest leverage)
 
-Update `dealDossier.ts` derivation helpers + `BuyerProfileCard`/`MAMandateCard`/`SalesProcessCard` to read in this priority order for every field:
+1. **Fix `current_sourcing = "false"` bug** in `ingest-lead/index.ts`: when the value is a boolean, an empty array, or the literal string `"false"`, store empty string instead. One-shot UPDATE migration to clean up the 30 affected rows.
 
-```
-manual override → AI suggestion → form-submission inference → transcript inference → ""
-```
+2. **Expand `parseTimelineFromStrategy`** in `submissionParser.ts`:
+   - `"mid-process"` / `"in process"` / `"1-2 deals"` → `"0-3 months"`
+   - Re-run the timeline backfill.
 
-Concretely:
+3. **Fix EBITDA + Geography backfill failure.** Replace the SQL-side regex (which fails on edge cases) with a one-shot edge-function backfill that runs the JS `submissionParser.ts` over each row in batches. Then `has_ebitda` and `has_geo` should jump from 0/21 → ~70+.
 
-| Card field | New source order |
-|---|---|
-| Firm type | `lead.buyerType` → **`lead.role`** (normalized: "Family Office", "Private Equity"→"PE Firm", "Individual Investor"→"HNWI", "Business Owner"→"Strategic / Corporate", "Corporate"→"Strategic / Corporate") → AI |
-| Acq. timeline | `lead.acqTimeline` → **`lead.acquisitionStrategy`** ("under LOI"→"0-3 months", "actively sourcing"→"3-6 months", "exploring"→"6-12 months") → meeting timeline → AI |
-| Active searches | manual → **regex on `message` + `dealsPlanned`** ("2-3 acquisitions per year", "2 active mandates") → AI |
-| Target sector(s) | `lead.targetCriteria` → **first sentence/clause of `message`** (e.g. "industrial and residential water treatment service providers") → AI |
-| Target geography | `lead.geography` → **regex on `message`** ("Southern Ontario", "midwestern US", "Southeast") → AI |
-| EBITDA min/max | manual → **regex on `message`** (`$1-5M`, `<$1M ebitda`, `Minimum SDE is 750K`) → AI |
-| Revenue range | `lead.targetRevenue` → **regex on `message`** (`$10-100M in revenue`) → AI |
-| Competing against | manual → `competingBankers` → **`lead.currentSourcing`** ("Internal BD team", "Manual outreach (Grata, Pitchbook, LinkedIn)") → transcript |
+4. **Add a fourth tier for Firm Type when `role = "Other"`**: scan the message for firm-type keywords (`"family office"`, `"PE"`, `"search fund"`, `"holdco"`) and use that. Backfill.
 
-A single new helper `src/lib/submissionParser.ts` exposes pure functions: `parseFirmTypeFromRole(role)`, `parseTimelineFromStrategy(s)`, `parseEbitdaFromText(s)`, `parseRevenueFromText(s)`, `parseGeographyFromText(s)`, `parseSectorFromText(s)`, `parseActiveSearchesFromText(s)`. These are deterministic regex/keyword matchers — no AI call, no async — so the dossier auto-fills the moment you open any lead, not just enriched ones.
+### Phase 2 — Surface the data we already have
 
-`dealDossier.ts` derivation helpers chain these into `DerivedValue` with `source: "submission"`. The Sparkles glyph stays — the rep sees the field is auto-filled and one-clicks to override.
+5. **Show `acquisitionStrategy` raw value as a row in M&A Mandate** labeled "Self-stated stage" (read-only, with the form's exact picklist value). This is the prospect's own words — never overwrite it with a derived timeline.
 
-### 2. Fix the ingestion gap — backfill the columns too
+6. **Render `dealsPlanned`** as a row in M&A Mandate ("Deals planned per year").
 
-Update `ingest-lead/index.ts` to write the parsed values into the actual DB columns at submit time, so even the pipeline list/filters benefit (not just the Deal Room card):
+7. **Add Stall Reason form-tier fallback**: if `acquisition_strategy = "We're exploring options"` AND no momentum data, surface "Self-identified as exploring (low urgency)" as the Stall reason derived value.
 
-- `buyer_type` ← `parseFirmTypeFromRole(role)` if `body.buyerType` is empty
-- `target_revenue`, `geography`, `target_criteria` ← parsed from `message` if blank
+### Phase 3 — Trust + speed UX
 
-This is non-destructive (only fills empties) and immediately makes every new lead arrive with a populated dossier.
+8. **Sparkles tooltip**: hover any Sparkles glyph → tooltip shows "Inferred from: form submission" / "Inferred from: meeting on Mar 12" / "Inferred from: AI research of acme.com". Reuses the `DerivedValue.source` field already on every helper.
 
-### 3. One-shot DB backfill for the 60+ existing SourceCo leads
+9. **One-click confirm**: tiny check button next to Sparkles → writes the derived value to the manual column, clears Sparkles, logs an activity entry. Zero typing.
 
-Single migration runs the same parsers in SQL (or in a one-shot script) over existing rows where the destination column is blank. Same logic as ingest, applied retroactively. After this, every historical lead has a populated Buyer Profile / M&A Mandate without needing a re-enrichment.
+10. **Dossier completeness chip** in lead panel header: "Dossier 64%" — counts populated rows (manual OR derived) across Buyer Profile + M&A Mandate + Sales Process. Click → scrolls to first empty row.
 
-### 4. Re-trigger `enrich-lead` for top-priority SourceCo leads
+11. **Fix "Last refreshed Invalid Date"** — fall back to `enrichment.fetchedAt`, then to "—".
 
-The `buyerProfileSuggested` AI block is wired but no lead has it because the schema landed after the last enrichment. We don't auto-bulk-enrich (cost), but the existing "Re-run Research" button in the Intelligence tab now actually fills the AI-derived rows. Add a one-line note in the AI Research section: "AI fills Firm AUM, EBITDA range, and Deal Type when sources are available — click Research."
+### Phase 4 — Reorder for natural reading
 
-### 5. Tighten the card render so empty-with-AI-fallback shows the value
-
-Current `HybridText` renders the AI-derived value BUT `BuyerProfileCard` passes `lead.buyerType` (always `""` truthy-empty) to a plain `InlineSelectField`, bypassing the hybrid path. Refactor Firm type to use `HybridSelect` with the new `parseFirmTypeFromRole` derived value — same fix pattern for the other three cards.
+12. Buyer Profile rows reorder: Firm type → Firm AUM → **Self-stated stage (NEW)** → Acq. timeline → Active searches → Stakeholders → Champion → Budget → Authority. The self-stated stage is the strongest signal and should sit near the top.
 
 ## Files touched
 
-- `src/lib/submissionParser.ts` — **new**, ~120 lines of pure regex/keyword parsers.
-- `src/lib/dealDossier.ts` — extend each `derive*` helper to chain submission-parser fallback before AI suggestion.
-- `src/components/lead-panel/cards/BuyerProfileCard.tsx` — Firm type uses `HybridSelect`; all rows use the chained derivation.
-- `src/components/lead-panel/cards/MAMandateCard.tsx` — Target sector / geography / EBITDA / revenue rows wrap in `HybridText` with submission-parser fallback.
-- `src/components/lead-panel/cards/SalesProcessCard.tsx` — `Competing against` reads `currentSourcing` as a derived fallback.
-- `supabase/functions/ingest-lead/index.ts` — fill `buyer_type` / `target_revenue` / `geography` / `target_criteria` from parsers when blank at insert.
-- `supabase/migrations/<new>.sql` — one-shot UPDATE to backfill those four columns on existing rows where they're blank using PostgreSQL regex (or call a SECURITY DEFINER function that does the same thing).
+- `supabase/functions/ingest-lead/index.ts` — sanitize `current_sourcing` boolean
+- `supabase/functions/backfill-buyer-dossier/index.ts` — **new**, runs JS parsers over existing rows
+- `src/lib/submissionParser.ts` — add "mid-process" timeline mapping, expand firm-type from message
+- `src/lib/dealDossier.ts` — add `deriveStallReasonFromSubmission`, expose `source` for tooltips
+- `src/components/lead-panel/cards/BuyerProfileCard.tsx` — reorder rows, render Self-stated stage
+- `src/components/lead-panel/cards/MAMandateCard.tsx` — render `dealsPlanned` row
+- `src/components/lead-panel/cards/SalesProcessCard.tsx` — wire submission-tier stall fallback
+- `src/components/lead-panel/InlineEditFields.tsx` (or new `HybridField.tsx`) — Sparkles tooltip + one-click confirm
+- `src/components/lead-panel/LeadPanelHeader.tsx` — Dossier completeness chip
+- `src/components/lead-panel/AIResearchSection.tsx` — date fallback
+- One SQL migration — `UPDATE leads SET current_sourcing='' WHERE current_sourcing IN ('false','true','[]')`
 
 ## Trade-offs
 
-- **Win:** Every existing and future SourceCo lead's Buyer Profile / M&A Mandate / Sales Process auto-fills from data we already have. No re-enrichment needed for the structured fields. Sparkles glyph keeps the "AI-derived, click to override" affordance consistent.
-- **Win:** Mapping `role` → firm type fixes the user's specific complaint ("Firm type — they always pick their firm type") because the form sends it under `role`, not `buyerType`.
-- **Cost:** Regex parsers are heuristic — they'll miss edge phrasings ("ARR of $5MM", "EU only"). **Mitigation:** chained fallback (manual → submission-parse → AI) means the AI catches what regex misses; user override is one click.
-- **Cost:** Backfill migration touches every SourceCo row once. Acceptable: nullable columns, no destructive writes.
+- **Win:** Every existing lead's dossier jumps from ~30% populated to ~75% with no AI cost (pure form/regex). Sparkles tooltip + one-click confirm closes the trust gap. Self-stated stage row surfaces the single most actionable form signal we currently throw away.
+- **Cost:** `backfill-buyer-dossier` edge function call (~104 rows × 1 sync write). One-time, free.
+- **Cost:** Header chip adds ~1 line of state per lead open. Negligible.
+- **Loss:** Reordering means muscle memory shifts for existing users. Acceptable — current order isn't established muscle memory yet.
 
 ## Sequence
 
-1. Build `submissionParser.ts` with the 7 pure parsers + unit-friendly exports.
-2. Extend `dealDossier.ts` derivation helpers to chain submission-parser fallback.
-3. Refactor `BuyerProfileCard` Firm type → `HybridSelect`, wire all 3 cards to the chained derivers.
-4. Update `ingest-lead/index.ts` to write parsed values to DB columns at submit.
-5. Migration: backfill `buyer_type` / `target_revenue` / `geography` / `target_criteria` on existing rows.
-6. You verify: open any SourceCo lead → Firm type, Target sector, Geography, Revenue, EBITDA, Competing against, Acq. timeline all populated with the Sparkles glyph; click any row to override.
+1. Fix `current_sourcing=false` ingest bug + cleanup migration.
+2. Expand `submissionParser` keywords (timeline, firm type from message).
+3. Build + run `backfill-buyer-dossier` edge function.
+4. Render `acquisitionStrategy` (Self-stated stage) and `dealsPlanned` rows.
+5. Wire submission-tier stall reason fallback.
+6. Add Sparkles tooltip + one-click confirm UX.
+7. Add Dossier completeness header chip.
+8. You verify: open SC-T-067 → Sales Process shows "Competing against: We're exploring options" (not "false"); M&A Mandate shows EBITDA Min "$750K" (parsed from "Minimum SDE is 750 K"); hover any Sparkles glyph → tooltip names the source; click the check → row promotes to manual; header shows "Dossier ~75%".
 
