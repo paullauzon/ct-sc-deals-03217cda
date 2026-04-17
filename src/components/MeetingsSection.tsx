@@ -881,6 +881,9 @@ function MeetingCard({ meeting, lead, onRemove, onDraftFollowUp, generatingFollo
             </p>
           ) : (
             <>
+              {intel && (
+                <MeetingCoachCard meeting={meeting} lead={lead} />
+              )}
               {(intel || meeting.summary) && (
                 <div className="flex justify-end">
                   <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={onDraftFollowUp} disabled={generatingFollowUp}>
