@@ -29,6 +29,7 @@ import { NoteDialog } from "./lead-panel/dialogs/NoteDialog";
 import { TaskDialog } from "./lead-panel/dialogs/TaskDialog";
 import { LogCallDialog } from "./lead-panel/dialogs/LogCallDialog";
 import { EmailComposeDrawer } from "./lead-panel/dialogs/EmailComposeDrawer";
+import { KeyboardCheatsheet } from "./lead-panel/KeyboardCheatsheet";
 
 interface LeadDetailPanelProps {
   leadId: string | null;
