@@ -493,7 +493,9 @@ export function Pipeline() {
                           momentum === "Stalling" ? "Losing steam" :
                           momentum === "Stalled" ? "Gone quiet" :
                           momentum === "Steady" ? "Steady pace" : momentum;
-                        const hasIntelBadges = health || coverage || momentum;
+                        const slipRisk = computeSlipRisk(lead);
+                        const showSlipChip = !closed && slipRisk && (slipRisk.band === "watch" || slipRisk.band === "at-risk" || slipRisk.band === "critical");
+                        const hasIntelBadges = health || coverage || momentum || showSlipChip;
 
                         // Unified action count
                         const leadPlaybookTasks = allPlaybookTasks.filter(t => t.lead_id === lead.id);
@@ -573,6 +575,28 @@ export function Pipeline() {
                                     <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">
                                       {momentumLabel}
                                     </span>
+                                  )}
+                                  {showSlipChip && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className={cn(
+                                          "px-2 py-1 rounded font-medium",
+                                          slipRisk!.band === "critical" || slipRisk!.band === "at-risk"
+                                            ? "bg-amber-500/10 text-amber-700 border border-amber-500/20"
+                                            : "bg-secondary text-foreground/70"
+                                        )}>
+                                          {slipRisk!.label}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-[220px] p-3">
+                                        <p className="text-xs font-medium mb-1">Slip risk factors</p>
+                                        <ul className="space-y-0.5">
+                                          {slipRisk!.reasons.map((r, i) => (
+                                            <li key={i} className="text-xs text-muted-foreground">• {r}</li>
+                                          ))}
+                                        </ul>
+                                      </TooltipContent>
+                                    </Tooltip>
                                   )}
                                   {lead.enrichment && (
                                     <span className="px-2 py-1 rounded bg-secondary text-muted-foreground">AI</span>

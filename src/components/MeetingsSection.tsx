@@ -18,6 +18,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Mail, Copy, Check, CheckCircle, X, Loader2, User, Calendar, CalendarCheck, ExternalLink, Maximize2 } from "lucide-react";
 import { TranscriptDrawer } from "@/components/lead-panel/dialogs/TranscriptDrawer";
+import { MeetingCoachCard } from "@/components/lead-panel/MeetingCoachCard";
 
 // ─── Suggested Lead Update Types ───
 
@@ -376,6 +377,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
               <MeetingCard
                 key={meeting.id}
                 meeting={meeting}
+                lead={lead}
                 onRemove={() => {
                   const updated = meetings.filter((m) => m.id !== meeting.id);
                   // Recalculate lastContactDate from remaining meetings
@@ -806,7 +808,7 @@ function TagList({ label, items, emoji, variant }: { label: string; items?: stri
 
 // ─── Meeting Card ───
 
-function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, onReprocess, reprocessing, onOpenTranscript }: { meeting: Meeting; onRemove: () => void; onDraftFollowUp: () => void; generatingFollowUp: boolean; onReprocess?: () => void; reprocessing?: boolean; onOpenTranscript?: () => void }) {
+function MeetingCard({ meeting, lead, onRemove, onDraftFollowUp, generatingFollowUp, onReprocess, reprocessing, onOpenTranscript }: { meeting: Meeting; lead: Lead; onRemove: () => void; onDraftFollowUp: () => void; generatingFollowUp: boolean; onReprocess?: () => void; reprocessing?: boolean; onOpenTranscript?: () => void }) {
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const intel = meeting.intelligence;
