@@ -502,6 +502,18 @@ export interface Lead {
   secondaryContacts?: { name: string; email: string }[];
   googleDriveLink: string;
   forecastedCloseDate: string;
+  // v4: Lead status (separate from pipeline stage)
+  leadStatus?: LeadStatus;
+  // v4: Mutual close plan
+  nextMutualStep?: string;
+  nextMutualStepDate?: string;
+  // v4: Competing bankers/advisors
+  competingBankers?: string;
+  // v4: Deal economics
+  contractMonths?: number | null;
+  closeConfidence?: number | null;
+  // v4: AI deal narrative cached
+  dealNarrative?: string;
   // Legacy fields (kept for migration)
   firefliesUrl: string;
   firefliesTranscript: string;
