@@ -63,6 +63,7 @@
 - [Business Reporting](mem://logic/business-reporting-integrity) — Data integrity constraints for closed won reporting
 - [Forecast Logic](mem://features/forecast-forecasting-logic) — Multipliers and cycle day estimates for revenue forecasting
 - [Dual Architecture](mem://features/dual-system-architecture) — CRM vs. Business Operations system switching
+- [Client Success Pipeline](mem://features/client-success-pipeline) — Account-management pipeline with auto-handoff trigger from Closed Won (Valeria-owned)
 - [Navigation Reliability](mem://features/deal-room-navigation-reliability) — History-aware routing in Deal Room
 - [LinkedIn Visibility](mem://features/linkedin-ui-visibility) — UI placement and trigger logic for LinkedIn profiles
 - [Pipeline Filters](mem://features/pipeline-intelligence-filters) — Overdue follow-up visibility and quick-filter styling
