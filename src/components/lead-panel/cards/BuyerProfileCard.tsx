@@ -8,6 +8,8 @@ import {
   deriveAcqTimeline,
   deriveAuthorityConfirmed,
   deriveAiSuggestions,
+  deriveFirmTypeFromSubmission,
+  deriveActiveSearchesFromSubmission,
   type DerivedValue,
 } from "@/lib/dealDossier";
 import { Building2, Sparkles } from "lucide-react";
@@ -147,13 +149,16 @@ export function BuyerProfileCard({ lead, save }: Props) {
   const timeline = deriveAcqTimeline(lead);
   const authority = deriveAuthorityConfirmed(lead);
   const sug = deriveAiSuggestions(lead);
+  const firmTypeSubmission = deriveFirmTypeFromSubmission(lead);
+  const activeSearchesSubmission = deriveActiveSearchesFromSubmission(lead);
 
   return (
     <CollapsibleCard title="Buyer Profile" icon={<Building2 className="h-3.5 w-3.5" />} defaultOpen>
       <div className="space-y-0">
-        <InlineSelectField
+        <HybridSelect
           label="Firm type"
-          value={lead.buyerType}
+          manual={lead.buyerType}
+          derived={firmTypeSubmission}
           options={FIRM_TYPES}
           onSave={(v) => save({ buyerType: v })}
           allowEmpty
@@ -177,7 +182,7 @@ export function BuyerProfileCard({ lead, save }: Props) {
         <HybridText
           label="Active searches"
           manual={lead.activeSearches}
-          derived={sug.activeSearches || { value: "", source: "" }}
+          derived={sug.activeSearches?.value ? sug.activeSearches : activeSearchesSubmission}
           onSave={(v) => save({ activeSearches: v })}
         />
         <HybridSelect

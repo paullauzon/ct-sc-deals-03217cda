@@ -8,6 +8,16 @@
  * value is derived rather than user-edited.
  */
 import type { Lead, ObjectionRecord, RiskRecord } from "@/types/lead";
+import {
+  parseFirmTypeFromRole,
+  parseTimelineFromStrategy,
+  parseEbitdaFromText,
+  parseRevenueFromText,
+  parseGeographyFromText,
+  parseSectorFromText,
+  parseActiveSearchesFromText,
+  parseCompetingFromSourcing,
+} from "./submissionParser";
 
 export interface DerivedValue {
   value: string;
@@ -15,6 +25,64 @@ export interface DerivedValue {
 }
 
 const empty: DerivedValue = { value: "", source: "" };
+
+/** Helper — return first non-empty DerivedValue in the chain (manual is checked at the card layer). */
+function firstHit(...values: DerivedValue[]): DerivedValue {
+  for (const v of values) {
+    if (v && v.value && v.value.trim()) return v;
+  }
+  return empty;
+}
+
+/* ───────────── Submission-tier derivers (deterministic, no AI) ───────────── */
+
+export function deriveFirmTypeFromSubmission(lead: Lead): DerivedValue {
+  const v = parseFirmTypeFromRole(lead.role);
+  return v ? { value: v, source: "submission" } : empty;
+}
+
+export function deriveTimelineFromSubmission(lead: Lead): DerivedValue {
+  const v = parseTimelineFromStrategy(lead.acquisitionStrategy);
+  return v ? { value: v, source: "submission" } : empty;
+}
+
+export function deriveSectorFromSubmission(lead: Lead): DerivedValue {
+  if (lead.targetCriteria?.trim()) return { value: lead.targetCriteria.trim(), source: "submission" };
+  const v = parseSectorFromText(lead.message);
+  return v ? { value: v, source: "submission" } : empty;
+}
+
+export function deriveGeographyFromSubmission(lead: Lead): DerivedValue {
+  if (lead.geography?.trim()) return { value: lead.geography.trim(), source: "submission" };
+  const v = parseGeographyFromText(lead.message);
+  return v ? { value: v, source: "submission" } : empty;
+}
+
+export function deriveRevenueFromSubmission(lead: Lead): DerivedValue {
+  if (lead.targetRevenue?.trim()) return { value: lead.targetRevenue.trim(), source: "submission" };
+  const v = parseRevenueFromText(lead.message);
+  return v ? { value: v, source: "submission" } : empty;
+}
+
+export function deriveEbitdaFromSubmission(lead: Lead): { min: DerivedValue; max: DerivedValue } {
+  const { min, max } = parseEbitdaFromText(lead.message);
+  return {
+    min: min ? { value: min, source: "submission" } : empty,
+    max: max ? { value: max, source: "submission" } : empty,
+  };
+}
+
+export function deriveActiveSearchesFromSubmission(lead: Lead): DerivedValue {
+  const fromMsg = parseActiveSearchesFromText(lead.message);
+  if (fromMsg) return { value: fromMsg, source: "submission" };
+  if (lead.dealsPlanned?.trim()) return { value: lead.dealsPlanned.trim(), source: "submission" };
+  return empty;
+}
+
+export function deriveCompetingFromSubmission(lead: Lead): DerivedValue {
+  const v = parseCompetingFromSourcing(lead.currentSourcing);
+  return v ? { value: v, source: "submission" } : empty;
+}
 
 export function deriveStakeholderCount(lead: Lead): DerivedValue {
   const map = lead.dealIntelligence?.stakeholderMap;
@@ -42,8 +110,10 @@ export function deriveCompetingAgainst(lead: Lead): DerivedValue {
   lead.meetings?.forEach(m => {
     m.intelligence?.dealSignals?.competitors?.forEach(c => c && set.add(c));
   });
-  if (!set.size) return empty;
-  return { value: Array.from(set).join(", "), source: "transcript" };
+  if (set.size) return { value: Array.from(set).join(", "), source: "transcript" };
+  // Submission-tier fallback: SourceCo's `currentSourcing` answers "how are you sourcing today?"
+  // which functionally describes who/what we're competing with.
+  return deriveCompetingFromSubmission(lead);
 }
 
 export function deriveDecisionBlocker(lead: Lead): DerivedValue {
@@ -100,7 +170,8 @@ export function deriveAcqTimeline(lead: Lead): DerivedValue {
   }
   const u = lead.enrichment?.urgency?.trim();
   if (u) return { value: u, source: "research" };
-  return empty;
+  // Submission tier: SourceCo's `acquisitionStrategy` ("under LOI", "actively sourcing")
+  return deriveTimelineFromSubmission(lead);
 }
 
 export function deriveAuthorityConfirmed(lead: Lead): DerivedValue {
