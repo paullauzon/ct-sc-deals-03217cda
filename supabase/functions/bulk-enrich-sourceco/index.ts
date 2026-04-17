@@ -49,17 +49,21 @@ Deno.serve(async (req) => {
     const supabase = createClient(url, key);
 
     const body = await req.json().catch(() => ({}));
-    const limit = Math.min(Math.max(Number(body?.limit) || 20, 1), 120);
+    const limit = Math.min(Math.max(Number(body?.limit) || 20, 1), 200);
+    const brand = body?.brand && body.brand !== "all" ? body.brand : null;
+    const onlyEmptyAum = body?.onlyEmptyAum !== false; // default true: skip already-enriched
 
-    const { data: leads, error } = await supabase
+    let q = supabase
       .from("leads")
       .select("*")
-      .eq("brand", "SourceCo")
       .is("archived_at", null)
-      .not("stage", "in", "(Lost,Went Dark,Closed Won)")
+      .not("stage", "in", "(Lost,Went Dark,Closed Won,Revisit/Reconnect)")
       .order("tier", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: false })
       .limit(limit);
+    if (brand) q = q.eq("brand", brand);
+    if (onlyEmptyAum) q = q.or("firm_aum.eq.,firm_aum.is.null");
+    const { data: leads, error } = await q;
 
     if (error) throw error;
     if (!leads || leads.length === 0) {

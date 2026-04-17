@@ -204,15 +204,16 @@ Deno.serve(async (req) => {
     const supabase = createClient(url, key);
 
     const body = await req.json().catch(() => ({}));
-    const brand = body?.brand || "SourceCo";
+    const brand = body?.brand && body.brand !== "all" ? body.brand : null;
     const limit = Math.min(Math.max(Number(body?.limit) || 500, 1), 500);
 
-    const { data: leads, error } = await supabase
+    let q = supabase
       .from("leads")
       .select("id,name,role,message,current_sourcing,acquisition_strategy,buyer_type,acq_timeline,active_searches,ebitda_min,ebitda_max,target_revenue,geography,target_criteria,competing_against")
-      .eq("brand", brand)
       .is("archived_at", null)
       .limit(limit);
+    if (brand) q = q.eq("brand", brand);
+    const { data: leads, error } = await q;
 
     if (error) throw error;
     if (!leads || leads.length === 0) {
