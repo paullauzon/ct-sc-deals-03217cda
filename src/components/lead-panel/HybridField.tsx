@@ -10,6 +10,9 @@ import type { DerivedValue } from "@/lib/dealDossier";
  *   • renders a Sparkles glyph with a tooltip explaining the source
  *   • renders a one-click ✓ "Confirm" button that promotes the derived value
  *     into the manual column (clears the Sparkles, ends the AI badge)
+ *
+ * `onSave(value, meta)` — meta.confirmed is true when triggered by the ✓ button,
+ * letting cards write an audit-log entry distinguishing user typing vs AI confirm.
  */
 
 const SOURCE_LABEL: Record<DerivedValue["source"], string> = {
@@ -25,57 +28,96 @@ function sourceTooltip(d: DerivedValue): string {
   return d.detail ? `${base} · ${d.detail}` : base;
 }
 
+export interface HybridSaveMeta {
+  confirmed?: boolean;
+  source?: DerivedValue["source"];
+  detail?: string;
+  label?: string;
+}
+
 interface HybridProps {
   label: string;
   manual?: string;
   derived: DerivedValue;
-  onSave: (v: string) => void;
+  onSave: (v: string, meta?: HybridSaveMeta) => void;
+  /** Stable identifier used by the Dossier-completeness scroller. */
+  fieldKey?: string;
 }
 
 export function HybridText({
-  label, manual, derived, onSave, type = "text",
+  label, manual, derived, onSave, type = "text", fieldKey,
 }: HybridProps & { type?: "text" | "number" | "date" }) {
+  const wrap = (v: string) => onSave(v);
+  const filled = !!(manual && manual.trim()) || !!derived.value;
+  const dataAttr = fieldKey ? { "data-dossier-row": fieldKey, "data-dossier-filled": String(filled) } : {};
   if (manual && manual.trim()) {
-    return <InlineTextField label={label} value={manual} onSave={onSave} type={type} />;
+    return (
+      <div {...dataAttr}>
+        <InlineTextField label={label} value={manual} onSave={wrap} type={type} />
+      </div>
+    );
   }
   if (!derived.value) {
-    return <InlineTextField label={label} value="" onSave={onSave} type={type} />;
+    return (
+      <div {...dataAttr}>
+        <InlineTextField label={label} value="" onSave={wrap} type={type} />
+      </div>
+    );
   }
   return (
-    <div className="relative group/hybrid">
-      <InlineTextField label={label} value={derived.value} onSave={onSave} type={type} />
-      <DerivedAffordance derived={derived} onConfirm={() => onSave(derived.value)} />
+    <div className="relative group/hybrid" {...dataAttr}>
+      <InlineTextField label={label} value={derived.value} onSave={wrap} type={type} />
+      <DerivedAffordance
+        derived={derived}
+        onConfirm={() => onSave(derived.value, { confirmed: true, source: derived.source, detail: derived.detail, label })}
+      />
     </div>
   );
 }
 
 export function HybridSelect({
-  label, manual, derived, options, onSave, allowEmpty,
+  label, manual, derived, options, onSave, allowEmpty, fieldKey,
 }: HybridProps & { options: string[]; allowEmpty?: boolean }) {
+  const wrap = (v: string) => onSave(v);
+  const filled = !!(manual && manual.trim()) || !!derived.value;
+  const dataAttr = fieldKey ? { "data-dossier-row": fieldKey, "data-dossier-filled": String(filled) } : {};
   if (manual && manual.trim()) {
-    return <InlineSelectField label={label} value={manual} options={options} onSave={onSave} allowEmpty={allowEmpty} />;
+    return (
+      <div {...dataAttr}>
+        <InlineSelectField label={label} value={manual} options={options} onSave={wrap} allowEmpty={allowEmpty} />
+      </div>
+    );
   }
   if (!derived.value) {
-    return <InlineSelectField label={label} value="" options={options} onSave={onSave} allowEmpty={allowEmpty} />;
+    return (
+      <div {...dataAttr}>
+        <InlineSelectField label={label} value="" options={options} onSave={wrap} allowEmpty={allowEmpty} />
+      </div>
+    );
   }
   return (
-    <div className="relative group/hybrid">
+    <div className="relative group/hybrid" {...dataAttr}>
       <InlineSelectField
         label={label}
         value={derived.value}
         options={Array.from(new Set([derived.value, ...options]))}
-        onSave={onSave}
+        onSave={wrap}
         allowEmpty={allowEmpty}
       />
-      <DerivedAffordance derived={derived} onConfirm={() => onSave(derived.value)} />
+      <DerivedAffordance
+        derived={derived}
+        onConfirm={() => onSave(derived.value, { confirmed: true, source: derived.source, detail: derived.detail, label })}
+      />
     </div>
   );
 }
 
 /** Read-only derived row — used for transcript-only fields (e.g. Stakeholders, Champion). */
-export function DerivedRow({ label, derived }: { label: string; derived: DerivedValue }) {
+export function DerivedRow({ label, derived, fieldKey }: { label: string; derived: DerivedValue; fieldKey?: string }) {
+  const filled = !!derived.value;
+  const dataAttr = fieldKey ? { "data-dossier-row": fieldKey, "data-dossier-filled": String(filled) } : {};
   return (
-    <div className="flex items-center justify-between gap-3 py-1.5 text-xs border-b border-border/40 last:border-0">
+    <div className="flex items-center justify-between gap-3 py-1.5 text-xs border-b border-border/40 last:border-0" {...dataAttr}>
       <span className="text-muted-foreground shrink-0">{label}</span>
       <span className="text-foreground text-right truncate font-medium flex items-center gap-1.5 max-w-[60%]">
         {derived.value ? (
@@ -110,11 +152,6 @@ function SourceGlyph({ derived }: { derived: DerivedValue }) {
   );
 }
 
-/**
- * Sparkles + Confirm button overlay positioned to the right of the row's
- * value. The Confirm button is hover-revealed on the row to keep the resting
- * state clean.
- */
 function DerivedAffordance({ derived, onConfirm }: { derived: DerivedValue; onConfirm: () => void }) {
   return (
     <div className="absolute right-7 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
