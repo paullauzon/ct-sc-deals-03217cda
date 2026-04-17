@@ -572,6 +572,37 @@ export function Pipeline() {
                   <span className="text-xs font-medium">Re-extract service interest + stakeholders</span>
                   <span className="text-[10px] text-muted-foreground">For leads with intel but missing serviceInterest · also promotes buyingCommittee → Stakeholder Card · ~$0.50 for 46 leads</span>
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="flex-col items-start gap-0.5 py-2 cursor-pointer"
+                  onClick={async () => {
+                    toast.info("Backfilling LinkedIn URLs for leads missing them...");
+                    try {
+                      const { data: missing } = await supabase
+                        .from("leads")
+                        .select("id")
+                        .is("archived_at", null)
+                        .or("linkedin_url.is.null,linkedin_url.eq.")
+                        .not("stage", "in", "(Lost,Went Dark,Closed Won,Revisit/Reconnect)")
+                        .limit(60);
+                      const ids = (missing || []).map((r: any) => r.id);
+                      if (ids.length === 0) {
+                        toast.success("All active leads already have LinkedIn URLs.");
+                        return;
+                      }
+                      const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { leadIds: ids } });
+                      if (error) throw error;
+                      const found = data?.found ?? data?.matched ?? data?.successful ?? 0;
+                      toast.success(`LinkedIn backfill: ${found} of ${ids.length} found · runs in background`);
+                      await refreshLeads();
+                    } catch (err) {
+                      toast.error("LinkedIn backfill failed: " + (err as Error).message);
+                    }
+                  }}
+                >
+                  <span className="text-xs font-medium">Backfill LinkedIn URLs</span>
+                  <span className="text-[10px] text-muted-foreground">For active leads missing linkedin_url · runs AI Search Agent · ~$1 for 55 leads</span>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
