@@ -128,6 +128,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         case "i": setActiveTab("intelligence"); break;
         case "f": setActiveTab("files"); break;
         case "n": setActiveTab("notes"); break;
+        case "?": setShortcutsOpen(true); break;
         default: return;
       }
       e.preventDefault();
