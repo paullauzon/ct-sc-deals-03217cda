@@ -1,8 +1,6 @@
 import { Lead, LeadStage, ServiceInterest, ForecastCategory, IcpFit, DealOwner, BillingFrequency, CloseReason } from "@/types/lead";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { IdentityCard } from "@/components/dealroom/IdentityCard";
-import { EmailMetricsCard } from "@/components/EmailMetricsCard";
-import { Mail } from "lucide-react";
 import { InlineTextField, InlineSelectField, InlineToggleField } from "./InlineEditFields";
 import { MACriteriaCard } from "@/components/dealroom/KeyInformationCard";
 import { Input } from "@/components/ui/input";
@@ -71,10 +69,6 @@ export function LeadPanelLeftRail({ lead, daysInStage, save }: Props) {
             <span className="font-medium">{daysInStage}d</span>
           </div>
         </div>
-      </CollapsibleCard>
-
-      <CollapsibleCard title="Email Activity" icon={<Mail className="h-3.5 w-3.5" />} defaultOpen={false}>
-        <EmailMetricsCard leadId={lead.id} />
       </CollapsibleCard>
 
       {isSourceCo && (

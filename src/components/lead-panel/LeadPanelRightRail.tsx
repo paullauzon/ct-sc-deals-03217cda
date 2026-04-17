@@ -1,9 +1,12 @@
 import { Lead } from "@/types/lead";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { RightRailCards } from "@/components/dealroom/RightRailCards";
-import { Building2, FileInput, Zap, Target, Sparkles, ArrowRight, Check, X, RefreshCw } from "lucide-react";
+import { EmailMetricsCard } from "@/components/EmailMetricsCard";
+import { Building2, FileInput, Zap, Target, Sparkles, ArrowRight, Check, X, RefreshCw, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { getCompanyAssociates, getSharedIntelligence } from "@/lib/leadUtils";
 import { EnrichmentSection, SubmissionHistory } from "./shared";
 import { useProcessing } from "@/contexts/ProcessingContext";
@@ -94,6 +97,7 @@ function AIInsightsCard({ lead, enriching, onEnrich, save }: { lead: Lead; enric
   };
 
   const showAutoFind = autoFindJob && (autoFindJob.searching || autoFindJob.pendingSuggestions.length > 0);
+  const lastResearched = (lead.enrichment as any)?.researchedAt || (lead.enrichment as any)?.fetchedAt;
 
   return (
     <CollapsibleCard
@@ -102,6 +106,16 @@ function AIInsightsCard({ lead, enriching, onEnrich, save }: { lead: Lead; enric
       defaultOpen
     >
       <div className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] text-muted-foreground">
+            {lead.enrichment ? (lastResearched ? `Refreshed ${new Date(lastResearched).toLocaleDateString()}` : "Research available") : "No research yet"}
+          </p>
+          <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-1" onClick={onEnrich} disabled={enriching}>
+            {enriching ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+            {enriching ? "Researching…" : (lead.enrichment ? "Re-run" : "Research")}
+          </Button>
+        </div>
+
         {showAutoFind && (
           <div className="rounded-md border border-primary/30 bg-primary/5 p-2.5 space-y-2">
             <div className="flex items-center justify-between">
@@ -167,21 +181,54 @@ function AIInsightsCard({ lead, enriching, onEnrich, save }: { lead: Lead; enric
   );
 }
 
+function EmailActivityCard({ leadId }: { leadId: string }) {
+  const [unanswered, setUnanswered] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("lead_email_metrics")
+        .select("total_received,total_replies,last_received_date,last_replied_date")
+        .eq("lead_id", leadId)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      // Inbound emails received without an outbound reply since
+      const lastReceived = (data as any).last_received_date ? new Date((data as any).last_received_date).getTime() : 0;
+      const lastReplied = (data as any).last_replied_date ? new Date((data as any).last_replied_date).getTime() : 0;
+      setUnanswered(lastReceived > lastReplied ? 1 : 0);
+    })();
+    return () => { cancelled = true; };
+  }, [leadId]);
+
+  return (
+    <CollapsibleCard
+      title="Email Activity"
+      icon={<Mail className="h-3.5 w-3.5" />}
+      defaultOpen={false}
+      rightSlot={unanswered > 0 ? <span className="w-1.5 h-1.5 rounded-full bg-destructive inline-block" title="Inbound awaiting reply" /> : undefined}
+    >
+      <EmailMetricsCard leadId={leadId} />
+    </CollapsibleCard>
+  );
+}
+
 export function LeadPanelRightRail({ lead, allLeads, enriching, onEnrich, save }: LeadPanelRightRailProps) {
+  const submissionsCount = lead.submissions?.length || 0;
   return (
     <aside className="w-[320px] shrink-0 border-l border-border overflow-y-auto bg-background">
       <div className="px-4 pt-3 pb-1">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Intelligence</span>
       </div>
       <AIInsightsCard lead={lead} enriching={enriching} onEnrich={onEnrich} save={save} />
+      <EmailActivityCard leadId={lead.id} />
       <RightRailCards lead={lead} allLeads={allLeads} />
       <CompanyActivityCard lead={lead} allLeads={allLeads} />
-      {lead.submissions && lead.submissions.length > 1 && (
+      {submissionsCount > 0 && (
         <CollapsibleCard
           title="Submissions"
           icon={<FileInput className="h-3.5 w-3.5" />}
-          count={lead.submissions.length}
-          defaultOpen={false}
+          count={submissionsCount}
+          defaultOpen={submissionsCount >= 2}
         >
           <SubmissionHistory submissions={lead.submissions} />
         </CollapsibleCard>

@@ -1,14 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/contexts/LeadContext";
-import { Lead } from "@/types/lead";
+import { Lead, LeadStage } from "@/types/lead";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { supabase } from "@/integrations/supabase/client";
-import { logActivity } from "@/lib/activityLog";
 import { MeetingsSection } from "@/components/MeetingsSection";
 import { EmailsSection } from "@/components/EmailsSection";
 import { DealIntelligencePanel } from "@/components/DealIntelligencePanel";
@@ -24,7 +22,12 @@ import { LeadActivityTab } from "./lead-panel/LeadActivityTab";
 import { LeadFilesTab } from "./lead-panel/LeadFilesTab";
 import { LeadActionsTab } from "./lead-panel/LeadActionsTab";
 import { LeadDebriefTab } from "./lead-panel/LeadDebriefTab";
+import { LeadNotesTab } from "./lead-panel/LeadNotesTab";
 import { DealHealthAlerts } from "./lead-panel/shared";
+import { NoteDialog } from "./lead-panel/dialogs/NoteDialog";
+import { TaskDialog } from "./lead-panel/dialogs/TaskDialog";
+import { LogCallDialog } from "./lead-panel/dialogs/LogCallDialog";
+import { EmailComposeDrawer } from "./lead-panel/dialogs/EmailComposeDrawer";
 
 interface LeadDetailPanelProps {
   leadId: string | null;
@@ -32,9 +35,13 @@ interface LeadDetailPanelProps {
   onClose: () => void;
   /** "sheet" (default) renders inside an overlay; "page" renders in-place for /deal/:id */
   mode?: "sheet" | "page";
+  /** Optional ordered list of lead IDs to enable prev/next navigation; defaults to all leads order */
+  leadOrder?: string[];
+  /** Called when prev/next is invoked. If omitted, internal navigation is used. */
+  onNavigate?: (id: string) => void;
 }
 
-export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet" }: LeadDetailPanelProps) {
+export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrder, onNavigate }: LeadDetailPanelProps) {
   const { leads, updateLead, archiveLead } = useLeads();
   const navigate = useNavigate();
   const lead = leads.find(l => l.id === leadId) || null;
@@ -46,9 +53,81 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet" }: LeadD
   const [activeTab, setActiveTab] = useState("activity");
   const [draftSignal, setDraftSignal] = useState(0);
 
+  // Dialogs
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [callOpen, setCallOpen] = useState(false);
+  const [emailDrawerOpen, setEmailDrawerOpen] = useState(false);
+  const [emailDrawerPreset, setEmailDrawerPreset] = useState<"follow-up" | "default" | undefined>(undefined);
+
+  // Email count for tab badge
+  const [emailCount, setEmailCount] = useState<number>(0);
+
+  // Prev/next navigation order
+  const order = useMemo(() => leadOrder && leadOrder.length > 0 ? leadOrder : leads.map(l => l.id), [leadOrder, leads]);
+  const idx = leadId ? order.indexOf(leadId) : -1;
+  const hasPrev = idx > 0;
+  const hasNext = idx >= 0 && idx < order.length - 1;
+  const goTo = (id: string) => {
+    if (onNavigate) onNavigate(id);
+    else if (mode === "page") navigate(`/deal/${id}`);
+    // sheet mode w/o handler: silently no-op (parent should pass handler)
+  };
+  const onPrev = () => { if (hasPrev) goTo(order[idx - 1]); };
+  const onNext = () => { if (hasNext) goTo(order[idx + 1]); };
+
   useEffect(() => {
     if (open) setActiveTab("activity");
   }, [leadId, open]);
+
+  // Fetch email count for tab label
+  useEffect(() => {
+    if (!leadId) return;
+    let cancelled = false;
+    (async () => {
+      const { count } = await supabase
+        .from("lead_emails")
+        .select("id", { count: "exact", head: true })
+        .eq("lead_id", leadId);
+      if (!cancelled && typeof count === "number") setEmailCount(count);
+    })();
+    return () => { cancelled = true; };
+  }, [leadId]);
+
+  // Keyboard shortcuts (only when open and not typing in input)
+  useEffect(() => {
+    if (!open) return;
+    const isTyping = (el: EventTarget | null) => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName.toLowerCase();
+      return tag === "input" || tag === "textarea" || el.isContentEditable;
+    };
+    const handler = (e: KeyboardEvent) => {
+      if (isTyping(e.target)) return;
+      // Cmd/Ctrl shortcuts
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === "[") { e.preventDefault(); onPrev(); return; }
+        if (e.key === "]") { e.preventDefault(); onNext(); return; }
+        return;
+      }
+      // Modifier-free single keys (avoid clashing with cmd+k)
+      if (e.altKey || e.shiftKey) return;
+      switch (e.key.toLowerCase()) {
+        case "a": setActiveTab("activity"); break;
+        case "c": setActiveTab("actions"); break;
+        case "m": setActiveTab("meetings"); break;
+        case "e": setActiveTab("emails"); break;
+        case "i": setActiveTab("intelligence"); break;
+        case "f": setActiveTab("files"); break;
+        case "n": setActiveTab("notes"); break;
+        default: return;
+      }
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, idx, order.length]);
 
   const handleEnrich = useCallback(async () => {
     if (!lead || lead.enrichmentStatus === "running") return;
@@ -117,39 +196,42 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet" }: LeadD
   const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
   const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost" || lead.stage === "Went Dark";
 
-  const onEmail = () => setActiveTab("emails");
+  const onEmail = () => { setEmailDrawerPreset(undefined); setEmailDrawerOpen(true); };
   const onSchedule = () => {
-    if (lead.calendlyBookedAt) toast(lead.calendlyEventName || "Calendly meeting", { description: lead.meetingDate });
-    else window.open("https://calendly.com", "_blank");
+    if (lead.calendlyBookedAt) {
+      toast(lead.calendlyEventName || "Calendly meeting", {
+        description: lead.meetingDate || "Booking exists",
+        action: { label: "View tab", onClick: () => setActiveTab("meetings") },
+      });
+    } else {
+      window.open("https://calendly.com", "_blank");
+    }
   };
-  const onNote = () => setActiveTab("notes");
-  const onTask = async () => {
-    const title = window.prompt("Task title:");
-    if (!title?.trim()) return;
-    const today = new Date().toISOString().split("T")[0];
-    const { error } = await supabase.from("lead_tasks").insert({
-      lead_id: lead.id, playbook: "manual", sequence_order: 0, task_type: "manual",
-      title: title.trim(), description: "", due_date: today, status: "pending",
-    } as any);
-    if (error) { toast.error("Failed to add task"); return; }
-    await logActivity(lead.id, "field_update", `Task added: ${title.trim()}`);
-    toast.success("Task added");
-  };
-  const onLogCall = async () => {
-    const summary = window.prompt("Call summary:");
-    if (!summary?.trim()) return;
-    await logActivity(lead.id, "field_update", `Call logged: ${summary.trim()}`);
-    save({ lastContactDate: new Date().toISOString().split("T")[0] });
-    toast.success("Call logged");
-  };
+  const onNote = () => setNoteOpen(true);
+  const onTask = () => setTaskOpen(true);
+  const onLogCall = () => setCallOpen(true);
   const onArchive = () => setArchiveTarget({ id: lead.id, name: lead.name });
+  const onChangeStage = (stage: LeadStage) =>
+    save({ stage, stageEnteredDate: new Date().toISOString().split("T")[0] });
+  const onDraftFollowUp = () => { setEmailDrawerPreset("follow-up"); setEmailDrawerOpen(true); };
+
+  const notesCount = lead.notes ? lead.notes.split(/\n--- /).filter(Boolean).length : 0;
+  const filesCount =
+    (lead.googleDriveLink ? 1 : 0) +
+    (lead.meetings || []).filter(m => m.firefliesUrl).length +
+    (lead.meetings || []).reduce((acc, m: any) => acc + ((m.attachments?.length) || 0), 0);
 
   const workspace = (
     <div className="h-full w-full flex flex-col bg-background overflow-hidden">
       <LeadPanelHeader
         lead={lead}
         daysInStage={days}
+        mode={mode}
+        hasPrev={hasPrev}
+        hasNext={hasNext}
         onClose={onClose}
+        onPrev={onPrev}
+        onNext={onNext}
         onEmail={onEmail}
         onSchedule={onSchedule}
         onNote={onNote}
@@ -158,6 +240,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet" }: LeadD
         onLogCall={onLogCall}
         onEnrich={handleEnrich}
         onArchive={onArchive}
+        onChangeStage={onChangeStage}
         draftingAI={draftingAI}
         enriching={enriching}
       />
@@ -193,16 +276,16 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet" }: LeadD
                   <Calendar className="h-3.5 w-3.5" /> Meetings ({lead.meetings?.length || 0})
                 </TabsTrigger>
                 <TabsTrigger value="emails" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
-                  <Mail className="h-3.5 w-3.5" /> Emails
+                  <Mail className="h-3.5 w-3.5" /> Emails{emailCount > 0 ? ` (${emailCount})` : ""}
                 </TabsTrigger>
                 <TabsTrigger value="intelligence" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
                   <Brain className="h-3.5 w-3.5" /> Intelligence
                 </TabsTrigger>
                 <TabsTrigger value="files" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
-                  <FolderOpen className="h-3.5 w-3.5" /> Files
+                  <FolderOpen className="h-3.5 w-3.5" /> Files{filesCount > 0 ? ` (${filesCount})` : ""}
                 </TabsTrigger>
                 <TabsTrigger value="notes" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
-                  <MessageSquare className="h-3.5 w-3.5" /> Notes
+                  <MessageSquare className="h-3.5 w-3.5" /> Notes{notesCount > 0 ? ` (${notesCount})` : ""}
                 </TabsTrigger>
                 {isClosed && (
                   <TabsTrigger value="debrief" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
@@ -217,7 +300,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet" }: LeadD
                 <div className="px-6 pt-4 max-w-3xl mx-auto">
                   <DealHealthAlerts lead={lead} />
                 </div>
-                <LeadActivityTab lead={lead} />
+                <LeadActivityTab lead={lead} save={save} onDraftFollowUp={onDraftFollowUp} />
               </TabsContent>
               {!isClosed && (
                 <TabsContent value="actions" className="mt-0">
@@ -242,16 +325,10 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet" }: LeadD
                 )}
               </TabsContent>
               <TabsContent value="files" className="mt-0">
-                <LeadFilesTab lead={lead} />
+                <LeadFilesTab lead={lead} save={save} />
               </TabsContent>
-              <TabsContent value="notes" className="p-6 mt-0 max-w-3xl mx-auto">
-                <Textarea
-                  value={lead.notes}
-                  onChange={(e) => save({ notes: e.target.value })}
-                  placeholder="Add notes about this lead..."
-                  rows={20}
-                  className="min-h-[400px] text-sm"
-                />
+              <TabsContent value="notes" className="mt-0">
+                <LeadNotesTab lead={lead} save={save} onAddNote={() => setNoteOpen(true)} />
               </TabsContent>
               {isClosed && (
                 <TabsContent value="debrief" className="mt-0">
@@ -283,6 +360,11 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet" }: LeadD
         onConfirm={(reason) => { if (archiveTarget) { archiveLead(archiveTarget.id, reason); setArchiveTarget(null); onClose(); } }}
         onCancel={() => setArchiveTarget(null)}
       />
+
+      <NoteDialog lead={lead} open={noteOpen} onOpenChange={setNoteOpen} save={save} />
+      <TaskDialog lead={lead} open={taskOpen} onOpenChange={setTaskOpen} />
+      <LogCallDialog lead={lead} open={callOpen} onOpenChange={setCallOpen} save={save} />
+      <EmailComposeDrawer lead={lead} open={emailDrawerOpen} onOpenChange={setEmailDrawerOpen} save={save} presetAction={emailDrawerPreset} />
     </div>
   );
 
