@@ -126,7 +126,7 @@ function buildDealSummary(lead: Lead, daysInStage: number, lastContact: string |
 export function LeadPanelHeader({
   lead, daysInStage, mode, hasPrev, hasNext,
   onClose, onPrev, onNext, onEmail, onSchedule, onNote, onTask,
-  onDraftAI, onLogCall, onEnrich, onArchive, onChangeStage, onShowShortcuts,
+  onDraftAI, onLogCall, onEnrich, onArchive, onChangeStage, onShowShortcuts, onAskAI,
   draftingAI, enriching,
 }: LeadPanelHeaderProps) {
   const navigate = useNavigate();
