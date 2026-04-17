@@ -1,15 +1,15 @@
 import { Lead } from "@/types/lead";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { InlineTextField, InlineSelectField } from "../InlineEditFields";
+import { HybridText, HybridSelect } from "../HybridField";
 import {
   deriveAiSuggestions,
   deriveSectorFromSubmission,
   deriveGeographyFromSubmission,
   deriveRevenueFromSubmission,
   deriveEbitdaFromSubmission,
-  type DerivedValue,
 } from "@/lib/dealDossier";
-import { Target, Sparkles } from "lucide-react";
+import { Target } from "lucide-react";
 
 const DEAL_TYPES = ["Platform", "Add-on / Bolt-on", "Roll-up", "Carve-out", "Distressed", "Growth"];
 const TXN_TYPES = ["Majority", "Minority", "Control", "Recap", "100% Buyout"];
@@ -17,69 +17,6 @@ const TXN_TYPES = ["Majority", "Minority", "Control", "Recap", "100% Buyout"];
 interface Props {
   lead: Lead;
   save: (updates: Partial<Lead>) => void;
-}
-
-/** Editable row that prefers manual, falls back to AI/submission derived value with a Sparkles glyph. */
-function HybridText({
-  label,
-  manual,
-  derived,
-  onSave,
-  type = "text",
-}: {
-  label: string;
-  manual?: string;
-  derived: DerivedValue;
-  onSave: (v: string) => void;
-  type?: "text" | "number" | "date";
-}) {
-  if (manual && manual.trim()) {
-    return <InlineTextField label={label} value={manual} onSave={onSave} type={type} />;
-  }
-  if (!derived.value) {
-    return <InlineTextField label={label} value="" onSave={onSave} type={type} />;
-  }
-  return (
-    <div className="relative">
-      <InlineTextField label={label} value={derived.value} onSave={onSave} type={type} />
-      <Sparkles className="h-2.5 w-2.5 text-muted-foreground/60 absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none" />
-    </div>
-  );
-}
-
-function HybridSelect({
-  label,
-  manual,
-  derived,
-  options,
-  onSave,
-  allowEmpty,
-}: {
-  label: string;
-  manual?: string;
-  derived: DerivedValue;
-  options: string[];
-  onSave: (v: string) => void;
-  allowEmpty?: boolean;
-}) {
-  if (manual && manual.trim()) {
-    return <InlineSelectField label={label} value={manual} options={options} onSave={onSave} allowEmpty={allowEmpty} />;
-  }
-  if (!derived.value) {
-    return <InlineSelectField label={label} value="" options={options} onSave={onSave} allowEmpty={allowEmpty} />;
-  }
-  return (
-    <div className="relative">
-      <InlineSelectField
-        label={label}
-        value={derived.value}
-        options={Array.from(new Set([derived.value, ...options]))}
-        onSave={onSave}
-        allowEmpty={allowEmpty}
-      />
-      <Sparkles className="h-2.5 w-2.5 text-muted-foreground/60 absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none" />
-    </div>
-  );
 }
 
 /** SourceCo-only — PE-buyer mandate. Captarget leads don't render this. */

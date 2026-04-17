@@ -1,13 +1,13 @@
 import { Lead } from "@/types/lead";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { InlineTextField, InlineSelectField } from "../InlineEditFields";
+import { HybridText } from "../HybridField";
 import {
   deriveCompetingAgainst,
   deriveDecisionBlocker,
   deriveStallReason,
-  type DerivedValue,
 } from "@/lib/dealDossier";
-import { Swords, Sparkles } from "lucide-react";
+import { Swords } from "lucide-react";
 
 const SAMPLE_OUTCOMES = [
   "Awaiting feedback",
@@ -20,33 +20,6 @@ const SAMPLE_OUTCOMES = [
 interface Props {
   lead: Lead;
   save: (updates: Partial<Lead>) => void;
-}
-
-function HybridText({
-  label,
-  manual,
-  derived,
-  onSave,
-  type = "text",
-}: {
-  label: string;
-  manual?: string;
-  derived: DerivedValue;
-  onSave: (v: string) => void;
-  type?: "text" | "number" | "date";
-}) {
-  if (manual && manual.trim()) {
-    return <InlineTextField label={label} value={manual} onSave={onSave} type={type} />;
-  }
-  if (!derived.value) {
-    return <InlineTextField label={label} value="" onSave={onSave} type={type} />;
-  }
-  return (
-    <div className="relative">
-      <InlineTextField label={label} value={derived.value} onSave={onSave} type={type} />
-      <Sparkles className="h-2.5 w-2.5 text-muted-foreground/60 absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none" />
-    </div>
-  );
 }
 
 export function SalesProcessCard({ lead, save }: Props) {
