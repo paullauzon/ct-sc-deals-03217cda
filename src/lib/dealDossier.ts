@@ -226,16 +226,17 @@ export function deriveAiSuggestions(lead: Lead): Record<string, DerivedValue> {
 
 /* ───────────── Dossier completeness — drives the header chip ───────────── */
 
-/** Returns 0-100 % of "filled" rows across Buyer Profile + M&A Mandate + Sales Process. */
-export function computeDossierCompleteness(lead: Lead): { pct: number; filled: number; total: number } {
+type CardKey = "buyerProfile" | "mandate" | "process";
+
+function buildRowChecks(lead: Lead): Record<CardKey, boolean[]> {
   const sug = deriveAiSuggestions(lead);
   const eb = deriveEbitdaFromSubmission(lead);
   const has = (manual: string | undefined, derived?: DerivedValue) =>
     !!(manual && manual.trim()) || !!(derived && derived.value);
 
-  const rows: boolean[] = lead.brand === "SourceCo"
-    ? [
-        // Buyer Profile
+  if (lead.brand === "SourceCo") {
+    return {
+      buyerProfile: [
         has(lead.buyerType, deriveFirmTypeFromSubmission(lead)),
         has(lead.firmAum, sug.firmAum),
         has(lead.acquisitionStrategy, deriveSelfStatedStage(lead)),
@@ -245,7 +246,8 @@ export function computeDossierCompleteness(lead: Lead): { pct: number; filled: n
         has(undefined, deriveChampion(lead)),
         has(lead.budgetConfirmed, deriveBudgetConfirmed(lead)),
         has(lead.authorityConfirmed, deriveAuthorityConfirmed(lead)),
-        // M&A Mandate
+      ],
+      mandate: [
         has(lead.targetCriteria, deriveSectorFromSubmission(lead)),
         has(lead.geography, deriveGeographyFromSubmission(lead)),
         has(lead.ebitdaMin, sug.ebitdaMin?.value ? sug.ebitdaMin : eb.min),
@@ -255,23 +257,40 @@ export function computeDossierCompleteness(lead: Lead): { pct: number; filled: n
         has(lead.transactionType, sug.transactionType),
         has(lead.acquisitionStrategy),
         has(lead.dealsPlanned),
-        // Sales Process
+      ],
+      process: [
         has(lead.competingAgainst, deriveCompetingAgainst(lead)),
         has(lead.decisionBlocker, deriveDecisionBlocker(lead)),
         has(lead.stallReason, deriveStallReason(lead)),
-      ]
-    : [
-        // Captarget — leaner subset
-        has(lead.acqTimeline, deriveAcqTimeline(lead)),
-        has(lead.budgetConfirmed, deriveBudgetConfirmed(lead)),
-        has(lead.authorityConfirmed, deriveAuthorityConfirmed(lead)),
-        has(undefined, deriveStakeholderCount(lead)),
-        has(undefined, deriveChampion(lead)),
-        has(lead.competingAgainst, deriveCompetingAgainst(lead)),
-        has(lead.decisionBlocker, deriveDecisionBlocker(lead)),
-      ];
+      ],
+    };
+  }
+  return {
+    buyerProfile: [
+      has(lead.acqTimeline, deriveAcqTimeline(lead)),
+      has(lead.budgetConfirmed, deriveBudgetConfirmed(lead)),
+      has(lead.authorityConfirmed, deriveAuthorityConfirmed(lead)),
+      has(undefined, deriveStakeholderCount(lead)),
+      has(undefined, deriveChampion(lead)),
+      has(lead.competingAgainst, deriveCompetingAgainst(lead)),
+      has(lead.decisionBlocker, deriveDecisionBlocker(lead)),
+    ],
+    mandate: [],
+    process: [],
+  };
+}
 
+/** Returns 0-100 % of "filled" rows across all dossier cards. */
+export function computeDossierCompleteness(lead: Lead): { pct: number; filled: number; total: number } {
+  const checks = buildRowChecks(lead);
+  const rows = [...checks.buyerProfile, ...checks.mandate, ...checks.process];
   const filled = rows.filter(Boolean).length;
   const total = rows.length;
   return { pct: total ? Math.round((filled / total) * 100) : 0, filled, total };
+}
+
+/** Per-card completeness — drives the small "6/9" chip in each card title. */
+export function computeCardCompleteness(lead: Lead, card: CardKey): { filled: number; total: number } {
+  const rows = buildRowChecks(lead)[card];
+  return { filled: rows.filter(Boolean).length, total: rows.length };
 }

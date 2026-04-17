@@ -164,29 +164,7 @@ export function RightRailCards({ lead, allLeads }: RightRailCardsProps) {
         </CollapsibleCard>
       )}
 
-      {/* Buying Committee */}
-      {intel?.buyingCommittee && (
-        <CollapsibleCard
-          title="Buying Committee"
-          icon={<Users className="h-3.5 w-3.5" />}
-          defaultOpen
-        >
-          <div className="space-y-1 text-xs">
-            {intel.buyingCommittee.decisionMaker && (
-              <p><span className="text-muted-foreground">Decision Maker:</span> <span className="font-medium">{intel.buyingCommittee.decisionMaker}</span></p>
-            )}
-            {intel.buyingCommittee.champion && (
-              <p><span className="text-muted-foreground">Champion:</span> <span className="font-medium">{intel.buyingCommittee.champion}</span></p>
-            )}
-            {intel.buyingCommittee.influencers?.length > 0 && (
-              <p><span className="text-muted-foreground">Influencers:</span> <span className="font-medium">{intel.buyingCommittee.influencers.join(", ")}</span></p>
-            )}
-            {intel.buyingCommittee.blockers?.length > 0 && (
-              <p><span className="text-muted-foreground">Blockers:</span> <span className="text-red-600 dark:text-red-400 font-medium">{intel.buyingCommittee.blockers.join(", ")}</span></p>
-            )}
-          </div>
-        </CollapsibleCard>
-      )}
+      {/* Buying Committee — REMOVED. Champion / Decision Maker now live in the Buyer Profile dossier card on the left rail. */}
 
       {/* Similar Won Deals */}
       {similarWon.length > 0 && (
