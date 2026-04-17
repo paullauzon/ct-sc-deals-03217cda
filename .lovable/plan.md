@@ -1,29 +1,35 @@
 
-The user is showing me a Microsoft "Approval required" screen even though they got "approved" last night. This is a known Microsoft Entra/Azure AD pattern.
+The user has access to `id@captarget.com` but it's not used for sales. The other captarget sales emails (Adam's, etc.) live on Gmail. The sourcecodeals.com tenant on Outlook is still pending admin consent.
 
-Key insight from the screenshot:
-- They're signing in as `adam.haile@sourcecodeals.com`
-- The screen shows "**This app requires your admin's approval to:**" with scopes Read user mail, Read/write user mail, Send mail as user, Maintain access, View profile
-- Last night's approval was for a DIFFERENT scope set (likely a narrower one for the initial connection)
-- This is a NEW consent request because the connector is requesting expanded scopes (the read-write + send mail combo, which is broader than read-only sync)
+Key question: should we connect `id@captarget.com` now, or wait?
 
-Common causes:
-1. **Approval was for a different scope set** — admin previously approved Mail.Read but now Lovable needs Mail.ReadWrite + Mail.Send. Each scope expansion triggers a new admin approval workflow in Entra.
-2. **Approval was granted to a different Lovable app registration** — Microsoft may have multiple Lovable enterprise app entries; admin approved one but the connector OAuth is initiating against another.
-3. **Tenant policy: "user consent disabled"** — even after admin grants once, if user consent is fully disabled, every new user/scope combo requires fresh admin approval.
-4. **Admin consent wasn't granted tenant-wide** — admin clicked "approve" but only for themselves (user consent), not "Grant admin consent for [Tenant]" (the org-wide button). This is the most common cause and matches the symptom exactly.
-5. **Different account** — last night's approval may have been for `adam.haile@captarget.com` and now signing in as `adam.haile@sourcecodeals.com` (different tenant entirely).
+Let me think through this carefully.
 
-Note in the screenshot: it specifically says "This app requires your **admin's** approval" — meaning Adam himself is NOT the admin in this tenant, OR the prior approval was performed differently. Adam needs to either:
-- Have the actual Entra admin click "Grant admin consent for [tenant]" in Azure portal → Enterprise Applications → Lovable → Permissions
-- OR have admin approve the new request (but it'll keep happening on scope changes)
+**What `id@captarget.com` would give us:**
+- Proves the Gmail connector + gateway works end-to-end (de-risks the integration before real sales mailboxes connect)
+- Lets me build and test `sync-gmail-emails`, send-via-Gmail in `EmailComposeDrawer`, tracking pixel injection, and click rewriting against a real mailbox
+- Zero risk: no real sales emails to worry about, no privacy concerns, no accidental sends to prospects from a non-sales address
 
-The cleanest fix: have the Microsoft 365 tenant admin go to Entra admin center, find the Lovable enterprise app, and click "Grant admin consent for [tenant name]" once with the full required scope set. That bakes consent in tenant-wide and bypasses this prompt forever.
+**What it would NOT give us:**
+- Zero historical sales correspondence to ingest (mailbox is empty of leads)
+- Adam's actual sent items / replies won't appear — those are in his personal Gmail
+- Won't surface real opens/clicks against real prospects
+- Sending from `id@captarget.com` to a prospect would look weird (wrong sender identity) — so we wouldn't actually use it for outbound in production
 
-I should explain this clearly and give them the exact path to fix it. This is a clarifying / diagnostic response — no code to write.
+**The strategic call:**
 
-Let me also note: the dialog shows two distinct tenants in play here (sourcecodeals.com signing in). If the admin who approved last night was on captarget.com tenant, that approval doesn't transfer to sourcecodeals.com tenant. Each Microsoft 365 tenant is a completely separate consent boundary.
+This is exactly the right kind of "dev/staging mailbox" to connect. It de-risks the whole Gmail pipeline so when Adam (or anyone) connects their real mailbox later, it's a one-click switch with proven infra.
 
-Plan: explain the diagnosis, list the 3 most likely causes ranked by probability, give exact remediation path. No code changes. Then present 2 paths forward: (a) admin grants tenant-wide consent the right way, (b) we proceed with whatever's connectable now.
+But — important nuance — the connector authenticates the **developer** (whoever clicks Connect), not each end-user. So if Adam connects `id@captarget.com` now, that single connection is what the gateway uses. When his personal `adam.haile@captarget.com` needs to be the sending mailbox, he'd have to either:
+- (a) Disconnect `id@` and reconnect as `adam.haile@`, OR
+- (b) We architect for per-user OAuth from day one (each sales rep authorizes their own mailbox, tokens stored per user_id in DB)
 
-Keep it concise.
+For a 2-3 person sales team across two brands, option (b) is the right long-term architecture anyway — but it's bigger scope. Option (a) is fine for v7.
+
+**My recommendation:**
+
+Connect `id@captarget.com` now as a **dev/test mailbox** to build & validate the entire Gmail pipeline (sync, send, tracking, threading). Once proven, swap to Adam's real Gmail by reconnecting. Defer multi-user per-mailbox OAuth to v8 once we know how the team wants to operate.
+
+Alternative: skip Gmail entirely for now, build only the provider-agnostic tracking infra + schema migration, and wait for either (a) Outlook admin consent or (b) Adam to be ready to connect his real Gmail.
+
+I'll present 3 clean paths and let the user choose. Keep it tight.
