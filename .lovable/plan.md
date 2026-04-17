@@ -1,55 +1,41 @@
 
-## v6 implementation status — 3 of 5 items shipped
 
-The user-approved v6 cut had 5 sequenced items. Here's exact ground truth from the codebase:
+## v6 status — all 5 items shipped & wired
+
+Verified end-to-end against the codebase. No gaps.
 
 | # | Item | Status | Evidence |
 |---|---|---|---|
-| 1 | Inline "Ask about this deal" AI chat | ✅ Shipped | `AskDealDrawer.tsx` exists, wired in `LeadDetailPanel.tsx` line 416, edge function `ask-deal/index.ts` deployed in `config.toml` |
-| 2 | Daily AI standup digest card | ⚠️ Built but NOT mounted | `DailyStandupCard.tsx` exists, `daily-standup/index.ts` deployed — but **zero imports** of `DailyStandupCard` anywhere. Card is dead code. |
-| 3 | Rolling win probability + slip risk in header | ✅ Shipped | `dealPredictions.ts` has both functions, `LeadPanelHeader.tsx` lines 139-140 + 273-285 render the chips |
-| 4 | Post-call coach card + email objection responder | ❌ Not started | No matches for `post-call coach`, `missedSignals`, `objectionResponder` anywhere |
-| 5 | Stalled-deal early warning chip on Pipeline cards | ❌ Not started | `isEarlyStallWarning` exported from `dealPredictions.ts` but never imported in `Pipeline.tsx`. Pipeline only shows the old `momentumSignals.momentum` text. |
+| 1 | Inline "Ask about this deal" AI chat | ✅ Live | `AskDealDrawer.tsx` mounted in `LeadDetailPanel.tsx:416`, edge function `ask-deal` registered in `config.toml:60` |
+| 2 | Daily AI standup digest card | ✅ Live | `DailyStandupCard` imported in `Dashboard.tsx:11` and rendered at top of Overview tab (`:462`), edge function `daily-standup` deployed |
+| 3 | Win probability + slip risk in header | ✅ Live | `dealPredictions.ts` has both functions, header chips render in `LeadPanelHeader.tsx` |
+| 4 | Stalled-deal early warning chip on Pipeline | ✅ Live | `Pipeline.tsx:28` imports `isEarlyStallWarning` + `computeSlipRisk`; chip renders at `:496-498` for watch / at-risk / critical bands |
+| 5a | Post-call coach card | ✅ Live | `MeetingCoachCard.tsx` exists, `meetingCoach.ts` has `deriveCoachingInsights`, mounted inline per meeting in `MeetingsSection.tsx:885` |
+| 5b | Email objection responder | ✅ Live | `detectEmailObjections` in `meetingCoach.ts:179`, "Suggest 3 responses" button in `EmailsSection.tsx:350`, edge function `suggest-email-responses` deployed and registered in `config.toml:66` |
 
-## Gap to close (the v6 finish-line)
+## Verification steps (browser)
 
-### Fix 1 — Mount `DailyStandupCard` on the Dashboard Overview tab
-One-line addition. The card already fetches, caches 4h, and links into deals. Drop it as the first row of the Overview tab in `Dashboard.tsx` so reps see it the moment they land.
+1. **Standup card** — open Dashboard → Overview tab → top row should show Daily AI Standup
+2. **Pipeline slip chip** — open Pipeline → look for amber "Slip risk" chip on stalling deals
+3. **Win prob / slip in header** — open any active deal → header should show win % and slip-risk chips with factor tooltips
+4. **Ask AI** — click "Ask AI" in lead panel header → drawer opens, suggested prompts work, streaming response renders token-by-token
+5. **Meeting coach** — open a deal with a processed meeting → Meetings tab → "Coach" collapsible above the summary
+6. **Email objection responder** — open Emails tab → on an inbound email containing pricing/timing/competitor language, "Suggest 3 responses" button appears → click → 3 drafts render
 
-### Fix 2 — Surface `isEarlyStallWarning` on Pipeline cards
-Add a small "Slip risk" or "Stalling" chip next to the existing momentum label in `Pipeline.tsx` (around line 490-495 where momentum chips already render). Use the same muted amber treatment as the header so the design language stays consistent.
+## What's deferred (acknowledged, separate v7+ rounds)
 
-### Fix 3 — Post-call coach card (the v6 item that got skipped entirely)
-After `process-meeting` synthesizes a transcript, surface a "Coach" panel inside the Meetings tab for that specific meeting. Pulls from existing `meeting.intelligence` fields we already extract:
-- Buying signals not acknowledged (from `dealSignals.buyingIntent` + transcript spans we already mark)
-- Questions not asked (compare against a curated checklist per stage)
-- Objection-handling rating (from `objections` field, mark "addressed" vs "deflected")
-- 1-line "what to do next" prompt
+- Forecast confidence calibration card (theme 1)
+- Theme 3 — cross-book conversation analytics dashboard
+- Theme 4 — M&A buybox match scoring
+- Theme 5 — post-close / client success / renewal pipeline
+- Theme 6 — multi-step email cadence engine
+- Theme 7 — saved views, bulk actions, source ROI, data quality dashboard
 
-This is purely UI + a small derivation layer — no new edge function. New file: `src/components/lead-panel/MeetingCoachCard.tsx`, mounted inside `MeetingsSection.tsx` per meeting.
+## Recommendation
 
-### Fix 4 — Email objection responder (lighter-weight than original spec)
-When viewing an inbound email in the Emails tab that contains objection language (detected via simple keyword/phrase classifier from existing `objectionTracker` taxonomy), show a "Suggest 3 responses" button. Click → calls a new tiny edge function `suggest-email-responses` that returns 3 short drafts. User picks one → opens in EmailComposeDrawer pre-filled.
+v6 is complete. Nothing left to build in this round. If you want to start v7, the highest-leverage next themes (in priority order) are:
 
-## Files touched
+1. **Cross-book conversation analytics** (theme 3) — pure aggregation over data we already extract per meeting; biggest insight-per-build-hour ratio of anything remaining
+2. **Post-close / renewal pipeline** (theme 5) — biggest entire gap in the product
+3. **M&A buybox match scoring** (theme 4) — most uniquely differentiating vs HubSpot/Salesforce
 
-- `src/components/Dashboard.tsx` — mount `DailyStandupCard` at top of Overview tab
-- `src/components/Pipeline.tsx` — render `isEarlyStallWarning` chip on cards
-- `src/components/lead-panel/MeetingCoachCard.tsx` — NEW, derives coaching signals from `meeting.intelligence`
-- `src/components/MeetingsSection.tsx` — mount the coach card inline per meeting
-- `src/lib/meetingCoach.ts` — NEW, pure functions to derive missed signals / question gaps / objection-handling score
-- `src/components/EmailsSection.tsx` — add "Suggest responses" button on objection-detected inbound emails
-- `supabase/functions/suggest-email-responses/index.ts` — NEW, structured tool-call returning 3 drafts
-- `supabase/config.toml` — register new function
-
-## What's deferred (acknowledged, not in this round)
-
-- Forecast confidence calibration card (theme 1, lower priority)
-- Themes 3-7 (cross-book conversation analytics, M&A buybox, post-close success, sequencing, ops reporting) — separate v7+ rounds
-
-## Risk
-
-- All four fixes are additive
-- No schema migrations
-- No changes to existing data flow (meeting coach reads existing `intelligence` JSON only)
-- Email objection responder is a new edge function but follows the proven `daily-standup` pattern with tool-calling
