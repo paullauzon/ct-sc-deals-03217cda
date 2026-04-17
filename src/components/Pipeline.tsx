@@ -163,7 +163,12 @@ export function Pipeline() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [backfilling, setBackfilling] = useState(false);
+  const [reEnriching, setReEnriching] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
+  const sourceCoCount = useMemo(
+    () => leads.filter(l => l.brand === "SourceCo" && !["Lost", "Went Dark", "Closed Won"].includes(l.stage)).length,
+    [leads]
+  );
 
   const newLeadCount = useMemo(() => leads.filter(l => l.stage === "New Lead" && (!l.meetings || l.meetings.length === 0)).length, [leads]);
 
@@ -319,6 +324,40 @@ export function Pipeline() {
             >
               {backfilling ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
               {backfilling ? "Backfilling..." : `Backfill ${newLeadCount} New Leads`}
+            </Button>
+          )}
+          {sourceCoCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={reEnriching}
+              onClick={async () => {
+                setReEnriching(true);
+                toast.info("Re-enriching top 20 SourceCo leads — this may take ~20s...");
+                try {
+                  const { data, error } = await supabase.functions.invoke("bulk-enrich-sourceco", {
+                    body: { limit: 20 },
+                  });
+                  if (error) throw error;
+                  const enriched = data?.enriched ?? 0;
+                  const errs = data?.errors?.length ?? 0;
+                  if (errs > 0) {
+                    toast.warning(`Re-enriched ${enriched} leads · ${errs} failed`);
+                  } else {
+                    toast.success(`Re-enriched ${enriched} SourceCo leads`);
+                  }
+                  await refreshLeads();
+                } catch (err) {
+                  toast.error("Re-enrich failed: " + (err as Error).message);
+                } finally {
+                  setReEnriching(false);
+                }
+              }}
+              className="h-8 text-xs gap-1.5"
+              title="Refresh AI research + scoring for top 20 active SourceCo leads"
+            >
+              {reEnriching ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {reEnriching ? "Re-enriching..." : "Re-enrich top 20 SourceCo"}
             </Button>
           )}
         <div className="relative w-full max-w-xs">
