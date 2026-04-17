@@ -380,6 +380,9 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         className="w-screen max-w-none p-0 sm:max-w-none border-0"
         aria-describedby={undefined}
       >
+        <VisuallyHidden>
+          <SheetTitle>{lead.name} — {lead.company}</SheetTitle>
+        </VisuallyHidden>
         {workspace}
       </SheetContent>
     </Sheet>
