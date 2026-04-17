@@ -13,7 +13,6 @@ function deriveFirmType(lead: Lead): string {
   if (bt.includes("family office")) return "Family Office";
   if (bt.includes("strategic")) return "Strategic Buyer";
   if (bt.includes("independent sponsor")) return "Independent Sponsor";
-  if (lead.peBacked) return "PE-Backed";
   return lead.buyerType || "—";
 }
 
