@@ -303,8 +303,15 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
 
         <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-            <div className="border-b border-border px-4 shrink-0">
-              <TabsList className="bg-transparent h-10 p-0 gap-0">
+            <div className="border-b border-border px-4 shrink-0 relative">
+              <div className="overflow-x-auto scrollbar-hide -mx-4 px-4">
+                <TabsList className="bg-transparent h-10 p-0 gap-0 w-max">
+                  {/* Right-edge fade overlay (pure visual hint that more tabs exist) */}
+                </TabsList>
+              </div>
+              <div className="pointer-events-none absolute right-0 top-0 h-10 w-8 bg-gradient-to-l from-background to-transparent" />
+              <TabsList className="bg-transparent h-10 p-0 gap-0 hidden">
+                {/* placeholder */}
                 <TabsTrigger value="activity" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
                   <ActivityIcon className="h-3.5 w-3.5" /> Activity
                 </TabsTrigger>
