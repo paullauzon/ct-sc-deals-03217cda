@@ -102,6 +102,17 @@ export function matchesFilters(lead: Lead, filters: PipelineFilters): boolean {
     if (lead.brand !== "SourceCo") return false;
     if (computeDossierCompleteness(lead).pct >= 50) return false;
   }
+  if (filters.forecastGap) {
+    const lateStage = ["Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Qualified"];
+    if (!lateStage.includes(lead.stage)) return false;
+    const missingForecast =
+      !lead.nextMutualStep?.trim() ||
+      !lead.forecastedCloseDate?.trim() ||
+      lead.closeConfidence == null ||
+      !lead.forecastCategory?.trim() ||
+      !lead.dealValue || lead.dealValue === 0;
+    if (!missingForecast) return false;
+  }
   return true;
 }
 
@@ -219,7 +230,7 @@ export function PipelineFilterBar({
     return filters.owners.length > 0 || filters.priorities.length > 0 || filters.brands.length > 0 ||
       filters.serviceInterests.length > 0 || filters.icpFits.length > 0 || filters.forecastCategories.length > 0 ||
       filters.momentum.length > 0 || filters.daysInStage.length > 0 || filters.hasMeetings !== null ||
-      filters.dealValueRange.length > 0 || filters.overdue || filters.dossierGap;
+      filters.dealValueRange.length > 0 || filters.overdue || filters.dossierGap || filters.forecastGap;
   }, [filters]);
 
   const hasSourceCo = useMemo(() => leads.some(l => l.brand === "SourceCo"), [leads]);
@@ -255,6 +266,7 @@ export function PipelineFilterBar({
     { name: "big", label: "Big Deals", icon: <DollarSign className="h-3 w-3" />, preset: { dealValueRange: ["$25-100K", "$100K+"] } },
     { name: "overdue", label: "Overdue Follow-ups", icon: <CalendarClock className="h-3 w-3" />, preset: { overdue: true } },
     { name: "hot", label: "Hot Momentum", icon: <Zap className="h-3 w-3" />, preset: { momentum: ["Accelerating"] } },
+    { name: "forecast", label: "Forecast Gaps", icon: <Target className="h-3 w-3" />, preset: { forecastGap: true } },
     ...(hasSourceCo ? [{ name: "dossier", label: "Dossier <50%", icon: <FileWarning className="h-3 w-3" />, preset: { dossierGap: true } }] : []),
   ];
 
