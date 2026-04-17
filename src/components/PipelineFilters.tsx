@@ -4,8 +4,9 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { X, Filter, Flame, DollarSign, CalendarClock, Zap, User } from "lucide-react";
+import { X, Filter, Flame, DollarSign, CalendarClock, Zap, User, FileWarning } from "lucide-react";
 import { computeDaysInStage } from "@/lib/leadUtils";
+import { computeDossierCompleteness } from "@/lib/dealDossier";
 
 // ─── Filter types ───
 
@@ -21,6 +22,7 @@ export interface PipelineFilters {
   hasMeetings: string | null; // "yes" | "no" | null
   dealValueRange: string[];
   overdue: boolean;
+  dossierGap: boolean;
 }
 
 const EMPTY_FILTERS: PipelineFilters = {
@@ -35,6 +37,7 @@ const EMPTY_FILTERS: PipelineFilters = {
   hasMeetings: null,
   dealValueRange: [],
   overdue: false,
+  dossierGap: false,
 };
 
 const STORAGE_KEY = "pipeline-filters";
@@ -92,6 +95,10 @@ export function matchesFilters(lead: Lead, filters: PipelineFilters): boolean {
   if (filters.dealValueRange.length > 0 && !filters.dealValueRange.includes(getDealValueBucket(lead))) return false;
   if (filters.overdue) {
     if (!lead.nextFollowUp || new Date(lead.nextFollowUp) >= new Date()) return false;
+  }
+  if (filters.dossierGap) {
+    if (lead.brand !== "SourceCo") return false;
+    if (computeDossierCompleteness(lead).pct >= 50) return false;
   }
   return true;
 }

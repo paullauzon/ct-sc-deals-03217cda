@@ -165,31 +165,36 @@ export function parseRevenueFromText(text?: string): string {
   return "";
 }
 
+/** Vocabulary of recognized geography tokens (lowercased). */
+const GEO_VOCAB = /\b(?:midwest|midwestern|northeast|southeast|southwest|northwest|west coast|east coast|sun belt|rust belt|new england|tri[- ]?state|pacific northwest|mid[- ]?atlantic|north america|south america|canada|usa|us|u\.s\.|united states|uk|united kingdom|europe|emea|apac|latam|mexico|india|australia|ontario|quebec|alberta|british columbia|texas|california|florida|new york|illinois|ohio|michigan|pennsylvania|georgia|north carolina|south carolina|virginia|tennessee|arizona|colorado|washington|oregon|massachusetts|new jersey|oklahoma|louisiana|kansas|missouri|indiana|wisconsin|minnesota|iowa|nebraska|arkansas|alabama|kentucky|maryland|connecticut|nevada|utah|new mexico|chicago|austin|dallas|houston|atlanta|denver|seattle|miami|boston|nashville|phoenix|portland|salt lake|kansas city|minneapolis|st\. louis|detroit|cleveland|cincinnati|pittsburgh|philadelphia|baltimore|charlotte|raleigh|orlando|tampa|jacksonville)\b/i;
+
 /** Heuristic: find geography phrases — region names, US states, "midwest", etc. */
 export function parseGeographyFromText(text?: string): string {
   if (!text) return "";
   const t = text.replace(/\s+/g, " ");
 
-  // Anchored patterns: "based in X", "HQ in X", "located in X", "focused on X" (X = up to 8 word region phrase)
+  // Anchored patterns: "based in X", "HQ in X", "located in X" — but ONLY accept the
+  // capture if it contains a recognized geography token. Avoids false positives like
+  // "focused on infrastructure" → "Infrastructure" or "targeting ESOPs" → "ESOPs".
   const anchored: string[] = [];
-  const anchorRe = /(?:based in|hq in|headquartered in|located in|focused on|operating in|targeting|target geography:?)\s+(?:the\s+)?([A-Z][\w&.\- ]{2,60}?)(?=[.,;\n]|$| with| and| but| where| our| we)/gi;
+  const anchorRe = /(?:based in|hq in|headquartered in|located in|operating in|target geography:?)\s+(?:the\s+)?([A-Za-z][\w&.\- ]{2,60}?)(?=[.,;\n]|$| with| and| but| where| our| we)/gi;
   let am: RegExpExecArray | null;
   while ((am = anchorRe.exec(t))) {
-    const cleaned = am[1]
-      .trim()
+    const raw = am[1].trim();
+    if (!GEO_VOCAB.test(raw)) continue; // gate: only real places
+    const cleaned = raw
       .replace(/\s+(US|U\.S\.|USA|United States)$/i, ", US")
       .replace(/^the\s+/i, "");
     if (cleaned && cleaned.length < 80) anchored.push(cleaned);
   }
 
   const patterns: RegExp[] = [
-    /\b(?:southern|northern|eastern|western|central)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?/g,
+    /\b(?:southern|northern|eastern|western|central)\s+(?:US|usa|united states|california|texas|florida|new york|illinois|ohio|michigan|pennsylvania|europe|asia|america|canada)\b/gi,
     /\b(?:midwest|midwestern|northeast|southeast|southwest|northwest|west coast|east coast|sun belt|rust belt|new england|tri[- ]?state|pacific northwest|mid[- ]?atlantic)\b/gi,
     /\b(?:north|south|east|west)\s+america\b/gi,
-    /\b(?:canada|usa|united states|uk|united kingdom|europe|emea|apac|latam|mexico|ontario|quebec|alberta|british columbia|texas|california|florida|new york|illinois|ohio|michigan|pennsylvania|georgia|north carolina|south carolina|virginia|tennessee|arizona|colorado|washington|oregon|massachusetts|new jersey|oklahoma|louisiana|kansas|missouri|indiana|wisconsin|minnesota|iowa|nebraska|arkansas|alabama|kentucky|maryland|connecticut|nevada|utah|new mexico)\b/gi,
+    /\b(?:canada|usa|united states|uk|united kingdom|europe|emea|apac|latam|mexico|india|australia|ontario|quebec|alberta|british columbia|texas|california|florida|new york|illinois|ohio|michigan|pennsylvania|georgia|north carolina|south carolina|virginia|tennessee|arizona|colorado|washington|oregon|massachusetts|new jersey|oklahoma|louisiana|kansas|missouri|indiana|wisconsin|minnesota|iowa|nebraska|arkansas|alabama|kentucky|maryland|connecticut|nevada|utah|new mexico)\b/gi,
   ];
   const hits = new Set<string>();
-  // Anchored hits first (preserve their phrasing).
   for (const a of anchored) {
     const norm = a.replace(/\bus\b/i, "US").replace(/\b\w/g, c => c.toUpperCase()).replace(/\b(Of|And|The|In)\b/g, m => m.toLowerCase());
     hits.add(norm);
@@ -198,7 +203,6 @@ export function parseGeographyFromText(text?: string): string {
     const m = t.match(re);
     if (m) m.forEach(s => {
       const norm = s.trim().replace(/[,.;:].*$/, "").toLowerCase();
-      // Special-case "midwestern us" → "Midwest, US"
       if (/^midwestern\s+us$/i.test(norm)) { hits.add("Midwest, US"); return; }
       if (/^midwestern$/i.test(norm)) { hits.add("Midwest"); return; }
       const titled = norm.replace(/\b\w/g, c => c.toUpperCase()).replace(/\bUs\b/g, "US").replace(/\bUk\b/g, "UK");
@@ -206,7 +210,6 @@ export function parseGeographyFromText(text?: string): string {
     });
   }
   if (!hits.size) return "";
-  // Cap to 4 unique tokens.
   return Array.from(hits).slice(0, 4).join(", ");
 }
 
