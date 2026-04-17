@@ -57,7 +57,7 @@ export function LeadPanelLeftRail({
   const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost" || lead.stage === "Went Dark";
 
   return (
-    <aside className="w-[320px] shrink-0 border-r border-border overflow-y-auto bg-background">
+    <aside className="w-[320px] shrink-0 border-r border-border overflow-y-auto bg-background h-full min-h-0">
       <div className="px-4 pt-3">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">About</span>
       </div>
