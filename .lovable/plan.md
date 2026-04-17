@@ -1,127 +1,100 @@
 
 
-## Goal
+## What's actually broken (root cause)
 
-Add a **Buyer Profile / M&A Mandate / Sales Process** dossier to the left rail of every SourceCo lead (and a leaner Captarget version), populated automatically from three sources: the **submission message**, the **Fireflies transcripts/intelligence**, and the **AI research** — with manual override on every field.
-
-## What we have vs. what we need
+Looking at live SourceCo submission JSON:
 
 ```
-SCREENSHOT FIELD              EXISTS?   SOURCE TODAY                     GAP
-────────────────────────────  ───────   ───────────────────────────────  ──────────────────
-BUYER PROFILE
-  Firm type                   ✓         lead.buyerType                   relabel only
-  Firm AUM                    ✗         —                                NEW field, AI-infer
-  Acq. timeline               ◐         enrichment.urgency (free text)   normalize → enum
-  Stakeholders                ✓ derived dealIntelligence.stakeholderMap  count + show
-  Champion                    ✓ derived stakeholderMap[stance=Champion]  pick top
-  Active searches             ✗         —                                NEW, AI-infer
-  Budget confirmed            ◐         dealSignals.budgetMentioned      normalize → Y/N/?
-  Authority confirmed         ✗         —                                NEW, infer from DM
-
-M&A MANDATE
-  Target sector(s)            ◐         targetCriteria (free text)       parse → tags
-  Target geography            ✓         lead.geography                   reuse
-  EBITDA min / max            ✗         —                                NEW pair
-  Revenue range               ✓         lead.targetRevenue               reuse
-  Deal type                   ✓         lead.acquisitionStrategy         relabel
-  Transaction type            ✗         —                                NEW (majority/minority/control)
-
-SALES PROCESS (our side)
-  Competing against           ✓         competingBankers + objections    merge
-  Decision blocker            ◐ derived riskRegister[severity=Critical]  pick top
-  Sample sent date            ✗         —                                NEW date
-  Sample outcome              ✗         —                                NEW enum
-  Proof notes                 ✗         —                                NEW free text
-  Stall reason                ◐ derived momentumSignals.momentum=Stalled NEW free text override
+buyerType:           ""                 ← form field is empty (Zapier/Webflow not mapping it)
+role:                "Family Office"    ← THE FIRM TYPE IS HERE!
+                     "Private Equity"
+                     "Individual Investor"
+                     "Business Owner"
+                     "Corporate"
+acquisitionStrategy: "We're under LOI"  ← timeline / stage signal
+                     "We're actively sourcing targets"
+currentSourcing:     "Internal BD team" ← this IS "Competing against"
+                     "Manual outreach (Grata, Pitchbook…)"
+message:             "EBITDA between $1-5M, midwestern US, water treatment"
+                     ← targetRevenue/geography/sector buried here, never extracted
+hearAboutUs:         "LinkedIn"         ← attribution, already shown
+targetRevenue:       ""                 ← never sent by form
+geography:           ""                 ← never sent by form
 ```
 
-So: ~7 of 22 fields exist verbatim, ~6 are derivable from AI/Fireflies output, ~9 are net-new and need DB columns + extraction prompts.
+So the dossier reads as empty because **`BuyerProfileCard` only checks `lead.buyerType`** — which the form never populates — instead of `lead.role` (where the firm type actually lives) and the message text. And the `enrich-lead` `buyerProfileSuggested` block was added but no historical lead has been re-enriched, so it's null on every existing record.
 
 ## Plan
 
-### 1. DB migration — add the missing fields
+### 1. Map the form fields we already receive — three-tier fallback
 
-Single migration adds these `nullable text/date/numeric` columns to `leads`:
+Update `dealDossier.ts` derivation helpers + `BuyerProfileCard`/`MAMandateCard`/`SalesProcessCard` to read in this priority order for every field:
+
 ```
-firm_aum, acq_timeline, active_searches, budget_confirmed, authority_confirmed,
-ebitda_min, ebitda_max, deal_type, transaction_type,
-competing_against, decision_blocker,
-sample_sent_date, sample_outcome, proof_notes, stall_reason
-```
-Plus mirror them in `src/types/lead.ts` and `leadDbMapping.ts`.
-
-All nullable → no migration risk. No new tables (these are all 1:1 with the lead).
-
-### 2. Three new collapsible cards in the left rail (SourceCo only — Captarget gets a slimmed Buyer Profile only, since EBITDA/transaction-type are PE-specific)
-
-Files: `src/components/lead-panel/cards/BuyerProfileCard.tsx`, `MAMandateCard.tsx`, `SalesProcessCard.tsx`. Each uses the existing `CollapsibleCard` + `InlineSelectField`/`InlineTextField` pattern, so every field is **inline-editable** like Key Information already is. This matches what's already there — no new UI primitives.
-
-The current `AcquirerProfileCard` (which currently overlaps Buyer Profile) gets **deleted** — its 6 fields are absorbed into the new Buyer Profile + M&A Mandate cards.
-
-The standalone "M&A Criteria" CollapsibleCard wrapping `MACriteriaCard` (line 146-150 of `LeadPanelLeftRail`) also gets deleted — fully superseded.
-
-### 3. Auto-derived values (no manual work needed)
-
-A small helper `src/lib/dealDossier.ts` exposes pure functions like:
-- `deriveStakeholderCount(lead)` → `dealIntelligence.stakeholderMap.length`
-- `deriveChampion(lead)` → first `stakeholderMap[stance="Champion"].name`
-- `deriveCompetingAgainst(lead)` → unique union of `competingBankers` + `dealIntelligence.objectionTracker[].competitors` + `meetings[*].intelligence.dealSignals.competitors`
-- `deriveDecisionBlocker(lead)` → top open `Critical`/`High` `riskRegister` entry
-- `deriveStallReason(lead)` → if `momentumSignals.momentum` ∈ {Stalled, Stalling}, surface `dealStageEvidence`
-- `deriveBudgetConfirmed(lead)` → maps `dealSignals.budgetMentioned` to Yes/No/Unclear
-
-The card renders `manualValue ?? derivedValue`, with a tiny `AI` chip beside derived values so the rep knows it came from a transcript and can override with a click. This is the same dual-source pattern that already powers `enrichment.suggestedUpdates` on the AI Research section, so the user model is consistent.
-
-### 4. AI extraction — extend `enrich-lead` and `synthesize-deal-intelligence`
-
-Add a new structured-output block to `enrich-lead`'s response schema:
-```
-buyerProfileExtracted: {
-  firmAum, acqTimeline, activeSearches,
-  ebitdaMin, ebitdaMax, dealType, transactionType,
-  authorityConfirmed
-}
-```
-This pulls from: the submission `message` (free-text intro), `targetCriteria`/`targetRevenue` parsing, and the company's website (already scraped). Stored on `enrichment.buyerProfileSuggested` so it flows through the existing **suggested updates** workflow — the rep accepts/rejects exactly like any other suggestion. Zero new accept/reject UI.
-
-`synthesize-deal-intelligence` already extracts everything we need for derived fields, so no change there.
-
-### 5. Reorder the left rail
-
-Final stack (top to bottom):
-```
-About / Identity (actions)
-─── Key Information
-─── Deal Economics
-─── Buyer Profile           ← NEW (replaces Acquirer Profile)
-─── M&A Mandate             ← NEW (replaces standalone M&A Criteria card)
-─── Sales Process           ← NEW
-─── Mutual Plan
-─── Dates
-─── Source & Attribution
-─── Submissions
-─── Website Activity
-─── Won/Lost details (when closed)
-─── Original Message
+manual override → AI suggestion → form-submission inference → transcript inference → ""
 ```
 
-This keeps the dossier reading top-down: who we're selling to → what they want to buy → where we are in selling them.
+Concretely:
+
+| Card field | New source order |
+|---|---|
+| Firm type | `lead.buyerType` → **`lead.role`** (normalized: "Family Office", "Private Equity"→"PE Firm", "Individual Investor"→"HNWI", "Business Owner"→"Strategic / Corporate", "Corporate"→"Strategic / Corporate") → AI |
+| Acq. timeline | `lead.acqTimeline` → **`lead.acquisitionStrategy`** ("under LOI"→"0-3 months", "actively sourcing"→"3-6 months", "exploring"→"6-12 months") → meeting timeline → AI |
+| Active searches | manual → **regex on `message` + `dealsPlanned`** ("2-3 acquisitions per year", "2 active mandates") → AI |
+| Target sector(s) | `lead.targetCriteria` → **first sentence/clause of `message`** (e.g. "industrial and residential water treatment service providers") → AI |
+| Target geography | `lead.geography` → **regex on `message`** ("Southern Ontario", "midwestern US", "Southeast") → AI |
+| EBITDA min/max | manual → **regex on `message`** (`$1-5M`, `<$1M ebitda`, `Minimum SDE is 750K`) → AI |
+| Revenue range | `lead.targetRevenue` → **regex on `message`** (`$10-100M in revenue`) → AI |
+| Competing against | manual → `competingBankers` → **`lead.currentSourcing`** ("Internal BD team", "Manual outreach (Grata, Pitchbook, LinkedIn)") → transcript |
+
+A single new helper `src/lib/submissionParser.ts` exposes pure functions: `parseFirmTypeFromRole(role)`, `parseTimelineFromStrategy(s)`, `parseEbitdaFromText(s)`, `parseRevenueFromText(s)`, `parseGeographyFromText(s)`, `parseSectorFromText(s)`, `parseActiveSearchesFromText(s)`. These are deterministic regex/keyword matchers — no AI call, no async — so the dossier auto-fills the moment you open any lead, not just enriched ones.
+
+`dealDossier.ts` derivation helpers chain these into `DerivedValue` with `source: "submission"`. The Sparkles glyph stays — the rep sees the field is auto-filled and one-clicks to override.
+
+### 2. Fix the ingestion gap — backfill the columns too
+
+Update `ingest-lead/index.ts` to write the parsed values into the actual DB columns at submit time, so even the pipeline list/filters benefit (not just the Deal Room card):
+
+- `buyer_type` ← `parseFirmTypeFromRole(role)` if `body.buyerType` is empty
+- `target_revenue`, `geography`, `target_criteria` ← parsed from `message` if blank
+
+This is non-destructive (only fills empties) and immediately makes every new lead arrive with a populated dossier.
+
+### 3. One-shot DB backfill for the 60+ existing SourceCo leads
+
+Single migration runs the same parsers in SQL (or in a one-shot script) over existing rows where the destination column is blank. Same logic as ingest, applied retroactively. After this, every historical lead has a populated Buyer Profile / M&A Mandate without needing a re-enrichment.
+
+### 4. Re-trigger `enrich-lead` for top-priority SourceCo leads
+
+The `buyerProfileSuggested` AI block is wired but no lead has it because the schema landed after the last enrichment. We don't auto-bulk-enrich (cost), but the existing "Re-run Research" button in the Intelligence tab now actually fills the AI-derived rows. Add a one-line note in the AI Research section: "AI fills Firm AUM, EBITDA range, and Deal Type when sources are available — click Research."
+
+### 5. Tighten the card render so empty-with-AI-fallback shows the value
+
+Current `HybridText` renders the AI-derived value BUT `BuyerProfileCard` passes `lead.buyerType` (always `""` truthy-empty) to a plain `InlineSelectField`, bypassing the hybrid path. Refactor Firm type to use `HybridSelect` with the new `parseFirmTypeFromRole` derived value — same fix pattern for the other three cards.
+
+## Files touched
+
+- `src/lib/submissionParser.ts` — **new**, ~120 lines of pure regex/keyword parsers.
+- `src/lib/dealDossier.ts` — extend each `derive*` helper to chain submission-parser fallback before AI suggestion.
+- `src/components/lead-panel/cards/BuyerProfileCard.tsx` — Firm type uses `HybridSelect`; all rows use the chained derivation.
+- `src/components/lead-panel/cards/MAMandateCard.tsx` — Target sector / geography / EBITDA / revenue rows wrap in `HybridText` with submission-parser fallback.
+- `src/components/lead-panel/cards/SalesProcessCard.tsx` — `Competing against` reads `currentSourcing` as a derived fallback.
+- `supabase/functions/ingest-lead/index.ts` — fill `buyer_type` / `target_revenue` / `geography` / `target_criteria` from parsers when blank at insert.
+- `supabase/migrations/<new>.sql` — one-shot UPDATE to backfill those four columns on existing rows where they're blank using PostgreSQL regex (or call a SECURITY DEFINER function that does the same thing).
 
 ## Trade-offs
 
-- **Win:** the screenshot's full PE-buyer dossier renders with most fields pre-populated from existing transcripts & enrichment. Reps see champion, competitors, and stall reason without opening the Intelligence tab.
-- **Win:** No new UI primitives — reuses `CollapsibleCard` + `InlineSelectField` already powering Key Information.
-- **Cost:** 15 new nullable columns. Acceptable: they're all small, they map 1:1 to a lead, no relational complexity.
-- **Cost:** `enrich-lead` prompt grows ~30%. Acceptable: same call, same model, ~5% cost bump.
-- **Loss:** Captarget leads see fewer of these fields (PE-specific). **Mitigation:** Buyer Profile renders for both brands; M&A Mandate + Sales Process are SourceCo-only, gated by `lead.brand === "SourceCo"`.
+- **Win:** Every existing and future SourceCo lead's Buyer Profile / M&A Mandate / Sales Process auto-fills from data we already have. No re-enrichment needed for the structured fields. Sparkles glyph keeps the "AI-derived, click to override" affordance consistent.
+- **Win:** Mapping `role` → firm type fixes the user's specific complaint ("Firm type — they always pick their firm type") because the form sends it under `role`, not `buyerType`.
+- **Cost:** Regex parsers are heuristic — they'll miss edge phrasings ("ARR of $5MM", "EU only"). **Mitigation:** chained fallback (manual → submission-parse → AI) means the AI catches what regex misses; user override is one click.
+- **Cost:** Backfill migration touches every SourceCo row once. Acceptable: nullable columns, no destructive writes.
 
 ## Sequence
 
-1. DB migration — add 15 nullable columns; update `Lead` type + `leadDbMapping`.
-2. Build `dealDossier.ts` derivation helpers (pure, unit-testable).
-3. Build the three new card components.
-4. Wire into `LeadPanelLeftRail`; delete `AcquirerProfileCard` + the standalone M&A Criteria block.
-5. Extend `enrich-lead` schema + prompt to populate `buyerProfileSuggested`; route through existing suggestion-acceptance UI.
-6. You verify: open a SourceCo lead with meetings → confirm champion/stakeholder count/competitors/stall reason auto-fill from Fireflies; click Re-run Research → confirm firmAUM/EBITDA/dealType suggestions appear in the Intelligence tab; confirm every field is click-to-edit.
+1. Build `submissionParser.ts` with the 7 pure parsers + unit-friendly exports.
+2. Extend `dealDossier.ts` derivation helpers to chain submission-parser fallback.
+3. Refactor `BuyerProfileCard` Firm type → `HybridSelect`, wire all 3 cards to the chained derivers.
+4. Update `ingest-lead/index.ts` to write parsed values to DB columns at submit.
+5. Migration: backfill `buyer_type` / `target_revenue` / `geography` / `target_criteria` on existing rows.
+6. You verify: open any SourceCo lead → Firm type, Target sector, Geography, Revenue, EBITDA, Competing against, Acq. timeline all populated with the Sparkles glyph; click any row to override.
 
