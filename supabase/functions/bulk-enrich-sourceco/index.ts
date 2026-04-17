@@ -1,9 +1,15 @@
 /**
  * One-click bulk re-enrichment for top SourceCo leads.
- * Pulls the top N active SourceCo leads (not archived, not closed lost), then
- * invokes `enrich-lead` per lead with a 500 ms stagger to avoid OpenAI rate limits.
  *
- * POST body: { limit?: number }  // default 20
+ * For each lead, we:
+ *   1. Fetch the lead row (so we can pass the full payload that enrich-lead expects)
+ *   2. Invoke enrich-lead with the form/CRM context
+ *   3. Persist returned enrichment JSON
+ *   4. Auto-promote high-confidence buyerProfileSuggested values into manual
+ *      columns when those columns are currently empty (logged as a single
+ *      activity entry per lead).
+ *
+ * POST body: { limit?: number }  // default 20, max 120
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -14,6 +20,26 @@ const corsHeaders = {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// Manual column mapping for buyerProfileSuggested.* keys.
+const SUGGESTION_MAP: { sugKey: string; col: string; label: string }[] = [
+  { sugKey: "firmAum",            col: "firm_aum",            label: "Firm AUM" },
+  { sugKey: "acqTimeline",        col: "acq_timeline",        label: "Acq. timeline" },
+  { sugKey: "activeSearches",     col: "active_searches",     label: "Active searches" },
+  { sugKey: "ebitdaMin",          col: "ebitda_min",          label: "EBITDA min" },
+  { sugKey: "ebitdaMax",          col: "ebitda_max",          label: "EBITDA max" },
+  { sugKey: "dealType",           col: "deal_type",           label: "Deal type" },
+  { sugKey: "transactionType",    col: "transaction_type",    label: "Transaction type" },
+  { sugKey: "authorityConfirmed", col: "authority_confirmed", label: "Authority confirmed" },
+];
+
+function isLowSignal(v: any): boolean {
+  if (!v) return true;
+  const s = String(v).trim();
+  if (!s) return true;
+  if (/^(unknown|n\/?a|tbd|none|not available|not specified)/i.test(s)) return true;
+  return false;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -23,11 +49,11 @@ Deno.serve(async (req) => {
     const supabase = createClient(url, key);
 
     const body = await req.json().catch(() => ({}));
-    const limit = Math.min(Math.max(Number(body?.limit) || 20, 1), 50);
+    const limit = Math.min(Math.max(Number(body?.limit) || 20, 1), 120);
 
     const { data: leads, error } = await supabase
       .from("leads")
-      .select("id, name, tier, created_at")
+      .select("*")
       .eq("brand", "SourceCo")
       .is("archived_at", null)
       .not("stage", "in", "(Lost,Went Dark,Closed Won)")
@@ -37,26 +63,91 @@ Deno.serve(async (req) => {
 
     if (error) throw error;
     if (!leads || leads.length === 0) {
-      return new Response(JSON.stringify({ status: "ok", scanned: 0, enriched: 0, errors: [] }), {
+      return new Response(JSON.stringify({ status: "ok", scanned: 0, enriched: 0, promoted: 0, errors: [] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const errors: { id: string; error: string }[] = [];
     let enriched = 0;
+    let promoted = 0;
+    let fields_written = 0;
 
     for (const lead of leads) {
       try {
+        // Build full payload that enrich-lead expects.
+        const payload = {
+          companyUrl: lead.company_url || lead.website_url || "",
+          meetings: lead.meetings || [],
+          leadName: lead.name,
+          leadMessage: lead.message,
+          leadRole: lead.role,
+          leadCompany: lead.company,
+          leadStage: lead.stage,
+          leadPriority: lead.priority,
+          leadDealValue: lead.deal_value,
+          leadServiceInterest: lead.service_interest,
+          leadForecastCategory: lead.forecast_category,
+          leadIcpFit: lead.icp_fit,
+          leadTargetCriteria: lead.target_criteria,
+          leadTargetRevenue: lead.target_revenue,
+          leadGeography: lead.geography,
+          leadAcquisitionStrategy: lead.acquisition_strategy,
+          leadBuyerType: lead.buyer_type,
+          leadDaysInStage: lead.days_in_current_stage,
+          leadStageEnteredDate: lead.stage_entered_date,
+          leadLinkedinUrl: lead.linkedin_url,
+          leadLinkedinTitle: lead.linkedin_title,
+          leadNotes: lead.notes,
+        };
+
         const res = await fetch(`${url}/functions/v1/enrich-lead`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-          body: JSON.stringify({ leadId: lead.id }),
+          body: JSON.stringify(payload),
         });
         if (!res.ok) {
           const txt = await res.text();
           errors.push({ id: lead.id, error: `HTTP ${res.status}: ${txt.slice(0, 200)}` });
-        } else {
-          enriched++;
+          await sleep(500);
+          continue;
+        }
+        const data = await res.json();
+        const enrichment = data?.enrichment;
+        if (!enrichment) {
+          errors.push({ id: lead.id, error: "No enrichment in response" });
+          await sleep(500);
+          continue;
+        }
+
+        // 3. Persist enrichment JSON.
+        await supabase.from("leads").update({ enrichment }).eq("id", lead.id);
+        enriched++;
+
+        // 4. Auto-promote suggestions to manual columns when empty.
+        const suggestions = enrichment?.buyerProfileSuggested || {};
+        const updates: Record<string, string> = {};
+        const written: string[] = [];
+        for (const m of SUGGESTION_MAP) {
+          const current = (lead as any)[m.col];
+          if (current && String(current).trim()) continue; // never overwrite manual
+          const v = suggestions[m.sugKey];
+          if (isLowSignal(v)) continue;
+          updates[m.col] = String(v).trim();
+          written.push(m.label);
+        }
+        if (Object.keys(updates).length > 0) {
+          const { error: upErr } = await supabase.from("leads").update(updates).eq("id", lead.id);
+          if (!upErr) {
+            promoted++;
+            fields_written += written.length;
+            await supabase.from("lead_activity_log").insert({
+              lead_id: lead.id,
+              event_type: "field_update",
+              description: `Auto-promoted ${written.length} AI dossier value${written.length === 1 ? "" : "s"}: ${written.join(", ")}`,
+              new_value: JSON.stringify(updates).slice(0, 500),
+            });
+          }
         }
       } catch (e) {
         errors.push({ id: lead.id, error: (e as Error).message });
@@ -65,7 +156,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ status: "ok", scanned: leads.length, enriched, errors }),
+      JSON.stringify({ status: "ok", scanned: leads.length, enriched, promoted, fields_written, errors }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
