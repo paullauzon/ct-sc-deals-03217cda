@@ -170,6 +170,7 @@ export function Pipeline() {
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
   const [enrichmentGap, setEnrichmentGap] = useState<number | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [closeWonGuard, setCloseWonGuard] = useState<{ leadId: string; leadName: string; missing: string[] } | null>(null);
   const sourceCoCount = useMemo(
     () => leads.filter(l => l.brand === "SourceCo" && !["Lost", "Went Dark", "Closed Won"].includes(l.stage)).length,
     [leads]
@@ -356,13 +357,31 @@ export function Pipeline() {
 
   const handleDragLeave = () => setDragOverStage(null);
 
+  const commitStageChange = (leadId: string, targetStage: LeadStage) => {
+    updateLead(leadId, { stage: targetStage });
+    if (targetStage === "Closed Won") {
+      toast.success("Account handed off to Valeria — Client Success pipeline updated");
+    }
+  };
+
   const handleDrop = (e: DragEvent, targetStage: LeadStage) => {
     e.preventDefault();
     setDragOverStage(null);
     const leadId = e.dataTransfer.getData("text/plain");
-    if (leadId) {
-      updateLead(leadId, { stage: targetStage });
+    if (!leadId) return;
+    if (targetStage === "Closed Won") {
+      const lead = leads.find(l => l.id === leadId);
+      if (lead && lead.stage !== "Closed Won") {
+        const missing: string[] = [];
+        if (!lead.subscriptionValue || lead.subscriptionValue === 0) missing.push("subscription value");
+        if (!lead.contractEnd) missing.push("contract end date");
+        if (missing.length > 0) {
+          setCloseWonGuard({ leadId, leadName: lead.name, missing });
+          return;
+        }
+      }
     }
+    commitStageChange(leadId, targetStage);
   };
 
   const isClosed = (stage: LeadStage) => CLOSED_STAGES.includes(stage);
