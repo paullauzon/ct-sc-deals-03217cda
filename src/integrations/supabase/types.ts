@@ -355,12 +355,16 @@ export type Database = {
       }
       leads: {
         Row: {
+          acq_timeline: string
           acquisition_strategy: string
+          active_searches: string
           archive_reason: string
           archived_at: string | null
           assigned_to: string
+          authority_confirmed: string
           billing_frequency: string
           brand: string
+          budget_confirmed: string
           buyer_type: string
           calendly_booked_at: string
           calendly_event_duration: number | null
@@ -371,6 +375,7 @@ export type Database = {
           closed_date: string
           company: string
           company_url: string
+          competing_against: string
           competing_bankers: string
           contract_end: string
           contract_months: number | null
@@ -381,9 +386,13 @@ export type Database = {
           days_in_current_stage: number
           deal_intelligence: Json | null
           deal_narrative: string
+          deal_type: string
           deal_value: number
           deals_planned: string
+          decision_blocker: string
           duplicate_of: string
+          ebitda_max: string
+          ebitda_min: string
           email: string
           enrichment: Json | null
           enrichment_status: string | null
@@ -391,6 +400,7 @@ export type Database = {
           fireflies_summary: string
           fireflies_transcript: string
           fireflies_url: string
+          firm_aum: string
           forecast_category: string
           forecasted_close_date: string
           geography: string
@@ -428,7 +438,10 @@ export type Database = {
           portfolio_count: number | null
           pre_screen_completed: boolean
           priority: string
+          proof_notes: string
           role: string
+          sample_outcome: string
+          sample_sent_date: string
           secondary_contacts: Json | null
           seniority_score: number | null
           service_interest: string
@@ -437,24 +450,30 @@ export type Database = {
           stage_entered_date: string
           stage1_score: number | null
           stage2_score: number | null
+          stall_reason: string
           submissions: Json
           subscription_value: number
           target_criteria: string
           target_revenue: string
           tier: number | null
           tier_override: boolean | null
+          transaction_type: string
           updated_at: string
           website_score: number | null
           website_url: string | null
           won_reason: string
         }
         Insert: {
+          acq_timeline?: string
           acquisition_strategy?: string
+          active_searches?: string
           archive_reason?: string
           archived_at?: string | null
           assigned_to?: string
+          authority_confirmed?: string
           billing_frequency?: string
           brand?: string
+          budget_confirmed?: string
           buyer_type?: string
           calendly_booked_at?: string
           calendly_event_duration?: number | null
@@ -465,6 +484,7 @@ export type Database = {
           closed_date?: string
           company?: string
           company_url?: string
+          competing_against?: string
           competing_bankers?: string
           contract_end?: string
           contract_months?: number | null
@@ -475,9 +495,13 @@ export type Database = {
           days_in_current_stage?: number
           deal_intelligence?: Json | null
           deal_narrative?: string
+          deal_type?: string
           deal_value?: number
           deals_planned?: string
+          decision_blocker?: string
           duplicate_of?: string
+          ebitda_max?: string
+          ebitda_min?: string
           email?: string
           enrichment?: Json | null
           enrichment_status?: string | null
@@ -485,6 +509,7 @@ export type Database = {
           fireflies_summary?: string
           fireflies_transcript?: string
           fireflies_url?: string
+          firm_aum?: string
           forecast_category?: string
           forecasted_close_date?: string
           geography?: string
@@ -522,7 +547,10 @@ export type Database = {
           portfolio_count?: number | null
           pre_screen_completed?: boolean
           priority?: string
+          proof_notes?: string
           role?: string
+          sample_outcome?: string
+          sample_sent_date?: string
           secondary_contacts?: Json | null
           seniority_score?: number | null
           service_interest?: string
@@ -531,24 +559,30 @@ export type Database = {
           stage_entered_date?: string
           stage1_score?: number | null
           stage2_score?: number | null
+          stall_reason?: string
           submissions?: Json
           subscription_value?: number
           target_criteria?: string
           target_revenue?: string
           tier?: number | null
           tier_override?: boolean | null
+          transaction_type?: string
           updated_at?: string
           website_score?: number | null
           website_url?: string | null
           won_reason?: string
         }
         Update: {
+          acq_timeline?: string
           acquisition_strategy?: string
+          active_searches?: string
           archive_reason?: string
           archived_at?: string | null
           assigned_to?: string
+          authority_confirmed?: string
           billing_frequency?: string
           brand?: string
+          budget_confirmed?: string
           buyer_type?: string
           calendly_booked_at?: string
           calendly_event_duration?: number | null
@@ -559,6 +593,7 @@ export type Database = {
           closed_date?: string
           company?: string
           company_url?: string
+          competing_against?: string
           competing_bankers?: string
           contract_end?: string
           contract_months?: number | null
@@ -569,9 +604,13 @@ export type Database = {
           days_in_current_stage?: number
           deal_intelligence?: Json | null
           deal_narrative?: string
+          deal_type?: string
           deal_value?: number
           deals_planned?: string
+          decision_blocker?: string
           duplicate_of?: string
+          ebitda_max?: string
+          ebitda_min?: string
           email?: string
           enrichment?: Json | null
           enrichment_status?: string | null
@@ -579,6 +618,7 @@ export type Database = {
           fireflies_summary?: string
           fireflies_transcript?: string
           fireflies_url?: string
+          firm_aum?: string
           forecast_category?: string
           forecasted_close_date?: string
           geography?: string
@@ -616,7 +656,10 @@ export type Database = {
           portfolio_count?: number | null
           pre_screen_completed?: boolean
           priority?: string
+          proof_notes?: string
           role?: string
+          sample_outcome?: string
+          sample_sent_date?: string
           secondary_contacts?: Json | null
           seniority_score?: number | null
           service_interest?: string
@@ -625,12 +668,14 @@ export type Database = {
           stage_entered_date?: string
           stage1_score?: number | null
           stage2_score?: number | null
+          stall_reason?: string
           submissions?: Json
           subscription_value?: number
           target_criteria?: string
           target_revenue?: string
           tier?: number | null
           tier_override?: boolean | null
+          transaction_type?: string
           updated_at?: string
           website_score?: number | null
           website_url?: string | null

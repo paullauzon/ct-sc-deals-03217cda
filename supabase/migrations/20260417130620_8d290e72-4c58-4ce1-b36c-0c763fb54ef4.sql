@@ -1,0 +1,16 @@
+ALTER TABLE public.leads
+  ADD COLUMN IF NOT EXISTS firm_aum text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS acq_timeline text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS active_searches text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS budget_confirmed text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS authority_confirmed text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS ebitda_min text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS ebitda_max text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS deal_type text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS transaction_type text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS competing_against text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS decision_blocker text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS sample_sent_date text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS sample_outcome text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS proof_notes text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS stall_reason text NOT NULL DEFAULT '';
