@@ -1,41 +1,77 @@
 
+The user is now approving the deep email integration work. Critical context I need to gather:
 
-## v6 status — all 5 items shipped & wired
+1. What email infrastructure already exists — `lead_emails` table, `lead_email_metrics`, `EmailMetricsCard`, `useUnansweredEmails`, `EmailsSection`, `ingest-email` (Zapier), `sync-outlook-emails` (paused — admin consent), and the new `suggest-email-responses` v6 function.
 
-Verified end-to-end against the codebase. No gaps.
+2. From memory `mem://integrations/email-sync-status`: Outlook deep sync is built but paused pending tenant admin consent. The screenshot shows the user just got Microsoft admin consent approved ("Lovable access request Approved"). So Outlook is now unblocked.
 
-| # | Item | Status | Evidence |
-|---|---|---|---|
-| 1 | Inline "Ask about this deal" AI chat | ✅ Live | `AskDealDrawer.tsx` mounted in `LeadDetailPanel.tsx:416`, edge function `ask-deal` registered in `config.toml:60` |
-| 2 | Daily AI standup digest card | ✅ Live | `DailyStandupCard` imported in `Dashboard.tsx:11` and rendered at top of Overview tab (`:462`), edge function `daily-standup` deployed |
-| 3 | Win probability + slip risk in header | ✅ Live | `dealPredictions.ts` has both functions, header chips render in `LeadPanelHeader.tsx` |
-| 4 | Stalled-deal early warning chip on Pipeline | ✅ Live | `Pipeline.tsx:28` imports `isEarlyStallWarning` + `computeSlipRisk`; chip renders at `:496-498` for watch / at-risk / critical bands |
-| 5a | Post-call coach card | ✅ Live | `MeetingCoachCard.tsx` exists, `meetingCoach.ts` has `deriveCoachingInsights`, mounted inline per meeting in `MeetingsSection.tsx:885` |
-| 5b | Email objection responder | ✅ Live | `detectEmailObjections` in `meetingCoach.ts:179`, "Suggest 3 responses" button in `EmailsSection.tsx:350`, edge function `suggest-email-responses` deployed and registered in `config.toml:66` |
+3. From `mem://features/email-correspondence-tracking`: dual-state — Zapier active for inbound, deep sync pending.
 
-## Verification steps (browser)
+4. The user wants HubSpot-style email intelligence at "roughly half" depth. Looking at the HS list:
 
-1. **Standup card** — open Dashboard → Overview tab → top row should show Daily AI Standup
-2. **Pipeline slip chip** — open Pipeline → look for amber "Slip risk" chip on stalling deals
-3. **Win prob / slip in header** — open any active deal → header should show win % and slip-risk chips with factor tooltips
-4. **Ask AI** — click "Ask AI" in lead panel header → drawer opens, suggested prompts work, streaming response renders token-by-token
-5. **Meeting coach** — open a deal with a processed meeting → Meetings tab → "Coach" collapsible above the summary
-6. **Email objection responder** — open Emails tab → on an inbound email containing pricing/timing/competitor language, "Suggest 3 responses" button appears → click → 3 drafts render
+**Marketing email properties — NOT applicable** (we don't send marketing emails; this is a sales CRM for retainer-paying clients). Skip entirely.
 
-## What's deferred (acknowledged, separate v7+ rounds)
+**Sales/one-to-one email properties — YES, this is the core**:
+- Recent open / click / replied dates per contact (we have `lead_email_metrics` with last_opened/clicked/replied — partially done)
+- Email opened tracking via tracking pixel (NOT BUILT)
+- Click tracking via link rewriting (NOT BUILT)
 
-- Forecast confidence calibration card (theme 1)
-- Theme 3 — cross-book conversation analytics dashboard
-- Theme 4 — M&A buybox match scoring
-- Theme 5 — post-close / client success / renewal pipeline
-- Theme 6 — multi-step email cadence engine
-- Theme 7 — saved views, bulk actions, source ROI, data quality dashboard
+**Per-email timeline detail — partially built but missing**:
+- Subject ✓ (have it)
+- Body ✓ (have body_html, body_text, body_preview)
+- Open count + timestamps (have `opens` jsonb, never populated)
+- Click count + timestamps (have `clicks` jsonb, never populated)
+- From / To / CC / BCC ✓
+- Tracked badge (need to add `tracking_enabled` field on outbound)
+- Reply status ✓ (`replied_at`)
+- Bounce details ✓ (`bounce_reason`)
+- Attachments — partially (have `attachments` jsonb, only marks "has", doesn't list/download)
 
-## Recommendation
+**The actual gap analysis:**
 
-v6 is complete. Nothing left to build in this round. If you want to start v7, the highest-leverage next themes (in priority order) are:
+A. **Inbound email pipeline** — Zapier works for Gmail+Outlook into `lead_emails` ✓ shipped
+B. **Outbound deep sync from workspace mailbox** — `sync-outlook-emails` written but paused (admin consent now granted per screenshot)
+C. **Gmail equivalent of (B)** — not built at all
+D. **Tracking pixels for opens** — not built
+E. **Link rewriting for clicks** — not built
+F. **Reply detection** — partially auto via `lead_email_metrics`, but needs threading
+G. **Attachments** — list-only, not downloadable
+H. **Timeline UI per email** — exists in EmailsSection but missing the rich event chips (opens, clicks, bounces with timestamps)
+I. **Compose/send from app** — `EmailComposeDrawer` exists, but does it actually send through workspace mailbox? Need to check.
+J. **Cron sync** — Outlook function exists, needs scheduled trigger
 
-1. **Cross-book conversation analytics** (theme 3) — pure aggregation over data we already extract per meeting; biggest insight-per-build-hour ratio of anything remaining
-2. **Post-close / renewal pipeline** (theme 5) — biggest entire gap in the product
-3. **M&A buybox match scoring** (theme 4) — most uniquely differentiating vs HubSpot/Salesforce
+Let me think about what to actually implement now. The user said "roughly half" of HubSpot. The right cut for an M&A retainer-CRM is:
 
+**Tier 1 (must ship now)** — Two-way sync with workspace mailboxes
+1. Activate Outlook deep sync (admin consent granted) — schedule cron
+2. Add Gmail deep sync as parallel function (same pattern via Gmail connector)
+3. Open tracking via 1×1 transparent pixel injected when sending from app
+4. Click tracking via link rewriting through a tracking redirector
+5. Send-from-app actually delivering through the user's Outlook/Gmail (so sent items show up in their Sent folder + the recipient sees the user's address)
+6. Per-email open/click event chips in timeline (we have schema, need UI)
+
+**Tier 2 (stretch, defer to next round)** — 
+- Attachment download
+- Send-later / scheduled send  
+- Email templates with variable insertion
+- Bounce detection beyond what providers report (Gmail/Outlook surface bounces in inbox, parse them)
+
+**Tier 3 (probably skip)** —
+- Marketing email features (we don't do this)
+- Spam report (rare for 1:1 sales)
+- Subscription type management
+
+Let me also think about architecture cleanly:
+
+- The "two-way sync" pattern: outbound emails sent from app → POST to provider's send API → webhook/polling brings the threaded reply back via the existing inbound pipeline
+- For tracking: when we send from app, we (1) inject pixel pointing to our edge function, (2) rewrite each <a href> to wrap in our redirector edge function. Both functions log to `lead_emails.opens` / `.clicks` jsonb
+- For threading: use `In-Reply-To` and `References` headers on send so replies come back in same thread_id
+
+Let me check what currently exists in EmailComposeDrawer and EmailsSection to understand exactly what's there.
+
+I should check briefly:
+1. `EmailComposeDrawer.tsx` — does it actually send anywhere?
+2. `EmailsSection.tsx` — what timeline events does it render?
+3. Migrations for `lead_emails` schema to confirm fields
+
+Let me do a quick read of these to make my plan accurate.
