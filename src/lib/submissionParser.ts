@@ -67,10 +67,22 @@ export function parseTimelineFromStrategy(s?: string): string {
 /** Pull EBITDA min/max as a tuple of strings from free-text. Returns ["",""] if none. */
 export function parseEbitdaFromText(text?: string): { min: string; max: string } {
   if (!text) return { min: "", max: "" };
-  // Normalize whitespace AND curly dashes — Webflow turns "$1-5M" into "$1–5M".
+  // Normalize curly dashes AND collapse whitespace — Webflow turns "$1-5M" into "$1–5M",
+  // and prospects often write "750 K" with a stray space before the unit.
   const t = text
     .replace(/[\u2013\u2014]/g, "-")
     .replace(/\s+/g, " ");
+
+  // "EBITDA between $1M and $5M" / "EBITDA between 1 and 5 million"
+  const between = t.match(
+    /(?:ebitda|sde)[^.\n]{0,40}?between\s+\$?\s?([\d.]+)\s?([mk]?)\s+(?:and|to)\s+\$?\s?([\d.]+)\s?([mk]?)/i
+  );
+  if (between) {
+    const unit = (u: string) => (u.toLowerCase() === "k" ? "K" : "M");
+    const u1 = between[2] ? unit(between[2]) : unit(between[4] || "m");
+    const u2 = between[4] ? unit(between[4]) : u1;
+    return { min: `$${between[1]}${u1}`, max: `$${between[3]}${u2}` };
+  }
 
   // "EBITDA between $1-5M" / "$1M-$5M EBITDA" / "EBITDA of $2M-$10M"
   const range = t.match(
@@ -93,13 +105,21 @@ export function parseEbitdaFromText(text?: string): { min: string; max: string }
     return { min: `$${rangeRev[1]}${u1}`, max: `$${rangeRev[3]}${u2}` };
   }
 
-  // "Minimum SDE is 750K" / "Minimum SDE is 750 K" / "min EBITDA $1M"
-  const minOnly = t.match(/(?:min(?:imum)?|at least)[^.\n]{0,30}?(?:ebitda|sde)?[^.\n]{0,15}?\$?\s?([\d.]+)\s?([mk])/i);
+  // "$1M+ EBITDA" / "$500K+ in EBITDA" — open-ended minimum
+  const plusEbitda = t.match(/\$?\s?([\d.]+)\s?([mk])\s?\+\s+(?:in\s+)?(?:ebitda|sde)/i);
+  if (plusEbitda) {
+    return { min: `$${plusEbitda[1]}${plusEbitda[2].toUpperCase()}`, max: "" };
+  }
+
+  // "Minimum SDE is 750K" / "Minimum SDE is 750 K" / "min EBITDA $1M" / "750 k minimum EBITDA"
+  const minOnly =
+    t.match(/(?:min(?:imum)?|at least)[^.\n]{0,30}?(?:ebitda|sde)?[^.\n]{0,15}?\$?\s?([\d.]+)\s?([mk])/i) ||
+    t.match(/\$?\s?([\d.]+)\s?([mk])\s+(?:min(?:imum)?|or more)\s+(?:in\s+)?(?:ebitda|sde)/i);
   if (minOnly) {
     return { min: `$${minOnly[1]}${minOnly[2].toUpperCase()}`, max: "" };
   }
   // "EBITDA/SDE of $X" — single anchor
-  const sdeOf = t.match(/(?:ebitda|sde)\s+(?:of|is|at)\s+\$?\s?([\d.]+)\s?([mk])/i);
+  const sdeOf = t.match(/(?:ebitda|sde)\s+(?:of|is|at|around|approximately)\s+\$?\s?([\d.]+)\s?([mk])/i);
   if (sdeOf) {
     return { min: `$${sdeOf[1]}${sdeOf[2].toUpperCase()}`, max: "" };
   }
@@ -117,12 +137,26 @@ export function parseEbitdaFromText(text?: string): { min: string; max: string }
 export function parseRevenueFromText(text?: string): string {
   if (!text) return "";
   const t = text.replace(/[\u2013\u2014]/g, "-").replace(/\s+/g, " ");
+  // "$10M-$100M in revenue"
   const range = t.match(/\$?\s?([\d.]+)\s?([mk]?)\s?[-to]+\s?\$?\s?([\d.]+)\s?([mk])\s+(?:in\s+)?(?:revenue|sales|topline|top line|arr)/i);
   if (range) {
     const u2 = range[4].toUpperCase();
     const u1 = range[2] ? range[2].toUpperCase() : u2;
     return `$${range[1]}${u1}-${range[3]}${u2}`;
   }
+  // "between $5M and $25M revenue"
+  const between = t.match(/between\s+\$?\s?([\d.]+)\s?([mk]?)\s+(?:and|to)\s+\$?\s?([\d.]+)\s?([mk])\s+(?:in\s+)?(?:revenue|sales|arr|topline)/i);
+  if (between) {
+    const u2 = between[4].toUpperCase();
+    const u1 = between[2] ? between[2].toUpperCase() : u2;
+    return `$${between[1]}${u1}-${between[3]}${u2}`;
+  }
+  // "ARR of $5M" / "Revenue of $10M"
+  const arrOf = t.match(/(?:revenue|sales|arr|topline)\s+(?:of|is|at|around|approximately)\s+\$?\s?([\d.]+)\s?([mk])/i);
+  if (arrOf) return `$${arrOf[1]}${arrOf[2].toUpperCase()}+`;
+  // "$1M+ in revenue", "$5M+ ARR", "$5M+ revenue"
+  const plusRev = t.match(/\$?\s?([\d.]+)\s?([mk])\s?\+\s+(?:in\s+)?(?:revenue|sales|arr|profit|cashflow|cash flow|topline)/i);
+  if (plusRev) return `$${plusRev[1]}${plusRev[2].toUpperCase()}+`;
   const single = t.match(/\$?\s?([\d.]+)\s?([mk])\+?\s+(?:in\s+)?(?:revenue|sales|arr|profit|cashflow|cash flow)/i);
   if (single) return `$${single[1]}${single[2].toUpperCase()}+`;
   // "doing at least 500k in yearly profit"
@@ -135,20 +169,45 @@ export function parseRevenueFromText(text?: string): string {
 export function parseGeographyFromText(text?: string): string {
   if (!text) return "";
   const t = text.replace(/\s+/g, " ");
+
+  // Anchored patterns: "based in X", "HQ in X", "located in X", "focused on X" (X = up to 8 word region phrase)
+  const anchored: string[] = [];
+  const anchorRe = /(?:based in|hq in|headquartered in|located in|focused on|operating in|targeting|target geography:?)\s+(?:the\s+)?([A-Z][\w&.\- ]{2,60}?)(?=[.,;\n]|$| with| and| but| where| our| we)/gi;
+  let am: RegExpExecArray | null;
+  while ((am = anchorRe.exec(t))) {
+    const cleaned = am[1]
+      .trim()
+      .replace(/\s+(US|U\.S\.|USA|United States)$/i, ", US")
+      .replace(/^the\s+/i, "");
+    if (cleaned && cleaned.length < 80) anchored.push(cleaned);
+  }
+
   const patterns: RegExp[] = [
     /\b(?:southern|northern|eastern|western|central)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?/g,
-    /\b(?:midwest|midwestern|northeast|southeast|southwest|northwest|west coast|east coast|sun belt|rust belt|new england|tri[- ]?state)\b/gi,
+    /\b(?:midwest|midwestern|northeast|southeast|southwest|northwest|west coast|east coast|sun belt|rust belt|new england|tri[- ]?state|pacific northwest|mid[- ]?atlantic)\b/gi,
     /\b(?:north|south|east|west)\s+america\b/gi,
-    /\b(?:canada|usa|united states|uk|united kingdom|europe|emea|apac|latam|mexico|ontario|quebec|texas|california|florida|new york|illinois|ohio|michigan|pennsylvania|georgia|north carolina|south carolina|virginia|tennessee|arizona|colorado|washington|oregon|massachusetts|new jersey)\b/gi,
+    /\b(?:canada|usa|united states|uk|united kingdom|europe|emea|apac|latam|mexico|ontario|quebec|alberta|british columbia|texas|california|florida|new york|illinois|ohio|michigan|pennsylvania|georgia|north carolina|south carolina|virginia|tennessee|arizona|colorado|washington|oregon|massachusetts|new jersey|oklahoma|louisiana|kansas|missouri|indiana|wisconsin|minnesota|iowa|nebraska|arkansas|alabama|kentucky|maryland|connecticut|nevada|utah|new mexico)\b/gi,
   ];
   const hits = new Set<string>();
+  // Anchored hits first (preserve their phrasing).
+  for (const a of anchored) {
+    const norm = a.replace(/\bus\b/i, "US").replace(/\b\w/g, c => c.toUpperCase()).replace(/\b(Of|And|The|In)\b/g, m => m.toLowerCase());
+    hits.add(norm);
+  }
   for (const re of patterns) {
     const m = t.match(re);
-    if (m) m.forEach(s => hits.add(s.trim().replace(/[,.;:].*$/, "").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())));
+    if (m) m.forEach(s => {
+      const norm = s.trim().replace(/[,.;:].*$/, "").toLowerCase();
+      // Special-case "midwestern us" → "Midwest, US"
+      if (/^midwestern\s+us$/i.test(norm)) { hits.add("Midwest, US"); return; }
+      if (/^midwestern$/i.test(norm)) { hits.add("Midwest"); return; }
+      const titled = norm.replace(/\b\w/g, c => c.toUpperCase()).replace(/\bUs\b/g, "US").replace(/\bUk\b/g, "UK");
+      hits.add(titled);
+    });
   }
   if (!hits.size) return "";
-  // Cap to 3 unique tokens, dedupe case-insensitively.
-  return Array.from(hits).slice(0, 3).join(", ");
+  // Cap to 4 unique tokens.
+  return Array.from(hits).slice(0, 4).join(", ");
 }
 
 /** Use the first sentence of the message as a sector descriptor. */
