@@ -363,8 +363,18 @@ Deno.serve(async (req) => {
 
       // Filter to those that actually need work
       const candidates = (leads || []).filter((l: any) => {
-        const hasSI = !!l?.deal_intelligence?.serviceInterest;
-        const hasCommittee = Array.isArray(l?.deal_intelligence?.buyingCommittee) && l.deal_intelligence.buyingCommittee.length > 0;
+        const intel = l?.deal_intelligence;
+        const hasSI = !!intel?.serviceInterest;
+        const committee = intel?.buyingCommittee;
+        const hasCommittee = !!committee && (
+          Array.isArray(committee) ? committee.length > 0 :
+          typeof committee === "object" && (
+            committee.decisionMaker || committee.champion || committee.economicBuyer || committee.technicalBuyer ||
+            (Array.isArray(committee.influencers) && committee.influencers.length > 0) ||
+            (Array.isArray(committee.blockers) && committee.blockers.length > 0) ||
+            (Array.isArray(committee.unknowns) && committee.unknowns.length > 0)
+          )
+        );
         const currentSvc = (l.service_interest || "").trim();
         return (!hasSI && (!currentSvc || currentSvc === "TBD")) || hasCommittee;
       });
