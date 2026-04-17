@@ -214,6 +214,18 @@ export function LeadPanelHeader({
     setCloseWonGuard(null);
   };
 
+  // Listen for stage-change requests dispatched from PipelineStagesCard in the right rail
+  // so we don't duplicate the close-won/move-back guard modals.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const stage = (e as CustomEvent).detail?.stage;
+      if (stage) handleStageClick(stage);
+    };
+    window.addEventListener("request-stage-change", handler);
+    return () => window.removeEventListener("request-stage-change", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.stage, lead.subscriptionValue, lead.contractEnd]);
+
   const toggleMaximize = () => {
     if (mode === "sheet") {
       navigate(`/deal/${lead.id}`);
