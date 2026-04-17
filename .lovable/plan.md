@@ -2,132 +2,126 @@
 
 ## Goal
 
-1. Move **AI Insights** + **External Research / Research & Recommend** out of the right rail and into the **Intelligence tab** (the middle workspace), including the action buttons (Research, Re-run, Accept All, etc.).
-2. Move **Stakeholders** out of the right rail to a less prominent but appropriate spot.
-3. Reassess what (if anything) the right rail should still show.
+Add a **Buyer Profile / M&A Mandate / Sales Process** dossier to the left rail of every SourceCo lead (and a leaner Captarget version), populated automatically from three sources: the **submission message**, the **Fireflies transcripts/intelligence**, and the **AI research** — with manual override on every field.
 
-## Investigation
-
-Let me confirm the current shape of the Intelligence tab and the right rail.
-<lov-tool-use id="toolu_vrtx_01EGjzYzN3XML7Ko6CcYPqtX" name="code--search_files" integration-id="code" data="{\"query\": \"Intelligence|IntelligenceTab|deal intelligence synthesized\", \"include_patterns\": \"src/components/lead-panel/**/*.tsx,src/components/dealroom/**/*.tsx\"}">
-</lov-tool-use>
-
-<lov-tool-use id="toolu_vrtx_01CbWcQTQT9dKmMwjfYNZQpV" name="code--search_files" integration-id="code" data="{\"query\": \"Intelligence|deal intelligence synthesized|IntelligenceTab\", \"include_patterns\": \"src/components/lead-panel/**/*.tsx,src/components/dealroom/**/*.tsx\"}">
-</lov-tool-use>
-
-<lov-tool-use id="toolu_vrtx_0196XuYC1v3uy25ByUipsp2g" name="code--search_files" integration-id="code" data="{\"query\": \"No deal intelligence synthesized\"}">
-</lov-tool-use>
-
-<lov-tool-use id="toolu_vrtx_01DF1CERY2nTUQwnwtCdHkjX" name="code--view" integration-id="code" data="{\"file_path\": \"src/components/LeadDetailPanel.tsx\", \"lines\": \"340-450\"}">
-</lov-tool-use>
-
-<lov-tool-use id="toolu_vrtx_011Kz4xwvvqLogWvEoo9tSCt" name="code--view" integration-id="code" data="{\"file_path\": \"src/components/lead-panel/LeadPanelRightRail.tsx\", \"lines\": \"75-235\"}">
-</lov-tool-use>
-
-<lov-tool-use id="toolu_vrtx_01DYyzFjtkPpsydFM22vXoGo" name="code--view" integration-id="code" data="{\"file_path\": \"src/components/dealroom/RightRailCards.tsx\"}">
-</lov-tool-use>
-Now I have enough context. Let me view the Intelligence tab content and check StakeholderCard placement.
-<lov-tool-use id="toolu_vrtx_019nyZeMo3tDau5eNZe9scx7" name="code--view" integration-id="code" data="{\"file_path\": \"src/components/lead-panel/cards/StakeholderCard.tsx\", \"lines\": \"1-40\"}">
-</lov-tool-use>
-
-<lov-tool-use id="toolu_vrtx_01Rb5L6PFc91UvxgzHLWjvZH" name="code--view" integration-id="code" data="{\"file_path\": \"src/components/DealIntelligencePanel.tsx\", \"lines\": \"1-30\"}">
-</lov-tool-use>
-I have enough. Let me present the plan.
-
-<lov-plan>
-
-## Goal
-
-Move **AI Insights** + **External Research** (Research & Recommend) out of the right rail into the **Intelligence tab** (center workspace) — including the action buttons. Then move **Stakeholders** (currently both `StakeholderCard` and the `RightRailCards` Stakeholders block) somewhere less prominent.
-
-## What's in the right rail today
+## What we have vs. what we need
 
 ```
-Intelligence (label)
-├─ AI Insights              ← move to Intelligence tab
-├─ Stakeholders             ← move to Activity tab footer
-├─ Email Activity           ← keep
-├─ Deal Health (RightRailCards) ← keep
-├─ Stakeholders (RightRailCards) ← also remove (duplicate)
-├─ Open Commitments         ← keep
-├─ Risks                    ← keep
-├─ Win Strategy             ← keep
-├─ Buying Committee         ← keep
-├─ Similar Won Deals        ← keep
-├─ Deal Narrative           ← keep
-└─ Company Activity         ← keep
+SCREENSHOT FIELD              EXISTS?   SOURCE TODAY                     GAP
+────────────────────────────  ───────   ───────────────────────────────  ──────────────────
+BUYER PROFILE
+  Firm type                   ✓         lead.buyerType                   relabel only
+  Firm AUM                    ✗         —                                NEW field, AI-infer
+  Acq. timeline               ◐         enrichment.urgency (free text)   normalize → enum
+  Stakeholders                ✓ derived dealIntelligence.stakeholderMap  count + show
+  Champion                    ✓ derived stakeholderMap[stance=Champion]  pick top
+  Active searches             ✗         —                                NEW, AI-infer
+  Budget confirmed            ◐         dealSignals.budgetMentioned      normalize → Y/N/?
+  Authority confirmed         ✗         —                                NEW, infer from DM
+
+M&A MANDATE
+  Target sector(s)            ◐         targetCriteria (free text)       parse → tags
+  Target geography            ✓         lead.geography                   reuse
+  EBITDA min / max            ✗         —                                NEW pair
+  Revenue range               ✓         lead.targetRevenue               reuse
+  Deal type                   ✓         lead.acquisitionStrategy         relabel
+  Transaction type            ✗         —                                NEW (majority/minority/control)
+
+SALES PROCESS (our side)
+  Competing against           ✓         competingBankers + objections    merge
+  Decision blocker            ◐ derived riskRegister[severity=Critical]  pick top
+  Sample sent date            ✗         —                                NEW date
+  Sample outcome              ✗         —                                NEW enum
+  Proof notes                 ✗         —                                NEW free text
+  Stall reason                ◐ derived momentumSignals.momentum=Stalled NEW free text override
 ```
+
+So: ~7 of 22 fields exist verbatim, ~6 are derivable from AI/Fireflies output, ~9 are net-new and need DB columns + extraction prompts.
 
 ## Plan
 
-### 1. Intelligence tab gets a new top section
+### 1. DB migration — add the missing fields
 
-In `LeadDetailPanel.tsx` (lines 380–390), the Intelligence `TabsContent` becomes:
-
+Single migration adds these `nullable text/date/numeric` columns to `leads`:
 ```
-┌─ AI Research & Insights ───────────────────┐
-│  [Research]  [Research & Recommend]        │  ← actions moved from right rail
-│  External research scrapes the company     │
-│  site & recommends CRM updates.            │
-│                                             │
-│  Last refreshed: <date>                    │
-│  ── Suggested CRM updates (X) ─────────    │
-│  <existing EnrichmentSection content>      │
-│  <auto-find suggestions block>             │
-└─────────────────────────────────────────────┘
+firm_aum, acq_timeline, active_searches, budget_confirmed, authority_confirmed,
+ebitda_min, ebitda_max, deal_type, transaction_type,
+competing_against, decision_blocker,
+sample_sent_date, sample_outcome, proof_notes, stall_reason
+```
+Plus mirror them in `src/types/lead.ts` and `leadDbMapping.ts`.
 
-┌─ Synthesized Deal Intelligence ────────────┐
-│  <existing DealIntelligencePanel OR        │
-│   "No deal intelligence synthesized yet"   │
-│   empty state>                             │
-└─────────────────────────────────────────────┘
+All nullable → no migration risk. No new tables (these are all 1:1 with the lead).
+
+### 2. Three new collapsible cards in the left rail (SourceCo only — Captarget gets a slimmed Buyer Profile only, since EBITDA/transaction-type are PE-specific)
+
+Files: `src/components/lead-panel/cards/BuyerProfileCard.tsx`, `MAMandateCard.tsx`, `SalesProcessCard.tsx`. Each uses the existing `CollapsibleCard` + `InlineSelectField`/`InlineTextField` pattern, so every field is **inline-editable** like Key Information already is. This matches what's already there — no new UI primitives.
+
+The current `AcquirerProfileCard` (which currently overlaps Buyer Profile) gets **deleted** — its 6 fields are absorbed into the new Buyer Profile + M&A Mandate cards.
+
+The standalone "M&A Criteria" CollapsibleCard wrapping `MACriteriaCard` (line 146-150 of `LeadPanelLeftRail`) also gets deleted — fully superseded.
+
+### 3. Auto-derived values (no manual work needed)
+
+A small helper `src/lib/dealDossier.ts` exposes pure functions like:
+- `deriveStakeholderCount(lead)` → `dealIntelligence.stakeholderMap.length`
+- `deriveChampion(lead)` → first `stakeholderMap[stance="Champion"].name`
+- `deriveCompetingAgainst(lead)` → unique union of `competingBankers` + `dealIntelligence.objectionTracker[].competitors` + `meetings[*].intelligence.dealSignals.competitors`
+- `deriveDecisionBlocker(lead)` → top open `Critical`/`High` `riskRegister` entry
+- `deriveStallReason(lead)` → if `momentumSignals.momentum` ∈ {Stalled, Stalling}, surface `dealStageEvidence`
+- `deriveBudgetConfirmed(lead)` → maps `dealSignals.budgetMentioned` to Yes/No/Unclear
+
+The card renders `manualValue ?? derivedValue`, with a tiny `AI` chip beside derived values so the rep knows it came from a transcript and can override with a click. This is the same dual-source pattern that already powers `enrichment.suggestedUpdates` on the AI Research section, so the user model is consistent.
+
+### 4. AI extraction — extend `enrich-lead` and `synthesize-deal-intelligence`
+
+Add a new structured-output block to `enrich-lead`'s response schema:
+```
+buyerProfileExtracted: {
+  firmAum, acqTimeline, activeSearches,
+  ebitdaMin, ebitdaMax, dealType, transactionType,
+  authorityConfirmed
+}
+```
+This pulls from: the submission `message` (free-text intro), `targetCriteria`/`targetRevenue` parsing, and the company's website (already scraped). Stored on `enrichment.buyerProfileSuggested` so it flows through the existing **suggested updates** workflow — the rep accepts/rejects exactly like any other suggestion. Zero new accept/reject UI.
+
+`synthesize-deal-intelligence` already extracts everything we need for derived fields, so no change there.
+
+### 5. Reorder the left rail
+
+Final stack (top to bottom):
+```
+About / Identity (actions)
+─── Key Information
+─── Deal Economics
+─── Buyer Profile           ← NEW (replaces Acquirer Profile)
+─── M&A Mandate             ← NEW (replaces standalone M&A Criteria card)
+─── Sales Process           ← NEW
+─── Mutual Plan
+─── Dates
+─── Source & Attribution
+─── Submissions
+─── Website Activity
+─── Won/Lost details (when closed)
+─── Original Message
 ```
 
-Net effect: Intelligence tab shows everything AI-related in one place — research button at top, suggestions in the middle, synthesized intel below. The "No research yet · Research" + "Research & Recommend" buttons from screenshot get a proper home.
-
-### 2. Right rail cleanup
-
-`LeadPanelRightRail.tsx`:
-- Remove `<AIInsightsCard …>` (now lives in Intelligence tab).
-- Remove `<StakeholderCard lead={lead} />`.
-- Header label changes from "Intelligence" → "Signals" (more accurate now: Email Activity, Deal Health, Risks, Win Strategy, etc.).
-
-`RightRailCards.tsx`:
-- Remove the "Stakeholders" `CollapsibleCard` block (lines 80–112) — duplicate of StakeholderCard, and moving stakeholders out of the right rail entirely.
-
-### 3. Stakeholders new home: Activity tab
-
-Stakeholders are deal context, not a primary action surface. Move `<StakeholderCard lead={lead} />` to the bottom of the **Activity tab** (`LeadActivityTab.tsx`) inside a section labeled "Stakeholders" — collapsed by default. This keeps it accessible (one click) but no longer competes with primary signals.
-
-Rationale: Activity tab already shows the unified timeline of who-said-what, so stakeholder list is a natural companion. It also keeps `StakeholderCard` mounted only when the tab is open (small perf win).
-
-### 4. Extract helper component
-
-Pull the existing `AIInsightsCard` body out of `LeadPanelRightRail.tsx` into a new file `src/components/lead-panel/AIResearchSection.tsx` so it can be rendered inside the Intelligence tab without the `CollapsibleCard` wrapper (since the tab already has its own header pattern). Keeps the file clean and avoids inflating `LeadDetailPanel.tsx`.
-
-## Files touched
-
-- `src/components/lead-panel/AIResearchSection.tsx` — new file (extracted from `AIInsightsCard` logic, no `CollapsibleCard` wrapper, prominent action button row at top).
-- `src/components/LeadDetailPanel.tsx` — Intelligence `TabsContent` renders `<AIResearchSection>` then existing intel panel/empty state.
-- `src/components/lead-panel/LeadPanelRightRail.tsx` — drop `AIInsightsCard` + `StakeholderCard`; relabel header "Signals".
-- `src/components/dealroom/RightRailCards.tsx` — drop the duplicate Stakeholders block.
-- `src/components/lead-panel/LeadActivityTab.tsx` — append a collapsed "Stakeholders" section at the bottom.
-
-No schema changes. ~80 lines moved.
+This keeps the dossier reading top-down: who we're selling to → what they want to buy → where we are in selling them.
 
 ## Trade-offs
 
-- **Win:** Intelligence tab becomes the single AI surface. Right rail becomes a focused "live signals" dashboard (health, momentum, risks, commitments) without the heavyweight enrichment UI.
-- **Win:** Removes the duplicate Stakeholders rendering (was in both `StakeholderCard` and `RightRailCards`).
-- **Loss:** Research button is one extra click away (must open Intelligence tab). **Mitigation:** the Enrich button already exists in the left-rail action grid (added in the previous round) — that's the fast path. The Intelligence tab is the *deep* surface.
-- **Loss:** Stakeholders less visible. **Mitigation:** champion/blocker info already surfaces in Deal Health (right rail) and Buying Committee (right rail), so the high-signal stakeholder data isn't lost from the at-a-glance view.
+- **Win:** the screenshot's full PE-buyer dossier renders with most fields pre-populated from existing transcripts & enrichment. Reps see champion, competitors, and stall reason without opening the Intelligence tab.
+- **Win:** No new UI primitives — reuses `CollapsibleCard` + `InlineSelectField` already powering Key Information.
+- **Cost:** 15 new nullable columns. Acceptable: they're all small, they map 1:1 to a lead, no relational complexity.
+- **Cost:** `enrich-lead` prompt grows ~30%. Acceptable: same call, same model, ~5% cost bump.
+- **Loss:** Captarget leads see fewer of these fields (PE-specific). **Mitigation:** Buyer Profile renders for both brands; M&A Mandate + Sales Process are SourceCo-only, gated by `lead.brand === "SourceCo"`.
 
 ## Sequence
 
-1. Create `AIResearchSection.tsx` (extract logic, prominent button row).
-2. Wire it into Intelligence `TabsContent` in `LeadDetailPanel`.
-3. Strip `AIInsightsCard` + `StakeholderCard` from right rail; rename label to "Signals".
-4. Strip duplicate Stakeholders block from `RightRailCards`.
-5. Append collapsed Stakeholders section to `LeadActivityTab`.
-6. You verify: open a lead → Intelligence tab shows Research button + suggestions + synthesized intel; right rail shows Signals (no AI Insights, no Stakeholders); Activity tab footer has Stakeholders section.
+1. DB migration — add 15 nullable columns; update `Lead` type + `leadDbMapping`.
+2. Build `dealDossier.ts` derivation helpers (pure, unit-testable).
+3. Build the three new card components.
+4. Wire into `LeadPanelLeftRail`; delete `AcquirerProfileCard` + the standalone M&A Criteria block.
+5. Extend `enrich-lead` schema + prompt to populate `buyerProfileSuggested`; route through existing suggestion-acceptance UI.
+6. You verify: open a SourceCo lead with meetings → confirm champion/stakeholder count/competitors/stall reason auto-fill from Fireflies; click Re-run Research → confirm firmAUM/EBITDA/dealType suggestions appear in the Intelligence tab; confirm every field is click-to-edit.
 
