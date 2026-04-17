@@ -191,6 +191,12 @@ async function processLead(supabase: any, url: string, key: string, lead: any) {
   if (budget && !lead.budget_confirmed?.trim()) { updates.budget_confirmed = budget; written.push("Budget"); }
   const narrative = typeof dealIntelligence?.dealNarrative === "string" ? dealIntelligence.dealNarrative.trim() : "";
   if (narrative && !lead.deal_narrative?.trim()) { updates.deal_narrative = narrative; written.push("Deal narrative"); }
+  const svc = typeof dealIntelligence?.serviceInterest === "string" ? dealIntelligence.serviceInterest.trim() : "";
+  const currentSvc = (lead.service_interest || "").trim();
+  if (svc && (!currentSvc || currentSvc === "TBD")) {
+    updates.service_interest = svc;
+    written.push("Service interest");
+  }
 
   if (Object.keys(updates).length > 0) {
     await supabase.from("leads").update(updates).eq("id", lead.id);

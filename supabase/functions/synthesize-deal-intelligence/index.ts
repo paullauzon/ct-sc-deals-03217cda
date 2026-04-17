@@ -284,6 +284,11 @@ Be SPECIFIC — use names, dates, inferred evidence. Never be generic or vague. 
                     required: ["decisionMaker", "champion", "influencers", "blockers", "unknowns"],
                   },
                   dealStageEvidence: { type: "string" },
+                  serviceInterest: {
+                    type: "string",
+                    enum: ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", ""],
+                    description: "If the prospect explicitly indicated which Captarget/SourceCo service they want, return it. Use '' (empty string) if unclear or not discussed.",
+                  },
                   // NEW: Psychological intelligence
                   powerDynamics: {
                     type: "object",
