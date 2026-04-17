@@ -6,6 +6,7 @@ import { MACriteriaCard } from "@/components/dealroom/KeyInformationCard";
 import { Input } from "@/components/ui/input";
 import { DealEconomicsCard } from "./cards/DealEconomicsCard";
 import { MutualPlanCard } from "./cards/MutualPlanCard";
+import { AcquirerProfileCard } from "./cards/AcquirerProfileCard";
 import { cn } from "@/lib/utils";
 
 const LEAD_STATUS_TONE: Record<string, string> = {
@@ -85,6 +86,8 @@ export function LeadPanelLeftRail({ lead, daysInStage, save }: Props) {
       <DealEconomicsCard lead={lead} save={save} />
 
       <MutualPlanCard lead={lead} save={save} />
+
+      {isSourceCo && <AcquirerProfileCard lead={lead} />}
 
       <CollapsibleCard title="Dates" defaultOpen={false}>
         <div className="space-y-0">
