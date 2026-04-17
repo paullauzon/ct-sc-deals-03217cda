@@ -40,7 +40,7 @@ export function LogCallDialog({ lead, open, onOpenChange, save }: Props) {
     }
     setSaving(true);
     try {
-      const parts = [outcome];
+      const parts: string[] = [outcome];
       if (duration) parts.push(`${duration}m`);
       if (s) parts.push(s);
       await logActivity(lead.id, "field_update", `Call logged: ${parts.join(" · ")}`);
