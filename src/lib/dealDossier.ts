@@ -110,8 +110,10 @@ export function deriveCompetingAgainst(lead: Lead): DerivedValue {
   lead.meetings?.forEach(m => {
     m.intelligence?.dealSignals?.competitors?.forEach(c => c && set.add(c));
   });
-  if (!set.size) return empty;
-  return { value: Array.from(set).join(", "), source: "transcript" };
+  if (set.size) return { value: Array.from(set).join(", "), source: "transcript" };
+  // Submission-tier fallback: SourceCo's `currentSourcing` answers "how are you sourcing today?"
+  // which functionally describes who/what we're competing with.
+  return deriveCompetingFromSubmission(lead);
 }
 
 export function deriveDecisionBlocker(lead: Lead): DerivedValue {
