@@ -1,88 +1,72 @@
 
 
-## Audit findings — 150 active leads (Captarget 76 + SourceCo 74)
+## Audit findings — 150 active leads (CT 76 + SC 74)
 
-### Coverage matrix vs. previous baseline
+### Coverage matrix vs. last session
 
-| Field | CT (76) | SC (74) | Δ vs prior session | Diagnosis |
+| Field | CT (76) | SC (74) | Δ vs prior | Status |
 |---|---|---|---|---|
-| buyer_type | 57 (75%) | 53 (72%) | unchanged | OK |
-| target_criteria | 54 (71%) | 55 (74%) | ↓ 8 (cleanup of 13 garbage rows landed; some lifted by re-promote) | **8 residual borderline rows** |
-| target_revenue | 18 (24%) | 22 (30%) | unchanged | Form-tier ceiling |
-| geography | 22 (29%) | 23 (31%) | unchanged | Form-tier ceiling |
-| ebitda | 2 (3%) | 19 (26%) | unchanged | Form-tier ceiling |
-| acq_timeline | **0** | 50 (68%) | unchanged | CT structural (no source field) |
-| competing_against | 14 (18%) | 4 (5%) | unchanged | Bleed denylist working — 0 polluted rows |
-| **firm_aum / deal_type / txn_type / active_searches** | **0 / 0 / 0 / 0** | **0 / 0 / 0 / 1** | **unchanged** | **AI-tier batched run never executed** |
-| 4 transcript-tier rows | 0 | 0 | unchanged | Structural — needs meetings |
-| has enrichment JSON | 0 | 1 | unchanged | Confirms zero AI runs landed |
+| target_criteria | 47 (62%) | 50 (68%) | unchanged | Clean — only legitimate rows remain |
+| authority_confirmed | 28 (37%) | 15 (20%) | unchanged | Transcript promote landed |
+| decision_blocker | 29 (38%) | 17 (23%) | unchanged | Transcript promote landed |
+| **firm_aum / deal_type / txn_type** | **0 / 0 / 0** | **0 / 0 / 0** | **UNCHANGED** | **AI-tier never run** |
+| has enrichment JSON | 0 | 1 | unchanged | Confirms zero AI runs |
+| has deal_intelligence | 29 | 17 | unchanged | 46 leads with rich intel |
+| **next_mutual_step** | **0** | **0** | — | **NEW gap — never populated** |
+| **forecasted_close_date** | **0** | **0** | — | **NEW gap** |
+| **deal_narrative** | **0** | **0** | — | **NEW gap (DB column empty, but JSON has it!)** |
+| **close_confidence** | **0** | **0** | — | **NEW gap** |
+
+### Stage-by-stage health
+
+| Stage | Total | w/ meetings | w/ deal_intel | Missing intel |
+|---|---|---|---|---|
+| New Lead | 90 | 2 | 1 | 1 |
+| Meeting Set | 11 | 4 | 2 | 2 |
+| Meeting Held | 44 | 43 | 39 | **5** |
+| Proposal Sent | 4 | 4 | 4 | 0 |
+| Qualified | 1 | 0 | 0 | 0 |
 
 ### Three findings
 
-**Finding 1 — AI-tier is still 0% across 149 of 150 leads.**
-The "Fill all AI gaps in batches" dropdown shipped last session, but no one ran it. `enrichment IS NOT NULL` returns 0 rows for Captarget and 1 for SourceCo (a single legacy artifact). The fix exists in the UI; it just needs one click. This is the single highest-value remaining gap — 596 empty cells (149 × 4 fields) waiting on ~8 minutes / ~$3.
+**Finding 1 — `dealNarrative` exists in JSON for 46 leads but the manual `deal_narrative` column is 0% populated.**
+This is the same pattern we fixed last session for `authority_confirmed` / `decision_blocker`. The synthesizer writes a rich paragraph into `deal_intelligence.dealNarrative` (string, ~200+ chars), but `bulk-promote-transcript-fields` doesn't map it to the `deal_narrative` column. **Free win — just add the mapping.** Expected lift: 46 leads gain a rich deal narrative.
 
-**Finding 2 — 8 residual `target_criteria` rows are borderline-garbage.**
-Cleanup nullified 13 known-bad rows; re-promote re-wrote some with the new tighter parser. But 8 rows still slipped through:
-- CT-064 "Sourcing off-market qualified opportunities" — should be filtered (the `off-market` denylist isn't matching because the parser only checks input message, not already-promoted column values)
-- CT-218 "I am the newly appointed head of deal origination" — self-description, not criteria
-- CT-069 "origination support to connect with leading franchisees" — vague
-- SC-I-006 "Help to connect with off market businesses" — phrase denylist miss
-- SC-T-006 "Understanding how SourceCo aggregates target lists…" — meta question
-- (CT-004, CT-046, SC-T-045 are **legitimate** — keep — they have sector + geography signal)
+**Finding 2 — Late-stage deal-mgmt fields (`next_mutual_step`, `forecasted_close_date`, `close_confidence`) are 0% across 48 Meeting Held / Proposal Sent leads.**
+Inspected `deal_intelligence` keys for 3 sample leads — these fields **don't exist** in the JSON. They'd need to be either:
+- (a) added to `synthesize-deal-intelligence` extraction prompt + then promoted, OR
+- (b) populated manually by reps (this is what most CRMs do for forecasting)
+These are forecasting/governance fields, not enrichment fields. **Recommend (b) — leave for manual entry.** They aren't reliably extractable from a single discovery call. Adding a "Forecast" inline-edit row to the lead panel for late-stage deals would give reps the right surface — but that's a UI feature, not a data backfill.
 
-**Finding 3 — `current_sourcing` ceiling for `competing_against` is real, not fixable.**
-27 SourceCo + 3 Captarget rows have `current_sourcing` text that's purely the canned dropdown ("We're actively sourcing targets", "thesis-building", "exploring options", "mid-process"). The bleed denylist is **correctly rejecting** these as non-competitor information. Coverage looks low (4/74 SC, 14/76 CT) but it's actually 100% of the *addressable* pool. **No action needed.**
+**Finding 3 — AI-tier STILL 0% across 149 of 150 leads. Same blocker as past 4 sessions.**
+The "Fill all AI gaps in batches" dropdown remains unclicked. 596-cell gap, ~8 min user time, ~$3 OpenAI. **No code change needed — just the click.**
 
-### What remains structural (no fix)
-- Captarget `acq_timeline = 0` — form has no `acquisition_strategy` field
-- 4 transcript-tier rows (`authority_confirmed`, `budget_confirmed`, `decision_blocker`, `stall_reason`) — need actual meetings
-- `current_sourcing` filler — correct rejection
+**Finding 4 — 8 stale-transcript leads cannot be processed via current path.**
+Confirmed via JSON inspection: all 8 have `meetings[].transcript_len` of 0 (or absent). They have summaries + nextSteps from Fireflies but no raw transcript text was ever stored. Our `bulk-process-stale-meetings` correctly requires `transcript_len > 200` so it skips them. **This is structural.** To unblock would require a separate "re-fetch transcript from Fireflies API" path — out of scope for this audit, distinct issue.
 
-## Plan
+### Plan
 
-### Step 1 — Run the existing batched AI enrichment (the actual fix)
-The dropdown is wired. Open Pipeline → "Fill SourceCo Dossiers" → **"Fill all AI gaps in batches"**. It will loop `bulk-enrich-sourceco` in batches of 10 until all 149 leads with empty `firm_aum` are processed. Live progress in the button label. ~8 min, ~$3.
+**Step 1 — Add `dealNarrative` → `deal_narrative` mapping to `bulk-promote-transcript-fields`** (the actual fix).
+One-line addition: when `deal_intelligence.dealNarrative` is a non-empty string and `deal_narrative` column is empty, write it. Re-run promotion. Expected: 46 leads gain rich narratives, instantly visible in Deal Room.
 
-This is a **user action**, not a code change. After the run, expect:
-- `firm_aum` 0 → ~90 (60% of 149)
-- `deal_type` 0 → ~90
-- `transaction_type` 0 → ~90
-- `enrichment IS NOT NULL` 1 → ~149
+**Step 2 — User runs the AI batched enrichment** (5th time documenting this — the button is wired and waiting).
+Pipeline → "Fill SourceCo Dossiers" → "Fill all AI gaps in batches".
 
-### Step 2 — Nullify the 5 borderline `target_criteria` rows
-One SQL UPDATE clearing CT-064, CT-069, CT-218, SC-I-006, SC-T-006. The re-promote already ran, so these won't be auto-rewritten unless the message text contains real signal (it doesn't for these 5 — they'll stay correctly empty).
+**Step 3 — Update audit baseline** at `.lovable/audit/coverage-2026-04-17.md` with today's findings: dealNarrative gap identified, late-stage deal-mgmt fields confirmed as manual-only, stale-transcript backlog confirmed structural.
 
-### Step 3 — Tighten the `target_criteria` parser one more notch
-In `src/lib/submissionParser.ts` and `bulk-promote-dossier`, add to `SECTOR_PHRASE_DENYLIST`:
-- `/\bsourcing off.?market\b/i`
-- `/\borigination support\b/i`
-- `/\bunderstanding how (sourceco|captarget)\b/i`
-- `/\bnewly appointed\b/i`
-- `/\bhelp to connect\b/i`
+### Files touched
+- `supabase/functions/bulk-promote-transcript-fields/index.ts` — add 1 mapping for `deal_narrative`
+- `.lovable/audit/coverage-2026-04-17.md` — append
+- One execution of the function after deploy (auto-promotes the 46 narratives)
 
-This prevents future ingest from re-introducing the same patterns.
+### Trade-offs
+- **Win:** 46 leads gain rich, multi-paragraph deal narratives in their Deal Room (currently blank). Free, deterministic, instant.
+- **Cost:** ~5 lines of code.
+- **Risk:** None — `dealNarrative` is already validated as a string by the synthesizer.
+- **Loss:** None.
 
-### Step 4 — Update audit baseline
-Append post-run results to `.lovable/audit/coverage-2026-04-17.md` so we can see the AI-tier jump from 0% → ~60% as a discrete milestone.
-
-## Files touched
-- `src/lib/submissionParser.ts` — 5 phrase additions to denylist
-- `supabase/functions/bulk-promote-dossier/index.ts` — same 5 additions (mirror)
-- One SQL UPDATE — nullify 5 borderline `target_criteria` rows
-- `.lovable/audit/coverage-2026-04-17.md` — append post-batch baseline
-- **No Pipeline.tsx changes needed** — batched dropdown already shipped
-
-## Trade-offs
-- **Win:** AI-tier 0% → ~60% (the long-deferred gap finally closed). Parser hardening prevents the same 5 phrase patterns from re-polluting on future ingest.
-- **Cost:** ~$3 OpenAI one-time. ~8 min user wall time with Pipeline tab open.
-- **Risk:** AI may write low-confidence guesses into manual columns. **Mitigated by** existing `onlyEmptyAum` flag (only fills empty cells) + Sparkles glyph showing AI provenance + reps can override with one click.
-- **Loss:** None — additive only.
-
-## Verification
-1. SQL: `SELECT COUNT(*) FROM leads WHERE firm_aum <> '' AND archived_at IS NULL AND stage NOT IN ('Lost','Revisit/Reconnect','Went Dark','Closed Won')` → ≥80 (was 0)
-2. SQL: `SELECT COUNT(*) FROM leads WHERE enrichment IS NOT NULL AND archived_at IS NULL AND stage NOT IN ('Lost','Revisit/Reconnect','Went Dark','Closed Won')` → ≥140 (was 1)
-3. Open CT-053 (Felipe Esquivel) → Buyer Profile renders Firm AUM with Sparkles glyph instead of "—"
-4. Open SC-T-067 (Imari Sallins) → all 9 Buyer Profile rows show real values
-5. SQL: `target_criteria ILIKE '%off-market%'` returns 0 active rows
+### Verification
+1. SQL: `SELECT COUNT(*) FROM leads WHERE deal_narrative <> '' AND archived_at IS NULL` rises from 0 → 46.
+2. Open CT-071 (Piyush Gupta) → Deal Room shows the 200+ char narrative we previewed.
+3. AI-tier remains 0% until user clicks the dropdown — separate user action.
 
