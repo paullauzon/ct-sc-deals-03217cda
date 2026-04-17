@@ -287,12 +287,14 @@ export function LeadPanelHeader({
                 {slipRisk.label}
               </span>
             )}
-            <span
-              className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground font-medium"
-              title={`Dossier ${dossier.filled} / ${dossier.total} fields populated (manual or auto-derived)`}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent("scroll-to-empty-dossier", { detail: { leadId: lead.id } }))}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/70 font-medium transition-colors"
+              title={`Dossier ${dossier.filled} / ${dossier.total} fields populated — click to jump to the first empty row`}
             >
               Dossier {dossier.pct}%
-            </span>
+            </button>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5 flex-wrap">
             <span>{lead.role}{lead.role && lead.company ? " · " : ""}{lead.company || ""}</span>
