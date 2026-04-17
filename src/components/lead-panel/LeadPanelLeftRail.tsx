@@ -32,19 +32,53 @@ interface Props {
   lead: Lead;
   daysInStage: number;
   save: (updates: Partial<Lead>) => void;
+  onEmail?: () => void;
+  onSchedule?: () => void;
+  onNote?: () => void;
+  onTask?: () => void;
+  onDraftAI?: () => void;
+  onLogCall?: () => void;
+  onEnrich?: () => void;
+  onAskAI?: () => void;
+  onArchive?: () => void;
+  onCopyLink?: () => void;
+  onCopySummary?: () => void;
+  onShowShortcuts?: () => void;
+  draftingAI?: boolean;
+  enriching?: boolean;
 }
 
-export function LeadPanelLeftRail({ lead, daysInStage, save }: Props) {
+export function LeadPanelLeftRail({
+  lead, daysInStage, save,
+  onEmail, onSchedule, onNote, onTask, onDraftAI, onLogCall, onEnrich, onAskAI,
+  onArchive, onCopyLink, onCopySummary, onShowShortcuts, draftingAI, enriching,
+}: Props) {
   const isSourceCo = lead.brand === "SourceCo";
   const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost" || lead.stage === "Went Dark";
 
   return (
-    <aside className="w-[300px] shrink-0 border-r border-border overflow-y-auto bg-background">
+    <aside className="w-[320px] shrink-0 border-r border-border overflow-y-auto bg-background">
       <div className="px-4 pt-3">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">About</span>
       </div>
 
-      <IdentityCard lead={lead} />
+      <IdentityCard
+        lead={lead}
+        onEmail={onEmail}
+        onSchedule={onSchedule}
+        onNote={onNote}
+        onTask={onTask}
+        onDraftAI={onDraftAI}
+        onLogCall={onLogCall}
+        onEnrich={onEnrich}
+        onAskAI={onAskAI}
+        onArchive={onArchive}
+        onCopyLink={onCopyLink}
+        onCopySummary={onCopySummary}
+        onShowShortcuts={onShowShortcuts}
+        draftingAI={draftingAI}
+        enriching={enriching}
+      />
 
       <div className="border-t border-border" />
 

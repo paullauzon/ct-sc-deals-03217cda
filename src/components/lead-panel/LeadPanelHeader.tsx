@@ -96,6 +96,8 @@ interface LeadPanelHeaderProps {
   onAskAI: () => void;
   draftingAI?: boolean;
   enriching?: boolean;
+  /** When true, shows a compact icon-only action strip in the header (used when the left rail is collapsed). */
+  showCompactActions?: boolean;
 }
 
 const LEAD_STATUS_TONE: Record<string, string> = {
@@ -127,7 +129,7 @@ export function LeadPanelHeader({
   lead, daysInStage, mode, hasPrev, hasNext,
   onClose, onPrev, onNext, onEmail, onSchedule, onNote, onTask,
   onDraftAI, onLogCall, onEnrich, onArchive, onChangeStage, onShowShortcuts, onAskAI,
-  draftingAI, enriching,
+  draftingAI, enriching, showCompactActions,
 }: LeadPanelHeaderProps) {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
@@ -402,28 +404,30 @@ export function LeadPanelHeader({
         <ClickableProgressBar currentStage={lead.stage} onAdvance={handleStageClick} />
       </div>
 
-      {/* Quick action bar */}
-      <div className="flex items-center gap-1 px-4 py-1.5 border-t border-border">
-        {quickActions.map(a => {
-          const Icon = a.icon;
-          return (
-            <button
-              key={a.label}
-              type="button"
-              onClick={a.onClick}
-              disabled={a.disabled}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium",
-                "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
-                "transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
-              )}
-            >
-              <Icon className={cn("h-3.5 w-3.5", a.animate && "animate-pulse")} />
-              <span>{a.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Compact action strip — only when left rail is collapsed (actions otherwise live in profile panel) */}
+      {showCompactActions && (
+        <div className="flex items-center gap-0.5 px-4 py-1 border-t border-border">
+          {quickActions.map(a => {
+            const Icon = a.icon;
+            return (
+              <button
+                key={a.label}
+                type="button"
+                onClick={a.onClick}
+                disabled={a.disabled}
+                title={a.label}
+                className={cn(
+                  "w-7 h-7 flex items-center justify-center rounded",
+                  "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
+                  "transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+                )}
+              >
+                <Icon className={cn("h-3.5 w-3.5", a.animate && "animate-pulse")} />
+              </button>
+            );
+          })}
+        </div>
+      )}
       <AlertDialog open={!!pendingStage} onOpenChange={(o) => { if (!o) setPendingStage(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>

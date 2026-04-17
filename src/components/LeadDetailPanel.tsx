@@ -287,6 +287,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         onAskAI={() => setAskOpen(true)}
         draftingAI={draftingAI}
         enriching={enriching}
+        showCompactActions={!leftOpen}
       />
 
       <div className="flex-1 flex min-h-0">
@@ -297,7 +298,23 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         )}
         {leftOpen && (
           <div className="relative">
-            <LeadPanelLeftRail lead={lead} daysInStage={days} save={save} />
+            <LeadPanelLeftRail
+              lead={lead}
+              daysInStage={days}
+              save={save}
+              onEmail={onEmail}
+              onSchedule={onSchedule}
+              onNote={onNote}
+              onTask={onTask}
+              onDraftAI={handleDraftAI}
+              onLogCall={onLogCall}
+              onEnrich={handleEnrich}
+              onAskAI={() => setAskOpen(true)}
+              onArchive={onArchive}
+              onShowShortcuts={() => setShortcutsOpen(true)}
+              draftingAI={draftingAI}
+              enriching={enriching}
+            />
             <button onClick={() => setLeftOpen(false)} className="absolute top-2.5 right-2 text-muted-foreground hover:text-foreground p-1 rounded hover:bg-secondary/40" title="Hide panel">
               <PanelLeftClose className="h-3.5 w-3.5" />
             </button>
