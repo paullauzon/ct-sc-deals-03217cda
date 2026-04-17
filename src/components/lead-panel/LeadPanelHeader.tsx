@@ -112,11 +112,12 @@ function buildDealSummary(lead: Lead, daysInStage: number, lastContact: string |
 export function LeadPanelHeader({
   lead, daysInStage, mode, hasPrev, hasNext,
   onClose, onPrev, onNext, onEmail, onSchedule, onNote, onTask,
-  onDraftAI, onLogCall, onEnrich, onArchive, onChangeStage,
+  onDraftAI, onLogCall, onEnrich, onArchive, onChangeStage, onShowShortcuts,
   draftingAI, enriching,
 }: LeadPanelHeaderProps) {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
+  const [summaryCopied, setSummaryCopied] = useState(false);
   const dealHealth = computeDealHealthScore(lead);
   const coverage = getStakeholderCoverage(lead);
   const lastContact = lastContactLabel(lead);
@@ -128,6 +129,14 @@ export function LeadPanelHeader({
     setCopied(true);
     toast.success("Deal link copied");
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const copySummary = async () => {
+    const text = buildDealSummary(lead, daysInStage, lastContact);
+    await navigator.clipboard.writeText(text);
+    setSummaryCopied(true);
+    toast.success("Deal summary copied");
+    setTimeout(() => setSummaryCopied(false), 1500);
   };
 
   const handleStageClick = async (stage: LeadStage) => {
