@@ -110,6 +110,10 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
       const tag = el.tagName.toLowerCase();
       return tag === "input" || tag === "textarea" || el.isContentEditable;
     };
+    const hasTextSelection = () => {
+      const sel = window.getSelection?.();
+      return !!(sel && sel.toString().trim().length > 0);
+    };
     const handler = (e: KeyboardEvent) => {
       if (isTyping(e.target)) return;
       // Cmd/Ctrl shortcuts
@@ -118,8 +122,12 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         if (e.key === "]") { e.preventDefault(); onNext(); return; }
         return;
       }
+      // `?` (Shift+/) opens cheatsheet — handled before the shift early-return
+      if (e.key === "?") { e.preventDefault(); setShortcutsOpen(true); return; }
       // Modifier-free single keys (avoid clashing with cmd+k)
       if (e.altKey || e.shiftKey) return;
+      // Don't hijack tab keys when user is selecting text (Cmd-C UX)
+      if (hasTextSelection()) return;
       switch (e.key.toLowerCase()) {
         case "a": setActiveTab("activity"); break;
         case "c": setActiveTab("actions"); break;
@@ -128,7 +136,6 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         case "i": setActiveTab("intelligence"); break;
         case "f": setActiveTab("files"); break;
         case "n": setActiveTab("notes"); break;
-        case "?": setShortcutsOpen(true); break;
         default: return;
       }
       e.preventDefault();
@@ -137,6 +144,20 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, idx, order.length]);
+
+  // Keep emails tab badge in sync with realtime inserts
+  useEffect(() => {
+    if (!activeLeadId) return;
+    const channel = supabase
+      .channel(`panel-email-count-${activeLeadId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "lead_emails", filter: `lead_id=eq.${activeLeadId}` },
+        () => setEmailCount(c => c + 1)
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [activeLeadId]);
 
   const handleEnrich = useCallback(async () => {
     if (!lead || lead.enrichmentStatus === "running") return;
@@ -321,7 +342,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
                 <MeetingsSection lead={lead} />
               </TabsContent>
               <TabsContent value="emails" className="p-6 mt-0 max-w-4xl mx-auto">
-                <EmailsSection leadId={lead.id} />
+                <EmailsSection leadId={lead.id} onCompose={onEmail} />
               </TabsContent>
               <TabsContent value="intelligence" className="p-6 mt-0 max-w-5xl mx-auto">
                 {lead.dealIntelligence ? (

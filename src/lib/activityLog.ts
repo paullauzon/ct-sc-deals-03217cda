@@ -29,6 +29,31 @@ export async function logActivity(
   if (error) console.error("Activity log error:", error);
 }
 
+/**
+ * Bumps `last_contacted` on any stakeholder whose email matches one of the supplied addresses.
+ * Used by Log Call + Email Compose flows so the stakeholder map stays current automatically.
+ */
+export async function bumpStakeholderContact(leadId: string, emails: string[]) {
+  const cleaned = emails.map(e => e?.trim().toLowerCase()).filter(Boolean) as string[];
+  if (cleaned.length === 0) return;
+  try {
+    const { data } = await (supabase as any)
+      .from("lead_stakeholders")
+      .select("id, email, name")
+      .eq("lead_id", leadId);
+    if (!data || data.length === 0) return;
+    const now = new Date().toISOString();
+    const matches = (data as { id: string; email: string; name: string }[])
+      .filter(s => s.email && cleaned.includes(s.email.toLowerCase()));
+    if (matches.length === 0) return;
+    await Promise.all(matches.map(m =>
+      (supabase as any).from("lead_stakeholders").update({ last_contacted: now, updated_at: now }).eq("id", m.id)
+    ));
+  } catch (err) {
+    console.error("bumpStakeholderContact error:", err);
+  }
+}
+
 export async function fetchActivityLog(leadId: string): Promise<ActivityLogEntry[]> {
   const { data, error } = await supabase
     .from("lead_activity_log" as any)

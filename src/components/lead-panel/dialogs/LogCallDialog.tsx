@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { logActivity } from "@/lib/activityLog";
+import { logActivity, bumpStakeholderContact } from "@/lib/activityLog";
 import { toast } from "sonner";
 
 const OUTCOMES = ["Connected", "Voicemail", "No Answer", "Bad Number"] as const;
@@ -44,7 +44,11 @@ export function LogCallDialog({ lead, open, onOpenChange, save }: Props) {
       if (duration) parts.push(`${duration}m`);
       if (s) parts.push(s);
       await logActivity(lead.id, "field_update", `Call logged: ${parts.join(" · ")}`);
-      save({ lastContactDate: new Date().toISOString().split("T")[0] });
+      // Connected calls bump last contact + stakeholder timestamp where applicable
+      if (outcome === "Connected") {
+        save({ lastContactDate: new Date().toISOString().split("T")[0] });
+        if (lead.email) await bumpStakeholderContact(lead.id, [lead.email]);
+      }
       toast.success("Call logged");
       onOpenChange(false);
     } finally {

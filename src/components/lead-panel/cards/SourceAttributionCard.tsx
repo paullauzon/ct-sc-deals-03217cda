@@ -16,7 +16,27 @@ export function SourceAttributionCard({ lead }: Props) {
   const subs = (lead.submissions || []).filter(s => s.dateSubmitted).slice().sort(
     (a, b) => new Date(a.dateSubmitted).getTime() - new Date(b.dateSubmitted).getTime()
   );
-  if (subs.length === 0) return null;
+
+  // Calendly-only or no-touch fallback so the card never silently disappears
+  if (subs.length === 0) {
+    const calendlyDate = lead.calendlyBookedAt || lead.meetingDate || "";
+    const created = lead.dateSubmitted || "";
+    const fallbackSource = calendlyDate ? "Calendly Booking" : (lead.source || created ? lead.source || "Direct entry" : "—");
+    const fallbackDate = calendlyDate || created;
+    return (
+      <CollapsibleCard
+        title="Source & Attribution"
+        icon={<Compass className="h-3.5 w-3.5" />}
+        defaultOpen={false}
+      >
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">First touch</p>
+          <p className="text-xs font-medium mt-0.5">{fallbackSource}</p>
+          {fallbackDate && <p className="text-[10px] text-muted-foreground tabular-nums">{fmt(fallbackDate)}</p>}
+        </div>
+      </CollapsibleCard>
+    );
+  }
 
   const first = subs[0];
   const latest = subs[subs.length - 1];

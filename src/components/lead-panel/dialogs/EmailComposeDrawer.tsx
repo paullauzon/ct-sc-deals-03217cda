@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Lead } from "@/types/lead";
+import { Lead, Stakeholder } from "@/types/lead";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Loader2, Save, Copy, Check } from "lucide-react";
+import { Sparkles, Loader2, Save, Copy, Check, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { logActivity } from "@/lib/activityLog";
+import { logActivity, bumpStakeholderContact } from "@/lib/activityLog";
 import { toast } from "sonner";
 
 interface Props {
@@ -18,6 +18,19 @@ interface Props {
   presetAction?: "follow-up" | "default";
 }
 
+async function tryCopy(text: string): Promise<boolean> {
+  try { await navigator.clipboard.writeText(text); return true; } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch { return false; }
+  }
+}
+
 export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetAction }: Props) {
   const [to, setTo] = useState(lead.email || "");
   const [subject, setSubject] = useState("");
@@ -25,18 +38,35 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
   const [generating, setGenerating] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
 
   useEffect(() => {
     if (open) {
       setTo(lead.email || "");
       setSubject("");
       setBody("");
+      // Load stakeholders for the chip strip
+      (async () => {
+        const { data } = await (supabase as any)
+          .from("lead_stakeholders")
+          .select("*")
+          .eq("lead_id", lead.id);
+        setStakeholders((data || []) as Stakeholder[]);
+      })();
       if (presetAction === "follow-up") {
         setTimeout(() => generate("default"), 100);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead.id]);
+
+  const addRecipient = (email: string) => {
+    if (!email) return;
+    const list = to.split(/[,;]\s*/).map(s => s.trim()).filter(Boolean);
+    if (list.includes(email)) return;
+    list.push(email);
+    setTo(list.join(", "));
+  };
 
   const generate = async (actionType: "default" | "follow-up" = "default") => {
     setGenerating(true);
@@ -94,13 +124,21 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
 
   const copyAndMark = async () => {
     const content = `Subject: ${subject}\n\n${body}`;
-    await navigator.clipboard.writeText(content);
+    const ok = await tryCopy(content);
+    if (!ok) { toast.error("Couldn't copy — your browser blocked clipboard access"); return; }
     setCopied(true);
     save({ lastContactDate: new Date().toISOString().split("T")[0] });
     await logActivity(lead.id, "field_update", `Email composed & copied: ${subject}`);
+    // Auto-bump stakeholder last_contacted for any matching recipients
+    const recipients = to.split(/[,;]\s*/).map(s => s.trim()).filter(Boolean);
+    if (recipients.length > 0) {
+      await bumpStakeholderContact(lead.id, recipients);
+    }
     setTimeout(() => setCopied(false), 1500);
     toast.success("Copied to clipboard · last contact bumped");
   };
+
+  const stakeholderOptions = stakeholders.filter(s => s.email && s.email.trim());
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -112,6 +150,24 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
           <div>
             <label className="text-[10px] uppercase tracking-wider text-muted-foreground">To</label>
             <Input value={to} onChange={(e) => setTo(e.target.value)} className="h-9 text-sm mt-1" />
+            {stakeholderOptions.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                <span className="text-[10px] text-muted-foreground/70 self-center mr-0.5">Add:</span>
+                {stakeholderOptions.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => addRecipient(s.email)}
+                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-secondary text-foreground/80 hover:bg-secondary/80 transition-colors"
+                    title={`Add ${s.email}`}
+                  >
+                    <Plus className="h-2.5 w-2.5" />
+                    {s.name || s.email}
+                    {s.role && <span className="text-muted-foreground">· {s.role}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Subject</label>

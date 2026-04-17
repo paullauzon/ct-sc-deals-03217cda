@@ -16,7 +16,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Mail, Copy, Check, CheckCircle, X, Loader2, User, Calendar } from "lucide-react";
+import { FileText, Mail, Copy, Check, CheckCircle, X, Loader2, User, Calendar, CalendarCheck, ExternalLink } from "lucide-react";
 
 // ─── Suggested Lead Update Types ───
 
@@ -252,8 +252,74 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
     }
   };
 
+  // Detect a future booked meeting (Calendly or manually-set meetingDate)
+  const upcoming = (() => {
+    const candidates: { date: string; title: string; duration?: number; type?: string; url?: string }[] = [];
+    const now = Date.now();
+    if (lead.meetingDate) {
+      const t = new Date(lead.meetingDate).getTime();
+      if (!isNaN(t) && t > now) {
+        candidates.push({
+          date: lead.meetingDate,
+          title: lead.calendlyEventName || "Scheduled meeting",
+          duration: lead.calendlyEventDuration ?? undefined,
+          type: lead.calendlyEventType || undefined,
+        });
+      }
+    }
+    return candidates[0] || null;
+  })();
+
+  const formatUpcoming = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      const sameDay = d.toDateString() === now.toDateString();
+      const diffMs = d.getTime() - now.getTime();
+      const diffDays = Math.floor(diffMs / 86400000);
+      const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      const date = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+      const rel = sameDay ? "Today" : diffDays === 1 ? "Tomorrow" : diffDays < 7 ? `In ${diffDays}d` : null;
+      return rel ? `${rel} · ${time}` : `${date} · ${time}`;
+    } catch { return iso; }
+  };
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {upcoming && (
+        <div className="border border-border rounded-lg p-3 bg-secondary/30">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                <CalendarCheck className="h-3 w-3" /> Upcoming Meeting
+              </div>
+              <p className="text-sm font-semibold mt-1 truncate">{upcoming.title}</p>
+              <p className="text-xs text-muted-foreground tabular-nums mt-0.5">
+                {formatUpcoming(upcoming.date)}
+                {upcoming.duration ? ` · ${upcoming.duration} min` : ""}
+                {upcoming.type ? ` · ${upcoming.type}` : ""}
+              </p>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button variant="outline" size="sm" onClick={handleGeneratePrep} disabled={generatingPrep || meetings.length === 0} className="h-7 text-xs gap-1">
+                <FileText className="h-3 w-3" />
+                {generatingPrep ? "Generating…" : "Prep brief"}
+              </Button>
+              {lead.calendlyEventType && (
+                <a
+                  href={lead.calendlyEventType.startsWith("http") ? lead.calendlyEventType : `https://${lead.calendlyEventType}`}
+                  target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1 h-7 px-2 text-xs text-muted-foreground hover:text-foreground border border-border rounded transition-colors"
+                  title="Open in Calendly"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between border-b border-border pb-1">
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
           Meetings ({meetings.filter(m => !m.noRecording).length})
