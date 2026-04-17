@@ -284,6 +284,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         onArchive={onArchive}
         onChangeStage={onChangeStage}
         onShowShortcuts={() => setShortcutsOpen(true)}
+        onAskAI={() => setAskOpen(true)}
         draftingAI={draftingAI}
         enriching={enriching}
       />

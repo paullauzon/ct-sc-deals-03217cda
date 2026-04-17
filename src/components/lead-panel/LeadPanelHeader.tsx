@@ -209,6 +209,7 @@ export function LeadPanelHeader({
     { icon: Zap, label: draftingAI ? "Drafting…" : "Draft AI", onClick: onDraftAI, disabled: draftingAI, animate: draftingAI },
     { icon: Phone, label: "Log call", onClick: onLogCall },
     { icon: Sparkles, label: enriching ? "Enriching…" : "Enrich", onClick: onEnrich, disabled: enriching, animate: enriching },
+    { icon: Sparkles, label: "Ask AI", onClick: onAskAI },
   ];
 
   return (
