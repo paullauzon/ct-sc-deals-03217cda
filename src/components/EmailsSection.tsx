@@ -4,7 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check } from "lucide-react";
+import { Lead } from "@/types/lead";
+import { detectEmailObjections, DetectedObjection } from "@/lib/meetingCoach";
+import { toast } from "sonner";
 
 interface LeadEmail {
   id: string;
@@ -74,9 +78,16 @@ function groupByThread(emails: LeadEmail[]): ThreadGroup[] {
     .sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
 }
 
-export function EmailsSection({ leadId, onCompose }: { leadId: string; onCompose?: () => void }) {
+interface SuggestedResponse {
+  approach: string;
+  subject: string;
+  body: string;
+}
+
+export function EmailsSection({ leadId, lead, onCompose }: { leadId: string; lead?: Lead; onCompose?: () => void }) {
   const [emails, setEmails] = useState<LeadEmail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [responseDialog, setResponseDialog] = useState<{ email: LeadEmail; objections: DetectedObjection[] } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,19 +171,41 @@ export function EmailsSection({ leadId, onCompose }: { leadId: string; onCompose
       <ScrollArea className="max-h-[480px]">
         <div className="space-y-1.5">
           {threads.map((thread) => (
-            <ThreadCard key={thread.threadId} thread={thread} />
+            <ThreadCard
+              key={thread.threadId}
+              thread={thread}
+              onSuggestResponses={(email, objections) => setResponseDialog({ email, objections })}
+            />
           ))}
         </div>
       </ScrollArea>
+
+      {responseDialog && (
+        <SuggestResponsesDialog
+          email={responseDialog.email}
+          objections={responseDialog.objections}
+          lead={lead}
+          onClose={() => setResponseDialog(null)}
+          onUseDraft={(draft) => {
+            // Copy to clipboard so user can paste in Compose
+            navigator.clipboard?.writeText(draft.body).then(
+              () => toast.success("Draft copied", { description: "Paste it into Compose to send." }),
+              () => toast.info("Draft ready", { description: draft.body.slice(0, 60) + "…" })
+            );
+            setResponseDialog(null);
+            if (onCompose) onCompose();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function ThreadCard({ thread }: { thread: ThreadGroup }) {
+function ThreadCard({ thread, onSuggestResponses }: { thread: ThreadGroup; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void }) {
   const isSingleEmail = thread.emails.length === 1;
 
   if (isSingleEmail) {
-    return <EmailRow email={thread.emails[0]} />;
+    return <EmailRow email={thread.emails[0]} onSuggestResponses={onSuggestResponses} />;
   }
 
   return (
@@ -197,7 +230,7 @@ function ThreadCard({ thread }: { thread: ThreadGroup }) {
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 border-l-2 border-border ml-3 mt-1 mb-2">
           {thread.emails.map((email) => (
-            <EmailRow key={email.id} email={email} compact />
+            <EmailRow key={email.id} email={email} compact onSuggestResponses={onSuggestResponses} />
           ))}
         </div>
       </CollapsibleContent>
@@ -205,7 +238,7 @@ function ThreadCard({ thread }: { thread: ThreadGroup }) {
   );
 }
 
-function EmailRow({ email, compact }: { email: LeadEmail; compact?: boolean }) {
+function EmailRow({ email, compact, onSuggestResponses }: { email: LeadEmail; compact?: boolean; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void }) {
   const [expanded, setExpanded] = useState(false);
   const isOutbound = email.direction === "outbound";
   const Icon = isOutbound ? ArrowUpRight : ArrowDownLeft;
@@ -217,6 +250,13 @@ function EmailRow({ email, compact }: { email: LeadEmail; compact?: boolean }) {
   const hasFullBody = !!(email.body_html || email.body_text);
   const opensCount = Array.isArray(email.opens) ? email.opens.length : (typeof email.opens === "number" ? email.opens : 0);
   const clicksCount = Array.isArray(email.clicks) ? email.clicks.length : (typeof email.clicks === "number" ? email.clicks : 0);
+
+  // Detect objections in inbound emails only
+  const objections: DetectedObjection[] =
+    !isOutbound && onSuggestResponses
+      ? detectEmailObjections(`${email.subject || ""}\n${email.body_text || email.body_preview || ""}`)
+      : [];
+  const hasObjections = objections.length > 0;
 
   return (
     <div className={`rounded-md hover:bg-secondary/30 transition-colors ${compact ? "py-1" : ""}`}>
@@ -251,6 +291,11 @@ function EmailRow({ email, compact }: { email: LeadEmail; compact?: boolean }) {
             {clicksCount > 0 && isOutbound && (
               <Badge variant="outline" className="text-[9px] shrink-0 gap-0.5" title={`${clicksCount} click${clicksCount !== 1 ? "s" : ""}`}>
                 <MousePointerClick className="h-2.5 w-2.5" />{clicksCount}
+              </Badge>
+            )}
+            {hasObjections && (
+              <Badge variant="outline" className="text-[9px] shrink-0 gap-0.5" title={`Objection signals: ${objections.map(o => o.label).join(", ")}`}>
+                <AlertCircle className="h-2.5 w-2.5" />{objections[0].label}
               </Badge>
             )}
             {hasAttachments && (
@@ -294,8 +339,135 @@ function EmailRow({ email, compact }: { email: LeadEmail; compact?: boolean }) {
               {email.body_text}
             </pre>
           )}
+          {hasObjections && onSuggestResponses && (
+            <div className="mt-2 flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1.5"
+                onClick={(e) => { e.stopPropagation(); onSuggestResponses(email, objections); }}
+              >
+                <Sparkles className="h-3 w-3" /> Suggest 3 responses
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function SuggestResponsesDialog({
+  email,
+  objections,
+  lead,
+  onClose,
+  onUseDraft,
+}: {
+  email: LeadEmail;
+  objections: DetectedObjection[];
+  lead?: Lead;
+  onClose: () => void;
+  onUseDraft: (draft: SuggestedResponse) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [responses, setResponses] = useState<SuggestedResponse[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("suggest-email-responses", {
+          body: {
+            emailSubject: email.subject,
+            emailBody: email.body_text || email.body_preview || "",
+            fromName: email.from_name || email.from_address,
+            detectedObjections: objections,
+            leadContext: lead ? {
+              name: lead.name,
+              company: lead.company,
+              role: lead.role,
+              brand: lead.brand,
+              stage: lead.stage,
+              serviceInterest: lead.serviceInterest,
+            } : undefined,
+          },
+        });
+        if (cancelled) return;
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+        setResponses(data?.responses || []);
+      } catch (e: any) {
+        if (!cancelled) setError(e.message || "Failed to generate responses");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [email.id]);
+
+  const handleCopy = (r: SuggestedResponse, idx: number) => {
+    navigator.clipboard?.writeText(r.body).then(() => {
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(null), 1500);
+    });
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Sparkles className="h-4 w-4" /> Suggested responses
+          </DialogTitle>
+        </DialogHeader>
+        <div className="text-xs text-muted-foreground -mt-2 mb-1">
+          Detected: <span className="font-medium text-foreground">{objections.map(o => o.label).join(", ")}</span>
+        </div>
+
+        {loading && (
+          <div className="py-8 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" /> Drafting responses…
+          </div>
+        )}
+
+        {error && (
+          <div className="py-4 text-center text-xs text-destructive">{error}</div>
+        )}
+
+        {!loading && !error && responses.length === 0 && (
+          <div className="py-4 text-center text-xs text-muted-foreground">No responses returned.</div>
+        )}
+
+        {!loading && responses.length > 0 && (
+          <div className="space-y-3">
+            {responses.map((r, i) => (
+              <div key={i} className="border border-border rounded-md p-3 hover:bg-secondary/20 transition-colors">
+                <div className="flex items-center justify-between mb-1.5">
+                  <Badge variant="outline" className="text-[10px]">{r.approach}</Badge>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => handleCopy(r, i)}>
+                      {copiedIdx === i ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                      {copiedIdx === i ? "Copied" : "Copy"}
+                    </Button>
+                    <Button variant="default" size="sm" className="h-7 text-xs gap-1" onClick={() => onUseDraft(r)}>
+                      Use
+                    </Button>
+                  </div>
+                </div>
+                <div className="text-[11px] text-muted-foreground mb-1 italic">Re: {r.subject}</div>
+                <p className="text-xs leading-relaxed whitespace-pre-line">{r.body}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

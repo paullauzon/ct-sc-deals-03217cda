@@ -358,7 +358,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
                 <MeetingsSection lead={lead} />
               </TabsContent>
               <TabsContent value="emails" className="p-6 mt-0 max-w-4xl mx-auto">
-                <EmailsSection leadId={lead.id} onCompose={onEmail} />
+                <EmailsSection leadId={lead.id} lead={lead} onCompose={onEmail} />
               </TabsContent>
               <TabsContent value="intelligence" className="p-6 mt-0 max-w-5xl mx-auto">
                 {lead.dealIntelligence ? (
