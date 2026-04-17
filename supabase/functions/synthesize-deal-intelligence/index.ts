@@ -331,7 +331,7 @@ Be SPECIFIC — use names, dates, inferred evidence. Never be generic or vague. 
                 required: [
                   "dealNarrative", "stakeholderMap", "objectionTracker", "actionItemTracker",
                   "momentumSignals", "keyMilestones", "riskRegister", "competitiveTimeline",
-                  "buyingCommittee", "dealStageEvidence",
+                  "buyingCommittee", "dealStageEvidence", "serviceInterest",
                   "powerDynamics", "psychologicalProfile", "winStrategy",
                 ],
                 additionalProperties: false,
