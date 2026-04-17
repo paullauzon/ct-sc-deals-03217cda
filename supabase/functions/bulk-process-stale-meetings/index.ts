@@ -278,27 +278,50 @@ async function reSynthAndPromote(supabase: any, url: string, key: string, lead: 
   }
 
   // Promote buyingCommittee → lead_stakeholders (only if currently empty)
+  // buyingCommittee is an OBJECT: { decisionMaker, champion, influencers[], blockers[], unknowns[] }
   let stakeholdersWritten = 0;
-  const committee = Array.isArray(dealIntelligence?.buyingCommittee) ? dealIntelligence.buyingCommittee : [];
-  if (committee.length > 0) {
+  const committee = dealIntelligence?.buyingCommittee;
+  if (committee && typeof committee === "object" && !Array.isArray(committee)) {
     const { data: existing } = await supabase
       .from("lead_stakeholders")
       .select("id")
       .eq("lead_id", lead.id)
       .limit(1);
     if (!existing || existing.length === 0) {
-      const rows = committee
-        .filter((c: any) => c?.name && typeof c.name === "string" && c.name.trim())
-        .map((c: any) => ({
+      const rows: any[] = [];
+      const seen = new Set<string>();
+      const push = (rawName: unknown, role: string, sentiment: string) => {
+        if (!rawName || typeof rawName !== "string") return;
+        const name = rawName.trim().slice(0, 200);
+        if (!name) return;
+        const key = name.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        rows.push({
           lead_id: lead.id,
-          name: String(c.name).trim().slice(0, 200),
-          role: String(c.role || c.title || "").trim().slice(0, 200),
-          email: String(c.email || "").trim().slice(0, 200),
-          notes: String(c.notes || c.influence || "").trim().slice(0, 1000),
-          sentiment: ["positive", "neutral", "negative"].includes(String(c.sentiment || "").toLowerCase())
-            ? String(c.sentiment).toLowerCase()
-            : "neutral",
-        }));
+          name,
+          role,
+          email: "",
+          notes: "",
+          sentiment,
+        });
+      };
+      // Singletons
+      push(committee.decisionMaker, "Decision Maker", "neutral");
+      push(committee.champion, "Champion", "positive");
+      push(committee.economicBuyer, "Economic Buyer", "neutral");
+      push(committee.technicalBuyer, "Technical Buyer", "neutral");
+      // Arrays of strings
+      const pushArr = (arr: unknown, role: string, sentiment: string) => {
+        if (!Array.isArray(arr)) return;
+        for (const item of arr) {
+          if (typeof item === "string") push(item, role, sentiment);
+          else if (item && typeof item === "object" && (item as any).name) push((item as any).name, role, sentiment);
+        }
+      };
+      pushArr(committee.influencers, "Influencer", "neutral");
+      pushArr(committee.blockers, "Blocker", "negative");
+      pushArr(committee.unknowns, "Unknown Role", "neutral");
       if (rows.length > 0) {
         const { error: insErr } = await supabase.from("lead_stakeholders").insert(rows);
         if (!insErr) stakeholdersWritten = rows.length;
@@ -340,8 +363,18 @@ Deno.serve(async (req) => {
 
       // Filter to those that actually need work
       const candidates = (leads || []).filter((l: any) => {
-        const hasSI = !!l?.deal_intelligence?.serviceInterest;
-        const hasCommittee = Array.isArray(l?.deal_intelligence?.buyingCommittee) && l.deal_intelligence.buyingCommittee.length > 0;
+        const intel = l?.deal_intelligence;
+        const hasSI = !!intel?.serviceInterest;
+        const committee = intel?.buyingCommittee;
+        const hasCommittee = !!committee && (
+          Array.isArray(committee) ? committee.length > 0 :
+          typeof committee === "object" && (
+            committee.decisionMaker || committee.champion || committee.economicBuyer || committee.technicalBuyer ||
+            (Array.isArray(committee.influencers) && committee.influencers.length > 0) ||
+            (Array.isArray(committee.blockers) && committee.blockers.length > 0) ||
+            (Array.isArray(committee.unknowns) && committee.unknowns.length > 0)
+          )
+        );
         const currentSvc = (l.service_interest || "").trim();
         return (!hasSI && (!currentSvc || currentSvc === "TBD")) || hasCommittee;
       });

@@ -363,7 +363,15 @@ Deno.serve(async (req) => {
       target_revenue: (body.targetRevenue as string) || parseRevenueFromText(body.message as string) || "",
       geography: (body.geography as string) || parseGeographyFromText(body.message as string) || "",
       current_sourcing: submission.currentSourcing,
-      pre_screen_completed: false,
+      // Auto-flip pre_screen_completed when first submission carries enough dossier signal.
+      // Per mem://features/deal-gating-prescreen, qualifying gates need minimum dossier coverage.
+      pre_screen_completed: !!(
+        ((body.buyerType as string) || parseFirmTypeFromRole(body.role as string)) ||
+        (body.targetCriteria as string) || parseSectorFromText(body.message as string) ||
+        (body.targetRevenue as string) || parseRevenueFromText(body.message as string) ||
+        (body.geography as string) || parseGeographyFromText(body.message as string) ||
+        body.acqTimeline || submission.acquisitionStrategy
+      ),
       is_duplicate: false,
       duplicate_of: "",
       hear_about_us: body.hearAboutUs || "",

@@ -192,6 +192,43 @@ export function Pipeline() {
     return () => { cancelled = true; };
   }, [reEnriching, leads.length]);
 
+  // Auto-trigger service-interest re-synth once per session if backlog is large.
+  // Lifts service_interest from TBD without requiring a manual dropdown click.
+  useEffect(() => {
+    const FLAG = "auto-resynth-svc-interest-fired";
+    if (sessionStorage.getItem(FLAG)) return;
+    let cancelled = false;
+    (async () => {
+      // Count active leads with deal_intelligence but missing serviceInterest key
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, deal_intelligence")
+        .is("archived_at", null)
+        .not("stage", "in", "(Lost,Went Dark,Closed Won,Revisit/Reconnect)")
+        .not("deal_intelligence", "is", null);
+      if (cancelled || error) return;
+      const backlog = (data || []).filter((l: any) => !l?.deal_intelligence?.serviceInterest).length;
+      if (backlog < 20) return;
+      sessionStorage.setItem(FLAG, "1");
+      console.log(`[auto-resynth] Triggering for ${backlog} leads missing serviceInterest`);
+      try {
+        const { data: res } = await supabase.functions.invoke("bulk-process-stale-meetings", {
+          body: { mode: "service_interest", limit: 50 },
+        });
+        const s = res?.service_interest_written ?? 0;
+        const st = res?.stakeholders_written ?? 0;
+        if (s > 0 || st > 0) {
+          toast.success(`Auto-filled ${s} service interest · ${st} stakeholder${st === 1 ? "" : "s"} from transcripts`);
+          await refreshLeads();
+        }
+      } catch (e) {
+        console.error("[auto-resynth] failed:", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [refreshLeads]);
+
+
   // Hoisted: triggered both from the dropdown item and the persistent banner
   const runBatchedAIEnrichment = useCallback(async () => {
     if (enrichProgress) {
@@ -534,6 +571,37 @@ export function Pipeline() {
                 >
                   <span className="text-xs font-medium">Re-extract service interest + stakeholders</span>
                   <span className="text-[10px] text-muted-foreground">For leads with intel but missing serviceInterest · also promotes buyingCommittee → Stakeholder Card · ~$0.50 for 46 leads</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="flex-col items-start gap-0.5 py-2 cursor-pointer"
+                  onClick={async () => {
+                    toast.info("Backfilling LinkedIn URLs for leads missing them...");
+                    try {
+                      const { data: missing } = await supabase
+                        .from("leads")
+                        .select("id")
+                        .is("archived_at", null)
+                        .or("linkedin_url.is.null,linkedin_url.eq.")
+                        .not("stage", "in", "(Lost,Went Dark,Closed Won,Revisit/Reconnect)")
+                        .limit(60);
+                      const ids = (missing || []).map((r: any) => r.id);
+                      if (ids.length === 0) {
+                        toast.success("All active leads already have LinkedIn URLs.");
+                        return;
+                      }
+                      const { data, error } = await supabase.functions.invoke("backfill-linkedin", { body: { leadIds: ids } });
+                      if (error) throw error;
+                      const found = data?.found ?? data?.matched ?? data?.successful ?? 0;
+                      toast.success(`LinkedIn backfill: ${found} of ${ids.length} found · runs in background`);
+                      await refreshLeads();
+                    } catch (err) {
+                      toast.error("LinkedIn backfill failed: " + (err as Error).message);
+                    }
+                  }}
+                >
+                  <span className="text-xs font-medium">Backfill LinkedIn URLs</span>
+                  <span className="text-[10px] text-muted-foreground">For active leads missing linkedin_url · runs AI Search Agent · ~$1 for 55 leads</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
