@@ -95,7 +95,7 @@ function EmailActivityCard({ leadId }: { leadId: string }) {
 
 export function LeadPanelRightRail({ lead, allLeads, enriching, onEnrich, save }: LeadPanelRightRailProps) {
   return (
-    <aside className="w-[320px] shrink-0 border-l border-border overflow-y-auto bg-background">
+    <aside className="w-[320px] shrink-0 border-l border-border overflow-y-auto bg-background h-full">
       <div className="px-4 pt-3 pb-1">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Signals</span>
       </div>
