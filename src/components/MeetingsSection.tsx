@@ -16,7 +16,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Mail, Copy, Check, CheckCircle, X, Loader2, User, Calendar, CalendarCheck, ExternalLink } from "lucide-react";
+import { FileText, Mail, Copy, Check, CheckCircle, X, Loader2, User, Calendar, CalendarCheck, ExternalLink, Maximize2 } from "lucide-react";
+import { TranscriptDrawer } from "@/components/lead-panel/dialogs/TranscriptDrawer";
 
 // ─── Suggested Lead Update Types ───
 
@@ -121,6 +122,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
   const [followUpMeetingId, setFollowUpMeetingId] = useState<string | null>(null);
   const [generatingFollowUp, setGeneratingFollowUp] = useState(false);
   const [reprocessingMeetingId, setReprocessingMeetingId] = useState<string | null>(null);
+  const [transcriptMeeting, setTranscriptMeeting] = useState<Meeting | null>(null);
 
   const searching = leadJobs[lead.id]?.searching ?? false;
 
@@ -252,16 +254,29 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
     }
   };
 
-  // Detect a future booked meeting (Calendly or manually-set meetingDate)
+  // Detect a future booked meeting (Calendly or manually-set meetingDate). Prefer
+  // calendly_booked_at when meetingDate isn't set, since the cron sync sometimes
+  // populates calendly fields before meetingDate is mirrored.
   const upcoming = (() => {
-    const candidates: { date: string; title: string; duration?: number; type?: string; url?: string }[] = [];
     const now = Date.now();
+    const candidates: { date: string; title: string; duration?: number; type?: string }[] = [];
     if (lead.meetingDate) {
       const t = new Date(lead.meetingDate).getTime();
       if (!isNaN(t) && t > now) {
         candidates.push({
           date: lead.meetingDate,
           title: lead.calendlyEventName || "Scheduled meeting",
+          duration: lead.calendlyEventDuration ?? undefined,
+          type: lead.calendlyEventType || undefined,
+        });
+      }
+    }
+    if (candidates.length === 0 && lead.calendlyBookedAt) {
+      const t = new Date(lead.calendlyBookedAt).getTime();
+      if (!isNaN(t) && t > now) {
+        candidates.push({
+          date: lead.calendlyBookedAt,
+          title: lead.calendlyEventName || "Calendly meeting",
           duration: lead.calendlyEventDuration ?? undefined,
           type: lead.calendlyEventType || undefined,
         });
@@ -305,9 +320,9 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
                 <FileText className="h-3 w-3" />
                 {generatingPrep ? "Generating…" : "Prep brief"}
               </Button>
-              {lead.calendlyEventType && (
+              {lead.calendlyEventType && lead.calendlyEventType.startsWith("http") && (
                 <a
-                  href={lead.calendlyEventType.startsWith("http") ? lead.calendlyEventType : `https://${lead.calendlyEventType}`}
+                  href={lead.calendlyEventType}
                   target="_blank" rel="noreferrer"
                   className="inline-flex items-center gap-1 h-7 px-2 text-xs text-muted-foreground hover:text-foreground border border-border rounded transition-colors"
                   title="Open in Calendly"
@@ -381,6 +396,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
                 generatingFollowUp={generatingFollowUp && followUpMeetingId === meeting.id}
                 onReprocess={() => handleReprocess(meeting)}
                 reprocessing={reprocessingMeetingId === meeting.id}
+                onOpenTranscript={() => setTranscriptMeeting(meeting)}
               />
             ))}
         </div>
@@ -422,6 +438,13 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
 
       {/* Follow-Up Email Dialog */}
       <FollowUpDialog open={showFollowUpDialog} onOpenChange={setShowFollowUpDialog} email={followUpEmail} loading={generatingFollowUp} />
+
+      {/* Inline Fireflies transcript drawer */}
+      <TranscriptDrawer
+        meeting={transcriptMeeting}
+        open={!!transcriptMeeting}
+        onOpenChange={(o) => { if (!o) setTranscriptMeeting(null); }}
+      />
     </div>
   );
 }
@@ -783,10 +806,11 @@ function TagList({ label, items, emoji, variant }: { label: string; items?: stri
 
 // ─── Meeting Card ───
 
-function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, onReprocess, reprocessing }: { meeting: Meeting; onRemove: () => void; onDraftFollowUp: () => void; generatingFollowUp: boolean; onReprocess?: () => void; reprocessing?: boolean }) {
+function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, onReprocess, reprocessing, onOpenTranscript }: { meeting: Meeting; onRemove: () => void; onDraftFollowUp: () => void; generatingFollowUp: boolean; onReprocess?: () => void; reprocessing?: boolean; onOpenTranscript?: () => void }) {
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const intel = meeting.intelligence;
+  const hasTranscript = !!meeting.transcript && meeting.transcript.length > 0;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -894,19 +918,13 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
                   )}
                 </>
               )}
-              {meeting.transcript && (
-                <Collapsible>
-                  <CollapsibleTrigger asChild>
-                    <button className="text-xs text-primary hover:underline">Show full transcript</button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <ScrollArea className="max-h-60 mt-2">
-                      <pre className="text-xs leading-relaxed p-3 bg-secondary/20 rounded-md whitespace-pre-wrap font-sans">
-                        {meeting.transcript}
-                      </pre>
-                    </ScrollArea>
-                  </CollapsibleContent>
-                </Collapsible>
+              {hasTranscript && onOpenTranscript && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onOpenTranscript(); }}
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  <Maximize2 className="h-3 w-3" /> View full transcript
+                </button>
               )}
             </>
           )}

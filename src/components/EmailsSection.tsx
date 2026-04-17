@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick } from "lucide-react";
 
 interface LeadEmail {
   id: string;
@@ -21,6 +21,8 @@ interface LeadEmail {
   body_html?: string;
   body_text?: string;
   attachments?: Array<{ name?: string; url?: string; has?: boolean }>;
+  opens?: Array<{ at?: string }> | number;
+  clicks?: Array<{ at?: string; url?: string }> | number;
   replied_at?: string | null;
   bounce_reason?: string;
   email_date: string;
@@ -213,6 +215,8 @@ function EmailRow({ email, compact }: { email: LeadEmail; compact?: boolean }) {
   const dirLabel = isOutbound ? "Sent" : "Received";
   const hasAttachments = (email.attachments?.length || 0) > 0;
   const hasFullBody = !!(email.body_html || email.body_text);
+  const opensCount = Array.isArray(email.opens) ? email.opens.length : (typeof email.opens === "number" ? email.opens : 0);
+  const clicksCount = Array.isArray(email.clicks) ? email.clicks.length : (typeof email.clicks === "number" ? email.clicks : 0);
 
   return (
     <div className={`rounded-md hover:bg-secondary/30 transition-colors ${compact ? "py-1" : ""}`}>
@@ -237,6 +241,16 @@ function EmailRow({ email, compact }: { email: LeadEmail; compact?: boolean }) {
             {email.replied_at && (
               <Badge variant="outline" className="text-[9px] shrink-0 gap-0.5">
                 <Reply className="h-2.5 w-2.5" />Replied
+              </Badge>
+            )}
+            {opensCount > 0 && isOutbound && (
+              <Badge variant="outline" className="text-[9px] shrink-0 gap-0.5" title={`${opensCount} open${opensCount !== 1 ? "s" : ""}`}>
+                <Eye className="h-2.5 w-2.5" />{opensCount}
+              </Badge>
+            )}
+            {clicksCount > 0 && isOutbound && (
+              <Badge variant="outline" className="text-[9px] shrink-0 gap-0.5" title={`${clicksCount} click${clicksCount !== 1 ? "s" : ""}`}>
+                <MousePointerClick className="h-2.5 w-2.5" />{clicksCount}
               </Badge>
             )}
             {hasAttachments && (

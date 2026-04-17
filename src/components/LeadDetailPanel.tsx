@@ -59,6 +59,12 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
   const [rightOpen, setRightOpen] = useState(true);
   const [activeTab, setActiveTab] = useState("activity");
   const [draftSignal, setDraftSignal] = useState(0);
+  // Density toggle persists across sessions; "comfortable" is default for premium feel.
+  const [density, setDensity] = useState<"compact" | "comfortable">(() => {
+    if (typeof window === "undefined") return "comfortable";
+    return (localStorage.getItem("lead-panel-density") as any) === "compact" ? "compact" : "comfortable";
+  });
+  useEffect(() => { localStorage.setItem("lead-panel-density", density); }, [density]);
 
   // Dialogs
   const [noteOpen, setNoteOpen] = useState(false);
@@ -128,6 +134,9 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
       if (e.altKey || e.shiftKey) return;
       // Don't hijack tab keys when user is selecting text (Cmd-C UX)
       if (hasTextSelection()) return;
+      // Bracket toggles for left/right rails (no modifier)
+      if (e.key === "[") { e.preventDefault(); setLeftOpen(v => !v); return; }
+      if (e.key === "]") { e.preventDefault(); setRightOpen(v => !v); return; }
       switch (e.key.toLowerCase()) {
         case "a": setActiveTab("activity"); break;
         case "c": setActiveTab("actions"); break;
@@ -136,6 +145,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         case "i": setActiveTab("intelligence"); break;
         case "f": setActiveTab("files"); break;
         case "n": setActiveTab("notes"); break;
+        case "d": setDensity(d => d === "compact" ? "comfortable" : "compact"); break;
         default: return;
       }
       e.preventDefault();
