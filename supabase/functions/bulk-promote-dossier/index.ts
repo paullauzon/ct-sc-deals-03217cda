@@ -125,12 +125,25 @@ function parseGeographyFromText(text?: string): string {
 }
 
 const SECTOR_DENYLIST = /^(use your tool|use the tool|your tool|deal sourcing|source for( me)?|tbd|n\/?a|test|none|other|unknown)$/i;
+const SECTOR_PHRASE_DENYLIST = /\b(deal sourcing|off-?market(?! [a-z]+ in )|partnership opportunities|sourcing support|sourcing deals|mutual synergies|outsource deal|buyers?\/sellers? matching|buy-?side option|channel partners|learn more|understand off|deploy growth equity|pipeline (of |building)|getting (off-?market )?deals|help to connect|connect with off market)\b/i;
+const SECTOR_ANCHOR_VOCAB = /\b(saas|software|tech|fintech|regtech|govtech|insurtech|proptech|healthtech|biotech|medtech|ai|ml|data|analytics|cyber|security|cloud|api|platform|marketplace|ecommerce|e-commerce|retail|consumer|cpg|food|beverage|restaurant|hospitality|leisure|travel|gaming|media|entertainment|sports|education|edtech|training|healthcare|health|medical|dental|veterinary|pharma|pharmaceutical|biopharma|wellness|fitness|services|business services|professional services|managed services|consulting|advisory|accounting|legal|hr|staffing|recruiting|insurance|banking|finance|financial|wealth|asset|investment|real estate|reit|construction|infrastructure|engineering|architecture|industrial|manufacturing|distribution|logistics|transportation|trucking|shipping|warehousing|supply chain|automotive|aerospace|defense|aviation|marine|energy|oil|gas|renewable|solar|wind|utilities|mining|chemicals|materials|packaging|paper|printing|textiles|apparel|furniture|appliances|home services|hvac|plumbing|electrical|landscaping|roofing|cleaning|pest control|security services|alarm|telecom|telecommunications|broadband|wireless|isp|datacenter|iot|hardware|semiconductors|robotics|drones|3d printing|life sciences|nutrition|agriculture|agtech|farm|food processing|cannabis|petcare|childcare|senior care|home care|hospice|behavioral health|mental health|addiction|treatment|laboratory|imaging|diagnostics|devices|equipment|tools|machinery|capital equipment|specialty|niche|vertical|b2b|b2c|b2g|d2c|smb|enterprise|mid[- ]?market|lower middle market|upper middle market|small business|family[- ]owned|founder[- ]led|founder[- ]owned|recurring revenue|subscription|asset[- ]light|cash flow|recession[- ]resistant|fragmented|roll[- ]up|consolidation|add[- ]on|platform play|carve[- ]out|carveout|esops?|franchise|multi[- ]unit|multi[- ]location|integrators?|installers?|wholesalers?|distributors?|operators?|providers?|clinics?|practices?|dealerships?)\b/i;
+const SECTOR_NUMERIC_ANCHOR = /(\$\s?\d|\b\d+\s?(?:m|k|mm|million|billion|bn)\b|\bebitda\b|\bsde\b|\barr\b|\brevenue\b|\bsales\b|\bev\b|\benterprise value\b|\bacquisition\b|\bunits?\b|\b(?:north|south|east|west|central|northern|southern|eastern|western)\s+(?:america|us|usa|europe|asia|canada)\b)/i;
+const STRATEGY_BLEED = /^(we['']re |we are )?(in thesis|thesis[- ]building|exploring|actively sourcing|under loi|in diligence|mid[- ]process|opportunistic|closing|ready to)/i;
+
 function isLowSignalSector(s: string): boolean {
   const trimmed = s.trim();
   if (trimmed.length < 20) return true;
   if (SECTOR_DENYLIST.test(trimmed)) return true;
+  if (SECTOR_PHRASE_DENYLIST.test(trimmed)) return true;
   const words = trimmed.toLowerCase().split(/\W+/).filter(Boolean);
   if (new Set(words).size < 3) return true;
+  const hasAnchor = SECTOR_ANCHOR_VOCAB.test(trimmed) || SECTOR_NUMERIC_ANCHOR.test(trimmed) || GEO_VOCAB.test(trimmed);
+  if (!hasAnchor) {
+    if (trimmed.length < 40) return true;
+    const STOP = new Set(["the","and","for","with","into","from","that","this","they","them","their","have","help","want","need","like","just","more","most","also","some","such","than","then","when","where","what","which","while","about","across","other","over","under","look","looking","seeking","getting","mutual","synergies","partnership","opportunities","business","businesses"]);
+    const hasProperNoun = trimmed.split(/\s+/).some(w => /^[A-Z][a-zA-Z]{2,}/.test(w) && !STOP.has(w.toLowerCase()));
+    if (!hasProperNoun) return true;
+  }
   return false;
 }
 
@@ -164,6 +177,7 @@ function parseCompetingFromSourcing(currentSourcing?: string): string {
   if (!s) return "";
   const lower = s.toLowerCase();
   if (["false","true","null","[]","{}","undefined"].includes(lower)) return "";
+  if (STRATEGY_BLEED.test(s)) return "";
   return s;
 }
 
@@ -190,15 +204,16 @@ Deno.serve(async (req) => {
     const supabase = createClient(url, key);
 
     const body = await req.json().catch(() => ({}));
-    const brand = body?.brand || "SourceCo";
+    const brand = body?.brand && body.brand !== "all" ? body.brand : null;
     const limit = Math.min(Math.max(Number(body?.limit) || 500, 1), 500);
 
-    const { data: leads, error } = await supabase
+    let q = supabase
       .from("leads")
       .select("id,name,role,message,current_sourcing,acquisition_strategy,buyer_type,acq_timeline,active_searches,ebitda_min,ebitda_max,target_revenue,geography,target_criteria,competing_against")
-      .eq("brand", brand)
       .is("archived_at", null)
       .limit(limit);
+    if (brand) q = q.eq("brand", brand);
+    const { data: leads, error } = await q;
 
     if (error) throw error;
     if (!leads || leads.length === 0) {

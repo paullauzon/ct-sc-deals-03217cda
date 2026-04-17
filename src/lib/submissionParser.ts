@@ -214,13 +214,38 @@ export function parseGeographyFromText(text?: string): string {
 /** Reject low-signal placeholders that prospects type when they don't actually have a thesis. */
 const SECTOR_DENYLIST = /^(use your tool|use the tool|your tool|deal sourcing|source for( me)?|tbd|n\/?a|test|none|other|unknown)$/i;
 
+/** Phrase-contains denylist — kills filler like "off-market deals" / "deploy growth equity" / "channel partners". */
+const SECTOR_PHRASE_DENYLIST = /\b(deal sourcing|off-?market(?! [a-z]+ in )|partnership opportunities|sourcing support|sourcing deals|mutual synergies|outsource deal|buyers?\/sellers? matching|buy-?side option|channel partners|learn more|understand off|deploy growth equity|pipeline (of |building)|getting (off-?market )?deals|help to connect|connect with off market)\b/i;
+
+/**
+ * Curated vocabulary of industry/vertical/financial/geographic anchor tokens.
+ * A sector candidate must contain ≥1 of these to count as "real signal".
+ */
+const SECTOR_ANCHOR_VOCAB = /\b(saas|software|tech|fintech|regtech|govtech|insurtech|proptech|healthtech|biotech|medtech|ai|ml|data|analytics|cyber|security|cloud|api|platform|marketplace|ecommerce|e-commerce|retail|consumer|cpg|food|beverage|restaurant|hospitality|leisure|travel|gaming|media|entertainment|sports|education|edtech|training|healthcare|health|medical|dental|veterinary|pharma|pharmaceutical|biopharma|wellness|fitness|services|business services|professional services|managed services|consulting|advisory|accounting|legal|hr|staffing|recruiting|insurance|banking|finance|financial|wealth|asset|investment|real estate|reit|construction|infrastructure|engineering|architecture|industrial|manufacturing|distribution|logistics|transportation|trucking|shipping|warehousing|supply chain|automotive|aerospace|defense|aviation|marine|energy|oil|gas|renewable|solar|wind|utilities|mining|chemicals|materials|packaging|paper|printing|textiles|apparel|furniture|appliances|home services|hvac|plumbing|electrical|landscaping|roofing|cleaning|pest control|security services|alarm|telecom|telecommunications|broadband|wireless|isp|datacenter|iot|hardware|semiconductors|robotics|drones|3d printing|biotech|life sciences|nutrition|agriculture|agtech|farm|food processing|cannabis|petcare|childcare|senior care|home care|hospice|behavioral health|mental health|addiction|treatment|laboratory|imaging|diagnostics|devices|equipment|tools|machinery|capital equipment|specialty|niche|vertical|b2b|b2c|b2g|d2c|smb|enterprise|mid[- ]?market|lower middle market|upper middle market|small business|family[- ]owned|founder[- ]led|founder[- ]owned|recurring revenue|subscription|asset[- ]light|asset light|cash flow|recession[- ]resistant|fragmented|roll[- ]up|consolidation|add[- ]on|platform play|carve[- ]out|carveout|esops?|franchise|multi[- ]unit|multi[- ]location|integrators?|installers?|wholesalers?|distributors?|operators?|providers?|clinics?|practices?|dealerships?)\b/i;
+
+/** Geographic / financial anchors that also count as real signal. */
+const SECTOR_NUMERIC_ANCHOR = /(\$\s?\d|\b\d+\s?(?:m|k|mm|million|billion|bn)\b|\bebitda\b|\bsde\b|\barr\b|\brevenue\b|\bsales\b|\bev\b|\benterprise value\b|\bacquisition\b|\bunits?\b|\b(?:north|south|east|west|central|northern|southern|eastern|western)\s+(?:america|us|usa|europe|asia|canada)\b)/i;
+
 function isLowSignalSector(s: string): boolean {
   const trimmed = s.trim();
   if (trimmed.length < 20) return true;
   if (SECTOR_DENYLIST.test(trimmed)) return true;
+  if (SECTOR_PHRASE_DENYLIST.test(trimmed)) return true;
   // Need at least 3 distinct word tokens — "Deal sourcing" has 2.
   const words = trimmed.toLowerCase().split(/\W+/).filter(Boolean);
   if (new Set(words).size < 3) return true;
+  // Semantic gate: must contain a recognized industry/financial/geographic anchor,
+  // OR be ≥40 chars with at least one capitalized non-stopword (proper noun likely).
+  const hasAnchor =
+    SECTOR_ANCHOR_VOCAB.test(trimmed) ||
+    SECTOR_NUMERIC_ANCHOR.test(trimmed) ||
+    GEO_VOCAB.test(trimmed);
+  if (!hasAnchor) {
+    if (trimmed.length < 40) return true;
+    const STOP = new Set(["the","and","for","with","into","from","that","this","they","them","their","have","help","want","need","like","just","more","most","also","some","such","than","then","when","where","what","which","while","about","across","other","over","under","look","looking","seeking","getting","mutual","synergies","partnership","opportunities","business","businesses"]);
+    const hasProperNoun = trimmed.split(/\s+/).some(w => /^[A-Z][a-zA-Z]{2,}/.test(w) && !STOP.has(w.toLowerCase()));
+    if (!hasProperNoun) return true;
+  }
   return false;
 }
 
@@ -260,6 +285,9 @@ export function parseActiveSearchesFromText(text?: string): string {
  * Returns "" for boolean-y values that Zapier sometimes sends when the form
  * field was unanswered (raw `false`, `true`, `[]`, `null`).
  */
+/** Acquisition-strategy dropdown phrases that bleed into `current_sourcing`. */
+const STRATEGY_BLEED = /^(we['']re |we are )?(in thesis|thesis[- ]building|exploring|actively sourcing|under loi|in diligence|mid[- ]process|opportunistic|closing|ready to)/i;
+
 export function parseCompetingFromSourcing(currentSourcing?: string): string {
   if (!currentSourcing) return "";
   const s = currentSourcing.trim();
@@ -268,5 +296,7 @@ export function parseCompetingFromSourcing(currentSourcing?: string): string {
   if (lower === "false" || lower === "true" || lower === "null" || lower === "[]" || lower === "{}" || lower === "undefined") {
     return "";
   }
+  // Reject canned acquisition-strategy dropdown options that get mis-mapped from the form.
+  if (STRATEGY_BLEED.test(s)) return "";
   return s;
 }
