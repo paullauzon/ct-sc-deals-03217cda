@@ -1,84 +1,88 @@
 
 
-## Audit findings — 150 active leads (Captarget 76 + SourceCo 74; excludes Lost / Revisit/Reconnect / Went Dark / Closed Won)
+## Audit findings — 150 active leads (Captarget 76 + SourceCo 74)
 
-### Coverage matrix
+### Coverage matrix vs. previous baseline
 
-| Field | Captarget (76) | SourceCo (74) | Diagnosis |
-|---|---|---|---|
-| buyer_type | 57 (75%) | 53 (72%) | OK |
-| target_criteria | 62 (82%) | 59 (80%) | **13 still garbage** (see below) |
-| target_revenue | 18 (24%) | 22 (30%) | Form-tier ceiling |
-| geography | 22 (29%) | 23 (31%) | Form-tier ceiling |
-| ebitda | 2 (3%) | 19 (26%) | Form-tier ceiling |
-| acq_timeline | **0** | 50 (68%) | Captarget = structural (no source field) |
-| competing_against | 14 (18%) | 4 (5%) | SourceCo low because 46 leads have only "We're actively sourcing targets" / "thesis-building" — correctly filtered |
-| firm_aum / deal_type / txn_type / active_searches | **0 / 0 / 0 / 0** | **0 / 0 / 0 / 1** | **AI-tier never executed end-to-end** |
-| 4 transcript rows (auth/budget/decision blocker/stall) | 0 | 0 | Structural — needs meetings |
+| Field | CT (76) | SC (74) | Δ vs prior session | Diagnosis |
+|---|---|---|---|---|
+| buyer_type | 57 (75%) | 53 (72%) | unchanged | OK |
+| target_criteria | 54 (71%) | 55 (74%) | ↓ 8 (cleanup of 13 garbage rows landed; some lifted by re-promote) | **8 residual borderline rows** |
+| target_revenue | 18 (24%) | 22 (30%) | unchanged | Form-tier ceiling |
+| geography | 22 (29%) | 23 (31%) | unchanged | Form-tier ceiling |
+| ebitda | 2 (3%) | 19 (26%) | unchanged | Form-tier ceiling |
+| acq_timeline | **0** | 50 (68%) | unchanged | CT structural (no source field) |
+| competing_against | 14 (18%) | 4 (5%) | unchanged | Bleed denylist working — 0 polluted rows |
+| **firm_aum / deal_type / txn_type / active_searches** | **0 / 0 / 0 / 0** | **0 / 0 / 0 / 1** | **unchanged** | **AI-tier batched run never executed** |
+| 4 transcript-tier rows | 0 | 0 | unchanged | Structural — needs meetings |
+| has enrichment JSON | 0 | 1 | unchanged | Confirms zero AI runs landed |
 
-### Three concrete issues
+### Three findings
 
-**Issue 1 — 13 garbage `target_criteria` rows survived parser tightening.**
-These were written by an *older parser* before the denylist landed. The bulk-promote code is idempotent (only writes when empty) so it never re-cleans existing rows. Examples:
-- CT-005 "finding out more about what you do"
-- CT-011 "I would welcome an intro call to learn more about your business model and how you work"
-- CT-020 "Looking to speak someone in partnerships"
-- CT-026 "We are looking to accelerate our roll up strategy"
-- CT-053 "Reaching out to know how to list sell side mandates on the portal"
-- CT-060 "Exploring options to get more at-bats"
-- CT-061 "Scale our origination beyond internal sources"
-- CT-075 "We are looking to learn more about your services"
-- SC-I-001 "Discuss partnership opportunities and mutual synergies"
-- SC-I-014 "I'd like to learn more about your sourcing platform"
-- SC-T-014 "across industries and sizes"
-- SC-T-021 "Looking to acquire a few SMBs"
-- (CT-024 "pump services in Germany" + CT-433 "cross-border transactions" + SC-T-046 "Risk Management SaaS firms" are **legitimate** — keep)
+**Finding 1 — AI-tier is still 0% across 149 of 150 leads.**
+The "Fill all AI gaps in batches" dropdown shipped last session, but no one ran it. `enrichment IS NOT NULL` returns 0 rows for Captarget and 1 for SourceCo (a single legacy artifact). The fix exists in the UI; it just needs one click. This is the single highest-value remaining gap — 596 empty cells (149 × 4 fields) waiting on ~8 minutes / ~$3.
 
-**Issue 2 — AI-tier (firm_aum / deal_type / transaction_type / active_searches) is 0% across all 150 active leads.**
-Last session's audit doc explicitly recommended **client-driven batches of ~10 leads** to sidestep the 150s edge proxy timeout that killed both sync and `EdgeRuntime.waitUntil` background runs. That batch flow was never built. The Pipeline header still only exposes "Re-enrich with AI (top 20)" — there's no full-coverage option, and no progress UI.
+**Finding 2 — 8 residual `target_criteria` rows are borderline-garbage.**
+Cleanup nullified 13 known-bad rows; re-promote re-wrote some with the new tighter parser. But 8 rows still slipped through:
+- CT-064 "Sourcing off-market qualified opportunities" — should be filtered (the `off-market` denylist isn't matching because the parser only checks input message, not already-promoted column values)
+- CT-218 "I am the newly appointed head of deal origination" — self-description, not criteria
+- CT-069 "origination support to connect with leading franchisees" — vague
+- SC-I-006 "Help to connect with off market businesses" — phrase denylist miss
+- SC-T-006 "Understanding how SourceCo aggregates target lists…" — meta question
+- (CT-004, CT-046, SC-T-045 are **legitimate** — keep — they have sector + geography signal)
 
-**Issue 3 — `competing_against` low Captarget coverage is largely structural, not a bug.**
-Only 17 Captarget leads have any `current_sourcing` text at all (the form rarely captures it). 14 of those 17 have been promoted. That's already 82% of the addressable pool. Acceptable.
+**Finding 3 — `current_sourcing` ceiling for `competing_against` is real, not fixable.**
+27 SourceCo + 3 Captarget rows have `current_sourcing` text that's purely the canned dropdown ("We're actively sourcing targets", "thesis-building", "exploring options", "mid-process"). The bleed denylist is **correctly rejecting** these as non-competitor information. Coverage looks low (4/74 SC, 14/76 CT) but it's actually 100% of the *addressable* pool. **No action needed.**
 
-### What I am NOT proposing to fix
-- Captarget `acq_timeline` (no source field — documented limitation)
-- 4 transcript-tier rows (need actual meetings — UI already shows "Awaiting first meeting")
-- SourceCo `competing_against` low count (form data is filler — correct rejection)
+### What remains structural (no fix)
+- Captarget `acq_timeline = 0` — form has no `acquisition_strategy` field
+- 4 transcript-tier rows (`authority_confirmed`, `budget_confirmed`, `decision_blocker`, `stall_reason`) — need actual meetings
+- `current_sourcing` filler — correct rejection
 
 ## Plan
 
-### 1. Cleanup pass — nullify the 13 garbage `target_criteria` rows
-One-time SQL UPDATE setting `target_criteria = ''` for the 13 specifically identified IDs (Captarget 8 + SourceCo 4 + 1 borderline review). Then re-run `bulk-promote-dossier` so the strengthened parser gets a chance to write a clean value if the message contains real signal (most won't — these will simply remain blank, which is the right answer).
+### Step 1 — Run the existing batched AI enrichment (the actual fix)
+The dropdown is wired. Open Pipeline → "Fill SourceCo Dossiers" → **"Fill all AI gaps in batches"**. It will loop `bulk-enrich-sourceco` in batches of 10 until all 149 leads with empty `firm_aum` are processed. Live progress in the button label. ~8 min, ~$3.
 
-### 2. Client-driven batched AI enrichment — the long-deferred fix
-Add a third dropdown item in `src/components/Pipeline.tsx` Dossier Coverage menu:
-> **"Fill all AI gaps in batches"** — runs `bulk-enrich-sourceco` repeatedly with `limit: 10` and a target brand/`onlyEmptyAum: true` filter, looping client-side until the function returns `scanned: 0`. Shows live progress: `"Enriching 30 / 150 — firm_aum coverage 18%"`.
+This is a **user action**, not a code change. After the run, expect:
+- `firm_aum` 0 → ~90 (60% of 149)
+- `deal_type` 0 → ~90
+- `transaction_type` 0 → ~90
+- `enrichment IS NOT NULL` 1 → ~149
 
-Implementation:
-- New state: `enrichProgress: { done: number; total: number; aumFilled: number } | null`
-- Loop body: invoke function, accumulate counters, refresh leads between batches so the UI Sparkles glyphs appear progressively.
-- Stop conditions: function returns `scanned: 0`, OR 25 batches consumed (250 leads safety cap), OR user cancels via a "Stop" button.
-- Each batch ≈ 30s wall time (well under 150s timeout). 15 batches × 30s ≈ **8 minutes total** for ~150 leads at ~$3 OpenAI cost.
+### Step 2 — Nullify the 5 borderline `target_criteria` rows
+One SQL UPDATE clearing CT-064, CT-069, CT-218, SC-I-006, SC-T-006. The re-promote already ran, so these won't be auto-rewritten unless the message text contains real signal (it doesn't for these 5 — they'll stay correctly empty).
 
-No edge function code changes needed — the existing `bulk-enrich-sourceco` already supports `{ limit, brand, onlyEmptyAum }`. Just orchestrate it from the client.
+### Step 3 — Tighten the `target_criteria` parser one more notch
+In `src/lib/submissionParser.ts` and `bulk-promote-dossier`, add to `SECTOR_PHRASE_DENYLIST`:
+- `/\bsourcing off.?market\b/i`
+- `/\borigination support\b/i`
+- `/\bunderstanding how (sourceco|captarget)\b/i`
+- `/\bnewly appointed\b/i`
+- `/\bhelp to connect\b/i`
 
-### 3. Verification
-After running both cleanup + batched enrich:
-- SQL: `target_criteria` rows containing "learn more" / "speak someone" / "partnership opportunities" → 0
-- SQL: `firm_aum <> ''` → ≥80 across active leads (was 0)
-- SQL: `deal_type <> ''` → ≥80 (was 0)
-- Open CT-053 (Felipe Esquivel) → Buyer Profile renders Firm AUM with Sparkles glyph instead of "—"
-- Update `.lovable/audit/coverage-2026-04-17.md` with new baseline
+This prevents future ingest from re-introducing the same patterns.
+
+### Step 4 — Update audit baseline
+Append post-run results to `.lovable/audit/coverage-2026-04-17.md` so we can see the AI-tier jump from 0% → ~60% as a discrete milestone.
 
 ## Files touched
-- `src/components/Pipeline.tsx` — add 3rd dropdown item with batched-loop logic + progress toast
-- One SQL UPDATE — nullify the 13 specifically identified garbage `target_criteria` rows
-- (No edge function changes — `bulk-enrich-sourceco` already accepts the right params)
-- `.lovable/audit/coverage-2026-04-17.md` — append post-batch results
+- `src/lib/submissionParser.ts` — 5 phrase additions to denylist
+- `supabase/functions/bulk-promote-dossier/index.ts` — same 5 additions (mirror)
+- One SQL UPDATE — nullify 5 borderline `target_criteria` rows
+- `.lovable/audit/coverage-2026-04-17.md` — append post-batch baseline
+- **No Pipeline.tsx changes needed** — batched dropdown already shipped
 
 ## Trade-offs
-- **Win:** AI-tier 0% → ~60% in one ~8-minute batch run. Final addressable gaps eliminated.
-- **Cost:** ~$3 OpenAI one-time spend.
-- **Risk:** User must keep the Pipeline tab open during the 8-min run. **Mitigation:** progress toast + each batch is independent, so partial success is preserved if interrupted.
+- **Win:** AI-tier 0% → ~60% (the long-deferred gap finally closed). Parser hardening prevents the same 5 phrase patterns from re-polluting on future ingest.
+- **Cost:** ~$3 OpenAI one-time. ~8 min user wall time with Pipeline tab open.
+- **Risk:** AI may write low-confidence guesses into manual columns. **Mitigated by** existing `onlyEmptyAum` flag (only fills empty cells) + Sparkles glyph showing AI provenance + reps can override with one click.
 - **Loss:** None — additive only.
+
+## Verification
+1. SQL: `SELECT COUNT(*) FROM leads WHERE firm_aum <> '' AND archived_at IS NULL AND stage NOT IN ('Lost','Revisit/Reconnect','Went Dark','Closed Won')` → ≥80 (was 0)
+2. SQL: `SELECT COUNT(*) FROM leads WHERE enrichment IS NOT NULL AND archived_at IS NULL AND stage NOT IN ('Lost','Revisit/Reconnect','Went Dark','Closed Won')` → ≥140 (was 1)
+3. Open CT-053 (Felipe Esquivel) → Buyer Profile renders Firm AUM with Sparkles glyph instead of "—"
+4. Open SC-T-067 (Imari Sallins) → all 9 Buyer Profile rows show real values
+5. SQL: `target_criteria ILIKE '%off-market%'` returns 0 active rows
 
