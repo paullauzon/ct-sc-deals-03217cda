@@ -28,6 +28,7 @@ export function CollapsibleCard({
   children,
   className,
   dense,
+  smallCapsTitle,
 }: CollapsibleCardProps) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -42,7 +43,14 @@ export function CollapsibleCard({
         )}
       >
         {icon && <span className="text-muted-foreground shrink-0">{icon}</span>}
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/80 flex-1">
+        <span
+          className={cn(
+            "flex-1",
+            smallCapsTitle
+              ? "text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+              : "text-[11px] font-semibold uppercase tracking-wider text-foreground/80"
+          )}
+        >
           {title}
         </span>
         {count !== undefined && count !== null && count !== "" && (
@@ -51,12 +59,18 @@ export function CollapsibleCard({
           </span>
         )}
         {rightSlot}
-        <ChevronDown
-          className={cn(
-            "h-3.5 w-3.5 text-muted-foreground/60 transition-transform shrink-0",
-            !open && "-rotate-90"
-          )}
-        />
+        {smallCapsTitle ? (
+          <span className="text-[10px] text-muted-foreground/60 shrink-0 leading-none">
+            {open ? "▲" : "▼"}
+          </span>
+        ) : (
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 text-muted-foreground/60 transition-transform shrink-0",
+              !open && "-rotate-90"
+            )}
+          />
+        )}
       </button>
       {open && (
         <div className={cn(dense ? "px-3 pb-3" : "px-4 pb-4")}>{children}</div>
