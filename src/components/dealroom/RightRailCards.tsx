@@ -77,40 +77,6 @@ export function RightRailCards({ lead, allLeads }: RightRailCardsProps) {
         )}
       </CollapsibleCard>
 
-      {/* Stakeholders */}
-      {stakeholders.length > 0 && (
-        <CollapsibleCard
-          title="Stakeholders"
-          icon={<Users className="h-3.5 w-3.5" />}
-          count={stakeholders.length}
-          defaultOpen
-        >
-          <div className="space-y-2">
-            {stakeholders.map((s, i) => (
-              <div key={i} className="rounded border border-border/60 p-2">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium truncate">{s.name}</p>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground shrink-0">
-                    {s.stance}
-                  </span>
-                </div>
-                <p className="text-[11px] text-muted-foreground truncate">
-                  {s.role}{s.company ? ` · ${s.company}` : ""}
-                </p>
-                <p className="text-[10px] text-muted-foreground/70 mt-0.5">
-                  {s.influence} · {s.mentions} mentions
-                </p>
-                {s.concerns?.[0] && (
-                  <p className="text-[10px] text-muted-foreground italic mt-0.5 line-clamp-2">
-                    "{s.concerns[0]}"
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </CollapsibleCard>
-      )}
-
       {/* Open Commitments — what we owe */}
       {droppedPromises.length > 0 && (
         <CollapsibleCard

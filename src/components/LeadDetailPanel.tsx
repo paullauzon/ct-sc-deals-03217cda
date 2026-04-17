@@ -24,6 +24,7 @@ import { LeadFilesTab } from "./lead-panel/LeadFilesTab";
 import { LeadActionsTab } from "./lead-panel/LeadActionsTab";
 import { LeadDebriefTab } from "./lead-panel/LeadDebriefTab";
 import { LeadNotesTab } from "./lead-panel/LeadNotesTab";
+import { AIResearchSection } from "./lead-panel/AIResearchSection";
 import { DealHealthAlerts } from "./lead-panel/shared";
 import { NoteDialog } from "./lead-panel/dialogs/NoteDialog";
 import { TaskDialog } from "./lead-panel/dialogs/TaskDialog";
@@ -377,13 +378,14 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
               <TabsContent value="emails" className="p-6 mt-0 max-w-4xl mx-auto">
                 <EmailsSection leadId={lead.id} lead={lead} onCompose={onEmail} />
               </TabsContent>
-              <TabsContent value="intelligence" className="p-6 mt-0 max-w-5xl mx-auto">
+              <TabsContent value="intelligence" className="p-6 mt-0 max-w-5xl mx-auto space-y-6">
+                <AIResearchSection lead={lead} enriching={enriching} onEnrich={handleEnrich} save={save} />
                 {lead.dealIntelligence ? (
                   <DealIntelligencePanel intel={lead.dealIntelligence} lead={lead} />
                 ) : (
-                  <div className="text-center py-12 text-sm text-muted-foreground">
+                  <div className="text-center py-12 text-sm text-muted-foreground border border-dashed border-border rounded-lg">
                     <Brain className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                    <p>No deal intelligence synthesized yet.</p>
+                    <p>No synthesized deal intelligence yet.</p>
                     <p className="text-xs mt-1">Process meetings to surface stakeholder maps, momentum, and win strategy.</p>
                   </div>
                 )}

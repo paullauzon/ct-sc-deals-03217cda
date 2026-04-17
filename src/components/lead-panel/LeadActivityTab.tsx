@@ -1,10 +1,10 @@
 import { Lead } from "@/types/lead";
-import { useEffect, useMemo, useState } from "react";
 import { UnifiedTimeline } from "@/components/dealroom/UnifiedTimeline";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, CalendarClock, Sparkles } from "lucide-react";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
+import { StakeholderCard } from "./cards/StakeholderCard";
 
 interface Props {
   lead: Lead;
@@ -77,6 +77,9 @@ export function LeadActivityTab({ lead, save, onDraftFollowUp }: Props) {
     <div className="p-6 max-w-3xl mx-auto">
       <FollowUpActionBanner lead={lead} save={save} onDraftFollowUp={onDraftFollowUp} />
       <UnifiedTimeline lead={lead} />
+      <div className="mt-8 border-t border-border pt-2">
+        <StakeholderCard lead={lead} />
+      </div>
     </div>
   );
 }
