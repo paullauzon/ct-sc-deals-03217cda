@@ -11,6 +11,8 @@ interface CollapsibleCardProps {
   children: ReactNode;
   className?: string;
   dense?: boolean;
+  /** When true, render with the small-caps "BUYER PROFILE" treatment + ▲/▼ glyphs (used by dossier cards). */
+  smallCapsTitle?: boolean;
 }
 
 /**

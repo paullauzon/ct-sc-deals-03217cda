@@ -211,7 +211,20 @@ export function parseGeographyFromText(text?: string): string {
   return Array.from(hits).slice(0, 4).join(", ");
 }
 
-/** Use the first sentence of the message as a sector descriptor. */
+/** Reject low-signal placeholders that prospects type when they don't actually have a thesis. */
+const SECTOR_DENYLIST = /^(use your tool|use the tool|your tool|deal sourcing|source for( me)?|tbd|n\/?a|test|none|other|unknown)$/i;
+
+function isLowSignalSector(s: string): boolean {
+  const trimmed = s.trim();
+  if (trimmed.length < 20) return true;
+  if (SECTOR_DENYLIST.test(trimmed)) return true;
+  // Need at least 3 distinct word tokens — "Deal sourcing" has 2.
+  const words = trimmed.toLowerCase().split(/\W+/).filter(Boolean);
+  if (new Set(words).size < 3) return true;
+  return false;
+}
+
+/** Use the first sentence of the message as a sector descriptor — only when it carries real signal. */
 export function parseSectorFromText(text?: string): string {
   if (!text) return "";
   const cleaned = text.replace(/\s+/g, " ").trim();
@@ -220,9 +233,13 @@ export function parseSectorFromText(text?: string): string {
   const intent = cleaned.match(
     /(?:looking for|seeking|targeting|acquir\w+|interested in|focused on|specialize in|pursue)\s+([^.;\n]{8,160})/i
   );
-  if (intent) return intent[1].trim();
-  // Fallback to first sentence
+  if (intent) {
+    const v = intent[1].trim();
+    if (!isLowSignalSector(v)) return v;
+  }
+  // Fallback to first sentence — but only if it carries enough signal.
   const first = cleaned.split(/[.!?]\s/)[0];
+  if (isLowSignalSector(first)) return "";
   return first.length > 200 ? first.slice(0, 200) + "…" : first;
 }
 
