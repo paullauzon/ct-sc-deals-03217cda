@@ -340,7 +340,9 @@ export function Pipeline() {
                   title="Bulk-fill SourceCo dossier coverage"
                 >
                   {reEnriching ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                  {reEnriching ? "Working..." : "Fill SourceCo Dossiers"}
+                  {enrichProgress
+                    ? `Enriching ${enrichProgress.done}/${enrichProgress.total} · ${enrichProgress.aumFilled} AUM`
+                    : reEnriching ? "Working..." : "Fill SourceCo Dossiers"}
                   <ChevronDown className="h-3 w-3 opacity-60" />
                 </Button>
               </DropdownMenuTrigger>
