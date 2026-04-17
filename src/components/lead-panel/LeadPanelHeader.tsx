@@ -284,6 +284,22 @@ export function LeadPanelHeader({
           </button>
 
           <button
+            onClick={copySummary}
+            className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors"
+            title="Copy deal summary for Slack/handoff"
+          >
+            {summaryCopied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
+          </button>
+
+          <button
+            onClick={onShowShortcuts}
+            className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors"
+            title="Keyboard shortcuts (?)"
+          >
+            <Keyboard className="h-3.5 w-3.5" />
+          </button>
+
+          <button
             onClick={toggleMaximize}
             className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors"
             title={mode === "sheet" ? "Open as full page" : "Back to overview"}
