@@ -1,56 +1,39 @@
 
-## Audit summary — what's left from v5
+## Status: all 4 v5 remediation items already shipped
 
-**Shipped & verified working (v5 round):**
-- Activity timeline: search, date range, expand/collapse all, pin-to-top
-- Acquirer Profile card (SourceCo)
-- Inline Fireflies transcript drawer
-- Upcoming meeting reads `calendly_booked_at` + Calendly link only when valid URL
-- Email open/click/replied chips from `lead_email_metrics`
-- Always-visible status chip in header
-- Refreshed keyboard cheatsheet
-- Density toggle (`D`) + rail toggles (`[` / `]`) with localStorage
+Verified by reading the current files:
 
-**Still NOT shipped from the v5 plan (these 4 items):**
-1. **Tab overflow** — 8 tabs already overflow at narrow panel widths, no horizontal scroll, no "More" menu
-2. **Notes edit/delete** — `LeadNotesTab` is read-only per entry; can only append via NoteDialog
-3. **Stakeholder remove confirm** — still uses `window.confirm()` which breaks the design language (we removed all other native prompts)
-4. **Realtime lead-row subscription** — only `lead_emails` is subscribed; stage/value/status changes from other tabs or processing jobs don't reflect live in the open panel
+| # | Item | File | Evidence |
+|---|---|---|---|
+| 1 | Tab horizontal scroll + right-edge fade | `LeadDetailPanel.tsx` 306-340 | `overflow-x-auto scrollbar-hide` wrapper + `bg-gradient-to-l` overlay |
+| 2 | Notes edit / delete with AlertDialog | `LeadNotesTab.tsx` 1-205 | `parseNotesChronological` + `serializeNotes` + AlertDialog confirm |
+| 3 | Stakeholder remove → AlertDialog | `StakeholderCard.tsx` 1-50, 47 | `removeTarget` state + AlertDialog (no `window.confirm`) |
+| 4 | Realtime lead-row sync | `LeadContext.tsx` 217-248 | `liveFields` array covers stage / lead_status / priority / deal_value / close_confidence / contract_months / next_follow_up / next_mutual_step(_date) / competing_bankers / deal_narrative / assigned_to / forecast_category / icp_fit / meeting_outcome / notes / stage_entered_date / last_contact_date / closed_date / google_drive_link / forecasted_close_date |
 
-## Fix plan (single round)
+Nothing in the v5 plan is outstanding. All four items are present in the code.
 
-### 1. Tab overflow — horizontal scroll + edge fade
-Simplest, most premium pattern: make `TabsList` horizontally scrollable with an overflow gradient on the right edge. No "More" dropdown needed (it adds chrome). Tabs already have icons + labels; horizontal scroll is the HubSpot pattern at this density.
+## What this means
 
-- `LeadDetailPanel.tsx` lines 306-337: wrap `TabsList` in a relatively-positioned div with `overflow-x-auto scrollbar-hide` and a right-side gradient overlay that fades when scrolled to end.
+You can stop and verify end-to-end now. There's nothing left to implement from the v5 fix pass — the prior "Approved → implemented" round shipped everything.
 
-### 2. Notes edit & delete
-Notes are stored as a single concatenated `lead.notes` string with `--- date · author ---` separators. Need to:
-- Parse entries (already done in `parseNotes`)
-- Add hover-revealed Edit/Delete actions per entry
-- Edit opens an inline textarea (saves by re-serializing all entries back to the string)
-- Delete shows AlertDialog confirm, then re-serializes without that entry
-- Both write to activity log
+## Verification steps (browser)
 
-Files: `LeadNotesTab.tsx` rewrite, no schema change.
+1. Open any lead → confirm tab strip scrolls horizontally and right-edge fade is visible
+2. Notes tab → hover an entry → Edit and Delete icons appear → Delete shows themed AlertDialog
+3. Right rail → Stakeholders → click trash on any row → themed AlertDialog (not native browser prompt)
+4. Open the same lead in two windows → change stage / value / status in one → other reflects within ~1s
 
-### 3. Stakeholder remove → AlertDialog
-Replace `window.confirm` in `StakeholderCard.tsx` line 71-72 with an `AlertDialog` controlled by local state. Match the same pattern used in `LeadPanelHeader` for stage regression.
+## Items still on the broader v5 backlog (deferred — not in scope of this round)
 
-### 4. Realtime lead-row subscription
-Subscribe to `postgres_changes` on the `leads` table filtered by the active lead id. On UPDATE, invoke `useLeads().refresh()` (or update the local context cache) so stage/value/status flip live.
+These were explicitly deferred in the original v5 plan, listed here only so you know they're tracked:
 
-- `LeadDetailPanel.tsx` after the email channel useEffect: add a second channel for `lead_id=eq.${activeLeadId}` on `leads` table.
-- Need to verify the `LeadContext` exposes a `refresh` or `setLead` method; if not, add one. Most lightweight: re-fetch just that single lead row and merge into context.
+- Risk register CRUD (needs `lead_risks` table)
+- Champion star on stakeholders (needs `is_champion` bool)
+- Snooze whole deal (needs `snoozed_until` column + pipeline filter)
+- Field-level audit feed pane in Activity tab
+- Deal narrative AI generation in `enrich-lead` edge function
+- Captarget target-list deliverable card
+- Saved views / bulk actions at the pipeline list level
+- Mobile responsive pass
 
-## Files touched (4)
-- `src/components/LeadDetailPanel.tsx` — tab overflow scroll wrapper + realtime lead subscription
-- `src/components/lead-panel/LeadNotesTab.tsx` — full rewrite with edit/delete per entry
-- `src/components/lead-panel/cards/StakeholderCard.tsx` — replace window.confirm with AlertDialog
-- `src/contexts/LeadContext.tsx` — verify/add a lightweight single-lead refresh method (only if not already present)
-
-## Risk
-- All four items are isolated, additive changes
-- No schema migrations needed
-- Realtime subscription cleanup pattern already proven by the email channel
-- Notes edit/delete keeps the existing serialized format so old data is preserved
+If you want any of these picked up in a v6 round, say which and I'll plan it.
