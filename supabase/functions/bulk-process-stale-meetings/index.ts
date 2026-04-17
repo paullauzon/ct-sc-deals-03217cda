@@ -189,6 +189,8 @@ async function processLead(supabase: any, url: string, key: string, lead: any) {
   if (stall && !lead.stall_reason?.trim()) { updates.stall_reason = stall; written.push("Stall reason"); }
   const budget = deriveBudgetConfirmed(meetings);
   if (budget && !lead.budget_confirmed?.trim()) { updates.budget_confirmed = budget; written.push("Budget"); }
+  const narrative = typeof dealIntelligence?.dealNarrative === "string" ? dealIntelligence.dealNarrative.trim() : "";
+  if (narrative && !lead.deal_narrative?.trim()) { updates.deal_narrative = narrative; written.push("Deal narrative"); }
 
   if (Object.keys(updates).length > 0) {
     await supabase.from("leads").update(updates).eq("id", lead.id);
