@@ -7,6 +7,10 @@ import { Input } from "@/components/ui/input";
 import { DealEconomicsCard } from "./cards/DealEconomicsCard";
 import { MutualPlanCard } from "./cards/MutualPlanCard";
 import { AcquirerProfileCard } from "./cards/AcquirerProfileCard";
+import { SourceAttributionCard } from "./cards/SourceAttributionCard";
+import { WebsiteActivityCard } from "./cards/WebsiteActivityCard";
+import { SubmissionHistory } from "./shared";
+import { FileInput } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LEAD_STATUS_TONE: Record<string, string> = {
@@ -144,6 +148,21 @@ export function LeadPanelLeftRail({
           <MACriteriaCard lead={lead} />
         </CollapsibleCard>
       )}
+
+      <SourceAttributionCard lead={lead} />
+
+      {(lead.submissions?.length || 0) > 0 && (
+        <CollapsibleCard
+          title="Submissions"
+          icon={<FileInput className="h-3.5 w-3.5" />}
+          count={lead.submissions?.length || 0}
+          defaultOpen={false}
+        >
+          <SubmissionHistory submissions={lead.submissions} />
+        </CollapsibleCard>
+      )}
+
+      <WebsiteActivityCard lead={lead} />
 
       {isClosed && (
         <CollapsibleCard title={lead.stage === "Closed Won" ? "Won Details" : "Lost / Dark Details"} defaultOpen>

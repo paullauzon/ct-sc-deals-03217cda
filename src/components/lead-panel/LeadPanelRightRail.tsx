@@ -2,16 +2,15 @@ import { Lead } from "@/types/lead";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { RightRailCards } from "@/components/dealroom/RightRailCards";
 import { EmailMetricsCard } from "@/components/EmailMetricsCard";
-import { Building2, FileInput, Zap, Target, Sparkles, ArrowRight, Check, X, RefreshCw, Mail } from "lucide-react";
+import { Building2, Zap, Target, Sparkles, ArrowRight, Check, X, RefreshCw, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getCompanyAssociates, getSharedIntelligence } from "@/lib/leadUtils";
-import { EnrichmentSection, SubmissionHistory } from "./shared";
+import { EnrichmentSection } from "./shared";
 import { useProcessing } from "@/contexts/ProcessingContext";
 import { StakeholderCard } from "./cards/StakeholderCard";
-import { SourceAttributionCard } from "./cards/SourceAttributionCard";
 
 interface LeadPanelRightRailProps {
   lead: Lead;
@@ -215,7 +214,6 @@ function EmailActivityCard({ leadId }: { leadId: string }) {
 }
 
 export function LeadPanelRightRail({ lead, allLeads, enriching, onEnrich, save }: LeadPanelRightRailProps) {
-  const submissionsCount = lead.submissions?.length || 0;
   return (
     <aside className="w-[320px] shrink-0 border-l border-border overflow-y-auto bg-background">
       <div className="px-4 pt-3 pb-1">
@@ -226,17 +224,6 @@ export function LeadPanelRightRail({ lead, allLeads, enriching, onEnrich, save }
       <EmailActivityCard leadId={lead.id} />
       <RightRailCards lead={lead} allLeads={allLeads} />
       <CompanyActivityCard lead={lead} allLeads={allLeads} />
-      <SourceAttributionCard lead={lead} />
-      {submissionsCount > 0 && (
-        <CollapsibleCard
-          title="Submissions"
-          icon={<FileInput className="h-3.5 w-3.5" />}
-          count={submissionsCount}
-          defaultOpen={false}
-        >
-          <SubmissionHistory submissions={lead.submissions} />
-        </CollapsibleCard>
-      )}
       <div className="h-6" />
     </aside>
   );
