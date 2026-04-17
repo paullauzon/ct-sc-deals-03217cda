@@ -6,6 +6,59 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+/* ───────────── Inline submission parsers (mirror src/lib/submissionParser.ts) ───────────── */
+function parseFirmTypeFromRole(role?: string): string {
+  if (!role) return "";
+  const r = role.toLowerCase().trim();
+  if (!r) return "";
+  if (r.includes("family office")) return "Family Office";
+  if (r.includes("search fund")) return "Search Fund";
+  if (r.includes("independent sponsor")) return "Independent Sponsor";
+  if (r.includes("private equity") || r === "pe" || r.includes("pe firm")) return "PE Firm";
+  if (r.includes("individual") || r.includes("hnwi") || r.includes("high net worth")) return "HNWI";
+  if (r.includes("business owner") || r.includes("strategic") || r.includes("corporate")) return "Strategic / Corporate";
+  if (r.includes("holdco") || r.includes("holding")) return "Holdco";
+  return "";
+}
+function parseRevenueFromText(text?: string): string {
+  if (!text) return "";
+  const t = text.replace(/\s+/g, " ");
+  const range = t.match(/\$?\s?([\d.]+)\s?([mk]?)\s?[-–to]+\s?\$?\s?([\d.]+)\s?([mk])\s+(?:in\s+)?(?:revenue|sales|topline|top line|arr)/i);
+  if (range) {
+    const u2 = range[4].toUpperCase();
+    const u1 = range[2] ? range[2].toUpperCase() : u2;
+    return `$${range[1]}${u1}-${range[3]}${u2}`;
+  }
+  const single = t.match(/\$?\s?([\d.]+)\s?([mk])\+?\s+(?:in\s+)?(?:revenue|sales|arr)/i);
+  if (single) return `$${single[1]}${single[2].toUpperCase()}+`;
+  return "";
+}
+function parseGeographyFromText(text?: string): string {
+  if (!text) return "";
+  const t = text.replace(/\s+/g, " ");
+  const patterns: RegExp[] = [
+    /\b(?:southern|northern|eastern|western|central)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?/g,
+    /\b(?:midwest|midwestern|northeast|southeast|southwest|northwest|west coast|east coast|sun belt|rust belt|new england|tri[- ]?state)\b[^.]*?(?:us|usa|united states|u\.s\.|america)?/gi,
+    /\b(?:north|south|east|west)\s+america\b/gi,
+    /\b(?:canada|usa|united states|uk|united kingdom|europe|emea|apac|latam|mexico|ontario|quebec|texas|california|florida|new york)\b[^.]{0,40}/gi,
+  ];
+  const hits = new Set<string>();
+  for (const re of patterns) {
+    const m = t.match(re);
+    if (m) m.forEach(s => hits.add(s.trim().replace(/[,.;].*$/, "")));
+  }
+  return hits.size ? Array.from(hits).slice(0, 3).join(", ") : "";
+}
+function parseSectorFromText(text?: string): string {
+  if (!text) return "";
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  const intent = cleaned.match(/(?:looking for|seeking|targeting|acquir\w+|interested in|focused on|specialize in|pursue)\s+([^.;\n]{8,160})/i);
+  if (intent) return intent[1].trim();
+  const first = cleaned.split(/[.!?]\s/)[0];
+  return first.length > 200 ? first.slice(0, 200) + "…" : first;
+}
+
 // Sanitize a string field: trim whitespace, normalize line breaks, limit length
 function sanitizeString(val: unknown, maxLen = 5000): string {
   if (val === null || val === undefined) return "";
