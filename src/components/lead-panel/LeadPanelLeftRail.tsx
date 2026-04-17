@@ -1,9 +1,11 @@
-import { Lead, LeadStage, ServiceInterest, ForecastCategory, IcpFit, DealOwner, BillingFrequency, CloseReason } from "@/types/lead";
+import { Lead, LeadStage, ServiceInterest, ForecastCategory, IcpFit, DealOwner, BillingFrequency, CloseReason, LeadStatus } from "@/types/lead";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { IdentityCard } from "@/components/dealroom/IdentityCard";
 import { InlineTextField, InlineSelectField, InlineToggleField } from "./InlineEditFields";
 import { MACriteriaCard } from "@/components/dealroom/KeyInformationCard";
 import { Input } from "@/components/ui/input";
+import { DealEconomicsCard } from "./cards/DealEconomicsCard";
+import { MutualPlanCard } from "./cards/MutualPlanCard";
 
 const STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Lost", "Went Dark", "Closed Won"];
 const SERVICES: ServiceInterest[] = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"];
@@ -11,7 +13,7 @@ const PRIORITIES = ["High", "Medium", "Low"];
 const OWNERS: DealOwner[] = ["Malik", "Valeria", "Tomos"];
 const FORECASTS: ForecastCategory[] = ["Commit", "Best Case", "Pipeline", "Omit"];
 const ICP_FITS: IcpFit[] = ["Strong", "Moderate", "Weak"];
-const BILLING: BillingFrequency[] = ["Monthly", "Quarterly", "Annually"];
+const LEAD_STATUSES: LeadStatus[] = ["New", "Working", "Connected", "Reviewing", "Stalled", "Bad Timing", "Not Now"];
 const CLOSE_REASONS: CloseReason[] = ["Budget", "Timing", "Competitor", "No Fit", "No Response", "Not Qualified", "Champion Left", "Other"];
 
 interface Props {
@@ -37,15 +39,14 @@ export function LeadPanelLeftRail({ lead, daysInStage, save }: Props) {
       <CollapsibleCard title="Key Information" defaultOpen>
         <div className="space-y-0">
           <InlineSelectField label="Stage" value={lead.stage} options={STAGES} onSave={(v) => save({ stage: v as LeadStage, stageEnteredDate: new Date().toISOString().split("T")[0] })} />
+          <InlineSelectField label="Status" value={lead.leadStatus || "Working"} options={LEAD_STATUSES} onSave={(v) => save({ leadStatus: v as LeadStatus })} />
           <InlineSelectField label="Priority" value={lead.priority} options={PRIORITIES} onSave={(v) => save({ priority: v as "High" | "Medium" | "Low" })} />
           <InlineSelectField label="Forecast" value={lead.forecastCategory} options={FORECASTS} onSave={(v) => save({ forecastCategory: v as ForecastCategory })} allowEmpty />
           <InlineSelectField label="ICP Fit" value={lead.icpFit} options={ICP_FITS} onSave={(v) => save({ icpFit: v as IcpFit })} allowEmpty />
           <InlineSelectField label="Owner" value={lead.assignedTo} options={OWNERS} onSave={(v) => save({ assignedTo: v as DealOwner })} allowEmpty />
           <InlineSelectField label="Service" value={lead.serviceInterest} options={SERVICES} onSave={(v) => save({ serviceInterest: v as ServiceInterest })} />
-          <InlineTextField label="Deal Value" value={lead.dealValue} type="number" onSave={(v) => save({ dealValue: Number(v) || 0 })} />
           <InlineToggleField label="Pre-Screen" value={lead.preScreenCompleted} onSave={(v) => save({ preScreenCompleted: v })} onLabel="Done" offLabel="Pending" />
           <InlineTextField label="Subscription" value={lead.subscriptionValue} type="number" onSave={(v) => save({ subscriptionValue: Number(v) || 0 })} />
-          <InlineSelectField label="Billing" value={lead.billingFrequency} options={BILLING} onSave={(v) => save({ billingFrequency: v as BillingFrequency })} allowEmpty />
           {lead.tier && (
             <div className="flex items-center justify-between gap-3 py-1.5 text-xs border-b border-border/40 last:border-0">
               <span className="text-muted-foreground">Tier</span>
@@ -54,6 +55,10 @@ export function LeadPanelLeftRail({ lead, daysInStage, save }: Props) {
           )}
         </div>
       </CollapsibleCard>
+
+      <DealEconomicsCard lead={lead} save={save} />
+
+      <MutualPlanCard lead={lead} save={save} />
 
       <CollapsibleCard title="Dates" defaultOpen={false}>
         <div className="space-y-0">
