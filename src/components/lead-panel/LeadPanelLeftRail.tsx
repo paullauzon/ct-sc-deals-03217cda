@@ -2,7 +2,7 @@ import { Lead, LeadStage, ServiceInterest, ForecastCategory, IcpFit, DealOwner, 
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { IdentityCard } from "@/components/dealroom/IdentityCard";
 import { InlineTextField, InlineSelectField, InlineToggleField } from "./InlineEditFields";
-import { MACriteriaCard } from "@/components/dealroom/KeyInformationCard";
+
 import { Input } from "@/components/ui/input";
 import { DealEconomicsCard } from "./cards/DealEconomicsCard";
 import { MutualPlanCard } from "./cards/MutualPlanCard";
