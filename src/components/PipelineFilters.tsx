@@ -4,7 +4,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { X, Filter, Flame, DollarSign, CalendarClock, Zap, User, FileWarning } from "lucide-react";
+import { X, Filter, Flame, DollarSign, CalendarClock, Zap, User, FileWarning, Target } from "lucide-react";
 import { computeDaysInStage } from "@/lib/leadUtils";
 import { computeDossierCompleteness } from "@/lib/dealDossier";
 
@@ -23,6 +23,7 @@ export interface PipelineFilters {
   dealValueRange: string[];
   overdue: boolean;
   dossierGap: boolean;
+  forecastGap: boolean;
 }
 
 const EMPTY_FILTERS: PipelineFilters = {
@@ -38,6 +39,7 @@ const EMPTY_FILTERS: PipelineFilters = {
   dealValueRange: [],
   overdue: false,
   dossierGap: false,
+  forecastGap: false,
 };
 
 const STORAGE_KEY = "pipeline-filters";
