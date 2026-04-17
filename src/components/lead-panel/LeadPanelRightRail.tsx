@@ -2,6 +2,7 @@ import { Lead } from "@/types/lead";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { RightRailCards } from "@/components/dealroom/RightRailCards";
 import { EmailMetricsCard } from "@/components/EmailMetricsCard";
+import { ForecastCard } from "@/components/lead-panel/cards/ForecastCard";
 import { Building2, Zap, Target, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useEffect, useState } from "react";
@@ -99,6 +100,7 @@ export function LeadPanelRightRail({ lead, allLeads, enriching, onEnrich, save }
       <div className="px-4 pt-3 pb-1">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Signals</span>
       </div>
+      <ForecastCard lead={lead} save={save} />
       <EmailActivityCard leadId={lead.id} />
       <RightRailCards lead={lead} allLeads={allLeads} />
       <CompanyActivityCard lead={lead} allLeads={allLeads} />
