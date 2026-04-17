@@ -96,6 +96,8 @@ interface LeadPanelHeaderProps {
   onAskAI: () => void;
   draftingAI?: boolean;
   enriching?: boolean;
+  /** When true, shows a compact icon-only action strip in the header (used when the left rail is collapsed). */
+  showCompactActions?: boolean;
 }
 
 const LEAD_STATUS_TONE: Record<string, string> = {
@@ -127,7 +129,7 @@ export function LeadPanelHeader({
   lead, daysInStage, mode, hasPrev, hasNext,
   onClose, onPrev, onNext, onEmail, onSchedule, onNote, onTask,
   onDraftAI, onLogCall, onEnrich, onArchive, onChangeStage, onShowShortcuts, onAskAI,
-  draftingAI, enriching,
+  draftingAI, enriching, showCompactActions,
 }: LeadPanelHeaderProps) {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
