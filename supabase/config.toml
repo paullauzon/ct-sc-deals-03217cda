@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.suggest-email-responses]
 verify_jwt = false
+
+[functions.backfill-buyer-dossier]
+verify_jwt = false

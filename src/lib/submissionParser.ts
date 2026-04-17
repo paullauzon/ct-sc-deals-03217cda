@@ -26,15 +26,40 @@ export function parseFirmTypeFromRole(role?: string): string {
   return "";
 }
 
+/** Fallback for `role = "Other"` — scan the message for firm-type keywords. */
+export function parseFirmTypeFromMessage(text?: string): string {
+  if (!text) return "";
+  const t = text.toLowerCase();
+  if (/\bfamily office\b/.test(t)) return "Family Office";
+  if (/\bsearch fund(er)?\b/.test(t)) return "Search Fund";
+  if (/\bindependent sponsor\b/.test(t)) return "Independent Sponsor";
+  if (/\b(private equity|pe firm|pe fund|p\.e\.)\b/.test(t)) return "PE Firm";
+  if (/\b(hnwi|high net worth|individual investor)\b/.test(t)) return "HNWI";
+  if (/\b(holdco|holding co|holding company)\b/.test(t)) return "Holdco";
+  if (/\b(strategic acquirer|corp dev|corporate development|portco|portfolio company)\b/.test(t)) {
+    return "Strategic / Corporate";
+  }
+  return "";
+}
+
 /** Map the SourceCo `acquisitionStrategy` dropdown to a normalized timeline bucket. */
 export function parseTimelineFromStrategy(s?: string): string {
   if (!s) return "";
-  const x = s.toLowerCase();
+  // Normalize curly apostrophes/dashes that come from the Webflow form.
+  const x = s
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u02bc]/g, "'")
+    .replace(/[\u2013\u2014]/g, "-");
   if (x.includes("under loi") || x.includes("in diligence") || x.includes("closing")) return "0-3 months";
+  if (x.includes("mid-process") || x.includes("mid process") || x.includes("in process") || /\b1[- ]?2 deals?\b/.test(x)) {
+    return "0-3 months";
+  }
   if (x.includes("actively sourcing") || x.includes("active search") || x.includes("ready to")) {
     return "3-6 months";
   }
-  if (x.includes("exploring") || x.includes("evaluating") || x.includes("planning")) return "6-12 months";
+  if (x.includes("exploring") || x.includes("evaluating") || x.includes("planning") || x.includes("thesis-building") || x.includes("thesis building")) {
+    return "6-12 months";
+  }
   if (x.includes("opportunistic") || x.includes("open to")) return "Opportunistic";
   return "";
 }
@@ -42,11 +67,14 @@ export function parseTimelineFromStrategy(s?: string): string {
 /** Pull EBITDA min/max as a tuple of strings from free-text. Returns ["",""] if none. */
 export function parseEbitdaFromText(text?: string): { min: string; max: string } {
   if (!text) return { min: "", max: "" };
-  const t = text.replace(/\s+/g, " ");
+  // Normalize whitespace AND curly dashes — Webflow turns "$1-5M" into "$1–5M".
+  const t = text
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\s+/g, " ");
 
   // "EBITDA between $1-5M" / "$1M-$5M EBITDA" / "EBITDA of $2M-$10M"
   const range = t.match(
-    /(?:ebitda|sde)[^.\n]{0,40}?\$?\s?([\d.]+)\s?([mk]?)\s?[-–to]+\s?\$?\s?([\d.]+)\s?([mk]?)/i
+    /(?:ebitda|sde)[^.\n]{0,40}?\$?\s?([\d.]+)\s?([mk]?)\s?[-to]+\s?\$?\s?([\d.]+)\s?([mk]?)/i
   );
   if (range) {
     const unit = (u: string) => (u.toLowerCase() === "k" ? "K" : "M");
@@ -55,10 +83,25 @@ export function parseEbitdaFromText(text?: string): { min: string; max: string }
     return { min: `$${range[1]}${u1}`, max: `$${range[3]}${u2}` };
   }
 
-  // "Minimum SDE is 750K" / "min EBITDA $1M"
+  // Reverse order: "$1-5M EBITDA"
+  const rangeRev = t.match(
+    /\$?\s?([\d.]+)\s?([mk]?)\s?[-to]+\s?\$?\s?([\d.]+)\s?([mk])\s+(?:in\s+)?(?:ebitda|sde)/i
+  );
+  if (rangeRev) {
+    const u2 = rangeRev[4].toUpperCase();
+    const u1 = rangeRev[2] ? rangeRev[2].toUpperCase() : u2;
+    return { min: `$${rangeRev[1]}${u1}`, max: `$${rangeRev[3]}${u2}` };
+  }
+
+  // "Minimum SDE is 750K" / "Minimum SDE is 750 K" / "min EBITDA $1M"
   const minOnly = t.match(/(?:min(?:imum)?|at least)[^.\n]{0,30}?(?:ebitda|sde)?[^.\n]{0,15}?\$?\s?([\d.]+)\s?([mk])/i);
   if (minOnly) {
     return { min: `$${minOnly[1]}${minOnly[2].toUpperCase()}`, max: "" };
+  }
+  // "EBITDA/SDE of $X" — single anchor
+  const sdeOf = t.match(/(?:ebitda|sde)\s+(?:of|is|at)\s+\$?\s?([\d.]+)\s?([mk])/i);
+  if (sdeOf) {
+    return { min: `$${sdeOf[1]}${sdeOf[2].toUpperCase()}`, max: "" };
   }
 
   // "<$1M EBITDA" / "less than $5M ebitda"
@@ -73,15 +116,18 @@ export function parseEbitdaFromText(text?: string): { min: string; max: string }
 /** Extract a revenue range string like "$10-100M" from the message body. */
 export function parseRevenueFromText(text?: string): string {
   if (!text) return "";
-  const t = text.replace(/\s+/g, " ");
-  const range = t.match(/\$?\s?([\d.]+)\s?([mk]?)\s?[-–to]+\s?\$?\s?([\d.]+)\s?([mk])\s+(?:in\s+)?(?:revenue|sales|topline|top line|arr)/i);
+  const t = text.replace(/[\u2013\u2014]/g, "-").replace(/\s+/g, " ");
+  const range = t.match(/\$?\s?([\d.]+)\s?([mk]?)\s?[-to]+\s?\$?\s?([\d.]+)\s?([mk])\s+(?:in\s+)?(?:revenue|sales|topline|top line|arr)/i);
   if (range) {
     const u2 = range[4].toUpperCase();
     const u1 = range[2] ? range[2].toUpperCase() : u2;
     return `$${range[1]}${u1}-${range[3]}${u2}`;
   }
-  const single = t.match(/\$?\s?([\d.]+)\s?([mk])\+?\s+(?:in\s+)?(?:revenue|sales|arr)/i);
+  const single = t.match(/\$?\s?([\d.]+)\s?([mk])\+?\s+(?:in\s+)?(?:revenue|sales|arr|profit|cashflow|cash flow)/i);
   if (single) return `$${single[1]}${single[2].toUpperCase()}+`;
+  // "doing at least 500k in yearly profit"
+  const yearly = t.match(/(?:doing|generating|producing)\s+(?:at least|around|approximately)?\s*\$?\s?([\d.]+)\s?([mk])/i);
+  if (yearly) return `$${yearly[1]}${yearly[2].toUpperCase()}+`;
   return "";
 }
 
@@ -91,16 +137,17 @@ export function parseGeographyFromText(text?: string): string {
   const t = text.replace(/\s+/g, " ");
   const patterns: RegExp[] = [
     /\b(?:southern|northern|eastern|western|central)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?/g,
-    /\b(?:midwest|midwestern|northeast|southeast|southwest|northwest|west coast|east coast|sun belt|rust belt|new england|tri[- ]?state)\b[^.]*?(?:us|usa|united states|u\.s\.|america)?/gi,
+    /\b(?:midwest|midwestern|northeast|southeast|southwest|northwest|west coast|east coast|sun belt|rust belt|new england|tri[- ]?state)\b/gi,
     /\b(?:north|south|east|west)\s+america\b/gi,
-    /\b(?:canada|usa|united states|uk|united kingdom|europe|emea|apac|latam|mexico|ontario|quebec|texas|california|florida|new york)\b[^.]{0,40}/gi,
+    /\b(?:canada|usa|united states|uk|united kingdom|europe|emea|apac|latam|mexico|ontario|quebec|texas|california|florida|new york|illinois|ohio|michigan|pennsylvania|georgia|north carolina|south carolina|virginia|tennessee|arizona|colorado|washington|oregon|massachusetts|new jersey)\b/gi,
   ];
   const hits = new Set<string>();
   for (const re of patterns) {
     const m = t.match(re);
-    if (m) m.forEach(s => hits.add(s.trim().replace(/[,.;].*$/, "")));
+    if (m) m.forEach(s => hits.add(s.trim().replace(/[,.;:].*$/, "").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())));
   }
   if (!hits.size) return "";
+  // Cap to 3 unique tokens, dedupe case-insensitively.
   return Array.from(hits).slice(0, 3).join(", ");
 }
 
@@ -122,18 +169,27 @@ export function parseSectorFromText(text?: string): string {
 /** Extract "active searches" / mandate count phrasing. */
 export function parseActiveSearchesFromText(text?: string): string {
   if (!text) return "";
-  const t = text.replace(/\s+/g, " ");
+  const t = text.replace(/[\u2013\u2014]/g, "-").replace(/\s+/g, " ");
   const m =
-    t.match(/(\d+\s*(?:[-–to]+\s*\d+)?)\s+(?:active\s+)?(?:acquisitions?|deals?|mandates?|searches?)\s+per\s+(?:year|annum|yr)/i) ||
-    t.match(/(\d+\s*(?:[-–to]+\s*\d+)?)\s+active\s+(?:mandates?|searches?|deals?)/i);
+    t.match(/(\d+\s*(?:[-to]+\s*\d+)?)\s+(?:active\s+)?(?:acquisitions?|deals?|mandates?|searches?)\s+per\s+(?:year|annum|yr)/i) ||
+    t.match(/(\d+\s*(?:[-to]+\s*\d+)?)\s+active\s+(?:mandates?|searches?|deals?)/i) ||
+    t.match(/(?:buy|acquire)\s+at least\s+(\d+\s*(?:[-to]+\s*\d+)?)\s+\w+\s+(?:companies|businesses)\s+(?:per\s+year|yearly|annually)/i);
   if (m) return m[0].trim();
   return "";
 }
 
-/** Concatenate `currentSourcing` clauses for the "Competing against" field. */
+/**
+ * Concatenate `currentSourcing` clauses for the "Competing against" field.
+ * Returns "" for boolean-y values that Zapier sometimes sends when the form
+ * field was unanswered (raw `false`, `true`, `[]`, `null`).
+ */
 export function parseCompetingFromSourcing(currentSourcing?: string): string {
   if (!currentSourcing) return "";
   const s = currentSourcing.trim();
   if (!s) return "";
+  const lower = s.toLowerCase();
+  if (lower === "false" || lower === "true" || lower === "null" || lower === "[]" || lower === "{}" || lower === "undefined") {
+    return "";
+  }
   return s;
 }

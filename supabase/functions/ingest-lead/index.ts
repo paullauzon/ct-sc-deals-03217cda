@@ -213,6 +213,15 @@ Deno.serve(async (req) => {
     const now = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
 
     // Build submission record (sanitize all free-text fields)
+    // Sanitize boolean-y / placeholder values that Zapier sometimes sends when
+    // the Webflow form field was unanswered (raw `false`, `true`, `[]`, `null`).
+    const sanitizeOptional = (val: unknown, maxLen: number): string => {
+      const s = sanitizeString(val, maxLen);
+      const lower = s.toLowerCase().trim();
+      if (lower === "false" || lower === "true" || lower === "null" || lower === "[]" || lower === "{}" || lower === "undefined") return "";
+      return s;
+    };
+
     const submission = {
       brand,
       source,
@@ -222,9 +231,9 @@ Deno.serve(async (req) => {
       targetCriteria: sanitizeString(body.targetCriteria, 5000),
       targetRevenue: sanitizeString(body.targetRevenue, 200),
       geography: sanitizeString(body.geography, 500),
-      currentSourcing: sanitizeString(body.currentSourcing, 1000),
+      currentSourcing: sanitizeOptional(body.currentSourcing, 1000),
       hearAboutUs: sanitizeString(body.hearAboutUs, 500),
-      acquisitionStrategy: sanitizeString(body.acquisitionStrategy, 1000),
+      acquisitionStrategy: sanitizeOptional(body.acquisitionStrategy, 1000),
       buyerType: sanitizeString(body.buyerType, 200),
       role: sanitizeString(body.role, 200),
       phone: sanitizeString(body.phone, 50),
@@ -341,12 +350,12 @@ Deno.serve(async (req) => {
       target_criteria: (body.targetCriteria as string) || parseSectorFromText(body.message as string) || "",
       target_revenue: (body.targetRevenue as string) || parseRevenueFromText(body.message as string) || "",
       geography: (body.geography as string) || parseGeographyFromText(body.message as string) || "",
-      current_sourcing: body.currentSourcing || "",
+      current_sourcing: submission.currentSourcing,
       pre_screen_completed: false,
       is_duplicate: false,
       duplicate_of: "",
       hear_about_us: body.hearAboutUs || "",
-      acquisition_strategy: body.acquisitionStrategy || "",
+      acquisition_strategy: submission.acquisitionStrategy,
       buyer_type: (body.buyerType as string) || parseFirmTypeFromRole(body.role as string) || "",
       meetings: [],
       submissions: [submission],
