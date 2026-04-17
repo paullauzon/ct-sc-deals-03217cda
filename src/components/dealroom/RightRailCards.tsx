@@ -1,36 +1,30 @@
 import { Lead } from "@/types/lead";
 import { CollapsibleCard } from "./CollapsibleCard";
 import {
-  Heart, Users, Shield, Crown, Trophy, ShieldAlert,
-  TrendingUp, TrendingDown, Sparkles, Target, BookOpen,
+  Heart, Users, ShieldAlert, TrendingUp, TrendingDown, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  computeDealHealthScore,
-  getStakeholderCoverage,
-  findSimilarWonDeals,
-  getDroppedPromises,
-} from "@/lib/dealHealthUtils";
+import { computeDealHealthScore, getStakeholderCoverage } from "@/lib/dealHealthUtils";
 
 interface RightRailCardsProps {
   lead: Lead;
   allLeads: Lead[];
 }
 
-export function RightRailCards({ lead, allLeads }: RightRailCardsProps) {
+/**
+ * Right-rail Deal Health card.
+ * Slimmed: only Deal Health remains. Win Strategy / Risks / Open Commitments /
+ * Similar Won Deals / Deal Narrative now live inside the middle-panel tabs
+ * (Intelligence + Actions) to eliminate duplication.
+ */
+export function RightRailCards({ lead }: RightRailCardsProps) {
   const dealHealth = computeDealHealthScore(lead);
   const coverage = getStakeholderCoverage(lead);
-  const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost";
-  const similarWon = isClosed ? [] : findSimilarWonDeals(lead, allLeads);
-  const droppedPromises = getDroppedPromises(lead);
   const intel = lead.dealIntelligence;
-  const stakeholders = intel?.stakeholderMap || [];
-  const risks = (intel?.riskRegister || []).filter(r => r.mitigationStatus !== "Mitigated");
   const sentimentTraj = intel?.momentumSignals?.sentimentTrajectory || [];
 
   return (
     <div className="divide-y divide-border">
-      {/* Deal Health */}
       <CollapsibleCard
         title="Deal Health"
         icon={<Heart className="h-3.5 w-3.5" />}
@@ -76,130 +70,6 @@ export function RightRailCards({ lead, allLeads }: RightRailCardsProps) {
           <p className="text-xs text-muted-foreground">Process meetings to compute deal health.</p>
         )}
       </CollapsibleCard>
-
-      {/* Open Commitments — what we owe */}
-      {droppedPromises.length > 0 && (
-        <CollapsibleCard
-          title="Open Commitments"
-          icon={<Target className="h-3.5 w-3.5" />}
-          count={droppedPromises.length}
-          defaultOpen
-        >
-          <div className="space-y-1.5">
-            {droppedPromises.slice(0, 5).map((p, i) => (
-              <div key={i} className="text-xs border border-border/60 rounded p-2">
-                <p className="font-medium truncate">{p.item}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {p.owner}{p.daysOverdue > 0 ? ` · ${p.daysOverdue}d pending` : ""}
-                </p>
-              </div>
-            ))}
-          </div>
-        </CollapsibleCard>
-      )}
-
-      {/* Risks */}
-      {risks.length > 0 && (
-        <CollapsibleCard
-          title="Risks"
-          icon={<Shield className="h-3.5 w-3.5" />}
-          count={risks.length}
-          defaultOpen
-        >
-          <div className="space-y-1.5">
-            {risks.map((r, i) => (
-              <div key={i} className={cn(
-                "rounded border p-2 text-xs",
-                r.severity === "Critical" && "border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20",
-                r.severity === "High" && "border-orange-300 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/20",
-                (r.severity !== "Critical" && r.severity !== "High") && "border-border/60",
-              )}>
-                <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <span className="font-medium text-[10px] uppercase tracking-wider">{r.severity}</span>
-                  <span className="text-[10px] text-muted-foreground">{r.mitigationStatus}</span>
-                </div>
-                <p className="text-muted-foreground leading-snug">{r.risk}</p>
-              </div>
-            ))}
-          </div>
-        </CollapsibleCard>
-      )}
-
-      {/* Win Strategy */}
-      {intel?.winStrategy && (
-        <CollapsibleCard
-          title="Win Strategy"
-          icon={<Crown className="h-3.5 w-3.5" />}
-          defaultOpen
-        >
-          <div className="space-y-2.5 text-xs">
-            {intel.winStrategy.numberOneCloser && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">#1 Closer</p>
-                <p className="text-foreground/90 leading-snug">{intel.winStrategy.numberOneCloser}</p>
-              </div>
-            )}
-            {intel.winStrategy.powerMove && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">Power Move</p>
-                <p className="text-foreground/90 leading-snug">{intel.winStrategy.powerMove}</p>
-              </div>
-            )}
-            {intel.winStrategy.landmines?.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">Landmines</p>
-                <ul className="space-y-0.5 text-muted-foreground">
-                  {intel.winStrategy.landmines.map((l, i) => (
-                    <li key={i} className="leading-snug">· {l}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {intel.winStrategy.dealTemperature && (
-              <div className="pt-1 border-t border-border/40 text-[11px] text-muted-foreground">
-                Temperature: <span className="text-foreground font-medium">{intel.winStrategy.dealTemperature}</span>
-              </div>
-            )}
-          </div>
-        </CollapsibleCard>
-      )}
-
-      {/* Buying Committee — REMOVED. Champion / Decision Maker now live in the Buyer Profile dossier card on the left rail. */}
-
-      {/* Similar Won Deals */}
-      {similarWon.length > 0 && (
-        <CollapsibleCard
-          title="Similar Won Deals"
-          icon={<Trophy className="h-3.5 w-3.5" />}
-          count={similarWon.length}
-          defaultOpen={false}
-        >
-          <div className="space-y-2">
-            {similarWon.slice(0, 4).map((s, i) => (
-              <div key={i} className="text-xs border-b border-border/40 last:border-0 pb-1.5 last:pb-0">
-                <p className="font-medium">{s.name}</p>
-                <p className="text-[10px] text-muted-foreground">${s.dealValue.toLocaleString()}/mo</p>
-                {s.winTactic && (
-                  <p className="text-[10px] text-muted-foreground/80 mt-0.5 italic">{s.winTactic}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </CollapsibleCard>
-      )}
-
-      {/* Deal Narrative */}
-      {intel?.dealNarrative && (
-        <CollapsibleCard
-          title="Deal Narrative"
-          icon={<BookOpen className="h-3.5 w-3.5" />}
-          defaultOpen={false}
-        >
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            {intel.dealNarrative}
-          </p>
-        </CollapsibleCard>
-      )}
     </div>
   );
 }

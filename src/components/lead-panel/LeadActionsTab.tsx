@@ -282,6 +282,30 @@ export function LeadActionsTab({ lead, allLeads, save, draftSignal }: LeadAction
 
   return (
     <div className="p-6 mt-0 space-y-5 max-w-3xl mx-auto">
+      {/* Open Commitments — what we owe */}
+      {droppedPromises.length > 0 && (
+        <div>
+          <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5">
+            <Target className="h-3.5 w-3.5" /> Open Commitments — what we owe ({droppedPromises.length})
+          </h3>
+          <div className="space-y-1.5">
+            {droppedPromises.slice(0, 8).map((p, i) => (
+              <div key={i} className="rounded-lg border border-border bg-secondary/20 p-3 flex items-start gap-3">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 bg-primary/10 text-primary">
+                  <Target className="h-3.5 w-3.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium leading-snug">{p.item}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {p.owner}{p.daysOverdue > 0 ? ` · ${p.daysOverdue}d pending` : ""}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Next Best Action */}
       {nextBestAction && priorityActions.length === 0 && droppedPromises.length === 0 && (() => {
         const nbaKey = "nba";

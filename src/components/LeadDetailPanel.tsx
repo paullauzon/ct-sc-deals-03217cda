@@ -32,6 +32,7 @@ import { LogCallDialog } from "./lead-panel/dialogs/LogCallDialog";
 import { EmailComposeDrawer } from "./lead-panel/dialogs/EmailComposeDrawer";
 import { KeyboardCheatsheet } from "./lead-panel/KeyboardCheatsheet";
 import { AskDealDrawer } from "./lead-panel/AskDealDrawer";
+import { SimilarWonDealsSection } from "./lead-panel/cards/SimilarWonDealsSection";
 
 interface LeadDetailPanelProps {
   leadId: string | null;
@@ -389,6 +390,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
                     <p className="text-xs mt-1">Process meetings to surface stakeholder maps, momentum, and win strategy.</p>
                   </div>
                 )}
+                <SimilarWonDealsSection lead={lead} allLeads={leads} />
               </TabsContent>
               <TabsContent value="files" className="mt-0">
                 <LeadFilesTab lead={lead} save={save} />

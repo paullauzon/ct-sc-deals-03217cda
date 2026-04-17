@@ -5,6 +5,8 @@ import { AlertTriangle, CalendarClock, Sparkles } from "lucide-react";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 import { StakeholderCard } from "./cards/StakeholderCard";
+import { CompanyActivityCard } from "./cards/CompanyActivityCard";
+import { useLeads } from "@/contexts/LeadContext";
 
 interface Props {
   lead: Lead;
@@ -73,12 +75,16 @@ function FollowUpActionBanner({ lead, save, onDraftFollowUp }: Props) {
 }
 
 export function LeadActivityTab({ lead, save, onDraftFollowUp }: Props) {
+  const { leads } = useLeads();
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <FollowUpActionBanner lead={lead} save={save} onDraftFollowUp={onDraftFollowUp} />
       <UnifiedTimeline lead={lead} />
       <div className="mt-8 border-t border-border pt-2">
         <StakeholderCard lead={lead} />
+      </div>
+      <div className="mt-2 border-t border-border pt-2">
+        <CompanyActivityCard lead={lead} allLeads={leads} />
       </div>
     </div>
   );
