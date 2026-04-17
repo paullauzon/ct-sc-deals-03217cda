@@ -59,6 +59,7 @@ export type Database = {
           lead_id: string
           new_value: string | null
           old_value: string | null
+          pinned_at: string | null
         }
         Insert: {
           created_at?: string
@@ -68,6 +69,7 @@ export type Database = {
           lead_id: string
           new_value?: string | null
           old_value?: string | null
+          pinned_at?: string | null
         }
         Update: {
           created_at?: string
@@ -77,6 +79,7 @@ export type Database = {
           lead_id?: string
           new_value?: string | null
           old_value?: string | null
+          pinned_at?: string | null
         }
         Relationships: []
       }
@@ -263,6 +266,48 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_stakeholders: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          last_contacted: string | null
+          lead_id: string
+          linkedin_url: string
+          name: string
+          notes: string
+          role: string
+          sentiment: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string
+          id?: string
+          last_contacted?: string | null
+          lead_id: string
+          linkedin_url?: string
+          name?: string
+          notes?: string
+          role?: string
+          sentiment?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          last_contacted?: string | null
+          lead_id?: string
+          linkedin_url?: string
+          name?: string
+          notes?: string
+          role?: string
+          sentiment?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_tasks: {
         Row: {
           ai_content: string | null
@@ -321,17 +366,21 @@ export type Database = {
           calendly_event_duration: number | null
           calendly_event_name: string
           calendly_event_type: string
+          close_confidence: number | null
           close_reason: string
           closed_date: string
           company: string
           company_url: string
+          competing_bankers: string
           contract_end: string
+          contract_months: number | null
           contract_start: string
           created_at: string
           current_sourcing: string
           date_submitted: string
           days_in_current_stage: number
           deal_intelligence: Json | null
+          deal_narrative: string
           deal_value: number
           deals_planned: string
           duplicate_of: string
@@ -355,6 +404,7 @@ export type Database = {
           known_firm_match: string | null
           last_acquisition_year: number | null
           last_contact_date: string
+          lead_status: string
           linkedin_ma_experience: boolean | null
           linkedin_score: number | null
           linkedin_search_log: Json | null
@@ -368,6 +418,8 @@ export type Database = {
           message: string
           name: string
           next_follow_up: string
+          next_mutual_step: string
+          next_mutual_step_date: string
           notes: string
           pe_backed: boolean | null
           pe_backed_stage2: boolean | null
@@ -408,17 +460,21 @@ export type Database = {
           calendly_event_duration?: number | null
           calendly_event_name?: string
           calendly_event_type?: string
+          close_confidence?: number | null
           close_reason?: string
           closed_date?: string
           company?: string
           company_url?: string
+          competing_bankers?: string
           contract_end?: string
+          contract_months?: number | null
           contract_start?: string
           created_at?: string
           current_sourcing?: string
           date_submitted?: string
           days_in_current_stage?: number
           deal_intelligence?: Json | null
+          deal_narrative?: string
           deal_value?: number
           deals_planned?: string
           duplicate_of?: string
@@ -442,6 +498,7 @@ export type Database = {
           known_firm_match?: string | null
           last_acquisition_year?: number | null
           last_contact_date?: string
+          lead_status?: string
           linkedin_ma_experience?: boolean | null
           linkedin_score?: number | null
           linkedin_search_log?: Json | null
@@ -455,6 +512,8 @@ export type Database = {
           message?: string
           name?: string
           next_follow_up?: string
+          next_mutual_step?: string
+          next_mutual_step_date?: string
           notes?: string
           pe_backed?: boolean | null
           pe_backed_stage2?: boolean | null
@@ -495,17 +554,21 @@ export type Database = {
           calendly_event_duration?: number | null
           calendly_event_name?: string
           calendly_event_type?: string
+          close_confidence?: number | null
           close_reason?: string
           closed_date?: string
           company?: string
           company_url?: string
+          competing_bankers?: string
           contract_end?: string
+          contract_months?: number | null
           contract_start?: string
           created_at?: string
           current_sourcing?: string
           date_submitted?: string
           days_in_current_stage?: number
           deal_intelligence?: Json | null
+          deal_narrative?: string
           deal_value?: number
           deals_planned?: string
           duplicate_of?: string
@@ -529,6 +592,7 @@ export type Database = {
           known_firm_match?: string | null
           last_acquisition_year?: number | null
           last_contact_date?: string
+          lead_status?: string
           linkedin_ma_experience?: boolean | null
           linkedin_score?: number | null
           linkedin_search_log?: Json | null
@@ -542,6 +606,8 @@ export type Database = {
           message?: string
           name?: string
           next_follow_up?: string
+          next_mutual_step?: string
+          next_mutual_step_date?: string
           notes?: string
           pe_backed?: boolean | null
           pe_backed_stage2?: boolean | null
