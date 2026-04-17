@@ -29,6 +29,7 @@ import { NoteDialog } from "./lead-panel/dialogs/NoteDialog";
 import { TaskDialog } from "./lead-panel/dialogs/TaskDialog";
 import { LogCallDialog } from "./lead-panel/dialogs/LogCallDialog";
 import { EmailComposeDrawer } from "./lead-panel/dialogs/EmailComposeDrawer";
+import { KeyboardCheatsheet } from "./lead-panel/KeyboardCheatsheet";
 
 interface LeadDetailPanelProps {
   leadId: string | null;
@@ -65,6 +66,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
   const [callOpen, setCallOpen] = useState(false);
   const [emailDrawerOpen, setEmailDrawerOpen] = useState(false);
   const [emailDrawerPreset, setEmailDrawerPreset] = useState<"follow-up" | "default" | undefined>(undefined);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   // Email count for tab badge
   const [emailCount, setEmailCount] = useState<number>(0);
@@ -126,6 +128,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         case "i": setActiveTab("intelligence"); break;
         case "f": setActiveTab("files"); break;
         case "n": setActiveTab("notes"); break;
+        case "?": setShortcutsOpen(true); break;
         default: return;
       }
       e.preventDefault();
@@ -247,6 +250,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         onEnrich={handleEnrich}
         onArchive={onArchive}
         onChangeStage={onChangeStage}
+        onShowShortcuts={() => setShortcutsOpen(true)}
         draftingAI={draftingAI}
         enriching={enriching}
       />
@@ -371,6 +375,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
       <TaskDialog lead={lead} open={taskOpen} onOpenChange={setTaskOpen} />
       <LogCallDialog lead={lead} open={callOpen} onOpenChange={setCallOpen} save={save} />
       <EmailComposeDrawer lead={lead} open={emailDrawerOpen} onOpenChange={setEmailDrawerOpen} save={save} presetAction={emailDrawerPreset} />
+      <KeyboardCheatsheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   );
 

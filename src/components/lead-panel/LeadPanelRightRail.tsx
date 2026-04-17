@@ -10,6 +10,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getCompanyAssociates, getSharedIntelligence } from "@/lib/leadUtils";
 import { EnrichmentSection, SubmissionHistory } from "./shared";
 import { useProcessing } from "@/contexts/ProcessingContext";
+import { StakeholderCard } from "./cards/StakeholderCard";
+import { SourceAttributionCard } from "./cards/SourceAttributionCard";
 
 interface LeadPanelRightRailProps {
   lead: Lead;
@@ -220,15 +222,17 @@ export function LeadPanelRightRail({ lead, allLeads, enriching, onEnrich, save }
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Intelligence</span>
       </div>
       <AIInsightsCard lead={lead} enriching={enriching} onEnrich={onEnrich} save={save} />
+      <StakeholderCard lead={lead} />
       <EmailActivityCard leadId={lead.id} />
       <RightRailCards lead={lead} allLeads={allLeads} />
       <CompanyActivityCard lead={lead} allLeads={allLeads} />
+      <SourceAttributionCard lead={lead} />
       {submissionsCount > 0 && (
         <CollapsibleCard
           title="Submissions"
           icon={<FileInput className="h-3.5 w-3.5" />}
           count={submissionsCount}
-          defaultOpen={submissionsCount >= 2}
+          defaultOpen={false}
         >
           <SubmissionHistory submissions={lead.submissions} />
         </CollapsibleCard>

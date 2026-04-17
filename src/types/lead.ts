@@ -61,6 +61,36 @@ export type IcpFit = "Strong" | "Moderate" | "Weak" | "";
 
 export type BillingFrequency = "Monthly" | "Quarterly" | "Annually" | "";
 
+export type LeadStatus =
+  | "New"
+  | "Working"
+  | "Connected"
+  | "Reviewing"
+  | "Stalled"
+  | "Bad Timing"
+  | "Not Now";
+
+export type StakeholderSentiment =
+  | "champion"
+  | "supporter"
+  | "neutral"
+  | "skeptic"
+  | "blocker";
+
+export interface Stakeholder {
+  id: string;
+  lead_id: string;
+  name: string;
+  role: string;
+  email: string;
+  linkedin_url: string;
+  sentiment: StakeholderSentiment;
+  last_contacted: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── Meeting Intelligence Types ───
 
 export interface MeetingAttendee {
@@ -472,6 +502,18 @@ export interface Lead {
   secondaryContacts?: { name: string; email: string }[];
   googleDriveLink: string;
   forecastedCloseDate: string;
+  // v4: Lead status (separate from pipeline stage)
+  leadStatus?: LeadStatus;
+  // v4: Mutual close plan
+  nextMutualStep?: string;
+  nextMutualStepDate?: string;
+  // v4: Competing bankers/advisors
+  competingBankers?: string;
+  // v4: Deal economics
+  contractMonths?: number | null;
+  closeConfidence?: number | null;
+  // v4: AI deal narrative cached
+  dealNarrative?: string;
   // Legacy fields (kept for migration)
   firefliesUrl: string;
   firefliesTranscript: string;

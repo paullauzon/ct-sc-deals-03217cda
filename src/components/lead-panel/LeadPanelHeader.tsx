@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   Linkedin, X, Maximize2, Minimize2, Heart, ShieldAlert, Users, CalendarCheck,
   Mail, Calendar, FileText, CheckSquare, Zap, Phone, Sparkles, Archive, MoreHorizontal,
-  ChevronLeft, ChevronRight, Link2, Check, Globe, Clock,
+  ChevronLeft, ChevronRight, Link2, Check, Globe, Clock, ClipboardCopy, Keyboard,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { computeDealHealthScore, getStakeholderCoverage } from "@/lib/dealHealthUtils";
@@ -79,18 +79,45 @@ interface LeadPanelHeaderProps {
   onEnrich: () => void;
   onArchive: () => void;
   onChangeStage: (stage: LeadStage) => void;
+  onShowShortcuts: () => void;
   draftingAI?: boolean;
   enriching?: boolean;
+}
+
+const LEAD_STATUS_TONE: Record<string, string> = {
+  "New": "bg-secondary text-foreground/80",
+  "Working": "bg-secondary text-foreground/80",
+  "Connected": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  "Reviewing": "bg-secondary text-foreground/80",
+  "Stalled": "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  "Bad Timing": "bg-secondary text-muted-foreground",
+  "Not Now": "bg-secondary text-muted-foreground",
+};
+
+function buildDealSummary(lead: Lead, daysInStage: number, lastContact: string | null): string {
+  const lines: string[] = [];
+  lines.push(`${lead.name}${lead.role ? `, ${lead.role}` : ""}${lead.company ? ` @ ${lead.company}` : ""}`);
+  lines.push(`Stage: ${lead.stage}${lead.leadStatus ? ` · ${lead.leadStatus}` : ""} · ${daysInStage}d in stage`);
+  if (lead.dealValue) {
+    const tcv = lead.contractMonths ? lead.dealValue * lead.contractMonths : null;
+    lines.push(`Value: $${lead.dealValue.toLocaleString()}/mo${tcv ? ` · TCV $${tcv.toLocaleString()}` : ""}${lead.closeConfidence ? ` · ${lead.closeConfidence}% confidence` : ""}`);
+  }
+  if (lastContact) lines.push(lastContact);
+  if (lead.nextMutualStep) lines.push(`Next step: ${lead.nextMutualStep}${lead.nextMutualStepDate ? ` (${lead.nextMutualStepDate})` : ""}`);
+  if (lead.competingBankers) lines.push(`Competing: ${lead.competingBankers}`);
+  if (lead.assignedTo) lines.push(`Owner: ${lead.assignedTo}`);
+  return lines.join("\n");
 }
 
 export function LeadPanelHeader({
   lead, daysInStage, mode, hasPrev, hasNext,
   onClose, onPrev, onNext, onEmail, onSchedule, onNote, onTask,
-  onDraftAI, onLogCall, onEnrich, onArchive, onChangeStage,
+  onDraftAI, onLogCall, onEnrich, onArchive, onChangeStage, onShowShortcuts,
   draftingAI, enriching,
 }: LeadPanelHeaderProps) {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
+  const [summaryCopied, setSummaryCopied] = useState(false);
   const dealHealth = computeDealHealthScore(lead);
   const coverage = getStakeholderCoverage(lead);
   const lastContact = lastContactLabel(lead);
@@ -102,6 +129,14 @@ export function LeadPanelHeader({
     setCopied(true);
     toast.success("Deal link copied");
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const copySummary = async () => {
+    const text = buildDealSummary(lead, daysInStage, lastContact);
+    await navigator.clipboard.writeText(text);
+    setSummaryCopied(true);
+    toast.success("Deal summary copied");
+    setTimeout(() => setSummaryCopied(false), 1500);
   };
 
   const handleStageClick = async (stage: LeadStage) => {
@@ -154,6 +189,11 @@ export function LeadPanelHeader({
             )}
             <BrandLogo brand={lead.brand} size="sm" />
             <Badge variant="outline" className="text-[10px]">{lead.stage}</Badge>
+            {lead.leadStatus && lead.leadStatus !== "Working" && (
+              <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", LEAD_STATUS_TONE[lead.leadStatus] || "bg-secondary text-foreground/80")}>
+                {lead.leadStatus}
+              </span>
+            )}
             {dealHealth && (
               <span className={cn(
                 "text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 font-medium",
@@ -241,6 +281,22 @@ export function LeadPanelHeader({
             title="Copy deal link"
           >
             {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Link2 className="h-3.5 w-3.5" />}
+          </button>
+
+          <button
+            onClick={copySummary}
+            className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors"
+            title="Copy deal summary for Slack/handoff"
+          >
+            {summaryCopied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
+          </button>
+
+          <button
+            onClick={onShowShortcuts}
+            className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors"
+            title="Keyboard shortcuts (?)"
+          >
+            <Keyboard className="h-3.5 w-3.5" />
           </button>
 
           <button
