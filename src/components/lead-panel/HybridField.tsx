@@ -42,10 +42,27 @@ interface HybridProps {
   onSave: (v: string, meta?: HybridSaveMeta) => void;
   /** Stable identifier used by the Dossier-completeness scroller. */
   fieldKey?: string;
+  /** When true and there's no manual or derived value, render a muted "Awaiting first meeting" hint. */
+  awaitingMeeting?: boolean;
+}
+
+function AwaitingMeetingRow({ label, fieldKey }: { label: string; fieldKey?: string }) {
+  const dataAttr = fieldKey ? { "data-dossier-row": fieldKey, "data-dossier-filled": "false" } : {};
+  return (
+    <div
+      className="flex items-center justify-between gap-3 py-1.5 text-xs border-b border-border/40 last:border-0"
+      {...dataAttr}
+    >
+      <span className="text-muted-foreground shrink-0">{label}</span>
+      <span className="text-muted-foreground/40 italic text-right truncate text-[11px]">
+        Awaiting first meeting
+      </span>
+    </div>
+  );
 }
 
 export function HybridText({
-  label, manual, derived, onSave, type = "text", fieldKey,
+  label, manual, derived, onSave, type = "text", fieldKey, awaitingMeeting,
 }: HybridProps & { type?: "text" | "number" | "date" }) {
   const wrap = (v: string) => onSave(v);
   const filled = !!(manual && manual.trim()) || !!derived.value;
@@ -58,6 +75,7 @@ export function HybridText({
     );
   }
   if (!derived.value) {
+    if (awaitingMeeting) return <AwaitingMeetingRow label={label} fieldKey={fieldKey} />;
     return (
       <div {...dataAttr}>
         <InlineTextField label={label} value="" onSave={wrap} type={type} />
@@ -76,7 +94,7 @@ export function HybridText({
 }
 
 export function HybridSelect({
-  label, manual, derived, options, onSave, allowEmpty, fieldKey,
+  label, manual, derived, options, onSave, allowEmpty, fieldKey, awaitingMeeting,
 }: HybridProps & { options: string[]; allowEmpty?: boolean }) {
   const wrap = (v: string) => onSave(v);
   const filled = !!(manual && manual.trim()) || !!derived.value;
@@ -89,6 +107,7 @@ export function HybridSelect({
     );
   }
   if (!derived.value) {
+    if (awaitingMeeting) return <AwaitingMeetingRow label={label} fieldKey={fieldKey} />;
     return (
       <div {...dataAttr}>
         <InlineSelectField label={label} value="" options={options} onSave={wrap} allowEmpty={allowEmpty} />
@@ -113,9 +132,12 @@ export function HybridSelect({
 }
 
 /** Read-only derived row — used for transcript-only fields (e.g. Stakeholders, Champion). */
-export function DerivedRow({ label, derived, fieldKey }: { label: string; derived: DerivedValue; fieldKey?: string }) {
+export function DerivedRow({ label, derived, fieldKey, awaitingMeeting }: { label: string; derived: DerivedValue; fieldKey?: string; awaitingMeeting?: boolean }) {
   const filled = !!derived.value;
   const dataAttr = fieldKey ? { "data-dossier-row": fieldKey, "data-dossier-filled": String(filled) } : {};
+  if (!derived.value && awaitingMeeting) {
+    return <AwaitingMeetingRow label={label} fieldKey={fieldKey} />;
+  }
   return (
     <div className="flex items-center justify-between gap-3 py-1.5 text-xs border-b border-border/40 last:border-0" {...dataAttr}>
       <span className="text-muted-foreground shrink-0">{label}</span>
