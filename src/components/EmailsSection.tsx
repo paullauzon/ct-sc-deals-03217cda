@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare } from "lucide-react";
 
 interface LeadEmail {
   id: string;
@@ -71,7 +72,7 @@ function groupByThread(emails: LeadEmail[]): ThreadGroup[] {
     .sort((a, b) => new Date(b.latestDate).getTime() - new Date(a.latestDate).getTime());
 }
 
-export function EmailsSection({ leadId }: { leadId: string }) {
+export function EmailsSection({ leadId, onCompose }: { leadId: string; onCompose?: () => void }) {
   const [emails, setEmails] = useState<LeadEmail[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -114,32 +115,54 @@ export function EmailsSection({ leadId }: { leadId: string }) {
     };
   }, [leadId]);
 
+  const header = onCompose ? (
+    <div className="flex items-center justify-between border-b border-border pb-2 mb-3">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+          Email Correspondence{emails.length > 0 ? ` (${emails.length})` : ""}
+        </h3>
+      </div>
+      <Button variant="outline" size="sm" onClick={onCompose} className="h-7 text-xs gap-1.5">
+        <PenSquare className="h-3 w-3" /> Compose
+      </Button>
+    </div>
+  ) : null;
+
   if (loading) {
     return (
-      <div className="text-xs text-muted-foreground/60 text-center py-4">
-        Loading emails...
+      <div>
+        {header}
+        <div className="text-xs text-muted-foreground/60 text-center py-4">
+          Loading emails...
+        </div>
       </div>
     );
   }
 
   if (emails.length === 0) {
     return (
-      <p className="text-xs text-muted-foreground/60 text-center py-4">
-        No emails yet. Connect Gmail/Outlook via Zapier to see correspondence here.
-      </p>
+      <div>
+        {header}
+        <p className="text-xs text-muted-foreground/60 text-center py-4">
+          No emails yet. {onCompose ? "Click Compose to start a conversation, or " : ""}connect Gmail/Outlook via Zapier to see correspondence here.
+        </p>
+      </div>
     );
   }
 
   const threads = groupByThread(emails);
 
   return (
-    <ScrollArea className="max-h-[400px]">
-      <div className="space-y-1.5">
-        {threads.map((thread) => (
-          <ThreadCard key={thread.threadId} thread={thread} />
-        ))}
-      </div>
-    </ScrollArea>
+    <div>
+      {header}
+      <ScrollArea className="max-h-[480px]">
+        <div className="space-y-1.5">
+          {threads.map((thread) => (
+            <ThreadCard key={thread.threadId} thread={thread} />
+          ))}
+        </div>
+      </ScrollArea>
+    </div>
   );
 }
 

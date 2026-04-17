@@ -55,11 +55,13 @@ export function DealEconomicsCard({ lead, save }: Props) {
   const tcv = (Number(mrr) || 0) * (Number(months) || 0);
   const weighted = tcv * (confidence / 100);
 
+  const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost" || lead.stage === "Went Dark";
+
   return (
     <CollapsibleCard
       title="Deal Economics"
       icon={<Calculator className="h-3.5 w-3.5" />}
-      defaultOpen={!!lead.dealValue}
+      defaultOpen={!isClosed}
     >
       <div className="space-y-2.5">
         <div className="grid grid-cols-2 gap-2">

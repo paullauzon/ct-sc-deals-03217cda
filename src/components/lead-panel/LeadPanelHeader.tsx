@@ -10,6 +10,10 @@ import {
   Mail, Calendar, FileText, CheckSquare, Zap, Phone, Sparkles, Archive, MoreHorizontal,
   ChevronLeft, ChevronRight, Link2, Check, Globe, Clock, ClipboardCopy, Keyboard,
 } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { computeDealHealthScore, getStakeholderCoverage } from "@/lib/dealHealthUtils";
 import { cn } from "@/lib/utils";
@@ -49,6 +53,14 @@ function lastContactLabel(lead: Lead): string | null {
   if (lead.lastContactDate) {
     const t = new Date(lead.lastContactDate).getTime();
     if (!isNaN(t)) dates.push(t);
+  }
+  // Also consider most recent meeting date so the chip stays accurate
+  // even when lastContactDate hasn't been written yet.
+  for (const m of lead.meetings || []) {
+    if (m.date) {
+      const t = new Date(m.date).getTime();
+      if (!isNaN(t)) dates.push(t);
+    }
   }
   if (dates.length === 0) return null;
   const latest = Math.max(...dates);
@@ -118,14 +130,33 @@ export function LeadPanelHeader({
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
   const [summaryCopied, setSummaryCopied] = useState(false);
+  const [pendingStage, setPendingStage] = useState<LeadStage | null>(null);
   const dealHealth = computeDealHealthScore(lead);
   const coverage = getStakeholderCoverage(lead);
   const lastContact = lastContactLabel(lead);
   const domain = lead.companyUrl?.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || (lead.email?.split("@")[1] ?? "");
 
+  const tryCopy = async (text: string): Promise<boolean> => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fallback for restricted iframes
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+      } catch { return false; }
+    }
+  };
+
   const copyLink = async () => {
     const url = `${window.location.origin}/deal/${lead.id}`;
-    await navigator.clipboard.writeText(url);
+    const ok = await tryCopy(url);
+    if (!ok) { toast.error("Couldn't copy — your browser blocked clipboard access"); return; }
     setCopied(true);
     toast.success("Deal link copied");
     setTimeout(() => setCopied(false), 1500);
@@ -133,22 +164,29 @@ export function LeadPanelHeader({
 
   const copySummary = async () => {
     const text = buildDealSummary(lead, daysInStage, lastContact);
-    await navigator.clipboard.writeText(text);
+    const ok = await tryCopy(text);
+    if (!ok) { toast.error("Couldn't copy — your browser blocked clipboard access"); return; }
     setSummaryCopied(true);
     toast.success("Deal summary copied");
     setTimeout(() => setSummaryCopied(false), 1500);
   };
 
-  const handleStageClick = async (stage: LeadStage) => {
+  const handleStageClick = (stage: LeadStage) => {
     if (stage === lead.stage) return;
     const currentIdx = ACTIVE_STAGES.indexOf(lead.stage);
     const newIdx = ACTIVE_STAGES.indexOf(stage);
     if (newIdx < currentIdx) {
-      if (!window.confirm(`Move stage back from "${lead.stage}" to "${stage}"?`)) return;
+      setPendingStage(stage);
+      return;
     }
+    commitStageChange(stage);
+  };
+
+  const commitStageChange = async (stage: LeadStage) => {
     onChangeStage(stage);
     await logActivity(lead.id, "stage_change", `Stage: ${lead.stage} → ${stage}`, lead.stage, stage);
     toast.success(`Moved to ${stage}`);
+    setPendingStage(null);
   };
 
   const toggleMaximize = () => {
@@ -356,6 +394,22 @@ export function LeadPanelHeader({
           );
         })}
       </div>
+      <AlertDialog open={!!pendingStage} onOpenChange={(o) => { if (!o) setPendingStage(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Move stage backwards?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You're about to move <span className="font-medium text-foreground">{lead.name}</span> from <span className="font-medium text-foreground">{lead.stage}</span> back to <span className="font-medium text-foreground">{pendingStage}</span>. This will reset stage timing and may affect forecast & playbook tasks.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => pendingStage && commitStageChange(pendingStage)}>
+              Move back
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </header>
   );
 }

@@ -88,8 +88,8 @@ export function StakeholderCard({ lead }: Props) {
     <CollapsibleCard
       title="Stakeholders"
       icon={<Users className="h-3.5 w-3.5" />}
-      count={items.length || undefined}
-      defaultOpen={items.length > 0}
+      count={items.length}
+      defaultOpen
       rightSlot={
         <button
           type="button"

@@ -6,6 +6,17 @@ import { MACriteriaCard } from "@/components/dealroom/KeyInformationCard";
 import { Input } from "@/components/ui/input";
 import { DealEconomicsCard } from "./cards/DealEconomicsCard";
 import { MutualPlanCard } from "./cards/MutualPlanCard";
+import { cn } from "@/lib/utils";
+
+const LEAD_STATUS_TONE: Record<string, string> = {
+  "New": "bg-secondary text-foreground/80",
+  "Working": "bg-secondary text-foreground/80",
+  "Connected": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  "Reviewing": "bg-secondary text-foreground/80",
+  "Stalled": "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  "Bad Timing": "bg-secondary text-muted-foreground",
+  "Not Now": "bg-secondary text-muted-foreground",
+};
 
 const STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Lost", "Went Dark", "Closed Won"];
 const SERVICES: ServiceInterest[] = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"];
@@ -39,7 +50,22 @@ export function LeadPanelLeftRail({ lead, daysInStage, save }: Props) {
       <CollapsibleCard title="Key Information" defaultOpen>
         <div className="space-y-0">
           <InlineSelectField label="Stage" value={lead.stage} options={STAGES} onSave={(v) => save({ stage: v as LeadStage, stageEnteredDate: new Date().toISOString().split("T")[0] })} />
-          <InlineSelectField label="Status" value={lead.leadStatus || "Working"} options={LEAD_STATUSES} onSave={(v) => save({ leadStatus: v as LeadStatus })} />
+          <div className="flex items-center justify-between gap-3 py-1.5 text-xs border-b border-border/40">
+            <span className="text-muted-foreground">Status</span>
+            <div className="flex items-center gap-1.5">
+              <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium leading-tight", LEAD_STATUS_TONE[lead.leadStatus || "Working"] || "bg-secondary text-foreground/80")}>
+                {lead.leadStatus || "Working"}
+              </span>
+              <select
+                value={lead.leadStatus || "Working"}
+                onChange={(e) => save({ leadStatus: e.target.value as LeadStatus })}
+                className="bg-transparent text-[11px] text-muted-foreground hover:text-foreground border-0 cursor-pointer focus:outline-none focus:ring-0"
+                title="Change status"
+              >
+                {LEAD_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
           <InlineSelectField label="Priority" value={lead.priority} options={PRIORITIES} onSave={(v) => save({ priority: v as "High" | "Medium" | "Low" })} />
           <InlineSelectField label="Forecast" value={lead.forecastCategory} options={FORECASTS} onSave={(v) => save({ forecastCategory: v as ForecastCategory })} allowEmpty />
           <InlineSelectField label="ICP Fit" value={lead.icpFit} options={ICP_FITS} onSave={(v) => save({ icpFit: v as IcpFit })} allowEmpty />
