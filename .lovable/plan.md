@@ -1,103 +1,91 @@
 
 
-The user wants to ship a Zapier-based bridge from their Outlook (sourcecodeals.com) into the existing `ingest-email` edge function while waiting for: (a) the Outlook tenant admin consent, and (b) the captarget.com Workspace admin to set up Google Cloud OAuth.
+## Goal
 
-Let me think about what's already in place vs what needs to happen.
+Move the 8 quick-action buttons (Email, Schedule, Note, Task, Draft AI, Log call, Enrich, Ask AI) out of the header and into the **left rail** (contact profile), HubSpot-style. This makes the left rail a true "contact dossier" — identity, actions, and properties all in one panel — and reclaims vertical space in the header for the deal narrative and stage progression.
 
-**What already exists (verified from code):**
-- `supabase/functions/ingest-email/index.ts` is fully functional — accepts POST with `from`, `to`, `subject`, `body_preview`, `date`, `thread_id`, `message_id`. Bearer-auth via `INGEST_API_KEY`. Dedupes on `message_id`. Auto-matches lead by external email. Inserts into `lead_emails` with `source: "zapier"`. Memory file `mem://features/email-correspondence-tracking` confirms this is the "Zapier active for inbound" path that's already shipping.
-- `lead_emails` schema supports everything Zapier sends.
-- The metric materializer (`lead_email_metrics` view) and EmailMetricsCard already render whatever lands in `lead_emails`.
+## Reference (from your screenshots)
 
-**What's missing for an Outlook→Zapier bridge:**
-1. **Zapier Zap configuration** — user-side, not code. Microsoft Outlook trigger ("New Email") → Webhooks by Zapier ("POST" action) → our `ingest-email` URL with the right field mapping and `Authorization: Bearer ${INGEST_API_KEY}` header.
-2. **Outbound (sent) coverage** — Zapier's "New Email" trigger watches Inbox by default. To capture sent emails (so we know Adam replied), need a second Zap watching the Sent Items folder.
-3. **Direction detection** — `ingest-email` already handles this via `INTERNAL_DOMAINS` check on `from` address. Good.
-4. **Body content** — current `ingest-email` only takes `body_preview` (first 5000 chars). For threading/AI follow-ups, we'd ideally want full HTML/text. Outlook via Zapier exposes `Body Plain` and `Body HTML`. Quick schema add: accept optional `body_text` and `body_html` and store them in the existing columns (already on `lead_emails` per the Outlook function).
-5. **Thread/Message IDs** — Zapier exposes `Message ID` and `Conversation ID` from Outlook. Map to `message_id` and `thread_id` for proper threading.
-6. **Recipients** — Zapier exposes `To`, `Cc`, `Bcc`. Current code parses `to` only. Quick add: accept `cc` and `bcc`.
-7. **No tracking pixels / opens / clicks** — Zapier path can't deliver these. Acceptable trade-off until real send infra ships.
-8. **Sending from app** — out of scope for Zapier path. Compose drawer stays in "Copy & mark sent" mode for now.
+Screenshot 2 shows the HubSpot pattern: avatar → name → role/company → quick action chips (Note · Email · Call · Task · Meeting) → "Actions ▼" overflow → collapsible property sections (Identity, Buyer Profile…). That's the target shape, adapted to our existing visual language (monochrome, no colored dots, Lucide icons).
 
-**Cost/effort honesty:**
-- Code-side: ~30 min. Tiny enhancement to `ingest-email` to accept `body_text`, `body_html`, `cc`, `bcc`. Zero schema migration (columns already exist from the Outlook function). No new edge functions.
-- User-side: 10-15 min in Zapier UI. Two Zaps (Inbox + Sent Items). Need a Zapier paid plan if doing >100 tasks/month (likely needed at sales volume).
-- Limitations to disclose: 5-15 min latency (Zapier polling), no opens/clicks, no in-app send, Zapier task quota costs money at volume.
+## Layout changes
 
-**Why this is actually a smart bridge:**
-- Captarget side already runs through Zapier (per memory). Adding sourcecodeals via Zapier creates *symmetry* — both brands on the same ingest path until proper OAuth lands.
-- Provider-agnostic infra work isn't wasted — the `lead_emails` schema is the same target.
-- Zero risk to existing Captarget Zapier flow (separate Zaps, same endpoint).
-- When Outlook admin consent finally lands, the existing `sync-outlook-emails` function takes over and we just pause/disable the Zapier Zaps. No cleanup needed because dedup is on `message_id`.
+### 1. Left rail (`LeadPanelLeftRail.tsx`) — new top section
 
-**Memory to save:** the user explicitly said "remember all of this for later" referring to the admin/OAuth status. Need to update `mem://integrations/email-sync-status` with current state.
+New stack at the top of the rail, replacing the current "About" label:
 
-I'll present a tight plan: tiny code enhancement + step-by-step Zapier Zap config the user can execute themselves.
+```text
+┌─ AboutCard (refactored IdentityCard) ─────────┐
+│         [Avatar]                              │
+│         Name                                  │
+│         Role · Company                        │
+│   [Brand chip] [Stage chip] [Status chip]    │
+│                                               │
+│   ┌─ Quick actions (2 rows of 4) ──────┐    │
+│   │ [Email] [Schedule] [Note] [Task]   │    │
+│   │ [Call]  [Draft AI][Enrich][Ask AI] │    │
+│   └────────────────────────────────────┘    │
+│                                               │
+│   ┌─ More ▾ ──────────────────────────┐    │
+│   │ Copy link · Copy summary · Archive │    │
+│   └────────────────────────────────────┘    │
+│                                               │
+│   ─── Contact ─────────────────────────       │
+│   ✉  email@…              [copy]              │
+│   ☎  phone                [copy]              │
+│   🌐 domain.com           [open]              │
+│   in LinkedIn profile     [open]              │
+└───────────────────────────────────────────────┘
+```
 
----
+Then the existing `Key Information`, `Deal Economics`, `Mutual Plan`, etc. cards continue below unchanged.
 
-# Plan: Outlook → Zapier → CRM bridge (interim)
+**Action button style:** square-ish tiles (icon over label), 2×4 grid, monochrome (`bg-secondary/40 hover:bg-secondary`), Lucide icons, no colored dots — keeps the premium B&W aesthetic per your design memory.
 
-## What we're building
+### 2. Header (`LeadPanelHeader.tsx`) — slimmed down
 
-While waiting for (a) sourcecodeals.com tenant admin consent for Outlook deep sync and (b) captarget.com Workspace admin for Gmail OAuth, route Outlook emails through Zapier into the existing `ingest-email` endpoint. Same path Captarget already uses — creates brand symmetry.
+Remove the entire `Quick action bar` row (lines 406–426). Header keeps:
+- Identity row (avatar + name + intelligence chips: health, momentum, win%, slip-risk)
+- "Days in stage · $value · Last contact" meta strip
+- Prev/Next, Copy link, Copy summary, Shortcuts, Maximize, More, Close (top-right cluster — unchanged)
+- Clickable stage progress bar
 
-## Code changes (small)
+This shrinks header from ~3 rows to ~2 rows, giving more vertical room to the workspace tabs.
 
-**1. Enhance `supabase/functions/ingest-email/index.ts`**
-- Accept optional fields: `body_text`, `body_html`, `cc`, `bcc`, `conversation_id`
-- Map `conversation_id` → `thread_id` (Outlook's term)
-- Store `body_text` and `body_html` in the existing columns on `lead_emails` (already there from `sync-outlook-emails`)
-- Keep all existing behavior (dedup, internal-domain direction detection, lead matching)
+### 3. New: rail width tweak
 
-**2. Update memory**
-- Save current waiting-on-admin status to `mem://integrations/email-sync-status` so future sessions know context
-- Note that Zapier-Outlook bridge is the interim solution
+Bump left rail from `w-[300px]` → `w-[320px]` so 4 action tiles per row fit comfortably with labels.
 
-No schema migration needed. No new functions. ~30 lines changed.
+## What else to add (small, high-leverage additions)
 
-## User-side: Zapier setup (you do this)
+Since we're already restructuring the profile panel:
 
-You'll create **two Zaps** (one for Inbox, one for Sent Items). I'll give you exact field mappings.
+1. **Contact owner inline** — show "Owner: Malik" with quick reassign dropdown right under the contact info (currently buried in Key Information).
+2. **Last touchpoint chip** — "Last contact 3d ago · Email" right above quick actions, so the rep sees recency before deciding which action to fire.
+3. **Smart action highlighting** — the next-best action gets a subtle ring (e.g., if `nextFollowUp` is overdue, highlight `Email`; if no meeting booked, highlight `Schedule`). Driven by existing `next-steps engine` logic. Premium-monochrome — uses a 1px foreground ring, not a color.
+4. **"More" overflow menu** — bundles low-frequency actions (Copy link, Copy summary, Archive, Keyboard shortcuts) into a single dropdown to keep the action grid clean at exactly 8 primary actions.
 
-**Zap 1: Outlook Inbox → CRM**
-- Trigger: Microsoft Outlook → "New Email" → folder: Inbox
-- Action: Webhooks by Zapier → "POST"
-  - URL: `https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/ingest-email`
-  - Headers: `Authorization: Bearer <INGEST_API_KEY>` + `Content-Type: application/json`
-  - Body (JSON): exact field map I'll provide (from, to, cc, bcc, subject, body_text, body_html, date, message_id, conversation_id)
+## Files touched
 
-**Zap 2: Outlook Sent Items → CRM** — same recipe, different folder
+- `src/components/dealroom/IdentityCard.tsx` — extend to render the quick actions grid + smart highlight + last-touchpoint chip + More overflow. Accepts new props (`onEmail`, `onSchedule`, `onNote`, `onTask`, `onDraftAI`, `onLogCall`, `onEnrich`, `onAskAI`, `onArchive`, `onCopyLink`, `onCopySummary`, `draftingAI`, `enriching`).
+- `src/components/lead-panel/LeadPanelLeftRail.tsx` — pass action handlers through to `IdentityCard`; bump width to 320px.
+- `src/components/lead-panel/LeadPanelHeader.tsx` — remove quick-action row; remove now-unused props from interface.
+- `src/components/LeadDetailPanel.tsx` — wire the action callbacks down through `LeadPanelLeftRail` instead of `LeadPanelHeader`. Keep keyboard shortcuts working (they call the same handlers).
 
-## Trade-offs (honest)
+No new files. No schema changes. ~150 lines moved/refactored.
 
-| | Zapier bridge | Real Outlook OAuth (when admin approves) |
-|---|---|---|
-| Latency | 5-15 min polling | <1 min via cron |
-| Sent emails | ✅ via 2nd Zap | ✅ |
-| Opens/clicks tracking | ❌ | ✅ (when we add tracking pixels) |
-| Send-from-app | ❌ (still copy/paste) | ✅ |
-| Cost | Zapier Pro ~$30/mo at volume | Free |
-| Switch-over effort | Zero — disable Zap, dedup on message_id prevents duplicates | — |
+## Trade-offs
 
-## What this unblocks
+- **Win:** Profile panel becomes self-sufficient — rep can see the contact AND act on them without eye-jumping to the top bar. Matches CRM industry convention (HubSpot, Salesforce, Attio).
+- **Win:** Header feels lighter and the deal narrative (stage progress + intelligence chips) gets visual priority.
+- **Loss:** When the left rail is collapsed (`[` shortcut), actions disappear too. **Mitigation:** keep a slim icon-only action strip in the header that appears *only* when the left rail is collapsed (`!leftOpen ? <CompactActionStrip /> : null`). Best of both worlds.
+- **Loss:** Two extra rail-width pixels (300→320). Negligible at 1394px viewport.
 
-- Real sourcecodeals.com sales correspondence flowing into the CRM **today**
-- All existing intelligence (lead matching, EmailMetricsCard, AskDeal context, follow-up suggestions) works immediately
-- No wasted work — when proper OAuth lands, we flip a switch and nothing changes downstream
+## Sequence
 
-## What this does NOT do
-
-- No tracking pixels (need real send infra)
-- No in-app sending (compose drawer stays "Copy & mark sent")
-- No Gmail (still waiting on captarget admin)
-
-## After plan approval, exact sequence
-
-1. I update `ingest-email` (5 min)
-2. I save the memory file (1 min)
-3. I give you a step-by-step Zapier setup walkthrough with screenshots-by-words for both Zaps
-4. You build the Zaps (~15 min)
-5. We test with one real email end-to-end
-6. Done — sourcecodeals Outlook is live via Zapier
+1. Refactor `IdentityCard` → accept action props, render grid + last-touchpoint + More menu + smart-highlight.
+2. Update `LeadPanelLeftRail` to pass props through and bump width.
+3. Strip quick-action row from `LeadPanelHeader`; add the collapsed-rail compact strip.
+4. Update `LeadDetailPanel` wiring.
+5. You verify the flow end-to-end: open a lead, fire each action, collapse left rail and confirm compact strip appears, test `e/c/m/n/t` keyboard shortcuts still work.
 
