@@ -150,7 +150,7 @@ export function StakeholderCard({ lead }: Props) {
                 <button onClick={() => beginEdit(s)} className="p-1 text-muted-foreground hover:text-foreground" title="Edit">
                   <Pencil className="h-3 w-3" />
                 </button>
-                <button onClick={() => remove(s.id, s.name)} className="p-1 text-muted-foreground hover:text-destructive" title="Remove">
+                <button onClick={() => setRemoveTarget({ id: s.id, name: s.name })} className="p-1 text-muted-foreground hover:text-destructive" title="Remove">
                   <Trash2 className="h-3 w-3" />
                 </button>
               </div>
@@ -183,6 +183,21 @@ export function StakeholderCard({ lead }: Props) {
           </div>
         )}
       </div>
+
+      <AlertDialog open={!!removeTarget} onOpenChange={o => { if (!o) setRemoveTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {removeTarget?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This stakeholder will be removed from the deal. The action will be recorded in the activity log.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRemove}>Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </CollapsibleCard>
   );
 }
