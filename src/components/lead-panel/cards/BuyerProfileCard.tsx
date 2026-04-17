@@ -8,6 +8,8 @@ import {
   deriveAcqTimeline,
   deriveAuthorityConfirmed,
   deriveAiSuggestions,
+  deriveFirmTypeFromSubmission,
+  deriveActiveSearchesFromSubmission,
   type DerivedValue,
 } from "@/lib/dealDossier";
 import { Building2, Sparkles } from "lucide-react";
