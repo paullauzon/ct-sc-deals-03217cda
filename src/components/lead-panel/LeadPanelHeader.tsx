@@ -93,6 +93,7 @@ interface LeadPanelHeaderProps {
   onArchive: () => void;
   onChangeStage: (stage: LeadStage) => void;
   onShowShortcuts: () => void;
+  onAskAI: () => void;
   draftingAI?: boolean;
   enriching?: boolean;
 }
