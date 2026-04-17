@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Lead, LeadStage, ServiceInterest, ForecastCategory, IcpFit, DealOwner, BillingFrequency, CloseReason, LeadStatus } from "@/types/lead";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { IdentityCard } from "@/components/dealroom/IdentityCard";
@@ -61,9 +62,36 @@ export function LeadPanelLeftRail({
 }: Props) {
   const isSourceCo = lead.brand === "SourceCo";
   const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost" || lead.stage === "Went Dark";
+  const railRef = useRef<HTMLElement | null>(null);
+
+  // Listen for the Dossier % chip click → scroll to first empty dossier row & flash it.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      if (detail.leadId && detail.leadId !== lead.id) return;
+      const root = railRef.current;
+      if (!root) return;
+      const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-dossier-row]"));
+      const target = rows.find(r => r.dataset.dossierFilled === "false") || rows[0];
+      if (!target) return;
+      // Open any collapsed parent <details> by finding closest CollapsibleCard wrapper button
+      let parent = target.parentElement;
+      while (parent && parent !== root) {
+        if (parent.tagName === "DETAILS" && !(parent as HTMLDetailsElement).open) {
+          (parent as HTMLDetailsElement).open = true;
+        }
+        parent = parent.parentElement;
+      }
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.classList.add("ring-2", "ring-foreground/40", "rounded-sm", "transition-all");
+      setTimeout(() => target.classList.remove("ring-2", "ring-foreground/40", "rounded-sm", "transition-all"), 1500);
+    };
+    window.addEventListener("scroll-to-empty-dossier", handler);
+    return () => window.removeEventListener("scroll-to-empty-dossier", handler);
+  }, [lead.id]);
 
   return (
-    <aside className="w-[320px] shrink-0 border-r border-border overflow-y-auto bg-background h-full min-h-0">
+    <aside ref={railRef} className="w-[320px] shrink-0 border-r border-border overflow-y-auto bg-background h-full min-h-0">
       <div className="px-4 pt-3">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">About</span>
       </div>
