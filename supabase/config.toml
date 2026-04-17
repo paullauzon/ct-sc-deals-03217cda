@@ -56,3 +56,9 @@ verify_jwt = false
 
 [functions.sync-fireflies-post-meeting]
 verify_jwt = false
+
+[functions.ask-deal]
+verify_jwt = false
+
+[functions.daily-standup]
+verify_jwt = false
