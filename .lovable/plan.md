@@ -1,85 +1,70 @@
 
 
-## Build a Client Success pipeline + auto-handoff on Closed Won
+## Verification — Client Success Pipeline vs. wireframe
 
-### Concept
-A **second pipeline** for the account-management team (Valeria), separate from the sales pipeline. When Malik marks a deal **Closed Won**, an account record auto-spawns in the Client Success pipeline at **Onboarding**, fully copied from the source deal. The 4 existing Closed-Won deals get backfilled into this pipeline.
+### ✅ Fully implemented
+| Requirement | Status |
+|---|---|
+| Separate `client_accounts` + `client_account_tasks` tables | ✅ Created with RLS |
+| 5-stage pipeline (Onboarding → Active → Renewal Due → Paused → Churned) | ✅ `ClientPipeline.tsx` Kanban |
+| System switcher with "Client Success" as 3rd option | ✅ With `HeartHandshake` icon |
+| Auto-handoff trigger on Closed Won (`handle_closed_won`) | ✅ Trigger live, idempotent |
+| 4 won deals backfilled to **Active** (CT-001, CT-010, CT-043, CT-174) | ✅ All present with billing + contract dates |
+| Drag between stages, churn requires reason modal, pause requires reason | ✅ |
+| Detail drawer: source deal link, billing, contract, tasks, notes | ✅ |
+| Linked Account card on Closed Won leads in sales view | ✅ |
+| Active MRR + active count KPIs | ✅ |
 
-### The 5 Client Success stages (from wireframe)
-1. **Onboarding** — guide sent, kick-off scheduled, billing fields filled (48h SLA)
-2. **Active** — service running, monthly check-in auto-task, renewal date tracked
-3. **Renewal Due** — auto-flagged 60 days before contract end
-4. **Paused / Credit** — service paused, reason + credit logged (30d resume task)
-5. **Churned** — churn reason required, Malik notified
+### ⚠️ Gaps vs. wireframe
 
-### Architecture
+1. **Backfilled accounts have ZERO tasks** — DB shows `client_account_tasks` is empty for the 4 backfilled rows. The trigger only seeds tasks on a *fresh* Closed Won transition, and the migration backfill skipped task seeding. Per wireframe, even Active accounts should have a recurring monthly check-in task.
+2. **`LinkedAccountCard` navigation is broken** — uses `view=accounts` but `parseHashState` only accepts `dashboard|pipeline|leads|today`. Clicking goes nowhere visible. Also, no auto-open of the detail drawer when `account=<id>` is in the hash.
+3. **Pre-flight billing-fields warning** before Closed Won is missing — wireframe explicitly calls this out as the #1 most important pre-close checklist item.
+4. **"Account handed off to Valeria" toast** for Malik when he marks Closed Won is not surfaced anywhere in the sales pipeline UI.
+5. **Onboarding stage has 2 SLA chips** in the wireframe ("Billing + dates required", "48h guide SLA") — column header just shows description text, not the visual SLA badges.
 
-**New table `client_accounts`** (separate from `leads` — keeps sales pipeline clean):
-```
-id, lead_id (FK to source deal), brand, contact_name, company,
-owner ('Valeria'), cs_stage, onboarded_date, contract_start, contract_end,
-monthly_value (CT) | retainer_value (SC) | success_fee_pct (SC),
-service_type, deal_amount, mandate_fields (jsonb),
-pause_reason, pause_credit, resume_date,
-churn_reason, churn_date, re_engage_date,
-notes, created_at, updated_at
-```
-Plus `client_account_tasks` table (mirrors `lead_tasks` shape) for SLA + monthly + 60d auto-tasks.
+### Plan to close the gaps
 
-**Auto-handoff trigger** (DB trigger on `leads` UPDATE where `stage` flips to `Closed Won`):
-- Insert row into `client_accounts` at `Onboarding`, copying all relevant fields
-- Insert 2 tasks for Valeria: "Send onboarding guide (48h SLA)", "Send Buyers Profile form"
-- Skip if a `client_accounts` row for that `lead_id` already exists (idempotent)
+**A. Seed Active monthly check-in tasks for the 4 backfilled accounts** (migration)
+- Insert one "Monthly check-in" task per backfilled account due 30 days out so Valeria's queue isn't empty.
 
-**Auto-tasks (cron-driven)**:
-- Active stage → monthly check-in task auto-creates each month
-- Contract end - 60 days → flip to "Renewal Due" + create renewal task
-- Paused → "Resume check-in" task at +30 days
+**B. Fix Linked Account navigation + auto-open drawer**
+- `LinkedAccountCard.tsx`: change hash to `view=pipeline&sys=client-success&account=<id>` (Index already routes `client-success` regardless of view).
+- `ClientSuccessSystem.tsx` / `ClientPipeline.tsx`: read `account=<id>` from hash on mount and open `ClientAccountDetail` for that ID. Clear the param on close.
 
-### Top-level navigation
+**C. Pre-flight billing warning modal in sales pipeline**
+- In the lead stage-change handler (where stage flips to "Closed Won"), if `subscription_value === 0` OR `contract_end` is empty, show a soft-warning modal: "Billing fields blank — Valeria's pipeline will be incomplete. Continue anyway?" with Cancel / Mark Won buttons.
+- Find the stage-change call site (likely `Pipeline.tsx` drag-drop or `LeadPanelHeader` stage selector) and wrap with this guard.
+- Show success toast: "Account handed off to Valeria — Client Success pipeline updated" after confirm.
 
-Add a **third system** to `SystemSwitcher.tsx` alongside Sales CRM and Business Ops:
-- **Client Success** (icon: `HeartHandshake` or `Users`)
+**D. Visual SLA chips on column headers**
+- `ClientPipeline.tsx`: add small badge row under each column header with the wireframe's chip labels:
+  - Onboarding: "Billing + dates required" · "48h guide SLA"
+  - Active: "Monthly task auto-creates"
+  - Renewal Due: "60d auto-trigger"
+  - Paused: "30d resume task"
+  - Churned: "Churn reason required" · "Notifies Malik"
 
-Inside that system: a single **Accounts pipeline** view (Kanban with the 5 columns), plus a `ClientAccountDetail` drawer showing source deal link, billing fields, contract dates, tasks, churn/pause forms.
+### Files to touch
 
-### Files
-
-**New**
-- `supabase/migrations/<ts>_client_success.sql` — `client_accounts` + `client_account_tasks` tables, RLS, trigger fn `handle_closed_won()` for auto-handoff, backfill 4 existing Closed Won → Onboarding
-- `supabase/functions/cs-cron-tasks/index.ts` — daily cron: monthly check-ins, 60d renewal flip, 30d resume tasks
-- `src/components/ClientSuccessSystem.tsx` — top-level shell, mirrors `BusinessSystem.tsx`
-- `src/components/ClientPipeline.tsx` — Kanban with 5 columns, drag-drop between stages
-- `src/components/ClientAccountCard.tsx` — pipeline card (avatar, name, company, stage badge, renewal countdown, billing chip)
-- `src/components/ClientAccountDetail.tsx` — drawer: source deal link, billing fields (CT/SC variants), contract dates, tasks, pause/churn forms
-- `src/contexts/ClientAccountContext.tsx` — fetch/update client_accounts, real-time subscription
-- `src/hooks/useClientAccountTasks.ts` — task CRUD
-- `src/types/clientAccount.ts` — types
+**New migration**
+- `supabase/migrations/<ts>_cs_backfill_tasks_and_polish.sql` — seed monthly check-in tasks for 4 backfilled accounts
 
 **Modified**
-- `src/components/SystemSwitcher.tsx` — add "Client Success" option (3rd system)
-- `src/pages/Index.tsx` — route `system === "client-success"` to `<ClientSuccessSystem />`, extend `System` type
-- `src/components/lead-panel/LeadPanelRightRail.tsx` — for Closed Won leads, render a small "Linked Account" card with link to the CS pipeline entry (read-only for Malik)
-- `.lovable/memory/index.md` — add Client Success pipeline memory entry
+- `src/components/lead-panel/cards/LinkedAccountCard.tsx` — fix hash format
+- `src/components/ClientSuccessSystem.tsx` — read `account` hash param, pass to ClientPipeline
+- `src/components/ClientPipeline.tsx` — accept `initialAccountId` prop, open drawer; add SLA chip rows under column headers
+- `src/components/Pipeline.tsx` (or wherever stage drag-drop lives) — pre-flight modal on Closed Won transition + handoff toast
+- `src/components/lead-panel/LeadPanelHeader.tsx` (if stage selector lives here) — same pre-flight modal
 
-### Behavior
+### Out of scope for this loop
+- `cs-cron-tasks` edge function (60d renewal flip, monthly auto-task generator, 30d resume task) — separate request
+- Required-field gating (hard block) — wireframe says soft warning is fine for now
+- Email/Slack notifications to Valeria/Malik — UI toast only for now
 
-- **Malik marks deal Closed Won** in sales pipeline → DB trigger fires → CS account appears in Valeria's pipeline at Onboarding within seconds → 2 tasks waiting → toast notifies Malik "Account handed off to Client Success"
-- **Pre-close validation**: if `subscription_value` (CT) or `subscription_value`+`success_fee_pct` (SC) is empty when stage flips to Closed Won, show a pre-flight modal warning ("Billing fields blank — Valeria's pipeline will be incomplete"). Soft warning for now (not blocking, per wireframe note "in the future make these required").
-- **CS pipeline drag**: Valeria can drag between Onboarding → Active → Renewal Due → Paused → Churned. Churned requires a reason (modal, mirrors archive-with-reason pattern).
-- **Backfill**: Migration inserts CT-001, CT-010, CT-043, CT-174 directly at **Active** (they're past onboarding) with their current `subscription_value` + `contract_end` populated. Owner = Valeria.
-- **Right-rail "Linked Account" card** on Closed Won leads in the sales view → click opens the CS account drawer.
-
-### Trade-offs
-- **Win**: Clear separation of concerns. Malik's pipeline ends at Closed Won; Valeria's begins. Auto-handoff eliminates manual re-entry. Renewal timer + monthly check-ins drive retention.
-- **Cost**: New table + trigger + cron + ~7 new components.
-- **Risk**: Two sources of truth for "the customer" (lead + account). Mitigated by `lead_id` FK and a "Linked Account" card showing the connection both ways.
-- **Out of scope (future)**: Required-field gating before Closed Won; Slack/email notifications to Valeria/Malik; renewal forecast revenue in Business Ops; per-account NPS.
-
-### Verification
-1. Open `Client Success` from system switcher → 5-column pipeline with 4 cards in Active (CT-001, CT-010, CT-043, CT-174)
-2. Open sales pipeline → drag a deal to Closed Won → toast "Handed off to Valeria" → CS pipeline shows new card in Onboarding within 2s with 2 tasks
-3. Open the linked account → source deal link works → billing fields pre-filled
-4. Drag account to Churned → modal asks for reason → save → card moves; opening Malik's lead view shows "Account churned" badge
-5. Future-dated test: contract_end set 60d out → cron flips to Renewal Due
+### Verification after build
+1. Open Client Success → 4 Active cards, each with 1 pending "Monthly check-in" task in the drawer
+2. Open a Closed Won lead → click Linked Account card → CS pipeline opens with that account's drawer auto-open
+3. Drag a non-Closed-Won deal to Closed Won with empty `subscription_value` → warning modal appears → confirm → toast "Handed off to Valeria"
+4. Each CS column shows its SLA chips matching the wireframe
 
