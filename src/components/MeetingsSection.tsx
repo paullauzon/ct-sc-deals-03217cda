@@ -320,9 +320,9 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
                 <FileText className="h-3 w-3" />
                 {generatingPrep ? "Generating…" : "Prep brief"}
               </Button>
-              {lead.calendlyEventType && (
+              {lead.calendlyEventType && lead.calendlyEventType.startsWith("http") && (
                 <a
-                  href={lead.calendlyEventType.startsWith("http") ? lead.calendlyEventType : `https://${lead.calendlyEventType}`}
+                  href={lead.calendlyEventType}
                   target="_blank" rel="noreferrer"
                   className="inline-flex items-center gap-1 h-7 px-2 text-xs text-muted-foreground hover:text-foreground border border-border rounded transition-colors"
                   title="Open in Calendly"
@@ -396,6 +396,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
                 generatingFollowUp={generatingFollowUp && followUpMeetingId === meeting.id}
                 onReprocess={() => handleReprocess(meeting)}
                 reprocessing={reprocessingMeetingId === meeting.id}
+                onOpenTranscript={() => setTranscriptMeeting(meeting)}
               />
             ))}
         </div>
@@ -437,6 +438,13 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
 
       {/* Follow-Up Email Dialog */}
       <FollowUpDialog open={showFollowUpDialog} onOpenChange={setShowFollowUpDialog} email={followUpEmail} loading={generatingFollowUp} />
+
+      {/* Inline Fireflies transcript drawer */}
+      <TranscriptDrawer
+        meeting={transcriptMeeting}
+        open={!!transcriptMeeting}
+        onOpenChange={(o) => { if (!o) setTranscriptMeeting(null); }}
+      />
     </div>
   );
 }
@@ -798,10 +806,11 @@ function TagList({ label, items, emoji, variant }: { label: string; items?: stri
 
 // ─── Meeting Card ───
 
-function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, onReprocess, reprocessing }: { meeting: Meeting; onRemove: () => void; onDraftFollowUp: () => void; generatingFollowUp: boolean; onReprocess?: () => void; reprocessing?: boolean }) {
+function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, onReprocess, reprocessing, onOpenTranscript }: { meeting: Meeting; onRemove: () => void; onDraftFollowUp: () => void; generatingFollowUp: boolean; onReprocess?: () => void; reprocessing?: boolean; onOpenTranscript?: () => void }) {
   const [open, setOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const intel = meeting.intelligence;
+  const hasTranscript = !!meeting.transcript && meeting.transcript.length > 0;
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
