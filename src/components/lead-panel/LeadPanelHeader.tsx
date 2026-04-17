@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { computeDealHealthScore, getStakeholderCoverage } from "@/lib/dealHealthUtils";
+import { computeWinProbability, computeSlipRisk } from "@/lib/dealPredictions";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -134,6 +135,8 @@ export function LeadPanelHeader({
   const dealHealth = computeDealHealthScore(lead);
   const coverage = getStakeholderCoverage(lead);
   const lastContact = lastContactLabel(lead);
+  const winProb = computeWinProbability(lead);
+  const slipRisk = computeSlipRisk(lead);
   const domain = lead.companyUrl?.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || (lead.email?.split("@")[1] ?? "");
 
   const tryCopy = async (text: string): Promise<boolean> => {
