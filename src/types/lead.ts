@@ -514,6 +514,22 @@ export interface Lead {
   closeConfidence?: number | null;
   // v4: AI deal narrative cached
   dealNarrative?: string;
+  // v5: Buyer Profile / M&A Mandate / Sales Process dossier (manual overrides)
+  firmAum?: string;
+  acqTimeline?: string;
+  activeSearches?: string;
+  budgetConfirmed?: string;
+  authorityConfirmed?: string;
+  ebitdaMin?: string;
+  ebitdaMax?: string;
+  dealType?: string;
+  transactionType?: string;
+  competingAgainst?: string;
+  decisionBlocker?: string;
+  sampleSentDate?: string;
+  sampleOutcome?: string;
+  proofNotes?: string;
+  stallReason?: string;
   // Legacy fields (kept for migration)
   firefliesUrl: string;
   firefliesTranscript: string;

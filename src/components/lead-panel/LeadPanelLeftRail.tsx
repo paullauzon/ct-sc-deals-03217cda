@@ -2,11 +2,13 @@ import { Lead, LeadStage, ServiceInterest, ForecastCategory, IcpFit, DealOwner, 
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { IdentityCard } from "@/components/dealroom/IdentityCard";
 import { InlineTextField, InlineSelectField, InlineToggleField } from "./InlineEditFields";
-import { MACriteriaCard } from "@/components/dealroom/KeyInformationCard";
+
 import { Input } from "@/components/ui/input";
 import { DealEconomicsCard } from "./cards/DealEconomicsCard";
 import { MutualPlanCard } from "./cards/MutualPlanCard";
-import { AcquirerProfileCard } from "./cards/AcquirerProfileCard";
+import { BuyerProfileCard } from "./cards/BuyerProfileCard";
+import { MAMandateCard } from "./cards/MAMandateCard";
+import { SalesProcessCard } from "./cards/SalesProcessCard";
 import { SourceAttributionCard } from "./cards/SourceAttributionCard";
 import { WebsiteActivityCard } from "./cards/WebsiteActivityCard";
 import { SubmissionHistory } from "./shared";
@@ -123,9 +125,13 @@ export function LeadPanelLeftRail({
 
       <DealEconomicsCard lead={lead} save={save} />
 
-      <MutualPlanCard lead={lead} save={save} />
+      <BuyerProfileCard lead={lead} save={save} />
 
-      {isSourceCo && <AcquirerProfileCard lead={lead} />}
+      <MAMandateCard lead={lead} save={save} />
+
+      <SalesProcessCard lead={lead} save={save} />
+
+      <MutualPlanCard lead={lead} save={save} />
 
       <CollapsibleCard title="Dates" defaultOpen={false}>
         <div className="space-y-0">
@@ -142,12 +148,6 @@ export function LeadPanelLeftRail({
           </div>
         </div>
       </CollapsibleCard>
-
-      {isSourceCo && (
-        <CollapsibleCard title="M&A Criteria" defaultOpen={false}>
-          <MACriteriaCard lead={lead} />
-        </CollapsibleCard>
-      )}
 
       <SourceAttributionCard lead={lead} />
 
