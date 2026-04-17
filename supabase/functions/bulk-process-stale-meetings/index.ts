@@ -90,32 +90,47 @@ async function processLead(supabase: any, url: string, key: string, lead: any) {
     if (m.intelligence) continue;
 
     const priorMeetings = meetings.slice(0, i);
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 55000);
-      const res = await fetch(`${url}/functions/v1/process-meeting`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ transcript, priorMeetings }),
-        signal: ctrl.signal,
-      });
-      clearTimeout(t);
-      if (!res.ok) {
-        console.error(`[bulk-process-stale] ${lead.id} meeting ${i} process-meeting HTTP ${res.status}`);
-        continue;
+    let success = false;
+    // Retry up to 4 times with exponential backoff on 429/5xx
+    for (let attempt = 0; attempt < 4 && !success; attempt++) {
+      if (attempt > 0) {
+        const wait = Math.min(2000 * Math.pow(2, attempt), 20000);
+        console.log(`[bulk-process-stale] ${lead.id} meeting ${i} retry ${attempt} after ${wait}ms`);
+        await sleep(wait);
       }
-      const data = await res.json();
-      meetings[i] = {
-        ...m,
-        summary: data.summary || m.summary || "",
-        nextSteps: data.nextSteps || m.nextSteps || "",
-        intelligence: data.intelligence || undefined,
-      };
-      processedCount++;
-      await sleep(1000);
-    } catch (e: any) {
-      console.error(`[bulk-process-stale] ${lead.id} meeting ${i} error:`, e?.message || e);
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 90000);
+        const res = await fetch(`${url}/functions/v1/process-meeting`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ transcript, priorMeetings }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(t);
+        if (res.status === 429 || res.status >= 500) {
+          console.error(`[bulk-process-stale] ${lead.id} meeting ${i} HTTP ${res.status} (will retry)`);
+          continue;
+        }
+        if (!res.ok) {
+          console.error(`[bulk-process-stale] ${lead.id} meeting ${i} HTTP ${res.status} (giving up)`);
+          break;
+        }
+        const data = await res.json();
+        meetings[i] = {
+          ...m,
+          summary: data.summary || m.summary || "",
+          nextSteps: data.nextSteps || m.nextSteps || "",
+          intelligence: data.intelligence || undefined,
+        };
+        processedCount++;
+        success = true;
+      } catch (e: any) {
+        console.error(`[bulk-process-stale] ${lead.id} meeting ${i} error:`, e?.message || e);
+      }
     }
+    // Inter-meeting throttle
+    await sleep(2500);
   }
 
   if (processedCount === 0) {
