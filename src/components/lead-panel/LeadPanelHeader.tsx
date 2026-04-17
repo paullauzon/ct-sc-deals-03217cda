@@ -287,6 +287,12 @@ export function LeadPanelHeader({
                 {slipRisk.label}
               </span>
             )}
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground font-medium"
+              title={`Dossier ${dossier.filled} / ${dossier.total} fields populated (manual or auto-derived)`}
+            >
+              Dossier {dossier.pct}%
+            </span>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5 flex-wrap">
             <span>{lead.role}{lead.role && lead.company ? " · " : ""}{lead.company || ""}</span>
