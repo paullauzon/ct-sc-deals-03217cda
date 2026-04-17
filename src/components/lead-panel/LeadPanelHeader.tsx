@@ -189,6 +189,11 @@ export function LeadPanelHeader({
             )}
             <BrandLogo brand={lead.brand} size="sm" />
             <Badge variant="outline" className="text-[10px]">{lead.stage}</Badge>
+            {lead.leadStatus && lead.leadStatus !== "Working" && (
+              <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", LEAD_STATUS_TONE[lead.leadStatus] || "bg-secondary text-foreground/80")}>
+                {lead.leadStatus}
+              </span>
+            )}
             {dealHealth && (
               <span className={cn(
                 "text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 font-medium",
