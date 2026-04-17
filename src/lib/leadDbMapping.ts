@@ -155,6 +155,13 @@ export function rowToLead(row: Record<string, any>): Lead {
     secondaryContacts: Array.isArray(row.secondary_contacts) ? row.secondary_contacts : [],
     googleDriveLink: row.google_drive_link || "",
     forecastedCloseDate: row.forecasted_close_date || "",
+    leadStatus: row.lead_status || "Working",
+    nextMutualStep: row.next_mutual_step || "",
+    nextMutualStepDate: row.next_mutual_step_date || "",
+    competingBankers: row.competing_bankers || "",
+    contractMonths: row.contract_months != null ? Number(row.contract_months) : null,
+    closeConfidence: row.close_confidence != null ? Number(row.close_confidence) : null,
+    dealNarrative: row.deal_narrative || "",
   };
 }
 
