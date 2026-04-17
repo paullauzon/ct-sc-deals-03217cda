@@ -1,0 +1,1 @@
+UPDATE leads SET geography = 'US' WHERE id = 'SC-T-059' AND geography = 'the, US';

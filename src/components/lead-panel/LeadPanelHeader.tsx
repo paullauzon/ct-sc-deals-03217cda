@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { logActivity } from "@/lib/activityLog";
+import { supabase } from "@/integrations/supabase/client";
 
 const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
 
@@ -136,6 +137,7 @@ export function LeadPanelHeader({
   const [copied, setCopied] = useState(false);
   const [summaryCopied, setSummaryCopied] = useState(false);
   const [pendingStage, setPendingStage] = useState<LeadStage | null>(null);
+  const [fillingGaps, setFillingGaps] = useState(false);
   const dealHealth = computeDealHealthScore(lead);
   const coverage = getStakeholderCoverage(lead);
   const lastContact = lastContactLabel(lead);
@@ -287,14 +289,57 @@ export function LeadPanelHeader({
                 {slipRisk.label}
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new CustomEvent("scroll-to-empty-dossier", { detail: { leadId: lead.id } }))}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/70 font-medium transition-colors"
-              title={`Dossier ${dossier.filled} / ${dossier.total} fields populated — click to jump to the first empty row`}
-            >
-              Dossier {dossier.pct}%
-            </button>
+            {dossier.pct < 60 && lead.brand === "SourceCo" ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/70 font-medium transition-colors inline-flex items-center gap-0.5"
+                    title={`Dossier ${dossier.filled} / ${dossier.total} fields populated — ${fillingGaps ? "filling…" : "click for actions"}`}
+                  >
+                    Dossier {dossier.pct}% {fillingGaps ? <Sparkles className="h-2.5 w-2.5 animate-pulse" /> : <ChevronRight className="h-2.5 w-2.5 rotate-90" />}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuItem
+                    onClick={() => window.dispatchEvent(new CustomEvent("scroll-to-empty-dossier", { detail: { leadId: lead.id } }))}
+                  >
+                    <ChevronRight className="h-3.5 w-3.5 mr-2" />
+                    Jump to first empty row
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={fillingGaps}
+                    onClick={async () => {
+                      setFillingGaps(true);
+                      toast.info("Filling gaps with AI — this may take ~10s…");
+                      try {
+                        const { error } = await supabase.functions.invoke("enrich-lead", {
+                          body: { leadId: lead.id },
+                        });
+                        if (error) throw error;
+                        toast.success("Dossier enriched — refresh to see new AI suggestions");
+                      } catch (err) {
+                        toast.error("Enrich failed: " + (err as Error).message);
+                      } finally {
+                        setFillingGaps(false);
+                      }
+                    }}
+                  >
+                    <Sparkles className="h-3.5 w-3.5 mr-2" />
+                    {fillingGaps ? "Filling gaps…" : "Fill gaps with AI"}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent("scroll-to-empty-dossier", { detail: { leadId: lead.id } }))}
+                className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/70 font-medium transition-colors"
+                title={`Dossier ${dossier.filled} / ${dossier.total} fields populated — click to jump to the first empty row`}
+              >
+                Dossier {dossier.pct}%
+              </button>
+            )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5 flex-wrap">
             <span>{lead.role}{lead.role && lead.company ? " · " : ""}{lead.company || ""}</span>
