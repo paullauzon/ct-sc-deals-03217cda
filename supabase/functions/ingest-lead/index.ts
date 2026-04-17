@@ -383,6 +383,24 @@ Deno.serve(async (req) => {
 
     if (insertError) throw insertError;
 
+    // Auto-create initial follow-up task so this lead appears in Action Queue / Follow-Ups tab
+    // (previously only `next_follow_up` was set, leaving 90 New Leads invisible to reps).
+    try {
+      await supabase.from("lead_tasks").insert({
+        lead_id: leadId,
+        playbook: "new-lead-initial-outreach",
+        sequence_order: 1,
+        task_type: "email",
+        title: "Initial outreach to new lead",
+        description: "First-touch outreach: introduce, reference their inquiry, propose a 15-min discovery call.",
+        due_date: followUpDate,
+        status: "pending",
+      });
+    } catch (taskErr) {
+      console.error("Failed to create initial follow-up task:", taskErr);
+      // non-fatal — lead was already created successfully
+    }
+
     // Trigger scoring + LinkedIn enrichment in parallel, await both before returning
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;

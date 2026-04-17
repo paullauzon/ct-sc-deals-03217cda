@@ -217,6 +217,99 @@ async function processLead(supabase: any, url: string, key: string, lead: any) {
   };
 }
 
+/* ─── Mode: service_interest re-synth + stakeholder promotion ───
+ * For leads that already have deal_intelligence but are missing the
+ * `serviceInterest` key (or whose lead_stakeholders rows are empty),
+ * re-call synthesize-deal-intelligence and promote:
+ *   - dealIntelligence.serviceInterest → leads.service_interest
+ *   - dealIntelligence.buyingCommittee[] → lead_stakeholders rows (if none exist)
+ */
+async function reSynthAndPromote(supabase: any, url: string, key: string, lead: any) {
+  const headers = { "Content-Type": "application/json", "Authorization": `Bearer ${key}` };
+  const meetings = Array.isArray(lead.meetings) ? lead.meetings : [];
+
+  let dealIntelligence: any = lead.deal_intelligence || null;
+  let resynthesized = false;
+
+  // Only re-run synth if we actually have transcripts and no serviceInterest yet
+  const hasTranscript = meetings.some((m: any) => (m?.transcript || "").trim().length > 200);
+  const needsServiceInterest = !dealIntelligence || !dealIntelligence.serviceInterest;
+
+  if (hasTranscript && needsServiceInterest) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 50000);
+      const synthRes = await fetch(`${url}/functions/v1/synthesize-deal-intelligence`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          meetings: meetings.map((m: any) => ({ ...m, transcript: m.transcript || "" })),
+          leadFields: {
+            name: lead.name, company: lead.company, role: lead.role,
+            stage: lead.stage, priority: lead.priority,
+            dealValue: lead.deal_value, serviceInterest: lead.service_interest,
+          },
+        }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(t);
+      if (synthRes.ok) {
+        const synthData = await synthRes.json();
+        if (synthData.dealIntelligence) {
+          dealIntelligence = synthData.dealIntelligence;
+          resynthesized = true;
+          await supabase.from("leads").update({ deal_intelligence: dealIntelligence }).eq("id", lead.id);
+        }
+      } else {
+        console.error(`[resynth] ${lead.id} HTTP ${synthRes.status}`);
+      }
+    } catch (e: any) {
+      console.error(`[resynth] ${lead.id} error:`, e?.message || e);
+    }
+  }
+
+  // Promote serviceInterest → service_interest column
+  let serviceWritten = false;
+  const svc = typeof dealIntelligence?.serviceInterest === "string" ? dealIntelligence.serviceInterest.trim() : "";
+  const currentSvc = (lead.service_interest || "").trim();
+  if (svc && (!currentSvc || currentSvc === "TBD")) {
+    await supabase.from("leads").update({ service_interest: svc }).eq("id", lead.id);
+    serviceWritten = true;
+  }
+
+  // Promote buyingCommittee → lead_stakeholders (only if currently empty)
+  let stakeholdersWritten = 0;
+  const committee = Array.isArray(dealIntelligence?.buyingCommittee) ? dealIntelligence.buyingCommittee : [];
+  if (committee.length > 0) {
+    const { data: existing } = await supabase
+      .from("lead_stakeholders")
+      .select("id")
+      .eq("lead_id", lead.id)
+      .limit(1);
+    if (!existing || existing.length === 0) {
+      const rows = committee
+        .filter((c: any) => c?.name && typeof c.name === "string" && c.name.trim())
+        .map((c: any) => ({
+          lead_id: lead.id,
+          name: String(c.name).trim().slice(0, 200),
+          role: String(c.role || c.title || "").trim().slice(0, 200),
+          email: String(c.email || "").trim().slice(0, 200),
+          notes: String(c.notes || c.influence || "").trim().slice(0, 1000),
+          sentiment: ["positive", "neutral", "negative"].includes(String(c.sentiment || "").toLowerCase())
+            ? String(c.sentiment).toLowerCase()
+            : "neutral",
+        }));
+      if (rows.length > 0) {
+        const { error: insErr } = await supabase.from("lead_stakeholders").insert(rows);
+        if (!insErr) stakeholdersWritten = rows.length;
+        else console.error(`[stakeholders] ${lead.id} insert error:`, insErr.message);
+      }
+    }
+  }
+
+  return { id: lead.id, resynthesized, serviceWritten, stakeholdersWritten };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -226,9 +319,61 @@ Deno.serve(async (req) => {
     const supabase = createClient(url, key);
 
     const body = await req.json().catch(() => ({}));
-    const limit = Math.min(Math.max(Number(body?.limit) || 10, 1), 25);
+    const mode = String(body?.mode || "stale_transcripts");
+    const limit = Math.min(Math.max(Number(body?.limit) || 10, 1), 50);
     const leadIds: string[] | undefined = Array.isArray(body?.leadIds) ? body.leadIds : undefined;
 
+    /* ─── service_interest mode ─── */
+    if (mode === "service_interest") {
+      let q = supabase
+        .from("leads")
+        .select("*")
+        .is("archived_at", null)
+        .not("stage", "in", "(Lost,Went Dark,Closed Won,Revisit/Reconnect)")
+        .not("deal_intelligence", "is", null)
+        .order("created_at", { ascending: false });
+      if (leadIds && leadIds.length > 0) q = q.in("id", leadIds);
+      else q = q.limit(limit);
+
+      const { data: leads, error } = await q;
+      if (error) throw error;
+
+      // Filter to those that actually need work
+      const candidates = (leads || []).filter((l: any) => {
+        const hasSI = !!l?.deal_intelligence?.serviceInterest;
+        const hasCommittee = Array.isArray(l?.deal_intelligence?.buyingCommittee) && l.deal_intelligence.buyingCommittee.length > 0;
+        const currentSvc = (l.service_interest || "").trim();
+        return (!hasSI && (!currentSvc || currentSvc === "TBD")) || hasCommittee;
+      });
+
+      console.log(`[bulk-process-stale:service_interest] ${candidates.length} candidates`);
+
+      const results: any[] = [];
+      let svcCount = 0, resynthCount = 0, stakesCount = 0;
+      for (const lead of candidates) {
+        const r = await reSynthAndPromote(supabase, url, key, lead);
+        results.push(r);
+        if (r.serviceWritten) svcCount++;
+        if (r.resynthesized) resynthCount++;
+        stakesCount += r.stakeholdersWritten;
+        await sleep(1500);
+      }
+
+      return new Response(
+        JSON.stringify({
+          status: "ok",
+          mode,
+          candidates: candidates.length,
+          resynthesized: resynthCount,
+          service_interest_written: svcCount,
+          stakeholders_written: stakesCount,
+          results,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    /* ─── default mode: stale_transcripts ─── */
     let q = supabase
       .from("leads")
       .select("*")
