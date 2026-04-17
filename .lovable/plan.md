@@ -1,89 +1,79 @@
 
 
-## Audit — 150 active leads (CT 76 + SC 74)
+## Audit findings — 150 active leads (CT 76 + SC 74)
 
-### Coverage matrix vs. previous baseline
+### Coverage matrix vs. last session
 
-| Field | CT (76) | SC (74) | Δ | Diagnosis |
+| Field | CT (76) | SC (74) | Δ vs prior | Status |
 |---|---|---|---|---|
 | buyer_type | 57 (75%) | 53 (72%) | — | OK |
-| target_criteria | 51 (67%) | 53 (72%) | ↓ 3 each (parser tightening dropped a few) | **14 still weak** (see below) |
-| target_revenue | 18 | 22 | — | Form-tier ceiling |
-| geography | 22 | 23 | — | Form-tier ceiling |
-| ebitda | 2 | 19 | — | Form-tier ceiling |
-| acq_timeline | **0** | 50 (68%) | — | CT structural (no source field) |
-| competing_against | 14 | 4 | — | 100% of addressable pool |
-| **firm_aum / deal_type / txn_type** | **0 / 0 / 0** | **0 / 0 / 0** | — | **AI-tier still 0%** |
-| has enrichment JSON | 0 | 1 | — | **Confirms zero AI runs landed** |
-| 4 transcript-tier rows | 0 | 0 | — | Structural |
+| target_criteria | 47 (62%) | 50 (68%) | ↓ 4 / ↓ 3 | Cleanup landed; 0 garbage rows remain |
+| target_revenue | 18 (24%) | 22 (30%) | — | Form ceiling |
+| geography | 22 (29%) | 23 (31%) | — | Form ceiling |
+| ebitda | 2 (3%) | 19 (26%) | — | Form ceiling |
+| acq_timeline | **0** | 50 (68%) | — | CT structural |
+| competing_against | 14 (18%) | 4 (5%) | — | 100% addressable pool |
+| **authority_confirmed** | **28 (37%)** | **15 (20%)** | **↑ 28 / ↑ 14** | **Transcript promote landed** |
+| **decision_blocker** | **29 (38%)** | **17 (23%)** | **↑ 28 / ↑ 16** | **Transcript promote landed** |
+| budget_confirmed | 5 (7%) | 5 (7%) | ↑ 4 / ↑ 5 | Real signal limit |
+| stall_reason | 1 | 0 | — | Real signal limit |
+| **firm_aum / deal_type / txn_type** | **0 / 0 / 0** | **0 / 0 / 0** | **— UNCHANGED** | **AI-tier never run** |
+| has enrichment JSON | 0 | 1 | — | Confirms zero AI runs |
+| has deal_intelligence | 29 | 17 | — | Source for promotion |
 
-### Findings
+### Big win since last session
+**Transcript-tier promotion landed cleanly: 98 fields auto-filled across 46 leads.** `decision_blocker` now at 100% of leads-with-intel (46/46), `authority_confirmed` at 93% (43/46). `target_criteria` cleanup verified — only 3 borderline rows left and **all 3 are legitimate** (CT-004 outbound thesis, CT-024 pump services Germany, SC-T-029 IoT add-ons). Parser is now fully clean.
 
-**Finding 1 — AI-tier is STILL 0% across 149 of 150 leads.** Same as last session. The "Fill all AI gaps in batches" dropdown was shipped but never executed by anyone. This is the dominant remaining gap: **596 empty cells** (149 leads × 4 fields).
+### Three findings
 
-**Finding 2 — 14 borderline `target_criteria` rows.** Mix of legitimate-but-short and weak/garbage:
-- **Legitimate, KEEP** (5): CT-004 (outbound origination thesis), CT-024 (pump services Germany), CT-046 (manufacturing Montreal), SC-T-029 (IoT verticals), SC-T-045 (PE origination 2-20M EBITDA Benelux), SC-I-011 (corporate growth equity)
-- **Weak/garbage, NULLIFY** (8): CT-016 (roll-up only — borderline keep), CT-018 (thematic sourcing), CT-028 (scale dealflow), CT-047 ("know more about what you do"), CT-062 (acquire a platform business), SC-T-004 (M&A advisory India), SC-T-033 (matching targets), SC-T-042 (find list of sellers)
+**Finding 1 — AI-tier STILL 0% across 149 of 150 leads.** Same as every prior session. The "Fill all AI gaps in batches" dropdown remains unclicked. This is the dominant remaining gap: **447 empty cells** (149 × 3 fields). One click in the UI closes it — ~8 min, ~$3.
 
-**Finding 3 — `deal_intelligence` exists for 46 leads (29 CT + 17 SC) but NONE of those rich extracts have populated `authority_confirmed`, `budget_confirmed`, `decision_blocker`, `stall_reason`.** Transcript-tier promotion never wired up. 1 CT lead has CT-018-style values in those fields but it's an outlier — confirms field exists, just isn't being filled from `deal_intelligence` JSON.
+**Finding 2 — NEW: 8 leads have meeting transcripts but `process-meeting` never ran.** 7 of 8 have rich Fireflies transcripts (16K–34K chars) waiting to be extracted:
+- CT-036 (Brandon Anderson, 33K chars) · CT-044 (Jared Curtis, 17K) · CT-078 (Blake Jackman, 32K) · SC-I-039 (Josh Klieger, 24K) · SC-T-006 (Leo Qendro, 27K) · SC-T-024 (Rish Sharma, 35K) · SC-T-026 (Greg Caso, 22K)
+- CT-051 (Avery Humphries) has 4 fireflies IDs but transcript_len=0 — broken sync, separate issue
 
-**This is a NEW finding** — not flagged in prior audits. 46 leads have meeting transcripts processed, yet 0 have transcript-derived dossier values.
+If we run `process-meeting` for these 7, expect ~21 more transcript-tier values to flow through (~3 fields/lead via Step 1's promotion).
+
+**Finding 3 — `budget_confirmed` and `stall_reason` low coverage is a real signal limit, not a bug.** Only 22% of intel-bearing leads got `budget_confirmed`, only 2% got `stall_reason`. Reviewed `bulk-promote-transcript-fields` mappings: they correctly require explicit signals in transcripts (`buyingCommittee.budgetAuthority`, `momentumSignals.stallReason`). Transcripts simply don't usually contain these. **No action.**
 
 ### What stays structural (no fix)
 - CT `acq_timeline = 0` — form lacks field
-- 109 leads with no meetings yet — `authority_confirmed` etc. genuinely unknowable
+- 97 leads with no meetings — transcript fields genuinely unknowable
+- `budget_confirmed` / `stall_reason` low — real signal limit
 
 ## Plan
 
-### Step 1 — Promote transcript-tier values from `deal_intelligence` JSON (NEW)
-46 leads have rich `deal_intelligence` payloads sitting unused. The `process-meeting` extractor populates `dealIntelligence.stakeholderMap`, `riskRegister`, `momentumSignals`, etc. — but no code path writes the inferred `authority_confirmed` / `budget_confirmed` / `decision_blocker` / `stall_reason` into manual columns.
+### Step 1 — Reprocess the 7 leads with unprocessed transcripts (NEW work)
+For CT-036, CT-044, CT-078, SC-I-039, SC-T-006, SC-T-024, SC-T-026 — invoke `process-meeting` for each (or `run-lead-job` which orchestrates it). After each completes, re-run `bulk-promote-transcript-fields` to flow the new `deal_intelligence` into manual columns.
 
-**Add a `bulk-promote-transcript-fields` edge function** (mirrors `bulk-promote-dossier` pattern) that:
-- Scans active leads with `deal_intelligence IS NOT NULL` AND target column empty
-- Maps `deal_intelligence.authorityMap.confirmed` → `authority_confirmed`
-- Maps `deal_intelligence.budgetSignals.confirmed` → `budget_confirmed`
-- Maps `deal_intelligence.riskRegister[0].blocker` → `decision_blocker`
-- Maps `deal_intelligence.momentumSignals.stallReason` → `stall_reason`
-- Logs `field_update` activity entry per lead
-- Add 4th dropdown item in Pipeline header: **"Promote transcript values"**
+Implementation: small batched script via `bulk-process-stale-meetings` edge function, OR one-off calls from the existing Pipeline "Backfill all meetings" dropdown if it already covers this case. Will check first, prefer reusing existing button.
 
-Expected lift: ~30 leads will get 1-3 of these fields filled.
+Expected lift: 7 leads × ~3 transcript fields = ~21 more populated cells, lifts authority/blocker totals from 43/46 to ~50/53.
 
-### Step 2 — Nullify 8 weak `target_criteria` rows
-SQL UPDATE for: CT-018, CT-028, CT-047, CT-062, SC-T-004, SC-T-033, SC-T-042 (CT-016 is borderline — keep "roll up of industrial businesses Canada" since it has sector+geography signal).
+### Step 2 — Investigate CT-051 broken transcript sync
+4 fireflies IDs but `transcript_len = 0`. Could be a Fireflies API failure or a different sync path. Single DB query + log inspection. If fixable, add to Step 1 batch.
 
-### Step 3 — Tighten parser denylist
-Add to `SECTOR_PHRASE_DENYLIST` in `src/lib/submissionParser.ts` and `bulk-promote-dossier`:
-- `/\bthematic sourcing\b/i`
-- `/\bscale (our )?dealflow\b/i`
-- `/\bacquire a platform\b/i`
-- `/\bm&a advisory\b/i`
-- `/\bmatching targets?\b/i`
-- `/\bfind (a )?list of sellers\b/i`
+### Step 3 — User runs the AI batched enrichment (3rd time asking, but it's the actual fix)
+Open Pipeline → "Fill SourceCo Dossiers" → **"Fill all AI gaps in batches"**. ~8 min, ~$3. Closes 447-cell gap. **No code change** — the button has been wired since 2 sessions ago.
 
-### Step 4 — Run AI-tier batched enrichment (USER ACTION required)
-Open Pipeline → "Fill SourceCo Dossiers" → **"Fill all AI gaps in batches"**. ~8 min, ~$3. Closes 596-cell gap.
-
-### Step 5 — Update audit baseline
-Append all results to `.lovable/audit/coverage-2026-04-17.md`.
+### Step 4 — Update audit doc
+Append today's results: transcript promote = +98 fields, target_criteria cleanup verified, 7-lead transcript backlog identified.
 
 ## Files touched
-- **NEW**: `supabase/functions/bulk-promote-transcript-fields/index.ts`
-- `src/components/Pipeline.tsx` — add 4th dropdown item invoking new function
-- `src/lib/submissionParser.ts` — 6 phrase additions
-- `supabase/functions/bulk-promote-dossier/index.ts` — same 6 additions (mirror)
-- One SQL UPDATE — nullify 7 weak `target_criteria` rows
+- Possibly NEW: `supabase/functions/bulk-process-stale-meetings/index.ts` (only if existing "Backfill" button doesn't cover this case — will verify before creating)
+- Possibly: `src/components/Pipeline.tsx` — add dropdown item if function is new
 - `.lovable/audit/coverage-2026-04-17.md` — append
+- One investigation query for CT-051
 
 ## Trade-offs
-- **Win:** Transcript-tier fields jump from 0% → ~20% (deterministic, free). AI-tier 0% → ~60% after user clicks the existing button (~$3). Final addressable gaps closed.
-- **Cost:** ~$3 OpenAI one-time. Code change ~1 new edge function + parser tweaks.
-- **Risk:** Transcript JSON shapes vary across `process-meeting` versions. **Mitigation:** new function uses optional chaining, only writes when value is non-empty string and column is empty.
-- **Loss:** None — all additive.
+- **Win:** ~21 more transcript-tier cells filled (free, deterministic). AI-tier 0% → ~60% after user click.
+- **Cost:** ~$0 for transcript reprocess (Fireflies + GPT-4o ~$0.10/lead × 7 = ~$0.70). ~$3 for AI batch.
+- **Risk:** `process-meeting` for old transcripts — same path that worked for 46 other leads.
+- **Loss:** None — additive only.
 
 ## Verification
-1. SQL: `firm_aum <> ''` count → ≥80 (was 0) after user runs batch enrich
-2. SQL: `authority_confirmed <> '' OR decision_blocker <> ''` → ≥15 (was ~1)
-3. SQL: `target_criteria` rows matching weak phrases → 0
-4. Open SC-I-040 (any lead with `deal_intelligence`) → Sales Process card shows real Decision Blocker / Stall Reason
+1. SQL: `deal_intelligence IS NOT NULL` count rises from 46 → ~53 active leads
+2. SQL: `decision_blocker <> ''` rises from 46 → ~52
+3. SQL: `firm_aum <> ''` ≥ 80 (was 0) — only after user runs Step 3
+4. Open SC-T-024 (Rish Sharma) → Sales Process card now shows real Decision Blocker
 
