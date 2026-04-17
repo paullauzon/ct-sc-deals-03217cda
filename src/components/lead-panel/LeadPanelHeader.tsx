@@ -137,6 +137,7 @@ export function LeadPanelHeader({
   const [copied, setCopied] = useState(false);
   const [summaryCopied, setSummaryCopied] = useState(false);
   const [pendingStage, setPendingStage] = useState<LeadStage | null>(null);
+  const [closeWonGuard, setCloseWonGuard] = useState<{ missing: string[] } | null>(null);
   const [fillingGaps, setFillingGaps] = useState(false);
   const dealHealth = computeDealHealthScore(lead);
   const coverage = getStakeholderCoverage(lead);
@@ -189,14 +190,28 @@ export function LeadPanelHeader({
       setPendingStage(stage);
       return;
     }
+    if (stage === "Closed Won") {
+      const missing: string[] = [];
+      if (!lead.subscriptionValue || lead.subscriptionValue === 0) missing.push("subscription value");
+      if (!lead.contractEnd) missing.push("contract end date");
+      if (missing.length > 0) {
+        setCloseWonGuard({ missing });
+        return;
+      }
+    }
     commitStageChange(stage);
   };
 
   const commitStageChange = async (stage: LeadStage) => {
     onChangeStage(stage);
     await logActivity(lead.id, "stage_change", `Stage: ${lead.stage} → ${stage}`, lead.stage, stage);
-    toast.success(`Moved to ${stage}`);
+    if (stage === "Closed Won") {
+      toast.success("Account handed off to Valeria — Client Success pipeline updated");
+    } else {
+      toast.success(`Moved to ${stage}`);
+    }
     setPendingStage(null);
+    setCloseWonGuard(null);
   };
 
   const toggleMaximize = () => {

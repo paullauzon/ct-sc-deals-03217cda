@@ -20,6 +20,7 @@ import { toast } from "sonner";
 
 import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, Check, Linkedin, CalendarCheck, ChevronRight, ChevronDown, Zap, Archive } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
@@ -170,6 +171,7 @@ export function Pipeline() {
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
   const [enrichmentGap, setEnrichmentGap] = useState<number | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [closeWonGuard, setCloseWonGuard] = useState<{ leadId: string; leadName: string; missing: string[] } | null>(null);
   const sourceCoCount = useMemo(
     () => leads.filter(l => l.brand === "SourceCo" && !["Lost", "Went Dark", "Closed Won"].includes(l.stage)).length,
     [leads]
@@ -356,13 +358,31 @@ export function Pipeline() {
 
   const handleDragLeave = () => setDragOverStage(null);
 
+  const commitStageChange = (leadId: string, targetStage: LeadStage) => {
+    updateLead(leadId, { stage: targetStage });
+    if (targetStage === "Closed Won") {
+      toast.success("Account handed off to Valeria — Client Success pipeline updated");
+    }
+  };
+
   const handleDrop = (e: DragEvent, targetStage: LeadStage) => {
     e.preventDefault();
     setDragOverStage(null);
     const leadId = e.dataTransfer.getData("text/plain");
-    if (leadId) {
-      updateLead(leadId, { stage: targetStage });
+    if (!leadId) return;
+    if (targetStage === "Closed Won") {
+      const lead = leads.find(l => l.id === leadId);
+      if (lead && lead.stage !== "Closed Won") {
+        const missing: string[] = [];
+        if (!lead.subscriptionValue || lead.subscriptionValue === 0) missing.push("subscription value");
+        if (!lead.contractEnd) missing.push("contract end date");
+        if (missing.length > 0) {
+          setCloseWonGuard({ leadId, leadName: lead.name, missing });
+          return;
+        }
+      }
     }
+    commitStageChange(leadId, targetStage);
   };
 
   const isClosed = (stage: LeadStage) => CLOSED_STAGES.includes(stage);
@@ -1082,6 +1102,31 @@ export function Pipeline() {
         onConfirm={(reason) => { if (archiveTarget) { archiveLead(archiveTarget.id, reason); setArchiveTarget(null); } }}
         onCancel={() => setArchiveTarget(null)}
       />
+      <AlertDialog open={!!closeWonGuard} onOpenChange={(o) => { if (!o) setCloseWonGuard(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Billing fields incomplete</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-medium text-foreground">{closeWonGuard?.leadName}</span> is missing{" "}
+              <span className="font-medium text-foreground">{closeWonGuard?.missing.join(" and ")}</span>.
+              Valeria's Client Success pipeline will be incomplete without these fields. Continue anyway?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (closeWonGuard) {
+                  commitStageChange(closeWonGuard.leadId, "Closed Won");
+                  setCloseWonGuard(null);
+                }
+              }}
+            >
+              Mark Won anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

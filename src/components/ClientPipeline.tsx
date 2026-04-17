@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useClientAccounts } from "@/contexts/ClientAccountContext";
 import { CS_STAGES, CSStage, CS_STAGE_DESCRIPTIONS } from "@/types/clientAccount";
 import { ClientAccountCard } from "@/components/ClientAccountCard";
@@ -14,11 +14,34 @@ const STAGE_TONES: Record<CSStage, string> = {
   "Churned": "bg-muted/30",
 };
 
-export function ClientPipeline() {
+const STAGE_CHIPS: Record<CSStage, string[]> = {
+  "Onboarding": ["Billing + dates required", "48h guide SLA"],
+  "Active": ["Monthly task auto-creates"],
+  "Renewal Due": ["60d auto-trigger"],
+  "Paused": ["30d resume task"],
+  "Churned": ["Churn reason required", "Notifies Malik"],
+};
+
+interface ClientPipelineProps {
+  initialAccountId?: string | null;
+  onClearInitial?: () => void;
+}
+
+export function ClientPipeline({ initialAccountId = null, onClearInitial }: ClientPipelineProps) {
   const { accounts, loading, moveToStage } = useClientAccounts();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<CSStage | null>(null);
+
+  // Auto-open drawer when arriving via Linked Account card
+  useEffect(() => {
+    if (initialAccountId) setSelectedId(initialAccountId);
+  }, [initialAccountId]);
+
+  const handleClose = () => {
+    setSelectedId(null);
+    onClearInitial?.();
+  };
 
   const grouped = useMemo(() => {
     const map = new Map<CSStage, typeof accounts>();
@@ -111,6 +134,16 @@ export function ClientPipeline() {
                 <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
                   {CS_STAGE_DESCRIPTIONS[stage]}
                 </p>
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {STAGE_CHIPS[stage].map(chip => (
+                    <span
+                      key={chip}
+                      className="text-[9px] px-1.5 py-0.5 rounded bg-background/60 border border-border/60 text-muted-foreground font-medium leading-tight"
+                    >
+                      {chip}
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="p-2 space-y-1.5 flex-1 overflow-y-auto">
                 {items.length === 0 && (
@@ -130,7 +163,7 @@ export function ClientPipeline() {
         })}
       </div>
 
-      <ClientAccountDetail accountId={selectedId} onClose={() => setSelectedId(null)} />
+      <ClientAccountDetail accountId={selectedId} onClose={handleClose} />
     </div>
   );
 }

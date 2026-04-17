@@ -30,7 +30,8 @@ export function LinkedAccountCard({ lead }: Props) {
   if (!account) return null;
 
   const goToAccount = () => {
-    window.location.hash = `view=accounts&sys=client-success&account=${account.id}`;
+    // Index routes by `sys` regardless of `view`; include both for safety.
+    window.location.hash = `view=pipeline&sys=client-success&account=${account.id}`;
   };
 
   const isChurned = account.cs_stage === "Churned";
