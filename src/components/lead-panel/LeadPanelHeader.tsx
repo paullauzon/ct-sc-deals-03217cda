@@ -260,6 +260,27 @@ export function LeadPanelHeader({
                 {coverage.label}
               </span>
             )}
+            {winProb && winProb.probability > 0 && winProb.probability < 100 && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-foreground/80 font-medium"
+                title={`Win probability ${winProb.probability}% — ${winProb.label}\n\n${winProb.factors.map(f => `${f.impact > 0 ? "+" : ""}${f.impact}  ${f.label}`).join("\n")}`}
+              >
+                Win {winProb.probability}%
+              </span>
+            )}
+            {slipRisk && slipRisk.band !== "on-track" && (
+              <span
+                className={cn(
+                  "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                  slipRisk.band === "critical" ? "bg-red-500/10 text-red-600 dark:text-red-400" :
+                  slipRisk.band === "at-risk" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" :
+                  "bg-secondary text-muted-foreground",
+                )}
+                title={`${slipRisk.label}\n\n${slipRisk.reasons.join("\n")}`}
+              >
+                {slipRisk.label}
+              </span>
+            )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1.5 flex-wrap">
             <span>{lead.role}{lead.role && lead.company ? " · " : ""}{lead.company || ""}</span>
