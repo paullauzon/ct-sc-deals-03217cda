@@ -1,74 +1,56 @@
 
-The user wants a deep end-to-end audit of where the lead panel stands NOW, after v4 + the bug-fix pass. They want me to find what still doesn't work, what's incomplete, what feels unfinished. Let me actually dig in.
+## Audit summary — what's left from v5
 
-Let me check the current state of key files to find real gaps.
+**Shipped & verified working (v5 round):**
+- Activity timeline: search, date range, expand/collapse all, pin-to-top
+- Acquirer Profile card (SourceCo)
+- Inline Fireflies transcript drawer
+- Upcoming meeting reads `calendly_booked_at` + Calendly link only when valid URL
+- Email open/click/replied chips from `lead_email_metrics`
+- Always-visible status chip in header
+- Refreshed keyboard cheatsheet
+- Density toggle (`D`) + rail toggles (`[` / `]`) with localStorage
 
-Let me think about what's likely broken or incomplete given the implementation history:
+**Still NOT shipped from the v5 plan (these 4 items):**
+1. **Tab overflow** — 8 tabs already overflow at narrow panel widths, no horizontal scroll, no "More" menu
+2. **Notes edit/delete** — `LeadNotesTab` is read-only per entry; can only append via NoteDialog
+3. **Stakeholder remove confirm** — still uses `window.confirm()` which breaks the design language (we removed all other native prompts)
+4. **Realtime lead-row subscription** — only `lead_emails` is subscribed; stage/value/status changes from other tabs or processing jobs don't reflect live in the open panel
 
-**Already shipped (v4 + fixes)**
-- Lead status separate from stage ✓
-- Stakeholder CRUD ✓
-- Deal economics card (MRR/months/TCV/confidence) ✓
-- Mutual plan + competing bankers (with ; separator) ✓
-- Source attribution with Calendly fallback ✓
-- Copy summary, Copy link with fallback ✓
-- AlertDialog for stage regress ✓
-- ? cheatsheet, c text-selection guard ✓
-- Email compose with stakeholder chips + auto-bump ✓
-- Log call with stakeholder bump ✓
-- Upcoming meeting card ✓
-- Email tab realtime badge + Compose CTA ✓
-- pinned_at column on lead_activity_log (migration ran)
+## Fix plan (single round)
 
-**Likely still broken / incomplete (educated guesses I should verify)**
+### 1. Tab overflow — horizontal scroll + edge fade
+Simplest, most premium pattern: make `TabsList` horizontally scrollable with an overflow gradient on the right edge. No "More" dropdown needed (it adds chrome). Tabs already have icons + labels; horizontal scroll is the HubSpot pattern at this density.
 
-1. **pinned_at column was added but Pin UI was never built** — the migration shipped, no UI wired. Dead column.
-2. **`dealNarrative` field exists but no enrichment writes to it** — header shows nothing because the field is always empty. The chip was promised in v4 plan but never wired (only `copySummary` was built).
-3. **Activity timeline filter pills** — built earlier in v3.5 supposedly, but the v4 plan reaffirmed P0 status. Let me verify it actually exists and works for: Search input, Collapse/expand all, Date range picker. I bet only filter pills exist, not search/collapse/date.
-4. **Right-rail collapse button** — promised, probably not shipped.
-5. **Density toggle** — promised, probably not shipped.
-6. **Sticky tab bar** — probably not shipped.
-7. **"Last activity" chip alongside "Last contacted"** — promised, probably not.
-8. **Risk register CRUD** — was display-only in v4 plan, still display-only.
-9. **Stakeholder card** — does the empty state actually show "Add first stakeholder"? Sentiment select working? Last_contacted format readable?
-10. **DealEconomicsCard** — does TCV format right? Does saving confidence work? Default open for active stages now (after fix) but does it look right?
-11. **MutualPlanCard** — chip add/remove flow, Enter to add, Backspace to remove — actually working?
-12. **SourceAttributionCard** — Calendly fallback rendering correctly?
-13. **EmailComposeDrawer** — stakeholder chips load, click adds to To field, send bumps stakeholder — entire flow.
-14. **MeetingsSection upcoming card** — only shows when `meetingDate` is in future. What about Calendly bookings stored in `calendlyBookedAt`? Does "Open in Calendly" link to actual Calendly URL or to event-type URL (those are different)?
-15. **LogCall + Email auto-bump** — actually queries stakeholder by email match. What if email isn't in stakeholders? Just no-op silently — that's expected.
-16. **Keyboard cheatsheet** — does it list ALL shortcuts including the new ones? Probably stale.
-17. **Lead status chip in header** — only renders when ≠ "Working" per audit. Is that the right behavior? Probably should always show so user knows current status.
-18. **AI Insights card** — was added in v3, does the Re-run button actually work?
-19. **Open Commitments card** — pulls from where? Action items? Are these wired?
-20. **"View all properties" expansion** — HubSpot pattern, never built.
-21. **Field-level audit log feed** — promised in last summary as "next step", never built.
-22. **Inline Fireflies transcript drawer** — backlog item, never built.
-23. **Champion star** — was deferred as separate follow-up.
-24. **Snooze whole deal** — deferred.
-25. **Saved views at lead list** — out of panel scope, but worth flagging.
-26. **The header has a lot — is it crowded?** — stage progress + status chip + last contact + copy link + copy summary + cheatsheet + maximize + close + prev/next + dropdown menu + archive + enrich. Check if it overflows on narrow widths.
-27. **Tabs** — Activity, Actions, Meetings, Emails, Intelligence, Files, Notes, Debrief = 8 tabs. Does it overflow? Are counts shown on all? Is there mobile behavior?
-28. **Notes tab** — was display-only timestamp parser. Can you actually add new notes via dialog? Yes via NoteDialog. But editing existing notes? Probably not.
-29. **Files tab** — Drive folder editor inline. What about other file types? Just a Drive link, that's it. No actual file upload/preview.
-30. **Debrief tab** — only shows for closed deals. Wired correctly?
-31. **Realtime sync** — does opening a lead reflect updates from other users / processing jobs in real-time? lead_emails channel works. What about lead changes (stage, value, status)?
-32. **Empty states everywhere** — when a brand new lead opens, what does the panel look like? Are all empty states friendly?
-33. **Mobile responsive** — sheet on mobile? sidebar collapsible? Probably broken at narrow widths.
-34. **Prev/next navigation order** — uses leads context order. What's that order? Created date? Stage? User probably expects current pipeline-filter order.
-35. **SourceCo-specific surfacing** — hear_about_us, acquisition_strategy, buyer_type fields exist in DB. Where are they shown? Probably only in Intelligence tab. Should be in left rail for SourceCo brand.
-36. **Captarget targets list** — should there be a "Target list deliverable" card? Currently no link to deliverables.
+- `LeadDetailPanel.tsx` lines 306-337: wrap `TabsList` in a relatively-positioned div with `overflow-x-auto scrollbar-hide` and a right-side gradient overlay that fades when scrolled to end.
 
-This is a lot. I should organize by severity. Let me be structured.
+### 2. Notes edit & delete
+Notes are stored as a single concatenated `lead.notes` string with `--- date · author ---` separators. Need to:
+- Parse entries (already done in `parseNotes`)
+- Add hover-revealed Edit/Delete actions per entry
+- Edit opens an inline textarea (saves by re-serializing all entries back to the string)
+- Delete shows AlertDialog confirm, then re-serializes without that entry
+- Both write to activity log
 
-I'll deliver the plan in plan mode. Read-only. The plan should be a verification-then-remediation outline. The user asked "investigate extremely deep and test all END to end - verify what all doesn't work yet, what has to be finished, improved, made functional - everything."
+Files: `LeadNotesTab.tsx` rewrite, no schema change.
 
-So they want: (1) audit findings, (2) remediation plan. I should batch by category, mark severity, propose what to ship.
+### 3. Stakeholder remove → AlertDialog
+Replace `window.confirm` in `StakeholderCard.tsx` line 71-72 with an `AlertDialog` controlled by local state. Match the same pattern used in `LeadPanelHeader` for stage regression.
 
-Keep it concise — < 10K chars. Structure:
-- Audit method
-- Findings grouped by severity (broken / incomplete / polish gaps / missing capabilities)
-- Proposed v5 fix pass (focused 6-8 items)
-- Explicitly deferred
+### 4. Realtime lead-row subscription
+Subscribe to `postgres_changes` on the `leads` table filtered by the active lead id. On UPDATE, invoke `useLeads().refresh()` (or update the local context cache) so stage/value/status flip live.
 
-Don't ramble. The user is sophisticated.
+- `LeadDetailPanel.tsx` after the email channel useEffect: add a second channel for `lead_id=eq.${activeLeadId}` on `leads` table.
+- Need to verify the `LeadContext` exposes a `refresh` or `setLead` method; if not, add one. Most lightweight: re-fetch just that single lead row and merge into context.
+
+## Files touched (4)
+- `src/components/LeadDetailPanel.tsx` — tab overflow scroll wrapper + realtime lead subscription
+- `src/components/lead-panel/LeadNotesTab.tsx` — full rewrite with edit/delete per entry
+- `src/components/lead-panel/cards/StakeholderCard.tsx` — replace window.confirm with AlertDialog
+- `src/contexts/LeadContext.tsx` — verify/add a lightweight single-lead refresh method (only if not already present)
+
+## Risk
+- All four items are isolated, additive changes
+- No schema migrations needed
+- Realtime subscription cleanup pattern already proven by the email channel
+- Notes edit/delete keeps the existing serialized format so old data is preserved
