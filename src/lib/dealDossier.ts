@@ -170,7 +170,8 @@ export function deriveAcqTimeline(lead: Lead): DerivedValue {
   }
   const u = lead.enrichment?.urgency?.trim();
   if (u) return { value: u, source: "research" };
-  return empty;
+  // Submission tier: SourceCo's `acquisitionStrategy` ("under LOI", "actively sourcing")
+  return deriveTimelineFromSubmission(lead);
 }
 
 export function deriveAuthorityConfirmed(lead: Lead): DerivedValue {
