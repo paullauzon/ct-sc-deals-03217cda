@@ -1102,6 +1102,31 @@ export function Pipeline() {
         onConfirm={(reason) => { if (archiveTarget) { archiveLead(archiveTarget.id, reason); setArchiveTarget(null); } }}
         onCancel={() => setArchiveTarget(null)}
       />
+      <AlertDialog open={!!closeWonGuard} onOpenChange={(o) => { if (!o) setCloseWonGuard(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Billing fields incomplete</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-medium text-foreground">{closeWonGuard?.leadName}</span> is missing{" "}
+              <span className="font-medium text-foreground">{closeWonGuard?.missing.join(" and ")}</span>.
+              Valeria's Client Success pipeline will be incomplete without these fields. Continue anyway?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (closeWonGuard) {
+                  commitStageChange(closeWonGuard.leadId, "Closed Won");
+                  setCloseWonGuard(null);
+                }
+              }}
+            >
+              Mark Won anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
