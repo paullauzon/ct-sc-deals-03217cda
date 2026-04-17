@@ -110,9 +110,9 @@ function parseGeographyFromText(text?: string): string {
   const anchorRe = /(?:based in|hq in|headquartered in|located in|operating in|target geography:?)\s+(?:the\s+)?([A-Za-z][\w&.\- ]{2,60}?)(?=[.,;\n]|$| with| and| but| where| our| we)/gi;
   let am: RegExpExecArray | null;
   while ((am = anchorRe.exec(t))) {
-    const raw = am[1].trim();
+    const raw = am[1].trim().replace(/^the\s+/i, "");
     if (!GEO_VOCAB.test(raw)) continue;
-    const cleaned = raw.replace(/\s+(US|U\.S\.|USA|United States)$/i, ", US").replace(/^the\s+/i, "");
+    const cleaned = raw.replace(/\s+(US|U\.S\.|USA|United States)$/i, ", US");
     if (cleaned && cleaned.length < 80) anchored.push(cleaned);
   }
   const patterns: RegExp[] = [

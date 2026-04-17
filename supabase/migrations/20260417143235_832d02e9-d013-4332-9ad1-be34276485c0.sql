@@ -1,0 +1,1 @@
+UPDATE leads SET geography = '' WHERE brand = 'SourceCo' AND geography = 'the, US';
