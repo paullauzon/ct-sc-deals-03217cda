@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.daily-standup]
 verify_jwt = false
+
+[functions.suggest-email-responses]
+verify_jwt = false
