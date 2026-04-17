@@ -40,6 +40,7 @@ export function StakeholderCard({ lead }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ name: "", role: "", email: "", linkedin_url: "", sentiment: "neutral" as StakeholderSentiment, notes: "" });
   const [loading, setLoading] = useState(true);
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -68,10 +69,13 @@ export function StakeholderCard({ lead }: Props) {
     toast.success(editingId ? "Stakeholder updated" : "Stakeholder added");
   };
 
-  const remove = async (id: string, name: string) => {
-    if (!window.confirm(`Remove ${name}?`)) return;
+  const confirmRemove = async () => {
+    if (!removeTarget) return;
+    const { id, name } = removeTarget;
     await (supabase as any).from("lead_stakeholders").delete().eq("id", id);
     await logActivity(lead.id, "field_update", `Removed stakeholder ${name}`);
+    setRemoveTarget(null);
+    toast.success(`Removed ${name}`);
     load();
   };
 
