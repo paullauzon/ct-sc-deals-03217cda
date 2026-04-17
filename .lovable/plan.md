@@ -1,77 +1,29 @@
 
-The user is now approving the deep email integration work. Critical context I need to gather:
+The user is showing me a Microsoft "Approval required" screen even though they got "approved" last night. This is a known Microsoft Entra/Azure AD pattern.
 
-1. What email infrastructure already exists — `lead_emails` table, `lead_email_metrics`, `EmailMetricsCard`, `useUnansweredEmails`, `EmailsSection`, `ingest-email` (Zapier), `sync-outlook-emails` (paused — admin consent), and the new `suggest-email-responses` v6 function.
+Key insight from the screenshot:
+- They're signing in as `adam.haile@sourcecodeals.com`
+- The screen shows "**This app requires your admin's approval to:**" with scopes Read user mail, Read/write user mail, Send mail as user, Maintain access, View profile
+- Last night's approval was for a DIFFERENT scope set (likely a narrower one for the initial connection)
+- This is a NEW consent request because the connector is requesting expanded scopes (the read-write + send mail combo, which is broader than read-only sync)
 
-2. From memory `mem://integrations/email-sync-status`: Outlook deep sync is built but paused pending tenant admin consent. The screenshot shows the user just got Microsoft admin consent approved ("Lovable access request Approved"). So Outlook is now unblocked.
+Common causes:
+1. **Approval was for a different scope set** — admin previously approved Mail.Read but now Lovable needs Mail.ReadWrite + Mail.Send. Each scope expansion triggers a new admin approval workflow in Entra.
+2. **Approval was granted to a different Lovable app registration** — Microsoft may have multiple Lovable enterprise app entries; admin approved one but the connector OAuth is initiating against another.
+3. **Tenant policy: "user consent disabled"** — even after admin grants once, if user consent is fully disabled, every new user/scope combo requires fresh admin approval.
+4. **Admin consent wasn't granted tenant-wide** — admin clicked "approve" but only for themselves (user consent), not "Grant admin consent for [Tenant]" (the org-wide button). This is the most common cause and matches the symptom exactly.
+5. **Different account** — last night's approval may have been for `adam.haile@captarget.com` and now signing in as `adam.haile@sourcecodeals.com` (different tenant entirely).
 
-3. From `mem://features/email-correspondence-tracking`: dual-state — Zapier active for inbound, deep sync pending.
+Note in the screenshot: it specifically says "This app requires your **admin's** approval" — meaning Adam himself is NOT the admin in this tenant, OR the prior approval was performed differently. Adam needs to either:
+- Have the actual Entra admin click "Grant admin consent for [tenant]" in Azure portal → Enterprise Applications → Lovable → Permissions
+- OR have admin approve the new request (but it'll keep happening on scope changes)
 
-4. The user wants HubSpot-style email intelligence at "roughly half" depth. Looking at the HS list:
+The cleanest fix: have the Microsoft 365 tenant admin go to Entra admin center, find the Lovable enterprise app, and click "Grant admin consent for [tenant name]" once with the full required scope set. That bakes consent in tenant-wide and bypasses this prompt forever.
 
-**Marketing email properties — NOT applicable** (we don't send marketing emails; this is a sales CRM for retainer-paying clients). Skip entirely.
+I should explain this clearly and give them the exact path to fix it. This is a clarifying / diagnostic response — no code to write.
 
-**Sales/one-to-one email properties — YES, this is the core**:
-- Recent open / click / replied dates per contact (we have `lead_email_metrics` with last_opened/clicked/replied — partially done)
-- Email opened tracking via tracking pixel (NOT BUILT)
-- Click tracking via link rewriting (NOT BUILT)
+Let me also note: the dialog shows two distinct tenants in play here (sourcecodeals.com signing in). If the admin who approved last night was on captarget.com tenant, that approval doesn't transfer to sourcecodeals.com tenant. Each Microsoft 365 tenant is a completely separate consent boundary.
 
-**Per-email timeline detail — partially built but missing**:
-- Subject ✓ (have it)
-- Body ✓ (have body_html, body_text, body_preview)
-- Open count + timestamps (have `opens` jsonb, never populated)
-- Click count + timestamps (have `clicks` jsonb, never populated)
-- From / To / CC / BCC ✓
-- Tracked badge (need to add `tracking_enabled` field on outbound)
-- Reply status ✓ (`replied_at`)
-- Bounce details ✓ (`bounce_reason`)
-- Attachments — partially (have `attachments` jsonb, only marks "has", doesn't list/download)
+Plan: explain the diagnosis, list the 3 most likely causes ranked by probability, give exact remediation path. No code changes. Then present 2 paths forward: (a) admin grants tenant-wide consent the right way, (b) we proceed with whatever's connectable now.
 
-**The actual gap analysis:**
-
-A. **Inbound email pipeline** — Zapier works for Gmail+Outlook into `lead_emails` ✓ shipped
-B. **Outbound deep sync from workspace mailbox** — `sync-outlook-emails` written but paused (admin consent now granted per screenshot)
-C. **Gmail equivalent of (B)** — not built at all
-D. **Tracking pixels for opens** — not built
-E. **Link rewriting for clicks** — not built
-F. **Reply detection** — partially auto via `lead_email_metrics`, but needs threading
-G. **Attachments** — list-only, not downloadable
-H. **Timeline UI per email** — exists in EmailsSection but missing the rich event chips (opens, clicks, bounces with timestamps)
-I. **Compose/send from app** — `EmailComposeDrawer` exists, but does it actually send through workspace mailbox? Need to check.
-J. **Cron sync** — Outlook function exists, needs scheduled trigger
-
-Let me think about what to actually implement now. The user said "roughly half" of HubSpot. The right cut for an M&A retainer-CRM is:
-
-**Tier 1 (must ship now)** — Two-way sync with workspace mailboxes
-1. Activate Outlook deep sync (admin consent granted) — schedule cron
-2. Add Gmail deep sync as parallel function (same pattern via Gmail connector)
-3. Open tracking via 1×1 transparent pixel injected when sending from app
-4. Click tracking via link rewriting through a tracking redirector
-5. Send-from-app actually delivering through the user's Outlook/Gmail (so sent items show up in their Sent folder + the recipient sees the user's address)
-6. Per-email open/click event chips in timeline (we have schema, need UI)
-
-**Tier 2 (stretch, defer to next round)** — 
-- Attachment download
-- Send-later / scheduled send  
-- Email templates with variable insertion
-- Bounce detection beyond what providers report (Gmail/Outlook surface bounces in inbox, parse them)
-
-**Tier 3 (probably skip)** —
-- Marketing email features (we don't do this)
-- Spam report (rare for 1:1 sales)
-- Subscription type management
-
-Let me also think about architecture cleanly:
-
-- The "two-way sync" pattern: outbound emails sent from app → POST to provider's send API → webhook/polling brings the threaded reply back via the existing inbound pipeline
-- For tracking: when we send from app, we (1) inject pixel pointing to our edge function, (2) rewrite each <a href> to wrap in our redirector edge function. Both functions log to `lead_emails.opens` / `.clicks` jsonb
-- For threading: use `In-Reply-To` and `References` headers on send so replies come back in same thread_id
-
-Let me check what currently exists in EmailComposeDrawer and EmailsSection to understand exactly what's there.
-
-I should check briefly:
-1. `EmailComposeDrawer.tsx` — does it actually send anywhere?
-2. `EmailsSection.tsx` — what timeline events does it render?
-3. Migrations for `lead_emails` schema to confirm fields
-
-Let me do a quick read of these to make my plan accurate.
+Keep it concise.
