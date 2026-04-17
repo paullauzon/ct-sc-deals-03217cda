@@ -16,7 +16,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Mail, Copy, Check, CheckCircle, X, Loader2, User, Calendar, CalendarCheck, ExternalLink } from "lucide-react";
+import { FileText, Mail, Copy, Check, CheckCircle, X, Loader2, User, Calendar, CalendarCheck, ExternalLink, Maximize2 } from "lucide-react";
+import { TranscriptDrawer } from "@/components/lead-panel/dialogs/TranscriptDrawer";
 
 // ─── Suggested Lead Update Types ───
 
@@ -121,6 +122,7 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
   const [followUpMeetingId, setFollowUpMeetingId] = useState<string | null>(null);
   const [generatingFollowUp, setGeneratingFollowUp] = useState(false);
   const [reprocessingMeetingId, setReprocessingMeetingId] = useState<string | null>(null);
+  const [transcriptMeeting, setTranscriptMeeting] = useState<Meeting | null>(null);
 
   const searching = leadJobs[lead.id]?.searching ?? false;
 
@@ -252,16 +254,29 @@ export function MeetingsSection({ lead }: { lead: Lead }) {
     }
   };
 
-  // Detect a future booked meeting (Calendly or manually-set meetingDate)
+  // Detect a future booked meeting (Calendly or manually-set meetingDate). Prefer
+  // calendly_booked_at when meetingDate isn't set, since the cron sync sometimes
+  // populates calendly fields before meetingDate is mirrored.
   const upcoming = (() => {
-    const candidates: { date: string; title: string; duration?: number; type?: string; url?: string }[] = [];
     const now = Date.now();
+    const candidates: { date: string; title: string; duration?: number; type?: string }[] = [];
     if (lead.meetingDate) {
       const t = new Date(lead.meetingDate).getTime();
       if (!isNaN(t) && t > now) {
         candidates.push({
           date: lead.meetingDate,
           title: lead.calendlyEventName || "Scheduled meeting",
+          duration: lead.calendlyEventDuration ?? undefined,
+          type: lead.calendlyEventType || undefined,
+        });
+      }
+    }
+    if (candidates.length === 0 && lead.calendlyBookedAt) {
+      const t = new Date(lead.calendlyBookedAt).getTime();
+      if (!isNaN(t) && t > now) {
+        candidates.push({
+          date: lead.calendlyBookedAt,
+          title: lead.calendlyEventName || "Calendly meeting",
           duration: lead.calendlyEventDuration ?? undefined,
           type: lead.calendlyEventType || undefined,
         });
