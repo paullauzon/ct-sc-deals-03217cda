@@ -603,6 +603,44 @@ export function Pipeline() {
                   <span className="text-xs font-medium">Backfill LinkedIn URLs</span>
                   <span className="text-[10px] text-muted-foreground">For active leads missing linkedin_url · runs AI Search Agent · ~$1 for 55 leads</span>
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="flex-col items-start gap-0.5 py-2 cursor-pointer"
+                  onClick={async () => {
+                    toast.info("Rescheduling overdue follow-ups to tomorrow...");
+                    try {
+                      const tomorrow = new Date();
+                      tomorrow.setDate(tomorrow.getDate() + 1);
+                      const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+                      const todayStr = new Date().toISOString().slice(0, 10);
+                      // Get active lead ids (not in terminal stages)
+                      const { data: activeLeads } = await supabase
+                        .from("leads")
+                        .select("id")
+                        .is("archived_at", null)
+                        .not("stage", "in", "(Lost,Went Dark,Closed Won,Revisit/Reconnect)");
+                      const ids = (activeLeads || []).map((l: any) => l.id);
+                      if (ids.length === 0) {
+                        toast.success("No active leads found.");
+                        return;
+                      }
+                      const { data, error } = await supabase
+                        .from("lead_tasks")
+                        .update({ due_date: tomorrowStr } as any)
+                        .eq("status", "pending")
+                        .lt("due_date", todayStr)
+                        .in("lead_id", ids)
+                        .select("id");
+                      if (error) throw error;
+                      toast.success(`Rescheduled ${data?.length ?? 0} overdue follow-up(s) to tomorrow`);
+                    } catch (err) {
+                      toast.error("Reschedule failed: " + (err as Error).message);
+                    }
+                  }}
+                >
+                  <span className="text-xs font-medium">Reschedule overdue follow-ups</span>
+                  <span className="text-[10px] text-muted-foreground">Pushes all overdue pending tasks for active leads to tomorrow · zero cost</span>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}

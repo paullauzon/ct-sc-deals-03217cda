@@ -638,7 +638,9 @@ Deno.serve(async (req) => {
       tierOverride = true;
     }
 
-    // Reassign tier (Tier 5 is permanent — already handled above)
+    // Reassign tier — system standard is {1, 2, 3} (Tier 5 is permanent, handled above).
+    // Anything that would historically have binned to Tier 4 collapses into Tier 3
+    // so the lead still surfaces in priority-aware Pipeline UI.
     let newTier = currentTier;
     if (tierOverride) {
       newTier = 1;
@@ -646,10 +648,8 @@ Deno.serve(async (req) => {
       newTier = 1;
     } else if (stage2Score >= 50) {
       newTier = 2;
-    } else if (stage2Score >= 30) {
-      newTier = 3;
     } else {
-      newTier = 4;
+      newTier = 3;
     }
 
     // Update pe fields
