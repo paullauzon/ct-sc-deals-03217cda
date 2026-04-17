@@ -84,21 +84,21 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
 
   useEffect(() => {
     if (open) setActiveTab("activity");
-  }, [leadId, open]);
+  }, [activeLeadId, open]);
 
   // Fetch email count for tab label
   useEffect(() => {
-    if (!leadId) return;
+    if (!activeLeadId) return;
     let cancelled = false;
     (async () => {
       const { count } = await supabase
         .from("lead_emails")
         .select("id", { count: "exact", head: true })
-        .eq("lead_id", leadId);
+        .eq("lead_id", activeLeadId);
       if (!cancelled && typeof count === "number") setEmailCount(count);
     })();
     return () => { cancelled = true; };
-  }, [leadId]);
+  }, [activeLeadId]);
 
   // Keyboard shortcuts (only when open and not typing in input)
   useEffect(() => {
