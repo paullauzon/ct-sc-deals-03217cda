@@ -203,6 +203,13 @@ export function leadUpdatesToRow(updates: Partial<Lead>): Record<string, any> {
     secondaryContacts: "secondary_contacts",
     googleDriveLink: "google_drive_link",
     forecastedCloseDate: "forecasted_close_date",
+    leadStatus: "lead_status",
+    nextMutualStep: "next_mutual_step",
+    nextMutualStepDate: "next_mutual_step_date",
+    competingBankers: "competing_bankers",
+    contractMonths: "contract_months",
+    closeConfidence: "close_confidence",
+    dealNarrative: "deal_narrative",
   };
 
   const row: Record<string, any> = {};
