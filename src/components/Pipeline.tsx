@@ -18,7 +18,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 
-import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, Check, Linkedin, CalendarCheck, ChevronRight, Zap, Archive } from "lucide-react";
+import { Search, X, Sparkles, Loader2, Plus, CheckSquare, RefreshCw, Users, Check, Linkedin, CalendarCheck, ChevronRight, ChevronDown, Zap, Archive } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getBrandBorderClass } from "@/lib/brandColors";
@@ -327,38 +328,79 @@ export function Pipeline() {
             </Button>
           )}
           {sourceCoCount > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={reEnriching}
-              onClick={async () => {
-                setReEnriching(true);
-                toast.info("Re-enriching top 20 SourceCo leads — this may take ~20s...");
-                try {
-                  const { data, error } = await supabase.functions.invoke("bulk-enrich-sourceco", {
-                    body: { limit: 20 },
-                  });
-                  if (error) throw error;
-                  const enriched = data?.enriched ?? 0;
-                  const errs = data?.errors?.length ?? 0;
-                  if (errs > 0) {
-                    toast.warning(`Re-enriched ${enriched} leads · ${errs} failed`);
-                  } else {
-                    toast.success(`Re-enriched ${enriched} SourceCo leads`);
-                  }
-                  await refreshLeads();
-                } catch (err) {
-                  toast.error("Re-enrich failed: " + (err as Error).message);
-                } finally {
-                  setReEnriching(false);
-                }
-              }}
-              className="h-8 text-xs gap-1.5"
-              title="Refresh AI research + scoring for top 20 active SourceCo leads"
-            >
-              {reEnriching ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              {reEnriching ? "Re-enriching..." : "Re-enrich top 20 SourceCo"}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={reEnriching}
+                  className="h-8 text-xs gap-1.5"
+                  title="Bulk-fill SourceCo dossier coverage"
+                >
+                  {reEnriching ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  {reEnriching ? "Working..." : "Fill SourceCo Dossiers"}
+                  <ChevronDown className="h-3 w-3 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Dossier Coverage Tools
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="flex-col items-start gap-0.5 py-2 cursor-pointer"
+                  onClick={async () => {
+                    setReEnriching(true);
+                    toast.info("Promoting parsed values across all SourceCo leads...");
+                    try {
+                      const { data, error } = await supabase.functions.invoke("bulk-promote-dossier", { body: { brand: "SourceCo" } });
+                      if (error) throw error;
+                      const promoted = data?.promoted ?? 0;
+                      const fields = data?.fields_written ?? 0;
+                      const scanned = data?.scanned ?? 0;
+                      toast.success(`Promoted ${promoted}/${scanned} leads · ${fields} fields written`);
+                      await refreshLeads();
+                    } catch (err) {
+                      toast.error("Promote failed: " + (err as Error).message);
+                    } finally {
+                      setReEnriching(false);
+                    }
+                  }}
+                >
+                  <span className="text-xs font-medium">Promote parsed values now</span>
+                  <span className="text-[10px] text-muted-foreground">Free · instant · runs deterministic parsers across all {sourceCoCount} active leads</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="flex-col items-start gap-0.5 py-2 cursor-pointer"
+                  onClick={async () => {
+                    setReEnriching(true);
+                    toast.info("Re-enriching top 20 SourceCo leads with AI — this may take ~30s...");
+                    try {
+                      const { data, error } = await supabase.functions.invoke("bulk-enrich-sourceco", { body: { limit: 20 } });
+                      if (error) throw error;
+                      const enriched = data?.enriched ?? 0;
+                      const promoted = data?.promoted ?? 0;
+                      const fields = data?.fields_written ?? 0;
+                      const errs = data?.errors?.length ?? 0;
+                      if (errs > 0) {
+                        toast.warning(`AI re-enriched ${enriched} · auto-promoted ${promoted} (${fields} fields) · ${errs} failed`);
+                      } else {
+                        toast.success(`AI re-enriched ${enriched} · auto-promoted ${promoted} (${fields} fields)`);
+                      }
+                      await refreshLeads();
+                    } catch (err) {
+                      toast.error("Re-enrich failed: " + (err as Error).message);
+                    } finally {
+                      setReEnriching(false);
+                    }
+                  }}
+                >
+                  <span className="text-xs font-medium">Re-enrich with AI (top 20)</span>
+                  <span className="text-[10px] text-muted-foreground">Costs AI credits · ~30s · fills firm AUM, deal type, txn type, etc.</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         <div className="relative w-full max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

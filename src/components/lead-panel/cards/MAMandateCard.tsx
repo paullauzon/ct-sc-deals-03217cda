@@ -74,6 +74,7 @@ export function MAMandateCard({ lead, save }: Props) {
       icon={<Target className="h-3.5 w-3.5" />}
       count={`${completeness.filled}/${completeness.total}`}
       defaultOpen
+      smallCapsTitle
       rightSlot={pendingAI > 0 ? (
         <button type="button" onClick={(e) => { e.stopPropagation(); confirmAllAI(); }}
           className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded border border-border/60 hover:border-foreground hover:bg-foreground hover:text-background transition-colors mr-1"
