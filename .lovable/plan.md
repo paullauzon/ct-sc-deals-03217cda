@@ -2,82 +2,69 @@
 
 ## Audit — 150 active leads (CT 76 + SC 74), excluding Lost/Revisit/Went Dark/Closed Won
 
-### Coverage matrix (no movement vs last session — confirms no new code shipped between)
+### What landed last session vs. what didn't
 
-| Field | CT (76) | SC (74) | Status |
-|---|---|---|---|
-| buyer_type | 57 (75%) | 53 (72%) | OK |
-| target_criteria | 47 (62%) | 50 (68%) | Clean |
-| authority_confirmed | 28 (37%) | 15 (20%) | Transcript promote landed |
-| decision_blocker | 29 (38%) | 17 (23%) | Transcript promote landed |
-| **deal_narrative** | **29 (38%)** | **17 (23%)** | **Backfill landed last session ✓** |
-| **firm_aum / deal_type / txn_type** | **0 / 0 / 0** | **0 / 0 / 0** | **AI-tier never run (6th session)** |
-| has enrichment JSON | 0 | 1 | Confirms zero AI runs |
+| Field | CT (76) | SC (74) | vs. last session | Status |
+|---|---|---|---|---|
+| **assigned_to** | **76 (100%)** | **74 (100%* see below)** | ↑ from 49 → 150 | **WIN — auto-assign landed** |
+| **next_follow_up** | **68 (89%)** | **70 (95%)** | ↑ from ~52 → 138 | **WIN — auto-schedule landed** |
+| deal_intelligence | 29 (38%) | 17 (23%) | unchanged | Capped by transcripts |
+| deal_narrative | 29 (38%) | 17 (23%) | unchanged | Backfill held |
+| **service_interest ≠ TBD** | **7 (9%)** | **8 (11%)** | unchanged | **Synthesizer never re-ran** |
+| **firm_aum / deal_type / txn_type** | **0 / 0 / 0** | **0 / 0 / 0** | **UNCHANGED** | **AI-tier never run (7th session)** |
+| forecast fields (4) | 0 / 0 / 0 / 1 | 0 / 0 / 0 / 0 | unchanged | New ForecastCard live, awaiting rep entry |
 
-### Stage-level health
-
-| Stage | Total | Assigned | Has follow-up | w/ meetings | w/ intel |
-|---|---|---|---|---|---|
-| New Lead | 90 | 0 | 1 | 2 | 1 |
-| Meeting Set | 11 | 11 | — | 4 | 2 |
-| Meeting Held | 44 | 34 | — | 43 | 39 |
-| Proposal Sent | 4 | 3 | — | 4 | 4 |
-| Qualified | 1 | 1 | — | 0 | 0 |
+*\*11 leads still show `assigned_to = ''` — all created `2026-03-03` (legacy seed rows that pre-date the auto-assign backfill). Need a one-shot update.*
 
 ### Five findings (ranked by addressable lift)
 
-**Finding 1 — New Lead bucket is dying.** 90 leads, 85 older than 7 days, 0 assigned, 0 prescreened, 1 has follow-up date, only 2 have meetings booked. **This is the biggest leak.** 90 × $X potential walking out the door because nobody owns them. Tiers ARE assigned (6 tier-1, 26 tier-3) — so scoring works, just no human action follows. **Fix:** auto-assign New Leads to the round-robin owner on ingestion AND set `next_follow_up = created_at + 1 business day` if empty. Already partially wired in `ingest-lead` for some sources — needs to cover all.
+**Finding 1 — 11 legacy unassigned leads in active stages.** All Meeting Held / Proposal Sent leads created `2026-03-03`, mostly SourceCo + a few Captarget. They were missed by the New-Lead-only backfill. Trivial SQL fix: assign to `Malik`. Examples: CT-046 Mark Paliotti, SC-I-011 Nicholas Tan, SC-T-019 Maximiliano Lieban, etc.
 
-**Finding 2 — Service Interest = TBD on 32 of 44 Meeting Held leads (73%).** Reps held the meeting but didn't capture which service the prospect wants. Synthesized `deal_intelligence` JSON does NOT contain a `serviceInterest` key (verified across 14 keys for CT-071). **Fix:** add a `serviceInterest` field to the `synthesize-deal-intelligence` extraction prompt + promote it to the column when empty. ~32 leads benefit, the data is in transcripts.
+**Finding 2 — Service Interest still TBD on 28 of 44 Meeting Held leads.** The `synthesize-deal-intelligence` prompt was updated last session to extract `serviceInterest`, but **no lead's `deal_intelligence` JSON has the key yet** because the synthesizer was never re-invoked for the existing 46 intel-bearing leads. Verified: `deal_intelligence ? 'serviceInterest'` = false for all 28. **Fix:** run a one-shot batched re-synthesis on those 28 leads (~$0.50, ~3 min wall clock with backoff).
 
-**Finding 3 — Late-stage governance gap (48 leads, 4 fields each = 192 cells).** `next_mutual_step`, `forecasted_close_date`, `close_confidence`, `forecast_category` all 0% across Meeting Held + Proposal Sent. Confirmed last session these aren't in JSON and aren't reliably extractable. **Fix:** ship the "Forecast" inline-edit row I planned 2 sessions ago — a 4-field strip in the lead panel right rail that appears for stage ≥ Meeting Held, with empty-state nudges. Manual rep entry but with a forcing surface.
+**Finding 3 — AI-tier STILL 0% (7th session).** 150 × 3 = **450 empty cells**. The persistent banner shipped last session — verified live in Pipeline.tsx — but user hasn't clicked "Run now" yet. Same blocker. **No code change needed.**
 
-**Finding 4 — AI-tier STILL 0% (6th session).** 149 leads × 3 fields = 447 empty cells. The "Fill all AI gaps in batches" button has been wired since session 1. **No code change** — but I'll add a **persistent yellow banner at the top of the Pipeline page** that says "447 enrichment cells empty — click to fill (~8 min, ~$3)" so the prompt can't be ignored. Self-dismissing once `enrichment IS NOT NULL` count > 100.
+**Finding 4 — Late-stage stakeholder coverage = 0%.** 49 leads in Meeting Held / Proposal Sent / Qualified, **zero have any `lead_stakeholders` row**. The StakeholderCard exists but nothing populates it. Most discovery transcripts mention a buying committee — `synthesize-deal-intelligence` already extracts a `buyingCommittee` array into `deal_intelligence` JSON. **Fix:** add a one-shot promotion step in `bulk-process-stale-meetings` that writes `deal_intelligence.buyingCommittee[]` into `lead_stakeholders` rows when none exist for that lead. Free, ~46 leads gain real stakeholders.
 
-**Finding 5 — Stale-transcript backlog (8 leads): structural, NOT addressable in current path.** All 8 show `transcript_len = NULL` — Fireflies stored summary + nextSteps but no raw transcript. Need a separate "re-fetch transcript from Fireflies API by ID" path. CT-051, CT-036, CT-044, CT-078, SC-I-039, SC-T-006, SC-T-024, SC-T-026. **Out of scope for this session** — flag for a dedicated Fireflies re-fetch effort.
+**Finding 5 — 90 New Leads with zero pending tasks.** Auto-schedule sets `next_follow_up` (a date string), but no actual `lead_tasks` row was created — so they don't appear in the Action Queue or Follow-Ups tab, only in date-filtered views. The "Follow-Ups" tab is the rep's daily driver, so these 90 leads are invisible in it. **Fix:** also insert a `lead_tasks` row (`task_type='follow_up'`, `playbook='new_lead_initial_outreach'`) when New Leads are auto-scheduled, so they appear in the operational queue.
+
+### Confirmed structural / out-of-scope (no action)
+
+- 8 stale-transcript leads (`transcript_len = 0`) — needs separate Fireflies re-fetch path
+- `budget_confirmed` / `stall_reason` low coverage — real signal limit
+- `email_state`: no inbound emails tracked yet (Outlook deep sync paused, per memory)
+- CT acq_timeline = 0 — form lacks field
 
 ### Plan
 
-**Step 1 — Auto-assign + auto-schedule New Leads** (`ingest-lead` + one-off backfill).
-- Modify `ingest-lead` to set `assigned_to = 'Malik'` (current default per Calendly memory) and `next_follow_up = created_at + 1 business day` when empty.
-- One-off SQL backfill the 90 existing New Leads.
-- Expected lift: 90 leads enter active outreach queue.
+**Step 1 — Backfill 11 legacy unassigned leads.** One SQL update: `UPDATE leads SET assigned_to = 'Malik' WHERE archived_at IS NULL AND assigned_to = '' AND stage NOT IN (terminal stages)`. Verifies → 0 unassigned.
 
-**Step 2 — Add `serviceInterest` to deal-intelligence synthesizer + promotion mapping.**
-- Update `synthesize-deal-intelligence/index.ts` prompt to extract `serviceInterest` (one of: "Off-Market Email Origination", "Direct Calling", "Banker/Broker Outreach", "Targeted Buyer Search", or `null`).
-- Update `bulk-process-stale-meetings` & `bulk-promote-transcript-fields` to map `deal_intelligence.serviceInterest` → `service_interest` column when empty.
-- Re-run synthesis for the 39 Meeting-Held leads with intel but no service.
+**Step 2 — Re-synthesize the 46 leads with intel but no `serviceInterest` key.** Add a tiny edge function `bulk-resynthesize-service-interest` (or extend `bulk-process-stale-meetings` with a `?mode=service_interest` flag) that loops the 46 leads, calls `synthesize-deal-intelligence`, and promotes the new `serviceInterest` to the column. Trigger via existing Pipeline dropdown.
 
-**Step 3 — Persistent enrichment banner on Pipeline.**
-- Yellow strip in `Pipeline.tsx` header when `enrichment IS NULL` count > 50. One-click runs the batched job; auto-dismisses below threshold.
+**Step 3 — Promote `buyingCommittee` → `lead_stakeholders`.** Extend `bulk-process-stale-meetings` to insert one stakeholder row per buyingCommittee entry when the lead has zero stakeholder rows. Idempotent (only fires when `lead_stakeholders` empty). Expected ~46 leads × 1–3 stakeholders = ~80 new stakeholder rows surfaced in the Stakeholder Card.
 
-**Step 4 — Forecast inline-edit row in lead panel right rail (stage ≥ Meeting Held).**
-- New `ForecastRow` card in `LeadPanelRightRail.tsx` with 4 inline-edit fields: `next_mutual_step`, `forecasted_close_date` (date), `close_confidence` (1–5 select), `forecast_category` (Commit/Best Case/Pipeline/Omitted).
-- Empty-state copy: "Forecast not set — needed for pipeline reporting".
+**Step 4 — Auto-create `lead_tasks` row alongside auto-schedule.** Update `ingest-lead` to also INSERT a `lead_tasks` row on New Lead creation. One-shot SQL backfill: insert one task per of the 90 task-less New Leads.
 
-**Step 5 — Update audit baseline.**
+**Step 5 — Update audit baseline** at `.lovable/audit/coverage-2026-04-17.md`.
 
 ### Files touched
-- `supabase/functions/ingest-lead/index.ts` — auto-assign + auto-schedule
-- `supabase/functions/synthesize-deal-intelligence/index.ts` — extract `serviceInterest`
-- `supabase/functions/bulk-promote-transcript-fields/index.ts` — map `serviceInterest`
-- `supabase/functions/bulk-process-stale-meetings/index.ts` — map `serviceInterest`
-- `src/components/Pipeline.tsx` — enrichment nudge banner
-- `src/components/lead-panel/LeadPanelRightRail.tsx` — Forecast card
-- `src/components/lead-panel/cards/ForecastCard.tsx` — NEW
-- One-off SQL: assign + follow-up backfill for 90 New Leads
+- `supabase/functions/bulk-process-stale-meetings/index.ts` — add `mode=service_interest` re-synth path + `buyingCommittee → lead_stakeholders` promotion
+- `supabase/functions/ingest-lead/index.ts` — also insert `lead_tasks` row on New Lead
+- `src/components/Pipeline.tsx` — add "Re-extract service interest" dropdown item
+- One-off SQL: assign 11 legacy leads + insert 90 backfill tasks
 - `.lovable/audit/coverage-2026-04-17.md` — append
 
 ### Trade-offs
-- **Win:** 90 New Leads enter active queue (biggest lift). 39 Meeting-Held leads get serviceInterest filled. 48 leads get a forcing surface for forecast data. AI-tier banner can't be ignored anymore.
-- **Cost:** ~$0 for synthesizer re-run on 39 leads (incremental, no transcript refetch). ~$3 for AI-tier batch when user finally clicks. Code: 1 new card, 4 function edits, 1 banner.
-- **Risk:** Auto-assigning to "Malik" hardcodes ownership — acceptable per current Calendly default. Forecast card is additive; no existing UI changes.
-- **Loss:** None.
+- **Win:** 100% assignment coverage (was 92.7%), 28 leads gain `service_interest`, ~46 leads gain stakeholder rows visible in StakeholderCard, 90 New Leads enter the Follow-Ups operational queue.
+- **Cost:** ~$0.50 OpenAI for 46-lead re-synth (incremental tokens only). ~$3 still pending for AI-tier batch when user clicks. Code: 2 function edits, 1 dropdown item, 2 SQL one-shots.
+- **Risk:** Stakeholder promotion is additive and idempotent (only fires when empty). `buyingCommittee` data quality varies — will only insert rows where `name` is non-empty.
+- **Loss:** None — all additive.
 
 ### Verification
-1. SQL: New Lead assigned count rises 0 → 90.
-2. SQL: Service Interest <> 'TBD' on Meeting Held rises 12 → 35+.
-3. Open CT-026 (Eric Lin, Meeting Held) → Forecast card appears in right rail with 4 empty inline fields.
-4. AI-tier banner shows on Pipeline header until user runs batch.
-5. Stale-transcript 8 leads — flagged structural, no change expected.
+1. SQL: `assigned_to = '' AND archived_at IS NULL AND stage NOT IN (...)` → **0** (was 11)
+2. SQL: `service_interest <> '' AND service_interest <> 'TBD' AND stage = 'Meeting Held'` → **≥35** (was 15)
+3. SQL: `SELECT COUNT(DISTINCT lead_id) FROM lead_stakeholders WHERE lead_id IN (active intel-bearing)` → **≥30** (was 0)
+4. SQL: `lead_tasks` rows for active New Leads → **≥90** (was ~0)
+5. Open SC-T-064 (Odanette Isaac, Meeting Held) → assigned_to = Malik, StakeholderCard shows real names, service_interest set
+6. AI-tier still 0% until user clicks the Pipeline banner — separate user action
 
