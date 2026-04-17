@@ -102,21 +102,24 @@ function parseRevenueFromText(text?: string): string {
   if (yearly) return `$${yearly[1]}${yearly[2].toUpperCase()}+`;
   return "";
 }
+const GEO_VOCAB = /\b(?:midwest|midwestern|northeast|southeast|southwest|northwest|west coast|east coast|sun belt|rust belt|new england|tri[- ]?state|pacific northwest|mid[- ]?atlantic|north america|south america|canada|usa|us|u\.s\.|united states|uk|united kingdom|europe|emea|apac|latam|mexico|india|australia|ontario|quebec|alberta|british columbia|texas|california|florida|new york|illinois|ohio|michigan|pennsylvania|georgia|north carolina|south carolina|virginia|tennessee|arizona|colorado|washington|oregon|massachusetts|new jersey|oklahoma|louisiana|kansas|missouri|indiana|wisconsin|minnesota|iowa|nebraska|arkansas|alabama|kentucky|maryland|connecticut|nevada|utah|new mexico|chicago|austin|dallas|houston|atlanta|denver|seattle|miami|boston|nashville|phoenix|portland|salt lake|kansas city|minneapolis|st\. louis|detroit|cleveland|cincinnati|pittsburgh|philadelphia|baltimore|charlotte|raleigh|orlando|tampa|jacksonville)\b/i;
 function parseGeographyFromText(text?: string): string {
   if (!text) return "";
   const t = text.replace(/\s+/g, " ");
   const anchored: string[] = [];
-  const anchorRe = /(?:based in|hq in|headquartered in|located in|focused on|operating in|targeting|target geography:?)\s+(?:the\s+)?([A-Z][\w&.\- ]{2,60}?)(?=[.,;\n]|$| with| and| but| where| our| we)/gi;
+  const anchorRe = /(?:based in|hq in|headquartered in|located in|operating in|target geography:?)\s+(?:the\s+)?([A-Za-z][\w&.\- ]{2,60}?)(?=[.,;\n]|$| with| and| but| where| our| we)/gi;
   let am: RegExpExecArray | null;
   while ((am = anchorRe.exec(t))) {
-    const cleaned = am[1].trim().replace(/\s+(US|U\.S\.|USA|United States)$/i, ", US").replace(/^the\s+/i, "");
+    const raw = am[1].trim();
+    if (!GEO_VOCAB.test(raw)) continue;
+    const cleaned = raw.replace(/\s+(US|U\.S\.|USA|United States)$/i, ", US").replace(/^the\s+/i, "");
     if (cleaned && cleaned.length < 80) anchored.push(cleaned);
   }
   const patterns: RegExp[] = [
-    /\b(?:southern|northern|eastern|western|central)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?/g,
+    /\b(?:southern|northern|eastern|western|central)\s+(?:US|usa|united states|california|texas|florida|new york|illinois|ohio|michigan|pennsylvania|europe|asia|america|canada)\b/gi,
     /\b(?:midwest|midwestern|northeast|southeast|southwest|northwest|west coast|east coast|sun belt|rust belt|new england|tri[- ]?state|pacific northwest|mid[- ]?atlantic)\b/gi,
     /\b(?:north|south|east|west)\s+america\b/gi,
-    /\b(?:canada|usa|united states|uk|united kingdom|europe|emea|apac|latam|mexico|ontario|quebec|alberta|british columbia|texas|california|florida|new york|illinois|ohio|michigan|pennsylvania|georgia|north carolina|south carolina|virginia|tennessee|arizona|colorado|washington|oregon|massachusetts|new jersey|oklahoma|louisiana|kansas|missouri|indiana|wisconsin|minnesota|iowa|nebraska|arkansas|alabama|kentucky|maryland|connecticut|nevada|utah|new mexico)\b/gi,
+    /\b(?:canada|usa|united states|uk|united kingdom|europe|emea|apac|latam|mexico|india|australia|ontario|quebec|alberta|british columbia|texas|california|florida|new york|illinois|ohio|michigan|pennsylvania|georgia|north carolina|south carolina|virginia|tennessee|arizona|colorado|washington|oregon|massachusetts|new jersey|oklahoma|louisiana|kansas|missouri|indiana|wisconsin|minnesota|iowa|nebraska|arkansas|alabama|kentucky|maryland|connecticut|nevada|utah|new mexico)\b/gi,
   ];
   const hits = new Set<string>();
   for (const a of anchored) {
