@@ -23,6 +23,7 @@ export function SalesProcessCard({ lead, save }: Props) {
   const blocker = deriveDecisionBlocker(lead);
   const stall = deriveStallReason(lead);
   const completeness = computeCardCompleteness(lead, "process");
+  const awaitingMeeting = !lead.meetings || lead.meetings.length === 0;
 
   const saveWithLog = (updates: Partial<Lead>, meta?: HybridSaveMeta) => {
     save(updates);
@@ -62,6 +63,7 @@ export function SalesProcessCard({ lead, save }: Props) {
       icon={<Swords className="h-3.5 w-3.5" />}
       count={`${completeness.filled}/${completeness.total}`}
       defaultOpen
+      smallCapsTitle
       rightSlot={pendingAI > 0 ? (
         <button type="button" onClick={(e) => { e.stopPropagation(); confirmAllAI(); }}
           className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded border border-border/60 hover:border-foreground hover:bg-foreground hover:text-background transition-colors mr-1"
@@ -71,12 +73,12 @@ export function SalesProcessCard({ lead, save }: Props) {
       ) : undefined}
     >
       <div className="space-y-0">
-        <HybridText label="Competing against" fieldKey="competingAgainst" manual={lead.competingAgainst} derived={competing} onSave={(v, meta) => saveWithLog({ competingAgainst: v }, meta)} />
-        <HybridText label="Decision blocker" fieldKey="decisionBlocker" manual={lead.decisionBlocker} derived={blocker} onSave={(v, meta) => saveWithLog({ decisionBlocker: v }, meta)} />
+        <HybridText label="Competing against" fieldKey="competingAgainst" manual={lead.competingAgainst} derived={competing} onSave={(v, meta) => saveWithLog({ competingAgainst: v }, meta)} awaitingMeeting={awaitingMeeting && !competing.value} />
+        <HybridText label="Decision blocker" fieldKey="decisionBlocker" manual={lead.decisionBlocker} derived={blocker} onSave={(v, meta) => saveWithLog({ decisionBlocker: v }, meta)} awaitingMeeting={awaitingMeeting} />
         <InlineTextField label="Sample sent date" value={lead.sampleSentDate || ""} onSave={(v) => save({ sampleSentDate: v })} type="date" />
         <InlineSelectField label="Sample outcome" value={lead.sampleOutcome || ""} options={SAMPLE_OUTCOMES} onSave={(v) => save({ sampleOutcome: v })} allowEmpty />
         <InlineTextField label="Proof notes" value={lead.proofNotes || ""} onSave={(v) => save({ proofNotes: v })} />
-        <HybridText label="Stall reason" fieldKey="stallReason" manual={lead.stallReason} derived={stall} onSave={(v, meta) => saveWithLog({ stallReason: v }, meta)} />
+        <HybridText label="Stall reason" fieldKey="stallReason" manual={lead.stallReason} derived={stall} onSave={(v, meta) => saveWithLog({ stallReason: v }, meta)} awaitingMeeting={awaitingMeeting} />
       </div>
     </CollapsibleCard>
   );

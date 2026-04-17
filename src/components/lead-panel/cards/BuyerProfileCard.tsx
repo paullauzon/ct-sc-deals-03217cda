@@ -41,6 +41,7 @@ export function BuyerProfileCard({ lead, save }: Props) {
   const activeSearchesSubmission = deriveActiveSearchesFromSubmission(lead);
   const selfStated = deriveSelfStatedStage(lead);
   const completeness = computeCardCompleteness(lead, "buyerProfile");
+  const awaitingMeeting = !lead.meetings || lead.meetings.length === 0;
 
   const saveWithLog = (updates: Partial<Lead>, meta?: HybridSaveMeta) => {
     save(updates);
@@ -88,6 +89,7 @@ export function BuyerProfileCard({ lead, save }: Props) {
       icon={<Building2 className="h-3.5 w-3.5" />}
       count={`${completeness.filled}/${completeness.total}`}
       defaultOpen
+      smallCapsTitle
       rightSlot={pendingAI > 0 ? (
         <button type="button" onClick={(e) => { e.stopPropagation(); confirmAllAI(); }}
           className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded border border-border/60 hover:border-foreground hover:bg-foreground hover:text-background transition-colors mr-1"
@@ -104,12 +106,12 @@ export function BuyerProfileCard({ lead, save }: Props) {
         )}
         <HybridSelect label="Acq. timeline" fieldKey="acqTimeline" manual={lead.acqTimeline} derived={timeline} options={TIMELINES} onSave={(v, meta) => saveWithLog({ acqTimeline: v }, meta)} allowEmpty />
         <HybridText label="Active searches" fieldKey="activeSearches" manual={lead.activeSearches} derived={sug.activeSearches?.value ? sug.activeSearches : activeSearchesSubmission} onSave={(v, meta) => saveWithLog({ activeSearches: v }, meta)} />
-        <DerivedRow label="Stakeholders" derived={stakeholders} fieldKey="stakeholders" />
-        <DerivedRow label="Champion" derived={champion} fieldKey="champion" />
-        <HybridSelect label="Budget confirmed" fieldKey="budgetConfirmed" manual={lead.budgetConfirmed} derived={budget} options={YES_NO_UNCLEAR} onSave={(v, meta) => saveWithLog({ budgetConfirmed: v }, meta)} allowEmpty />
+        <DerivedRow label="Stakeholders" derived={stakeholders} fieldKey="stakeholders" awaitingMeeting={awaitingMeeting} />
+        <DerivedRow label="Champion" derived={champion} fieldKey="champion" awaitingMeeting={awaitingMeeting} />
+        <HybridSelect label="Budget confirmed" fieldKey="budgetConfirmed" manual={lead.budgetConfirmed} derived={budget} options={YES_NO_UNCLEAR} onSave={(v, meta) => saveWithLog({ budgetConfirmed: v }, meta)} allowEmpty awaitingMeeting={awaitingMeeting} />
         <HybridText label="Authority confirmed" fieldKey="authorityConfirmed" manual={lead.authorityConfirmed}
           derived={sug.authorityConfirmed && sug.authorityConfirmed.value ? sug.authorityConfirmed : authority}
-          onSave={(v, meta) => saveWithLog({ authorityConfirmed: v }, meta)} />
+          onSave={(v, meta) => saveWithLog({ authorityConfirmed: v }, meta)} awaitingMeeting={awaitingMeeting} />
       </div>
     </CollapsibleCard>
   );
