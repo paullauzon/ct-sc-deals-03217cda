@@ -214,6 +214,38 @@ export function LeadProvider({ children }: { children: ReactNode }) {
             if (updatedRow.linkedin_title != null && l.linkedinTitle !== (updatedRow.linkedin_title || "")) {
               scoringUpdates.linkedinTitle = updatedRow.linkedin_title || "";
             }
+            // Live-sync core deal fields edited from other tabs / processing jobs
+            const liveFields: Array<[string, keyof Lead, (v: any) => any]> = [
+              ["stage", "stage", v => v],
+              ["lead_status", "leadStatus", v => v],
+              ["priority", "priority", v => v],
+              ["deal_value", "dealValue", v => Number(v)],
+              ["close_confidence", "closeConfidence", v => v == null ? null : Number(v)],
+              ["contract_months", "contractMonths", v => v == null ? null : Number(v)],
+              ["next_follow_up", "nextFollowUp", v => v || ""],
+              ["next_mutual_step", "nextMutualStep", v => v || ""],
+              ["next_mutual_step_date", "nextMutualStepDate", v => v || ""],
+              ["competing_bankers", "competingBankers", v => v || ""],
+              ["deal_narrative", "dealNarrative", v => v || ""],
+              ["assigned_to", "assignedTo", v => v || ""],
+              ["forecast_category", "forecastCategory", v => v || ""],
+              ["icp_fit", "icpFit", v => v || ""],
+              ["meeting_outcome", "meetingOutcome", v => v || ""],
+              ["notes", "notes", v => v || ""],
+              ["stage_entered_date", "stageEnteredDate", v => v || ""],
+              ["last_contact_date", "lastContactDate", v => v || ""],
+              ["closed_date", "closedDate", v => v || ""],
+              ["google_drive_link", "googleDriveLink", v => v || ""],
+              ["forecasted_close_date", "forecastedCloseDate", v => v || ""],
+            ];
+            for (const [dbCol, leadKey, mapper] of liveFields) {
+              if (dbCol in updatedRow) {
+                const incoming = mapper(updatedRow[dbCol]);
+                if ((l as any)[leadKey] !== incoming) {
+                  (scoringUpdates as any)[leadKey] = incoming;
+                }
+              }
+            }
             // Calendly booking: pick up stage, meeting_date, calendly_booked_at
             if (updatedRow.calendly_booked_at && !l.calendlyBookedAt && updatedRow.calendly_booked_at !== "") {
               scoringUpdates.calendlyBookedAt = updatedRow.calendly_booked_at;

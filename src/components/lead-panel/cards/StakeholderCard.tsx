@@ -5,6 +5,10 @@ import { Users, Plus, Trash2, Linkedin, Mail as MailIcon, Pencil, X, Check } fro
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { logActivity } from "@/lib/activityLog";
@@ -40,6 +44,7 @@ export function StakeholderCard({ lead }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ name: "", role: "", email: "", linkedin_url: "", sentiment: "neutral" as StakeholderSentiment, notes: "" });
   const [loading, setLoading] = useState(true);
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -68,10 +73,13 @@ export function StakeholderCard({ lead }: Props) {
     toast.success(editingId ? "Stakeholder updated" : "Stakeholder added");
   };
 
-  const remove = async (id: string, name: string) => {
-    if (!window.confirm(`Remove ${name}?`)) return;
+  const confirmRemove = async () => {
+    if (!removeTarget) return;
+    const { id, name } = removeTarget;
     await (supabase as any).from("lead_stakeholders").delete().eq("id", id);
     await logActivity(lead.id, "field_update", `Removed stakeholder ${name}`);
+    setRemoveTarget(null);
+    toast.success(`Removed ${name}`);
     load();
   };
 
@@ -146,7 +154,7 @@ export function StakeholderCard({ lead }: Props) {
                 <button onClick={() => beginEdit(s)} className="p-1 text-muted-foreground hover:text-foreground" title="Edit">
                   <Pencil className="h-3 w-3" />
                 </button>
-                <button onClick={() => remove(s.id, s.name)} className="p-1 text-muted-foreground hover:text-destructive" title="Remove">
+                <button onClick={() => setRemoveTarget({ id: s.id, name: s.name })} className="p-1 text-muted-foreground hover:text-destructive" title="Remove">
                   <Trash2 className="h-3 w-3" />
                 </button>
               </div>
@@ -179,6 +187,21 @@ export function StakeholderCard({ lead }: Props) {
           </div>
         )}
       </div>
+
+      <AlertDialog open={!!removeTarget} onOpenChange={o => { if (!o) setRemoveTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {removeTarget?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This stakeholder will be removed from the deal. The action will be recorded in the activity log.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRemove}>Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </CollapsibleCard>
   );
 }
