@@ -1,4 +1,25 @@
-import { Lead } from "@/types/lead";
+import { Lead, LeadStage } from "@/types/lead";
+
+/** The 8 stages a deal moves through while still active. */
+export const ACTIVE_STAGES: LeadStage[] = [
+  "New Lead",
+  "Qualified",
+  "Contacted",
+  "Meeting Set",
+  "Meeting Held",
+  "Proposal Sent",
+  "Negotiation",
+  "Contract Sent",
+];
+
+/** Nurture / terminal stages — render below a divider in the stage list. */
+export const TERMINAL_STAGES: LeadStage[] = ["Revisit/Reconnect", "Closed Won", "Lost", "Went Dark"];
+
+export const ALL_STAGES: LeadStage[] = [...ACTIVE_STAGES, ...TERMINAL_STAGES];
+
+export function isActiveStage(stage: LeadStage): boolean {
+  return ACTIVE_STAGES.includes(stage);
+}
 
 /** Compute days in current stage dynamically from stageEnteredDate */
 export function computeDaysInStage(stageEnteredDate: string): number {

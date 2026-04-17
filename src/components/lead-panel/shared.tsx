@@ -256,8 +256,12 @@ export function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcc
   );
 }
 
-export function DealHealthAlerts({ lead }: { lead: Lead }) {
-  const alerts: { message: string; severity: "warning" | "critical" }[] = [];
+export type DealSignal = { message: string; severity: "warning" | "critical" };
+
+/** Computes the same deal alerts surfaced at the top of the Activity tab.
+ *  Extracted so the right-rail Signals card can show a count + the same list. */
+export function getDealSignals(lead: Lead): DealSignal[] {
+  const alerts: DealSignal[] = [];
   const today = new Date();
 
   const meetings = lead.meetings || [];
@@ -303,6 +307,11 @@ export function DealHealthAlerts({ lead }: { lead: Lead }) {
     }
   }
 
+  return alerts;
+}
+
+export function DealHealthAlerts({ lead }: { lead: Lead }) {
+  const alerts = getDealSignals(lead);
   if (alerts.length === 0) return null;
   return (
     <div className="space-y-1">

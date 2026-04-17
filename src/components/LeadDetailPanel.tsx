@@ -414,7 +414,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
         )}
         {rightOpen && (
           <div className="relative h-full min-h-0">
-            <LeadPanelRightRail lead={lead} allLeads={leads} enriching={enriching} onEnrich={handleEnrich} save={save} />
+            <LeadPanelRightRail lead={lead} allLeads={leads} daysInStage={days} enriching={enriching} onEnrich={handleEnrich} save={save} onTask={onTask} />
             <button onClick={() => setRightOpen(false)} className="absolute top-2.5 right-2 text-muted-foreground hover:text-foreground p-1 rounded hover:bg-secondary/40" title="Hide panel">
               <PanelRightClose className="h-3.5 w-3.5" />
             </button>
