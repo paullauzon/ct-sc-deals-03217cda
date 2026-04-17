@@ -1,68 +1,85 @@
 
 
-## Move right-rail clutter into the middle panel — Deal Health stays
+## Build a Client Success pipeline + auto-handoff on Closed Won
 
-### Current redundancy
-Right rail has 7 cards. **Email Activity** duplicates the Emails tab. **Win Strategy / Risks / Open Commitments / Deal Narrative / Similar Won Deals** all duplicate (often more deeply) what's already in the **Intelligence** tab. **Company Activity** has no home — yet it's contextual to the deal.
+### Concept
+A **second pipeline** for the account-management team (Valeria), separate from the sales pipeline. When Malik marks a deal **Closed Won**, an account record auto-spawns in the Client Success pipeline at **Onboarding**, fully copied from the source deal. The 4 existing Closed-Won deals get backfilled into this pipeline.
 
-The user wants: keep **Deal Health** in the right rail; move everything else into the middle-panel tabs without duplication.
+### The 5 Client Success stages (from wireframe)
+1. **Onboarding** — guide sent, kick-off scheduled, billing fields filled (48h SLA)
+2. **Active** — service running, monthly check-in auto-task, renewal date tracked
+3. **Renewal Due** — auto-flagged 60 days before contract end
+4. **Paused / Credit** — service paused, reason + credit logged (30d resume task)
+5. **Churned** — churn reason required, Malik notified
 
-### Target architecture
+### Architecture
 
-**Right rail (slimmed down to 2 cards)**
-1. **Deal Health** — score, momentum, sentiment trajectory, coverage label (kept as-is — the at-a-glance status).
-2. **Forecast** — already there, keep (rep-entry surface).
+**New table `client_accounts`** (separate from `leads` — keeps sales pipeline clean):
+```
+id, lead_id (FK to source deal), brand, contact_name, company,
+owner ('Valeria'), cs_stage, onboarded_date, contract_start, contract_end,
+monthly_value (CT) | retainer_value (SC) | success_fee_pct (SC),
+service_type, deal_amount, mandate_fields (jsonb),
+pause_reason, pause_credit, resume_date,
+churn_reason, churn_date, re_engage_date,
+notes, created_at, updated_at
+```
+Plus `client_account_tasks` table (mirrors `lead_tasks` shape) for SLA + monthly + 60d auto-tasks.
 
-That's it. Right rail becomes a focused "status & forecast" stack instead of an intelligence dump.
+**Auto-handoff trigger** (DB trigger on `leads` UPDATE where `stage` flips to `Closed Won`):
+- Insert row into `client_accounts` at `Onboarding`, copying all relevant fields
+- Insert 2 tasks for Valeria: "Send onboarding guide (48h SLA)", "Send Buyers Profile form"
+- Skip if a `client_accounts` row for that `lead_id` already exists (idempotent)
 
-**Middle-panel tab restructure**
+**Auto-tasks (cron-driven)**:
+- Active stage → monthly check-in task auto-creates each month
+- Contract end - 60 days → flip to "Renewal Due" + create renewal task
+- Paused → "Resume check-in" task at +30 days
 
-| Tab | Today | After |
-|---|---|---|
-| Activity | Timeline + stakeholders | Timeline + stakeholders + **Company Activity** (other leads at the same company, shared intelligence) |
-| Actions | Action queue | + **Open Commitments** promoted to top section ("What we owe — N items") so reps see promises before tasks |
-| Meetings | Meetings list | unchanged |
-| Emails | Emails list/compose | unchanged (right-rail Email Activity card removed — info already lives here) |
-| Intelligence | DealIntelligencePanel (huge) | + **Win Strategy hero stays at top** + **Deal Narrative** stays + add a **"Similar Won Deals"** sub-section (currently right-rail only) at the bottom of the Intelligence tab as comparable-deal context. Risks already exist in this panel's "Risks" tab — no change. |
-| Files / Notes / Debrief | unchanged | unchanged |
+### Top-level navigation
 
-### Concrete component moves
+Add a **third system** to `SystemSwitcher.tsx` alongside Sales CRM and Business Ops:
+- **Client Success** (icon: `HeartHandshake` or `Users`)
 
-1. **Delete from `LeadPanelRightRail.tsx`:**
-   - `EmailActivityCard` (entire local component + `EmailMetricsCard` import)
-   - `CompanyActivityCard` (entire local component) → moved
-   - The `<RightRailCards>` render → replaced with a slimmer version
+Inside that system: a single **Accounts pipeline** view (Kanban with the 5 columns), plus a `ClientAccountDetail` drawer showing source deal link, billing fields, contract dates, tasks, churn/pause forms.
 
-2. **Slim `RightRailCards.tsx`:** keep only the Deal Health card. Remove Open Commitments, Risks, Win Strategy, Similar Won Deals, Deal Narrative renders (the data is preserved — these blocks already exist in Intelligence tab/will be moved). Rename/refactor to `DealHealthCard.tsx` for clarity, or leave file and gut it.
+### Files
 
-3. **Move `CompanyActivityCard` → `src/components/lead-panel/cards/CompanyActivityCard.tsx`** (relocated), render it at the **bottom of `LeadActivityTab.tsx`** below the `UnifiedTimeline`, above the existing StakeholderCard block. Keeps "who else is involved" context in the activity narrative, where it belongs.
+**New**
+- `supabase/migrations/<ts>_client_success.sql` — `client_accounts` + `client_account_tasks` tables, RLS, trigger fn `handle_closed_won()` for auto-handoff, backfill 4 existing Closed Won → Onboarding
+- `supabase/functions/cs-cron-tasks/index.ts` — daily cron: monthly check-ins, 60d renewal flip, 30d resume tasks
+- `src/components/ClientSuccessSystem.tsx` — top-level shell, mirrors `BusinessSystem.tsx`
+- `src/components/ClientPipeline.tsx` — Kanban with 5 columns, drag-drop between stages
+- `src/components/ClientAccountCard.tsx` — pipeline card (avatar, name, company, stage badge, renewal countdown, billing chip)
+- `src/components/ClientAccountDetail.tsx` — drawer: source deal link, billing fields (CT/SC variants), contract dates, tasks, pause/churn forms
+- `src/contexts/ClientAccountContext.tsx` — fetch/update client_accounts, real-time subscription
+- `src/hooks/useClientAccountTasks.ts` — task CRUD
+- `src/types/clientAccount.ts` — types
 
-4. **Open Commitments → top of `LeadActionsTab.tsx`.** Add a compact "Open Commitments" header section above the current action queue using the existing `getDroppedPromises(lead)` helper from `dealHealthUtils`. Reps complete commitments inline (mark done → write to `lead_drafts`/notes or just check off — keeping behavior minimal: display + "Mark resolved" button that appends to notes).
+**Modified**
+- `src/components/SystemSwitcher.tsx` — add "Client Success" option (3rd system)
+- `src/pages/Index.tsx` — route `system === "client-success"` to `<ClientSuccessSystem />`, extend `System` type
+- `src/components/lead-panel/LeadPanelRightRail.tsx` — for Closed Won leads, render a small "Linked Account" card with link to the CS pipeline entry (read-only for Malik)
+- `.lovable/memory/index.md` — add Client Success pipeline memory entry
 
-5. **Similar Won Deals → bottom of Intelligence tab.** Inside `LeadDetailPanel.tsx`'s `<TabsContent value="intelligence">`, after `<DealIntelligencePanel>`, render a new compact `<SimilarWonDealsSection lead={lead} allLeads={leads} />` reusing `findSimilarWonDeals` from `dealHealthUtils`.
+### Behavior
 
-6. **Right-rail width**: reduce from `w-[320px]` to `w-[280px]` since it now holds only 2 cards. Optional but cleaner.
-
-### Files touched
-
-- `src/components/lead-panel/LeadPanelRightRail.tsx` — gut to render only ForecastCard + a new compact DealHealthCard. Drop `EmailActivityCard` + `CompanyActivityCard` + `<RightRailCards>` import.
-- `src/components/dealroom/RightRailCards.tsx` — slim to render **only** Deal Health (or extract Deal Health into a dedicated file and delete this).
-- `src/components/lead-panel/cards/CompanyActivityCard.tsx` — **new** (relocated logic).
-- `src/components/lead-panel/LeadActivityTab.tsx` — render `<CompanyActivityCard>` after `UnifiedTimeline`.
-- `src/components/lead-panel/LeadActionsTab.tsx` — add an "Open Commitments" section at the top.
-- `src/components/LeadDetailPanel.tsx` — append `<SimilarWonDealsSection>` inside Intelligence TabsContent. Optionally tighten right-rail width.
-- `src/components/lead-panel/cards/SimilarWonDealsSection.tsx` — **new**, inline-styled list (4-5 deals, won tactic, value).
-
-### Behavior verification
-1. Open any lead → right rail shows just **Deal Health + Forecast** (and Source/Engagement is on the left, unchanged).
-2. **Activity tab** shows Company Activity card below the timeline when there are sibling contacts.
-3. **Actions tab** shows "Open Commitments" at the top when `getDroppedPromises` returns rows.
-4. **Emails tab** is the only place email metrics appear.
-5. **Intelligence tab** ends with a "Similar Won Deals" section.
-6. No duplication: Win Strategy / Deal Narrative / Risks / Stakeholders only appear inside Intelligence tab; Email metrics only on Emails tab.
+- **Malik marks deal Closed Won** in sales pipeline → DB trigger fires → CS account appears in Valeria's pipeline at Onboarding within seconds → 2 tasks waiting → toast notifies Malik "Account handed off to Client Success"
+- **Pre-close validation**: if `subscription_value` (CT) or `subscription_value`+`success_fee_pct` (SC) is empty when stage flips to Closed Won, show a pre-flight modal warning ("Billing fields blank — Valeria's pipeline will be incomplete"). Soft warning for now (not blocking, per wireframe note "in the future make these required").
+- **CS pipeline drag**: Valeria can drag between Onboarding → Active → Renewal Due → Paused → Churned. Churned requires a reason (modal, mirrors archive-with-reason pattern).
+- **Backfill**: Migration inserts CT-001, CT-010, CT-043, CT-174 directly at **Active** (they're past onboarding) with their current `subscription_value` + `contract_end` populated. Owner = Valeria.
+- **Right-rail "Linked Account" card** on Closed Won leads in the sales view → click opens the CS account drawer.
 
 ### Trade-offs
-- **Win:** Right rail goes from 7 cards to 2 → way less scroll, Deal Health pops. No duplication. Each piece of intel lives in exactly one logical tab.
-- **Risk:** Power users who relied on right-rail glance for Win Strategy / Risks now click Intelligence. Acceptable — the Intelligence tab is the source of truth and Deal Health (still in right rail) signals when to open it.
-- **Loss:** None — all data preserved, just relocated.
+- **Win**: Clear separation of concerns. Malik's pipeline ends at Closed Won; Valeria's begins. Auto-handoff eliminates manual re-entry. Renewal timer + monthly check-ins drive retention.
+- **Cost**: New table + trigger + cron + ~7 new components.
+- **Risk**: Two sources of truth for "the customer" (lead + account). Mitigated by `lead_id` FK and a "Linked Account" card showing the connection both ways.
+- **Out of scope (future)**: Required-field gating before Closed Won; Slack/email notifications to Valeria/Malik; renewal forecast revenue in Business Ops; per-account NPS.
+
+### Verification
+1. Open `Client Success` from system switcher → 5-column pipeline with 4 cards in Active (CT-001, CT-010, CT-043, CT-174)
+2. Open sales pipeline → drag a deal to Closed Won → toast "Handed off to Valeria" → CS pipeline shows new card in Onboarding within 2s with 2 tasks
+3. Open the linked account → source deal link works → billing fields pre-filled
+4. Drag account to Churned → modal asks for reason → save → card moves; opening Malik's lead view shows "Account churned" badge
+5. Future-dated test: contract_end set 60d out → cron flips to Renewal Due
 
