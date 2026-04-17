@@ -310,6 +310,18 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Auto-assign + auto-schedule first follow-up so New Leads enter
+    // an active outreach queue immediately (was previously a 90-lead leak).
+    const followUpDate = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      // Skip weekends → push to Monday
+      const dow = d.getDay();
+      if (dow === 6) d.setDate(d.getDate() + 2);
+      else if (dow === 0) d.setDate(d.getDate() + 1);
+      return d.toISOString().split("T")[0];
+    })();
+
     const newLead = {
       id: leadId,
       brand,
@@ -326,7 +338,7 @@ Deno.serve(async (req) => {
       stage: "New Lead",
       service_interest: "TBD",
       deal_value: 0,
-      assigned_to: "",
+      assigned_to: "Malik",
       meeting_date: "",
       meeting_set_date: "",
       hours_to_meeting_set: null,
@@ -336,7 +348,7 @@ Deno.serve(async (req) => {
       closed_date: "",
       notes: "",
       last_contact_date: "",
-      next_follow_up: "",
+      next_follow_up: followUpDate,
       priority: "Medium",
       meeting_outcome: "",
       forecast_category: "",
