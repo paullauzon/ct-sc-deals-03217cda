@@ -1,6 +1,7 @@
 import { Lead } from "@/types/lead";
 import { RightRailCards } from "@/components/dealroom/RightRailCards";
 import { ForecastCard } from "@/components/lead-panel/cards/ForecastCard";
+import { LinkedAccountCard } from "@/components/lead-panel/cards/LinkedAccountCard";
 
 interface LeadPanelRightRailProps {
   lead: Lead;
@@ -18,6 +19,7 @@ export function LeadPanelRightRail({ lead, allLeads, save }: LeadPanelRightRailP
       </div>
       <RightRailCards lead={lead} allLeads={allLeads} />
       <ForecastCard lead={lead} save={save} />
+      <LinkedAccountCard lead={lead} />
       <div className="h-6" />
     </aside>
   );

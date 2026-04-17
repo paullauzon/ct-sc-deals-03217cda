@@ -50,6 +50,152 @@ export type Database = {
         }
         Relationships: []
       }
+      client_account_tasks: {
+        Row: {
+          account_id: string
+          completed_at: string | null
+          created_at: string
+          description: string
+          due_date: string
+          id: string
+          sequence_order: number
+          status: string
+          task_type: string
+          title: string
+        }
+        Insert: {
+          account_id: string
+          completed_at?: string | null
+          created_at?: string
+          description?: string
+          due_date: string
+          id?: string
+          sequence_order?: number
+          status?: string
+          task_type: string
+          title: string
+        }
+        Update: {
+          account_id?: string
+          completed_at?: string | null
+          created_at?: string
+          description?: string
+          due_date?: string
+          id?: string
+          sequence_order?: number
+          status?: string
+          task_type?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_account_tasks_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "client_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_accounts: {
+        Row: {
+          brand: string
+          churn_date: string | null
+          churn_reason: string
+          company: string
+          company_url: string
+          contact_email: string
+          contact_name: string
+          contract_end: string | null
+          contract_months: number | null
+          contract_start: string | null
+          created_at: string
+          cs_stage: string
+          deal_amount: number
+          id: string
+          lead_id: string
+          mandate_fields: Json
+          monthly_value: number
+          notes: string
+          onboarded_date: string | null
+          owner: string
+          pause_credit: number
+          pause_reason: string
+          paused_at: string | null
+          re_engage_date: string | null
+          renewal_flagged_at: string | null
+          resume_date: string | null
+          retainer_value: number
+          service_type: string
+          success_fee_pct: number
+          updated_at: string
+        }
+        Insert: {
+          brand?: string
+          churn_date?: string | null
+          churn_reason?: string
+          company?: string
+          company_url?: string
+          contact_email?: string
+          contact_name?: string
+          contract_end?: string | null
+          contract_months?: number | null
+          contract_start?: string | null
+          created_at?: string
+          cs_stage?: string
+          deal_amount?: number
+          id?: string
+          lead_id: string
+          mandate_fields?: Json
+          monthly_value?: number
+          notes?: string
+          onboarded_date?: string | null
+          owner?: string
+          pause_credit?: number
+          pause_reason?: string
+          paused_at?: string | null
+          re_engage_date?: string | null
+          renewal_flagged_at?: string | null
+          resume_date?: string | null
+          retainer_value?: number
+          service_type?: string
+          success_fee_pct?: number
+          updated_at?: string
+        }
+        Update: {
+          brand?: string
+          churn_date?: string | null
+          churn_reason?: string
+          company?: string
+          company_url?: string
+          contact_email?: string
+          contact_name?: string
+          contract_end?: string | null
+          contract_months?: number | null
+          contract_start?: string | null
+          created_at?: string
+          cs_stage?: string
+          deal_amount?: number
+          id?: string
+          lead_id?: string
+          mandate_fields?: Json
+          monthly_value?: number
+          notes?: string
+          onboarded_date?: string | null
+          owner?: string
+          pause_credit?: number
+          pause_reason?: string
+          paused_at?: string | null
+          re_engage_date?: string | null
+          renewal_flagged_at?: string | null
+          resume_date?: string | null
+          retainer_value?: number
+          service_type?: string
+          success_fee_pct?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_activity_log: {
         Row: {
           created_at: string

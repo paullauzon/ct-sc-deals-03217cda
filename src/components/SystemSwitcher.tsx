@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { BarChart3, Briefcase, ChevronDown, Check } from "lucide-react";
+import { BarChart3, Briefcase, ChevronDown, Check, HeartHandshake } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type System = "crm" | "business";
+type System = "crm" | "business" | "client-success";
 
 interface SystemSwitcherProps {
   current: System;
@@ -12,6 +12,7 @@ interface SystemSwitcherProps {
 
 const SYSTEMS: { key: System; label: string; desc: string; icon: typeof BarChart3 }[] = [
   { key: "crm", label: "Sales CRM", desc: "Pipeline, leads & deals", icon: BarChart3 },
+  { key: "client-success", label: "Client Success", desc: "Account management", icon: HeartHandshake },
   { key: "business", label: "Business Ops", desc: "Metrics & forecasting", icon: Briefcase },
 ];
 
