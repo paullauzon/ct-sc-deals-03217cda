@@ -479,25 +479,23 @@ export function Pipeline() {
                 <DropdownMenuItem
                   className="flex-col items-start gap-0.5 py-2 cursor-pointer"
                   onClick={async () => {
-                    setReEnriching(true);
-                    toast.info("Promoting transcript-derived values across all active leads...");
+                    toast.info("Processing stale transcripts (this may take ~2 min)...");
                     try {
-                      const { data, error } = await supabase.functions.invoke("bulk-promote-transcript-fields", { body: { brand: "all" } });
+                      const { data, error } = await supabase.functions.invoke("bulk-process-stale-meetings", { body: { limit: 10 } });
                       if (error) throw error;
-                      const promoted = data?.promoted ?? 0;
-                      const fields = data?.fields_written ?? 0;
-                      const scanned = data?.scanned ?? 0;
-                      toast.success(`Transcript promote: ${promoted}/${scanned} leads · ${fields} fields written`);
+                      const c = data?.candidates ?? 0;
+                      const m = data?.meetings_processed ?? 0;
+                      const f = data?.fields_written ?? 0;
+                      if (c === 0) toast.success("No stale transcripts found — all meetings already processed.");
+                      else toast.success(`Processed ${m} meeting(s) across ${c} lead(s) · ${f} dossier field(s) auto-filled`);
                       await refreshLeads();
                     } catch (err) {
-                      toast.error("Transcript promote failed: " + (err as Error).message);
-                    } finally {
-                      setReEnriching(false);
+                      toast.error("Process stale transcripts failed: " + (err as Error).message);
                     }
                   }}
                 >
-                  <span className="text-xs font-medium">Promote transcript values</span>
-                  <span className="text-[10px] text-muted-foreground">Free · instant · maps deal_intelligence JSON to authority/budget/blocker/stall fields</span>
+                  <span className="text-xs font-medium">Process stale transcripts</span>
+                  <span className="text-[10px] text-muted-foreground">Finds leads with Fireflies transcripts but no AI intelligence · runs process-meeting + synthesize · ~$0.10/lead</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
