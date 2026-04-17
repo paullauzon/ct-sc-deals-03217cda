@@ -45,7 +45,12 @@ interface LeadDetailPanelProps {
 export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrder, onNavigate }: LeadDetailPanelProps) {
   const { leads, updateLead, archiveLead } = useLeads();
   const navigate = useNavigate();
-  const lead = leads.find(l => l.id === leadId) || null;
+  // Internal lead override — lets prev/next swap the displayed lead without parent cooperation
+  const [internalLeadId, setInternalLeadId] = useState<string | null>(leadId);
+  useEffect(() => { setInternalLeadId(leadId); }, [leadId]);
+  const activeLeadId = internalLeadId ?? leadId;
+  const lead = leads.find(l => l.id === activeLeadId) || null;
+
   const [enriching, setEnriching] = useState(false);
   const [draftingAI, setDraftingAI] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
@@ -66,13 +71,13 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
 
   // Prev/next navigation order
   const order = useMemo(() => leadOrder && leadOrder.length > 0 ? leadOrder : leads.map(l => l.id), [leadOrder, leads]);
-  const idx = leadId ? order.indexOf(leadId) : -1;
+  const idx = activeLeadId ? order.indexOf(activeLeadId) : -1;
   const hasPrev = idx > 0;
   const hasNext = idx >= 0 && idx < order.length - 1;
   const goTo = (id: string) => {
     if (onNavigate) onNavigate(id);
     else if (mode === "page") navigate(`/deal/${id}`);
-    // sheet mode w/o handler: silently no-op (parent should pass handler)
+    else setInternalLeadId(id); // sheet-mode internal swap
   };
   const onPrev = () => { if (hasPrev) goTo(order[idx - 1]); };
   const onNext = () => { if (hasNext) goTo(order[idx + 1]); };
