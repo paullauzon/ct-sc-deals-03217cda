@@ -56,7 +56,7 @@ export function MeetingCoachCard({ meeting, lead }: { meeting: Meeting; lead: Le
             )}
 
             {insight.objectionHandlingNote && (
-              <div className="text-[11px] text-foreground/80 leading-snug border-l-2 border-amber-500/40 pl-2">
+              <div className="text-[11px] text-foreground/80 leading-snug border-l-2 border-border pl-2">
                 {insight.objectionHandlingNote}
               </div>
             )}

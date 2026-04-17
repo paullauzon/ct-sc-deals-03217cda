@@ -25,6 +25,7 @@ import { getBrandBorderClass } from "@/lib/brandColors";
 import { BrandLogo } from "@/components/BrandLogo";
 import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { computeDealHealthScore, getWinLoseCard, getStakeholderCoverage, getDroppedPromises, getUnifiedActionCount, getNextBestAction, markActionItemDone } from "@/lib/dealHealthUtils";
+import { isEarlyStallWarning, computeSlipRisk } from "@/lib/dealPredictions";
 import { useLeadTasks } from "@/hooks/useLeadTasks";
 import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
 import { supabase } from "@/integrations/supabase/client";

@@ -8,6 +8,7 @@ import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics"
 import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
 import { DashboardTrends } from "@/components/DashboardTrends";
 import { IntelligenceCenter } from "@/components/IntelligenceCenter";
+import { DailyStandupCard } from "@/components/DailyStandupCard";
 
 import { getBrandBorderClass, getBrandDotClass } from "@/lib/brandColors";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -457,6 +458,9 @@ export function Dashboard() {
       {/* ═══════════════════ OVERVIEW TAB ═══════════════════ */}
       {activeTab === "overview" && (
         <div className="space-y-6" ref={overviewRef}>
+          {/* Daily AI standup — top of overview */}
+          <DailyStandupCard />
+
           {/* Export button */}
           <div className="flex justify-end">
             <button
