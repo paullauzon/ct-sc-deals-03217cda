@@ -24,6 +24,15 @@ function extractName(raw: string): string {
   return match ? match[1].trim().replace(/"/g, "") : "";
 }
 
+function parseAddressList(input: unknown): string[] {
+  if (!input) return [];
+  const raw = Array.isArray(input) ? input.join(", ") : String(input);
+  return raw
+    .split(/[,;]+/)
+    .map((t) => extractEmail(t.trim()))
+    .filter(Boolean);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -41,7 +50,21 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { from, to, subject, body_preview, date, thread_id, message_id } = body;
+    const {
+      from,
+      to,
+      cc,
+      bcc,
+      subject,
+      body_preview,
+      body_text,
+      body_html,
+      date,
+      thread_id,
+      conversation_id,
+      message_id,
+      source,
+    } = body;
 
     if (!from) {
       return new Response(JSON.stringify({ error: "Missing required field: from" }), {
@@ -58,20 +81,20 @@ Deno.serve(async (req) => {
     const fromEmail = extractEmail(from);
     const fromName = extractName(from);
 
-    // Parse to addresses (can be string or comma-separated)
-    const toRaw = typeof to === "string" ? to : Array.isArray(to) ? to.join(", ") : "";
-    const toAddresses = toRaw.split(",").map((t: string) => extractEmail(t.trim())).filter(Boolean);
+    const toAddresses = parseAddressList(to);
+    const ccAddresses = parseAddressList(cc);
+    const bccAddresses = parseAddressList(bcc);
 
     // Determine direction
     const direction = isInternalAddress(fromEmail) ? "outbound" : "inbound";
 
-    // Find matching lead by email
-    // Collect all email addresses involved
-    const allEmails = [fromEmail, ...toAddresses].filter(e => !isInternalAddress(e));
+    // Match lead by any external email participant
+    const allEmails = [fromEmail, ...toAddresses, ...ccAddresses].filter(
+      (e) => e && !isInternalAddress(e)
+    );
 
     let leadId = "unmatched";
     if (allEmails.length > 0) {
-      // Query leads table for any matching email
       const { data: leads } = await supabase
         .from("leads")
         .select("id, email")
@@ -91,19 +114,31 @@ Deno.serve(async (req) => {
       emailDate = new Date().toISOString();
     }
 
-    // Insert (dedup via message_id UNIQUE constraint)
+    // Outlook uses conversation_id; Gmail/others use thread_id
+    const threadId = thread_id || conversation_id || "";
+
+    // Derive a body_preview if not explicitly sent (prefer text, then strip HTML)
+    let preview = (body_preview || "").toString();
+    if (!preview && body_text) preview = String(body_text);
+    if (!preview && body_html) preview = String(body_html).replace(/<[^>]+>/g, " ");
+    preview = preview.replace(/\s+/g, " ").trim().substring(0, 5000);
+
     const row = {
       lead_id: leadId,
       message_id: message_id || `auto-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`,
-      thread_id: thread_id || "",
+      thread_id: threadId,
       direction,
       from_address: fromEmail,
       from_name: fromName,
       to_addresses: toAddresses,
-      subject: (subject || "").substring(0, 500),
-      body_preview: (body_preview || "").substring(0, 5000),
+      cc_addresses: ccAddresses,
+      bcc_addresses: bccAddresses,
+      subject: (subject || "").toString().substring(0, 500),
+      body_preview: preview,
+      body_text: body_text ? String(body_text) : "",
+      body_html: body_html ? String(body_html) : "",
       email_date: emailDate,
-      source: "zapier",
+      source: source || "zapier",
       raw_payload: body,
     };
 
