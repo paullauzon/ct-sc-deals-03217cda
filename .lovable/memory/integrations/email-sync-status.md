@@ -1,6 +1,6 @@
 ---
 name: Email Sync Status
-description: Current state of Outlook/Gmail email sync — interim Zapier bridge for both, deep OAuth pending tenant/workspace admin approval
+description: Current state of Outlook/Gmail email sync — interim Zapier bridge for both, deep OAuth pending tenant/workspace admin approval; multi-rep onboarding pattern documented
 type: feature
 ---
 
@@ -19,6 +19,39 @@ Both brands ingest email through the Zapier → `ingest-email` endpoint while wa
 - **Blocked on**: sourcecodeals.com Microsoft tenant admin consent for Microsoft Graph scopes
 - `sync-outlook-emails` edge function already built and ready to take over once consent lands
 - When live: enable cron for `sync-outlook-emails`, disable Zapier Zaps; dedup on `message_id` / `provider_message_id`
+
+## Multi-rep onboarding (Zapier interim path)
+
+Each new rep (Malik, Valeria, etc.) needs **their own two Zaps** (Inbox + Sent Items) bound to their own mailbox — Zapier's Outlook/Gmail trigger is one-mailbox-per-Zap, no shared connection.
+
+Recommended: shared team Zapier account (Team plan ~$69/mo) once 2+ reps, so all Zaps are centrally monitored. Alternative: rep's personal Zapier account (free/Pro) — works but no central visibility and dies if rep leaves.
+
+What the rep needs from Adam:
+1. `INGEST_API_KEY` value (delivered securely via 1Password/Signal — never email)
+2. The Zap recipe (URL, headers, field mappings — documented below)
+
+What the rep does NOT need: code access, DB access, Lovable access, or any coordination beyond the API key.
+
+## Zap field mapping (Outlook → ingest-email)
+
+```
+from            → From Email
+to              → To Email
+cc              → Cc Email
+bcc             → Bcc Email
+subject         → Subject
+body_text       → Body Plain
+body_html       → Body HTML
+date            → Date Time Received
+message_id      → Internet Message Id
+conversation_id → Conversation Id
+source          → outlook-zapier
+```
+
+Settings: Payload Type `Json`, Wrap Request In Array `No`, Unflatten `Yes`.
+Headers: `Authorization: Bearer <INGEST_API_KEY>` + `Content-Type: application/json`.
+
+Build two identical Zaps, one with folder = `Inbox`, one with folder = `Sent Items`.
 
 ## ingest-email contract (used by both brands)
 
@@ -48,5 +81,5 @@ Behavior:
 - 5-15 min polling latency (vs <1 min cron)
 - No tracking pixels (opens/clicks); not possible without owning the send path
 - No in-app send; compose drawer stays in "Copy & mark sent" mode
-- Zapier task quota cost at sales volume (~$30/mo Pro plan)
-- Zero switch-over cost when proper OAuth lands
+- Zapier task quota cost at sales volume (~$30/mo Pro per rep, or ~$69/mo Team shared)
+- Zero switch-over cost when proper OAuth lands — disable Zaps, dedup on `message_id` prevents duplicates during transition
