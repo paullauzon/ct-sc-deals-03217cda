@@ -66,6 +66,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
   const [callOpen, setCallOpen] = useState(false);
   const [emailDrawerOpen, setEmailDrawerOpen] = useState(false);
   const [emailDrawerPreset, setEmailDrawerPreset] = useState<"follow-up" | "default" | undefined>(undefined);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   // Email count for tab badge
   const [emailCount, setEmailCount] = useState<number>(0);
