@@ -297,7 +297,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
           </button>
         )}
         {leftOpen && (
-          <div className="relative">
+          <div className="relative flex min-h-0">
             <LeadPanelLeftRail
               lead={lead}
               daysInStage={days}
