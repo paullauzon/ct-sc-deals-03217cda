@@ -918,19 +918,13 @@ function MeetingCard({ meeting, onRemove, onDraftFollowUp, generatingFollowUp, o
                   )}
                 </>
               )}
-              {meeting.transcript && (
-                <Collapsible>
-                  <CollapsibleTrigger asChild>
-                    <button className="text-xs text-primary hover:underline">Show full transcript</button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <ScrollArea className="max-h-60 mt-2">
-                      <pre className="text-xs leading-relaxed p-3 bg-secondary/20 rounded-md whitespace-pre-wrap font-sans">
-                        {meeting.transcript}
-                      </pre>
-                    </ScrollArea>
-                  </CollapsibleContent>
-                </Collapsible>
+              {hasTranscript && onOpenTranscript && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onOpenTranscript(); }}
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  <Maximize2 className="h-3 w-3" /> View full transcript
+                </button>
               )}
             </>
           )}
