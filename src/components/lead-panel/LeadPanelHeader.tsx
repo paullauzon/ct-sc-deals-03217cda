@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   Linkedin, X, Maximize2, Minimize2, Heart, ShieldAlert, Users, CalendarCheck,
   Mail, Calendar, FileText, CheckSquare, Zap, Phone, Sparkles, Archive, MoreHorizontal,
-  ChevronLeft, ChevronRight, Link2, Check, Globe, Clock,
+  ChevronLeft, ChevronRight, Link2, Check, Globe, Clock, ClipboardCopy, Keyboard,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { computeDealHealthScore, getStakeholderCoverage } from "@/lib/dealHealthUtils";
