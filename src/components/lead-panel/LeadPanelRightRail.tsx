@@ -205,7 +205,7 @@ function EmailActivityCard({ leadId }: { leadId: string }) {
       title="Email Activity"
       icon={<Mail className="h-3.5 w-3.5" />}
       defaultOpen={false}
-      titleAccessory={unanswered > 0 ? <span className="w-1.5 h-1.5 rounded-full bg-destructive inline-block" title="Inbound awaiting reply" /> : undefined}
+      rightSlot={unanswered > 0 ? <span className="w-1.5 h-1.5 rounded-full bg-destructive inline-block" title="Inbound awaiting reply" /> : undefined}
     >
       <EmailMetricsCard leadId={leadId} />
     </CollapsibleCard>
