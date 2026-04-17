@@ -45,6 +45,13 @@ function parseFirmTypeFromMessage(text?: string): string {
 function parseEbitdaFromText(text?: string): { min: string; max: string } {
   if (!text) return { min: "", max: "" };
   const t = text.replace(/[\u2013\u2014]/g, "-").replace(/\s+/g, " ");
+  const between = t.match(/(?:ebitda|sde)[^.\n]{0,40}?between\s+\$?\s?([\d.]+)\s?([mk]?)\s+(?:and|to)\s+\$?\s?([\d.]+)\s?([mk]?)/i);
+  if (between) {
+    const unit = (u: string) => (u.toLowerCase() === "k" ? "K" : "M");
+    const u1 = between[2] ? unit(between[2]) : unit(between[4] || "m");
+    const u2 = between[4] ? unit(between[4]) : u1;
+    return { min: `$${between[1]}${u1}`, max: `$${between[3]}${u2}` };
+  }
   const range = t.match(/(?:ebitda|sde)[^.\n]{0,40}?\$?\s?([\d.]+)\s?([mk]?)\s?[-to]+\s?\$?\s?([\d.]+)\s?([mk]?)/i);
   if (range) {
     const unit = (u: string) => (u.toLowerCase() === "k" ? "K" : "M");
@@ -58,9 +65,13 @@ function parseEbitdaFromText(text?: string): { min: string; max: string } {
     const u1 = rangeRev[2] ? rangeRev[2].toUpperCase() : u2;
     return { min: `$${rangeRev[1]}${u1}`, max: `$${rangeRev[3]}${u2}` };
   }
-  const minOnly = t.match(/(?:min(?:imum)?|at least)[^.\n]{0,30}?(?:ebitda|sde)?[^.\n]{0,15}?\$?\s?([\d.]+)\s?([mk])/i);
+  const plusEbitda = t.match(/\$?\s?([\d.]+)\s?([mk])\s?\+\s+(?:in\s+)?(?:ebitda|sde)/i);
+  if (plusEbitda) return { min: `$${plusEbitda[1]}${plusEbitda[2].toUpperCase()}`, max: "" };
+  const minOnly =
+    t.match(/(?:min(?:imum)?|at least)[^.\n]{0,30}?(?:ebitda|sde)?[^.\n]{0,15}?\$?\s?([\d.]+)\s?([mk])/i) ||
+    t.match(/\$?\s?([\d.]+)\s?([mk])\s+(?:min(?:imum)?|or more)\s+(?:in\s+)?(?:ebitda|sde)/i);
   if (minOnly) return { min: `$${minOnly[1]}${minOnly[2].toUpperCase()}`, max: "" };
-  const sdeOf = t.match(/(?:ebitda|sde)\s+(?:of|is|at)\s+\$?\s?([\d.]+)\s?([mk])/i);
+  const sdeOf = t.match(/(?:ebitda|sde)\s+(?:of|is|at|around|approximately)\s+\$?\s?([\d.]+)\s?([mk])/i);
   if (sdeOf) return { min: `$${sdeOf[1]}${sdeOf[2].toUpperCase()}`, max: "" };
   const maxOnly = t.match(/(?:<|less than|under|up to)[^.\n]{0,15}?\$?\s?([\d.]+)\s?([mk])[^.\n]{0,15}?(?:ebitda|sde)/i);
   if (maxOnly) return { min: "", max: `$${maxOnly[1]}${maxOnly[2].toUpperCase()}` };
@@ -75,6 +86,16 @@ function parseRevenueFromText(text?: string): string {
     const u1 = range[2] ? range[2].toUpperCase() : u2;
     return `$${range[1]}${u1}-${range[3]}${u2}`;
   }
+  const between = t.match(/between\s+\$?\s?([\d.]+)\s?([mk]?)\s+(?:and|to)\s+\$?\s?([\d.]+)\s?([mk])\s+(?:in\s+)?(?:revenue|sales|arr|topline)/i);
+  if (between) {
+    const u2 = between[4].toUpperCase();
+    const u1 = between[2] ? between[2].toUpperCase() : u2;
+    return `$${between[1]}${u1}-${between[3]}${u2}`;
+  }
+  const arrOf = t.match(/(?:revenue|sales|arr|topline)\s+(?:of|is|at|around|approximately)\s+\$?\s?([\d.]+)\s?([mk])/i);
+  if (arrOf) return `$${arrOf[1]}${arrOf[2].toUpperCase()}+`;
+  const plusRev = t.match(/\$?\s?([\d.]+)\s?([mk])\s?\+\s+(?:in\s+)?(?:revenue|sales|arr|profit|cashflow|cash flow|topline)/i);
+  if (plusRev) return `$${plusRev[1]}${plusRev[2].toUpperCase()}+`;
   const single = t.match(/\$?\s?([\d.]+)\s?([mk])\+?\s+(?:in\s+)?(?:revenue|sales|arr|profit|cashflow|cash flow)/i);
   if (single) return `$${single[1]}${single[2].toUpperCase()}+`;
   const yearly = t.match(/(?:doing|generating|producing)\s+(?:at least|around|approximately)?\s*\$?\s?([\d.]+)\s?([mk])/i);
@@ -84,18 +105,35 @@ function parseRevenueFromText(text?: string): string {
 function parseGeographyFromText(text?: string): string {
   if (!text) return "";
   const t = text.replace(/\s+/g, " ");
+  const anchored: string[] = [];
+  const anchorRe = /(?:based in|hq in|headquartered in|located in|focused on|operating in|targeting|target geography:?)\s+(?:the\s+)?([A-Z][\w&.\- ]{2,60}?)(?=[.,;\n]|$| with| and| but| where| our| we)/gi;
+  let am: RegExpExecArray | null;
+  while ((am = anchorRe.exec(t))) {
+    const cleaned = am[1].trim().replace(/\s+(US|U\.S\.|USA|United States)$/i, ", US").replace(/^the\s+/i, "");
+    if (cleaned && cleaned.length < 80) anchored.push(cleaned);
+  }
   const patterns: RegExp[] = [
     /\b(?:southern|northern|eastern|western|central)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?/g,
-    /\b(?:midwest|midwestern|northeast|southeast|southwest|northwest|west coast|east coast|sun belt|rust belt|new england|tri[- ]?state)\b/gi,
+    /\b(?:midwest|midwestern|northeast|southeast|southwest|northwest|west coast|east coast|sun belt|rust belt|new england|tri[- ]?state|pacific northwest|mid[- ]?atlantic)\b/gi,
     /\b(?:north|south|east|west)\s+america\b/gi,
-    /\b(?:canada|usa|united states|uk|united kingdom|europe|emea|apac|latam|mexico|ontario|quebec|texas|california|florida|new york|illinois|ohio|michigan|pennsylvania|georgia|north carolina|south carolina|virginia|tennessee|arizona|colorado|washington|oregon|massachusetts|new jersey)\b/gi,
+    /\b(?:canada|usa|united states|uk|united kingdom|europe|emea|apac|latam|mexico|ontario|quebec|alberta|british columbia|texas|california|florida|new york|illinois|ohio|michigan|pennsylvania|georgia|north carolina|south carolina|virginia|tennessee|arizona|colorado|washington|oregon|massachusetts|new jersey|oklahoma|louisiana|kansas|missouri|indiana|wisconsin|minnesota|iowa|nebraska|arkansas|alabama|kentucky|maryland|connecticut|nevada|utah|new mexico)\b/gi,
   ];
   const hits = new Set<string>();
+  for (const a of anchored) {
+    const norm = a.replace(/\bus\b/i, "US").replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\b(Of|And|The|In)\b/g, (m) => m.toLowerCase());
+    hits.add(norm);
+  }
   for (const re of patterns) {
     const m = t.match(re);
-    if (m) m.forEach((s) => hits.add(s.trim().replace(/[,.;:].*$/, "").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())));
+    if (m) m.forEach((s) => {
+      const norm = s.trim().replace(/[,.;:].*$/, "").toLowerCase();
+      if (/^midwestern\s+us$/i.test(norm)) { hits.add("Midwest, US"); return; }
+      if (/^midwestern$/i.test(norm)) { hits.add("Midwest"); return; }
+      const titled = norm.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\bUs\b/g, "US").replace(/\bUk\b/g, "UK");
+      hits.add(titled);
+    });
   }
-  return hits.size ? Array.from(hits).slice(0, 3).join(", ") : "";
+  return hits.size ? Array.from(hits).slice(0, 4).join(", ") : "";
 }
 function parseSectorFromText(text?: string): string {
   if (!text) return "";
