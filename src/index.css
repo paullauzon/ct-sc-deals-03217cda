@@ -109,4 +109,12 @@
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
+  /* Hide scrollbars but keep scroll functionality (used in tab strip etc.) */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
