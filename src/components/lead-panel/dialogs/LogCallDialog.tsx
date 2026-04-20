@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { logActivity, bumpStakeholderContact } from "@/lib/activityLog";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 const OUTCOMES = ["Connected", "Voicemail", "No Answer", "Bad Number"] as const;
@@ -43,13 +44,44 @@ export function LogCallDialog({ lead, open, onOpenChange, save }: Props) {
       const parts: string[] = [outcome];
       if (duration) parts.push(`${duration}m`);
       if (s) parts.push(s);
-      await logActivity(lead.id, "call_logged", `Call logged: ${parts.join(" · ")}`);
+
+      // AI-extract structured intel for substantial summaries (≥40 chars).
+      // Fire-and-tolerate: a failure here must not block the call from being logged.
+      let intel: Record<string, unknown> | null = null;
+      if (s.length >= 40) {
+        try {
+          const { data, error } = await supabase.functions.invoke("extract-call-intel", {
+            body: { summary: s, outcome, duration },
+          });
+          if (!error && data && !data.skipped && data.intel) {
+            intel = data.intel as Record<string, unknown>;
+          }
+        } catch (err) {
+          console.warn("extract-call-intel failed (non-fatal):", err);
+        }
+      }
+
+      const metadata: Record<string, unknown> = {
+        outcome,
+        duration_minutes: duration ? Number(duration) || 0 : 0,
+        summary: s,
+        ...(intel ? { intel } : {}),
+      };
+
+      await logActivity(
+        lead.id,
+        "call_logged",
+        `Call logged: ${parts.join(" · ")}`,
+        null,
+        null,
+        metadata,
+      );
       // Connected calls bump last contact + stakeholder timestamp where applicable
       if (outcome === "Connected") {
         save({ lastContactDate: new Date().toISOString().split("T")[0] });
         if (lead.email) await bumpStakeholderContact(lead.id, [lead.email]);
       }
-      toast.success("Call logged");
+      toast.success(intel ? "Call logged with AI summary" : "Call logged");
       onOpenChange(false);
     } finally {
       setSaving(false);
@@ -81,6 +113,9 @@ export function LogCallDialog({ lead, open, onOpenChange, save }: Props) {
           <div>
             <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Summary</label>
             <Textarea ref={ref} value={summary} onChange={(e) => setSummary(e.target.value)} rows={4} placeholder="What was discussed, next steps…" className="text-sm mt-1 resize-none" />
+            <p className="text-[10px] text-muted-foreground/70 mt-1">
+              Summaries ≥40 chars are auto-enriched with decisions, action items, and next steps.
+            </p>
           </div>
         </div>
         <DialogFooter>
