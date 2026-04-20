@@ -206,11 +206,27 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   const totalClicks = emails.reduce((sum, e) => sum + (Array.isArray(e.clicks) ? e.clicks.length : 0), 0);
   const totalReplies = emails.filter(e => e.replied_at).length;
 
+  // Mailbox scoping — distinct outbound from-addresses (rep mailboxes)
+  const mailboxes = Array.from(new Set(
+    emails.filter(e => e.direction === "outbound" && e.from_address).map(e => e.from_address.toLowerCase())
+  ));
+  const multipleMailboxes = mailboxes.length > 1;
+
+  const deliveredForCount = emails.filter(e => e.send_status !== "scheduled");
+  const threadCount = groupByThread(deliveredForCount).length;
+  const emailCount = deliveredForCount.length;
+  const firstName = lead?.name?.split(" ")[0] || lead?.name || "";
+
   const header = onCompose ? (
     <div className="flex items-center justify-between border-b border-border pb-2 mb-3 flex-wrap gap-2">
       <div className="flex items-center gap-2 flex-wrap">
-        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-          Emails{lead?.name ? ` with ${lead.name}` : ""}{emails.length > 0 ? ` (${emails.length})` : ""}
+        <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.12em]">
+          All email threads{firstName ? ` — ${firstName}` : ""}
+          {emailCount > 0 && (
+            <span className="ml-1 text-muted-foreground/70 normal-case tracking-normal font-normal">
+              ({threadCount} thread{threadCount !== 1 ? "s" : ""}, {emailCount} email{emailCount !== 1 ? "s" : ""} total)
+            </span>
+          )}
         </h3>
         {(totalOpens > 0 || totalClicks > 0 || totalReplies > 0) && (
           <span className="text-[10px] text-muted-foreground">
@@ -228,6 +244,14 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
           title={showMarketing ? "Hide marketing/transactional" : "Show marketing/transactional"}
         >
           {showMarketing ? "1-to-1 only" : "Show all"}
+        </Button>
+        <Button
+          variant="ghost" size="sm"
+          onClick={() => setFlatten(v => !v)}
+          className="h-7 text-[10px] text-muted-foreground"
+          title={flatten ? "Group emails into threads" : "Show one row per email"}
+        >
+          {flatten ? "Group threads" : "Individual rows"}
         </Button>
         <Button
           variant="ghost" size="sm"
