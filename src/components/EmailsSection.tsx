@@ -61,6 +61,39 @@ function getThreadStatus(emails: LeadEmail[], leadName?: string): { label: strin
   return null;
 }
 
+function EmailTabIntro({ leadName }: { leadName?: string }) {
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("emailTabIntroDismissed") === "1";
+  });
+  if (dismissed) return null;
+  const first = leadName?.split(" ")[0] || "this lead";
+  return (
+    <div className="relative rounded-md border border-border bg-secondary/30 px-3 py-2.5 mb-3">
+      <button
+        type="button"
+        aria-label="Dismiss"
+        onClick={() => {
+          localStorage.setItem("emailTabIntroDismissed", "1");
+          setDismissed(true);
+        }}
+        className="absolute top-1.5 right-1.5 h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+      >
+        <X className="h-3 w-3" />
+      </button>
+      <div className="text-[11px] font-semibold text-foreground uppercase tracking-[0.12em] mb-1 pr-6">
+        About this view
+      </div>
+      <p className="text-[11px] leading-relaxed text-muted-foreground pr-6">
+        Shows only 1-to-1 emails between you and {first}, grouped into reply threads. Marketing, no-reply system emails, and sequences sent from brand mailboxes appear in Activities only.
+      </p>
+      <p className="text-[11px] leading-relaxed text-muted-foreground/80 mt-1 pr-6">
+        Toggle <span className="font-medium text-foreground">Individual rows</span> to flatten threads · <span className="font-medium text-foreground">Show all</span> to include marketing/transactional.
+      </p>
+    </div>
+  );
+}
+
 function formatDate(dateStr: string): string {
   try {
     const d = new Date(dateStr);
