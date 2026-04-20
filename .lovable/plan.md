@@ -1,76 +1,69 @@
 
 
-# Email tab — mockup vs. implementation audit
+# Verification: Email tab vs. mockup
 
-I checked the live `EmailsSection.tsx` (the component rendered under the "Emails" sub-tab in the Deal Room) against your mockup. Here's the gap analysis.
+## What was implemented from the approved plan ✅
 
-## What's already implemented ✅
-
-| Mockup requirement | Status | Where |
+| Plan item | Status | Where |
 |---|---|---|
-| Email sub-tab exists per lead | ✅ | `LeadDetailPanel.tsx` line 375 — `Emails (count)` tab |
-| One row per conversation thread | ✅ | `groupByThread()` collapses by `thread_id` |
-| Thread shows: subject, latest activity date, total opens, total clicks | ✅ | `ThreadCard` + header aggregate stats |
-| "Replied" indicator | ✅ | `replied_at` badge with `Reply` icon |
-| Inbound/outbound direction icons | ✅ | `ArrowUpRight` / `ArrowDownLeft` colored chips |
-| Latest reply preview snippet under thread | ✅ | "Last reply · {date} · {snippet}" line |
-| Open count + click count per thread | ✅ | Aggregated badges with `Eye` / `MousePointerClick` icons |
-| Compose new email button | ✅ | Header `Compose` button |
-| Reply directly from a message | ✅ | `Reply` button per inbound row, prefills `EmailComposeDrawer` |
-| AI-drafted badge | ✅ | Shown in `UnifiedTimeline` (Activities tab) but **NOT in the Email sub-tab** — see Gap #2 |
-| `email_type` filter (1-to-1 vs marketing) | ✅ | "1-to-1 only" / "Show all" toggle, defaults to one_to_one+sequence |
-| Marketing emails hidden by default | ✅ | Query filters `email_type IN ('one_to_one','sequence')` unless toggled |
-| Scheduled emails strip | ✅ | `ScheduledStrip` component shows pending sends with cancel |
-| Realtime updates (new emails appear live) | ✅ | Postgres realtime subscription on inserts/updates |
-| Database has `email_type`, `sequence_step`, `ai_drafted` columns | ✅ | Verified in DB schema |
+| Sequence step pills (e.g. `S6`, `S5-A`) | ✅ | `EmailRow` line 546-550, `ThreadCard` shows lead step on collapsed header |
+| AI-drafted badge (`✨ AI`) | ✅ | `EmailRow` line 551-555, `ThreadCard` line 442-446 |
+| Thread status pills — "Thread — no reply yet" / "{Name} replied" / "Auto-triggered" / "AI from Fireflies" | ✅ | `getThreadStatus()` line 46-62, rendered on `ThreadCard` header |
+| Header rewrite — "All email threads — {Name} (N threads, M emails total)" | ✅ | Line 223-230 |
+| "Individual rows ↔ Group threads" toggle | ✅ | Line 248-255, drives `flatten` state |
+| Mailbox scoping badge (only when >1 mailbox) | ✅ | `multipleMailboxes` line 213, badge line 556-560 |
 
-## Gaps vs. the mockup ❌
+## Gap still missing from your original prompt ❌
 
-### Gap 1 — No "Thread email replies" toggle (collapsed vs. individual rows)
-The mockup has a toggle that flips between *one row per thread* (default) and *one row per email*. Currently threads are always collapsed and can only be expanded individually. The "Expand all / Collapse all" button is close but not the same — it expands the bodies, not the row structure. **Add a global thread-grouping toggle**.
+Looking at the mockup once more, there is **one item from the original mockup that was deferred** in the approved build plan and never implemented:
 
-### Gap 2 — AI-drafted badge missing from the Email sub-tab
-`UnifiedTimeline` (Activities tab) shows an "AI" badge when `ai_drafted=true`, but `EmailsSection` does NOT. The mockup explicitly shows `[AI-drafted]` and `[AI-personalized]` chips on rows. **Add `ai_drafted` badge rendering to `EmailRow` and `ThreadCard`**.
+### Gap 6 — "What appears here / What does NOT appear here" info banner
 
-### Gap 3 — Sequence step labels not surfaced in the Email sub-tab
-`UnifiedTimeline` renders `sequence_step` as a mono-font pill (e.g. "S1-A", "S5-B") but `EmailsSection` ignores `sequence_step` entirely. The mockup leans heavily on these labels for orientation. **Render `sequence_step` as a pill on each row** (and as the lead pill on collapsed thread headers when present).
+The mockup shows two prominent explainer cards at the top of the Email tab:
+- A blue intro banner: *"The Email sub-tab shows only one-to-one emails between Malik and James, grouped into reply threads…"*
+- A two-column card grid:
+  - **What appears here**: every email Malik sent, every reply, threading rules, toggle behavior
+  - **What does NOT appear here**: marketing, system auto-emails like S1-A (no-reply addresses), brand-mailbox sequences not from m.hayes@captarget.com
 
-### Gap 4 — Thread-no-reply / Auto-triggered status pills missing
-The mockup has explicit thread-state pills:
-- "Thread — no reply yet" (outbound thread with no inbound reply)
-- "James replied" / "replied" (thread has inbound replies)
-- "Auto-triggered" (system-sent confirmations like Calendly bookings)
-- "AI from Fireflies" (recap drafts generated post-meeting)
+This was the lowest-priority item in the approved plan and was deferred. **It is the only remaining gap from the mockup.**
 
-Currently only an aggregate "Replied" badge exists per email. **Compute thread state and render a status pill on the thread header**.
+## Build plan — close Gap 6
 
-### Gap 5 — Header counts wording mismatch
-Mockup header: `ALL EMAIL THREADS — JAMES MITCHELL (6 THREADS, 14 EMAILS TOTAL)`. Current header: `Emails with James (14)`. **Update header to show both thread count and email count**.
+Add a single, dismissable explainer banner to the top of `EmailsSection.tsx`, shown only on first view per user (persisted via `localStorage`).
 
-### Gap 6 — No "what does NOT appear here" affordance
-Mockup has explanatory cards explaining the inbox-style filtering rules. Optional but useful first-time-use. **Add a one-time dismissable info banner** explaining the 1-to-1 filter and the `m.hayes@captarget.com` mailbox scoping.
-
-### Gap 7 — Mailbox scoping not enforced
-Mockup says "Sequence emails are shown here only if sent from m.hayes@captarget.com". Currently we show all `lead_emails` regardless of which connected mailbox sent them. With Outlook coming online (per-user mailboxes), this matters: an email sent from a different rep's mailbox to the same lead should still surface, but the *currently-viewing rep's* sent items should be visually distinguished. **Add a "from mailbox" badge or filter pill** when more than one connected mailbox has emailed this lead.
-
-## Recommended build (in priority order)
-
-1. **Sequence step pills** on each row (Gap 3) — high signal, 5 lines of code, parity with Activities
-2. **AI-drafted badge** on each row (Gap 2) — same pattern, 5 lines
-3. **Thread status pills** (Gap 4) — "Thread — no reply yet" / "{Lead} replied" / "Auto-triggered"
-4. **Header rewrite** to "ALL EMAIL THREADS — {NAME} ({n} threads, {m} emails total)" (Gap 5)
-5. **"Thread email replies" toggle** — collapse-all vs. flatten to individual rows (Gap 1)
-6. **Mailbox scoping badge** (Gap 7) — only render when >1 mailbox has touched the lead
-7. **One-time info banner** (Gap 6) — lowest priority
-
-## Files to touch
+### Files to touch
 
 | File | Change |
 |---|---|
-| `src/components/EmailsSection.tsx` | All 7 gaps land here — header, ThreadCard pills, EmailRow badges, new toggle |
-| (no DB changes needed) | `email_type`, `sequence_step`, `ai_drafted` columns already exist and populated |
+| `src/components/EmailsSection.tsx` | Add `<EmailTabIntro />` component above `header`, dismiss persists to `localStorage` key `emailTabIntroDismissed` |
 
-## What the user gets
+### Component shape
 
-The Email sub-tab will visually match the mockup: scannable thread list with sequence step labels, AI-drafted markers, thread reply state, an accurate "(N threads, M emails)" header, and an optional flatten-to-individual-rows view for power users. No backend work — everything is rendered from columns that already exist on `lead_emails`.
+A compact, monochrome, dismissable card matching the project's premium aesthetic (no blue alarm color — use neutral `bg-secondary/30 border-border` per design standards):
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  About this view                                          [×]   │
+│  Shows only 1-to-1 emails between you and {Name}, grouped       │
+│  into reply threads. Marketing, no-reply system emails, and     │
+│  sequences sent from brand mailboxes appear in Activities only. │
+│                                                                 │
+│  Toggle "Individual rows" to flatten threads · "Show all" to    │
+│  include marketing/transactional.                               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- Single combined banner (not two separate cards) — keeps the tab scannable
+- Monochrome `bg-secondary/30`, no blue tint — adheres to the "no alarmist colors" memory rule
+- `×` dismiss button → writes `emailTabIntroDismissed=1` to `localStorage`, hides forever
+- Re-shows automatically if `localStorage` is cleared
+
+### What the user gets
+
+The Email tab now matches **every element** of the mockup. First-time users see a compact explainer that disappears after dismissal; returning users see the clean thread list directly.
+
+## Out of scope (intentional)
+
+- The mockup's mock tab strip ("Layout map / Left sidebar / Middle — overview / …") is the mockup file's own navigation chrome, not part of the email tab itself. Not implemented (correctly).
+- The mockup's blue banner color: replaced with monochrome to comply with the project's premium B&W aesthetic memory rule.
 
