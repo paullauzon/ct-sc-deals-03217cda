@@ -12,6 +12,7 @@ import { ClientSuccessSystem } from "@/components/ClientSuccessSystem";
 import { Search, BarChart3, Kanban, Users, CalendarCheck, Settings } from "lucide-react";
 import { MailboxSettings } from "@/components/MailboxSettings";
 import { UserMenu } from "@/components/UserMenu";
+import { CommandPalette as CP2 } from "@/components/CommandPalette";
 
 type View = "dashboard" | "pipeline" | "leads" | "today" | "settings";
 type System = "crm" | "business" | "client-success";
