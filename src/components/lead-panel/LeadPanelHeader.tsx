@@ -18,7 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { computeDealHealthScore, getStakeholderCoverage } from "@/lib/dealHealthUtils";
 import { computeWinProbability, computeSlipRisk } from "@/lib/dealPredictions";
 import { computeDossierCompleteness } from "@/lib/dealDossier";
-import { ACTIVE_STAGES } from "@/lib/leadUtils";
+import { ACTIVE_STAGES, TERMINAL_STAGES } from "@/lib/leadUtils";
 import { isBackwardsMove, getGateForStage } from "@/lib/stageGates";
 import { StageGateGuard } from "@/components/lead-panel/dialogs/StageGateGuard";
 import { useLeads } from "@/contexts/LeadContext";
@@ -30,7 +30,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 function ClickableProgressBar({ currentStage, onAdvance }: { currentStage: LeadStage; onAdvance: (s: LeadStage) => void }) {
   const currentIdx = ACTIVE_STAGES.indexOf(currentStage);
-  const isClosed = ["Closed Won", "Lost", "Went Dark"].includes(currentStage);
+  const isClosed = TERMINAL_STAGES.includes(currentStage);
   return (
     <div className="flex items-center gap-0.5">
       {ACTIVE_STAGES.map((stage, i) => (

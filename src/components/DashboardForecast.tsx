@@ -8,29 +8,30 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineCh
 import { addDays, format, startOfMonth, isBefore, isAfter, parseISO, differenceInDays } from "date-fns";
 import { AlertTriangle, TrendingUp, Shield, Users } from "lucide-react";
 
+// v2 stage weights — using normalizeStage() so legacy DB rows still resolve.
+import { normalizeStage } from "@/lib/leadUtils";
+
 const STAGE_WEIGHTS: Record<string, number> = {
-  "New Lead": 0.05,
-  "Qualified": 0.15,
-  "Contacted": 0.20,
-  "Meeting Set": 0.30,
-  "Meeting Held": 0.40,
-  "Proposal Sent": 0.60,
-  "Negotiation": 0.75,
-  "Contract Sent": 0.90,
+  "Unassigned": 0.05,
+  "In Contact": 0.15,
+  "Discovery Scheduled": 0.30,
+  "Discovery Completed": 0.40,
+  "Sample Sent": 0.50,
+  "Proposal Sent": 0.65,
+  "Negotiating": 0.85,
 };
 
 const DEFAULT_DAYS_TO_CLOSE: Record<string, number> = {
-  "New Lead": 90,
-  "Qualified": 75,
-  "Contacted": 60,
-  "Meeting Set": 45,
-  "Meeting Held": 30,
-  "Proposal Sent": 21,
-  "Negotiation": 14,
-  "Contract Sent": 7,
+  "Unassigned": 90,
+  "In Contact": 60,
+  "Discovery Scheduled": 45,
+  "Discovery Completed": 30,
+  "Sample Sent": 21,
+  "Proposal Sent": 14,
+  "Negotiating": 7,
 };
 
-const TERMINAL = ["Closed Won", "Lost", "Went Dark", "Duplicate", "Disqualified"];
+const TERMINAL = ["Closed Won", "Closed Lost", "Lost", "Went Dark", "Duplicate", "Disqualified"];
 const MONTHLY_TARGET = 15000;
 
 interface Props {
@@ -39,7 +40,7 @@ interface Props {
 }
 
 export function DashboardForecast({ leads, onDrillDown }: Props) {
-  const activeLeads = useMemo(() => leads.filter(l => !TERMINAL.includes(l.stage)), [leads]);
+  const activeLeads = useMemo(() => leads.filter(l => !TERMINAL.includes(normalizeStage(l.stage))), [leads]);
   const wonLeads = useMemo(() => leads.filter(l => l.stage === "Closed Won"), [leads]);
 
   // 1. 3-Month Revenue Projection
@@ -56,8 +57,9 @@ export function DashboardForecast({ leads, onDrillDown }: Props) {
       let captarget = 0;
       let sourceco = 0;
       for (const lead of activeLeads) {
-        const daysToClose = DEFAULT_DAYS_TO_CLOSE[lead.stage] ?? 60;
-        const weight = STAGE_WEIGHTS[lead.stage] ?? 0.1;
+        const normStage = normalizeStage(lead.stage);
+        const daysToClose = DEFAULT_DAYS_TO_CLOSE[normStage] ?? 60;
+        const weight = STAGE_WEIGHTS[normStage] ?? 0.1;
         const expectedClose = addDays(new Date(), daysToClose);
         const closeMonth = startOfMonth(expectedClose);
         if (closeMonth.getTime() === m.start.getTime()) {
