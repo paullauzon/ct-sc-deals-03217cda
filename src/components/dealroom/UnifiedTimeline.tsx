@@ -821,7 +821,7 @@ function TimelineRow({
           </div>
         )}
         {/* Email enrichment pill row — only for email events */}
-        {isEmail && email && (opens > 0 || clicks > 0 || replied || aiDrafted || sequence || attachments > 0) && (
+        {isEmail && email && (opens > 0 || clicks > 0 || replied || aiDrafted || sequence || attachments > 0 || pausedStep) && (
           <div className="flex flex-wrap items-center gap-1 mt-1">
             {aiDrafted && (
               <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5 font-medium">
