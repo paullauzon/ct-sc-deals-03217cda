@@ -8,19 +8,31 @@ import { computeDaysInStage } from "@/lib/leadUtils";
 // and the user-entered closeConfidence. Designed to be auditable, not a
 // black box — every contribution is exposed via `factors`.
 
+// Pipeline v2 stage priors — Sample Sent inserted between Discovery Completed
+// and Proposal Sent at 50% (matches the "make-or-break" framing). Legacy stage
+// names kept and aliased to their v2 equivalents so old data still scores.
 const STAGE_PRIOR: Record<LeadStage, number> = {
+  // v2
+  "Unassigned": 5,
+  "In Contact": 12,
+  "Discovery Scheduled": 22,
+  "Discovery Completed": 35,
+  "Sample Sent": 50,
+  "Proposal Sent": 62,
+  "Negotiating": 78,
+  "Closed Won": 100,
+  "Closed Lost": 0,
+  // Legacy aliases (DB still has these strings)
   "New Lead": 5,
   "Qualified": 12,
-  "Contacted": 18,
-  "Meeting Set": 28,
-  "Meeting Held": 40,
-  "Proposal Sent": 55,
-  "Negotiation": 68,
-  "Contract Sent": 80,
-  "Revisit/Reconnect": 8,
+  "Contacted": 12,
+  "Meeting Set": 22,
+  "Meeting Held": 35,
+  "Negotiation": 78,
+  "Contract Sent": 78,
+  "Revisit/Reconnect": 0,
   "Lost": 0,
-  "Went Dark": 5,
-  "Closed Won": 100,
+  "Went Dark": 0,
 };
 
 export interface WinProbabilityResult {
@@ -32,7 +44,7 @@ export interface WinProbabilityResult {
 
 export function computeWinProbability(lead: Lead): WinProbabilityResult | null {
   if (lead.stage === "Closed Won") return { probability: 100, band: "very-high", label: "Won", factors: [] };
-  if (lead.stage === "Lost") return { probability: 0, band: "very-low", label: "Lost", factors: [] };
+  if (lead.stage === "Closed Lost" || lead.stage === "Lost" || lead.stage === "Went Dark") return { probability: 0, band: "very-low", label: "Lost", factors: [] };
 
   const factors: { label: string; impact: number }[] = [];
   let p = STAGE_PRIOR[lead.stage] ?? 10;
@@ -102,7 +114,11 @@ export function computeWinProbability(lead: Lead): WinProbabilityResult | null {
 
   // Days in stage drag (only if we're in an active mid-stage)
   const days = computeDaysInStage(lead.stageEnteredDate);
-  const activeMid = ["Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"].includes(lead.stage);
+  const activeMid = [
+    "Discovery Completed", "Sample Sent", "Proposal Sent", "Negotiating",
+    // Legacy
+    "Meeting Held", "Negotiation", "Contract Sent",
+  ].includes(lead.stage);
   if (activeMid && days > 21) { p -= 8; factors.push({ label: `${days}d in stage`, impact: -8 }); }
   else if (activeMid && days > 14) { p -= 4; factors.push({ label: `${days}d in stage`, impact: -4 }); }
 
@@ -145,7 +161,10 @@ export interface SlipRiskResult {
 }
 
 const ACTIVE_OPEN_STAGES = new Set<LeadStage>([
-  "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
+  // v2
+  "Discovery Completed", "Sample Sent", "Proposal Sent", "Negotiating",
+  // Legacy
+  "Meeting Held", "Negotiation", "Contract Sent",
 ]);
 
 export function computeSlipRisk(lead: Lead): SlipRiskResult | null {
@@ -185,7 +204,8 @@ export function computeSlipRisk(lead: Lead): SlipRiskResult | null {
 
   // Open objections drag late-stage deals
   const openObj = (di?.objectionTracker || []).filter(o => o.status === "Open" || o.status === "Recurring").length;
-  if (openObj > 0 && (lead.stage === "Proposal Sent" || lead.stage === "Negotiation" || lead.stage === "Contract Sent")) {
+  const lateStageForObj = ["Sample Sent", "Proposal Sent", "Negotiating", "Negotiation", "Contract Sent"].includes(lead.stage);
+  if (openObj > 0 && lateStageForObj) {
     slip += Math.min(10, openObj * 4);
     reasons.push(`${openObj} unresolved objection${openObj > 1 ? "s" : ""}`);
   }
