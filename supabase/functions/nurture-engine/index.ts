@@ -149,17 +149,19 @@ Deno.serve(async (req) => {
       }
 
       // ── Milestone tasks (idempotent) ───────────────────────
-      if (day >= 0 && day < 7) {
+      // Open-ended windows so backdated leads catch up on any missed milestone.
+      // Each ensureDraft/ensureTask is idempotent via playbook key + lead_id.
+      if (day >= 0) {
         if (await ensureDraft(supabase, lead.id, "nurture-d0",
           "Day 0 — insight email",
           `Hi ${lead.name?.split(" ")[0] || "there"},\n\nThinking about ${lead.company || "your"} — wanted to share a quick observation from a recent ${lead.brand} deal that reminded me of your situation. Worth a 10-minute call to compare notes?`)) drafts++;
       }
-      if (day >= 30 && day < 37) {
+      if (day >= 30) {
         if (await ensureDraft(supabase, lead.id, "nurture-d30",
           "Day 30 — market update",
           `Hi ${lead.name?.split(" ")[0] || "there"},\n\nMarket update on the segment we discussed. Two trends worth flagging: [insert]. Happy to share the underlying data if useful.`)) drafts++;
       }
-      if (day >= 45 && day < 52) {
+      if (day >= 45) {
         if (await ensureTask(supabase, lead.id, "nurture-d45",
           "Day 45 — manual call check-in",
           "Pick up the phone. Reference the d0 insight email and the d30 market update. Goal: re-open the conversation, not pitch.",
