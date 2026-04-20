@@ -254,8 +254,8 @@ export function MailboxSettings() {
       </div>
 
       <div className="text-xs text-muted-foreground space-y-1.5 pt-2">
-        <p className="font-medium text-foreground">Phase 1 — OAuth foundation</p>
-        <p>This screen connects mailboxes and stores their tokens. Inbound sync, outbound send, and open/click tracking ship in the next phases.</p>
+        <p className="font-medium text-foreground">Testing-mode note</p>
+        <p>The Google OAuth app runs in Testing mode, so refresh tokens expire every 7 days. If a mailbox shows "Reconnect required", click "Connect Gmail" again with the same account to restore sync.</p>
       </div>
     </div>
   );
