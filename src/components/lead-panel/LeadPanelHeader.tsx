@@ -187,25 +187,26 @@ export function LeadPanelHeader({
 
   const handleStageClick = (stage: LeadStage) => {
     if (stage === lead.stage) return;
-    const currentIdx = ACTIVE_STAGES.indexOf(lead.stage);
-    const newIdx = ACTIVE_STAGES.indexOf(stage);
-    if (newIdx < currentIdx) {
+    if (isBackwardsMove(lead.stage, stage)) {
       setPendingStage(stage);
       return;
     }
-    if (stage === "Closed Won") {
-      const missing: string[] = [];
-      if (!lead.subscriptionValue || lead.subscriptionValue === 0) missing.push("subscription value");
-      if (!lead.contractEnd) missing.push("contract end date");
-      if (missing.length > 0) {
-        setCloseWonGuard({ missing });
-        return;
-      }
+    // Run v2 gate evaluation — if there's a gate for this destination, show it.
+    // The guard handles "all clear" inline (rep clicks Move) so we always show it
+    // for stages that have a gate, giving the rep a chance to confirm intent.
+    const gate = getGateForStage(stage);
+    if (gate) {
+      setGateStage(stage);
+      return;
     }
     commitStageChange(stage);
   };
 
-  const commitStageChange = async (stage: LeadStage) => {
+  const commitStageChange = async (stage: LeadStage, extraUpdates?: Partial<Lead>) => {
+    if (extraUpdates && Object.keys(extraUpdates).length > 0) {
+      // Persist gate field edits before stage change so they're saved together
+      updateLead(lead.id, extraUpdates);
+    }
     onChangeStage(stage);
     await logActivity(lead.id, "stage_change", `Stage: ${lead.stage} → ${stage}`, lead.stage, stage);
     if (stage === "Closed Won") {
@@ -214,7 +215,7 @@ export function LeadPanelHeader({
       toast.success(`Moved to ${stage}`);
     }
     setPendingStage(null);
-    setCloseWonGuard(null);
+    setGateStage(null);
   };
 
   // Listen for stage-change requests dispatched from PipelineStagesCard in the right rail
