@@ -51,6 +51,7 @@ export function MailboxSettings() {
   const [connecting, setConnecting] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [backfillingId, setBackfillingId] = useState<string | null>(null);
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
 
   // Connect-Gmail dialog state (replaces window.prompt)
@@ -180,6 +181,33 @@ export function MailboxSettings() {
       toast.error(e.message || "Sync failed");
     } finally {
       setSyncingId(null);
+    }
+  };
+
+  const backfill90d = async (id: string, email: string) => {
+    if (!window.confirm(
+      `Backfill the last 90 days of Gmail history for ${email}?\n\nThis scans up to 1,500 messages and matches them against existing leads. Safe to run multiple times — duplicates are skipped. May take 1–3 minutes.`
+    )) return;
+    setBackfillingId(id);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-gmail-emails", {
+        body: { connection_id: id, force_full: true },
+      });
+      if (error) throw error;
+      const r = data?.results?.[0];
+      if (r) {
+        toast.success(
+          `Backfilled ${r.fetched} message${r.fetched === 1 ? "" : "s"} — ${r.inserted} new rows, ${r.matched} matched to leads`,
+          { duration: 6000 }
+        );
+      } else {
+        toast.success("Backfill complete");
+      }
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Backfill failed");
+    } finally {
+      setBackfillingId(null);
     }
   };
 
