@@ -22,6 +22,9 @@ import {
   Reply,
   Sparkles,
   Paperclip,
+  Phone,
+  CheckSquare,
+  AlertTriangle,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -30,12 +33,22 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { ReplyPrefill } from "@/components/EmailsSection";
 
-type FilterKey = "all" | "emails" | "meetings" | "stage" | "notes" | "system" | "pinned";
+type FilterKey = "all" | "emails" | "calls" | "notes" | "meetings" | "tasks" | "stage" | "system" | "pinned";
 type DateRange = "all" | "7d" | "30d" | "90d";
 
 interface TimelineEvent {
   id: string;
-  type: "stage_change" | "meeting" | "email_in" | "email_out" | "calendly" | "submission" | "note" | "system";
+  type:
+    | "stage_change"
+    | "meeting"
+    | "email_in"
+    | "email_out"
+    | "calendly"
+    | "submission"
+    | "note"
+    | "system"
+    | "call"
+    | "task";
   date: string;
   title: string;
   detail?: string;
@@ -46,6 +59,8 @@ interface TimelineEvent {
   pinnedAt?: string | null;
   /** email-specific enrichment (only set for email_in / email_out rows) */
   email?: EmailRow;
+  /** task-specific enrichment (only set for task rows) */
+  task?: TaskRow;
 }
 
 interface EmailRow {
@@ -68,13 +83,27 @@ interface EmailRow {
   attachments: unknown;
 }
 
+interface TaskRow {
+  id: string;
+  title: string;
+  description: string | null;
+  due_date: string;
+  status: string;
+  task_type: string | null;
+  playbook: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "All" },
   { key: "emails", label: "Emails" },
-  { key: "meetings", label: "Meetings" },
-  { key: "stage", label: "Stage" },
+  { key: "calls", label: "Calls" },
   { key: "notes", label: "Notes" },
-  { key: "system", label: "System" },
+  { key: "meetings", label: "Meetings" },
+  { key: "tasks", label: "Tasks" },
+  { key: "stage", label: "Stage" },
+  { key: "system", label: "Logged" },
   { key: "pinned", label: "Pinned" },
 ];
 
@@ -89,7 +118,9 @@ function eventMatchesFilter(e: TimelineEvent, f: FilterKey): boolean {
   if (f === "all") return true;
   if (f === "pinned") return !!e.pinnedAt;
   if (f === "emails") return e.type === "email_in" || e.type === "email_out";
+  if (f === "calls") return e.type === "call";
   if (f === "meetings") return e.type === "meeting" || e.type === "calendly";
+  if (f === "tasks") return e.type === "task";
   if (f === "stage") return e.type === "stage_change";
   if (f === "notes") return e.type === "note";
   if (f === "system") return e.type === "submission" || e.type === "system";
@@ -105,6 +136,8 @@ function iconFor(type: TimelineEvent["type"]) {
     case "email_out": return <ArrowUpRight className="h-3.5 w-3.5" />;
     case "note": return <MessageSquare className="h-3.5 w-3.5" />;
     case "submission": return <FileInput className="h-3.5 w-3.5" />;
+    case "call": return <Phone className="h-3.5 w-3.5" />;
+    case "task": return <CheckSquare className="h-3.5 w-3.5" />;
     default: return <Clock className="h-3.5 w-3.5" />;
   }
 }
