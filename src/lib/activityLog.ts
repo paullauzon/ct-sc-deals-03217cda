@@ -54,7 +54,8 @@ export async function logActivity(
   eventType: ActivityEventType,
   description: string,
   oldValue?: string | null,
-  newValue?: string | null
+  newValue?: string | null,
+  metadata?: Record<string, unknown> | null,
 ) {
   const actor = await getActor();
   const { error } = await supabase.from("lead_activity_log" as any).insert({
@@ -65,6 +66,7 @@ export async function logActivity(
     new_value: newValue ?? null,
     actor_user_id: actor.id,
     actor_name: actor.name,
+    metadata: metadata ?? {},
   } as any);
   if (error) console.error("Activity log error:", error);
 }

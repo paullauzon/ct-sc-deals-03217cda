@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Lead } from "@/types/lead";
+import { Lead, Meeting, MeetingIntelligence } from "@/types/lead";
 import { supabase } from "@/integrations/supabase/client";
 import { ActivityLogEntry, fetchActivityLog } from "@/lib/activityLog";
+import { TranscriptDrawer } from "@/components/lead-panel/dialogs/TranscriptDrawer";
 import {
   Mail,
   GitCommit,
@@ -25,6 +26,8 @@ import {
   Phone,
   CheckSquare,
   AlertTriangle,
+  PauseCircle,
+  FileText,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +51,8 @@ interface TimelineEvent {
     | "note"
     | "system"
     | "call"
-    | "task";
+    | "task"
+    | "sequence_paused";
   date: string;
   title: string;
   detail?: string;
@@ -61,6 +65,12 @@ interface TimelineEvent {
   email?: EmailRow;
   /** task-specific enrichment (only set for task rows) */
   task?: TaskRow;
+  /** meeting-specific enrichment (only set for meeting rows) */
+  meeting?: Meeting;
+  /** AI-extracted intel from a call summary (only set for call rows) */
+  callIntel?: CallIntel | null;
+  /** raw sequence step label captured on sequence_paused rows (e.g. "S5-A") */
+  sequenceStep?: string;
 }
 
 interface EmailRow {
@@ -95,6 +105,16 @@ interface TaskRow {
   completed_at: string | null;
 }
 
+/** AI-extracted call intelligence shape (matches extract-call-intel edge function output). */
+interface CallIntel {
+  decisions?: string[];
+  actionItems?: { owner?: "us" | "them" | "shared"; item: string; deadline?: string }[];
+  nextStep?: string;
+  engagement?: "Highly Engaged" | "Engaged" | "Passive" | "Disengaged";
+  objections?: string[];
+  painPoints?: string[];
+}
+
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "All" },
   { key: "emails", label: "Emails" },
@@ -117,7 +137,7 @@ const RANGES: { key: DateRange; label: string; days: number | null }[] = [
 function eventMatchesFilter(e: TimelineEvent, f: FilterKey): boolean {
   if (f === "all") return true;
   if (f === "pinned") return !!e.pinnedAt;
-  if (f === "emails") return e.type === "email_in" || e.type === "email_out";
+  if (f === "emails") return e.type === "email_in" || e.type === "email_out" || e.type === "sequence_paused";
   if (f === "calls") return e.type === "call";
   if (f === "meetings") return e.type === "meeting" || e.type === "calendly";
   if (f === "tasks") return e.type === "task";
@@ -138,6 +158,7 @@ function iconFor(type: TimelineEvent["type"]) {
     case "submission": return <FileInput className="h-3.5 w-3.5" />;
     case "call": return <Phone className="h-3.5 w-3.5" />;
     case "task": return <CheckSquare className="h-3.5 w-3.5" />;
+    case "sequence_paused": return <PauseCircle className="h-3.5 w-3.5" />;
     default: return <Clock className="h-3.5 w-3.5" />;
   }
 }
@@ -177,6 +198,8 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
   // Toggle to expand/collapse all detail bodies at once
   const [expandAllNonce, setExpandAllNonce] = useState(0);
   const [forcedOpen, setForcedOpen] = useState<boolean | null>(null);
+  // Transcript drawer state — opened from any meeting row
+  const [transcriptMeeting, setTranscriptMeeting] = useState<Meeting | null>(null);
 
   const refetchActivity = async () => {
     const log = await fetchActivityLog(lead.id);
@@ -223,15 +246,29 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
   const events = useMemo<TimelineEvent[]>(() => {
     const out: TimelineEvent[] = [];
 
-    // Activity log (stage changes, field updates, notes, calls) — these can be pinned
+    // Activity log (stage changes, field updates, notes, calls, sequence-paused) — pinnable
     activity.forEach(a => {
       const actor = (a as any).actor_name as string | undefined;
+      const meta = (a as any).metadata as Record<string, unknown> | undefined;
       const evType: TimelineEvent["type"] =
         a.event_type === "stage_change" ? "stage_change"
         : a.event_type === "note_added" ? "note"
         : a.event_type === "meeting_added" ? "meeting"
         : a.event_type === "call_logged" ? "call"
+        : a.event_type === "sequence_paused" ? "sequence_paused"
         : "system";
+
+      // Extract call intel from metadata when present
+      const callIntel: CallIntel | null =
+        evType === "call" && meta && typeof meta === "object" && (meta as any).intel
+          ? ((meta as any).intel as CallIntel)
+          : null;
+
+      // For calls, prefer the raw summary as the expandable detail (mockup parity).
+      const callSummary = evType === "call" && meta && typeof (meta as any).summary === "string"
+        ? ((meta as any).summary as string)
+        : "";
+
       out.push({
         id: `act-${a.id}`,
         activityId: a.id,
@@ -239,7 +276,10 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
         type: evType,
         date: a.created_at,
         title: a.description,
+        detail: callSummary || undefined,
         meta: actor && actor.trim() ? `by ${actor}` : "by System",
+        callIntel,
+        sequenceStep: evType === "sequence_paused" ? (a.new_value || "") : undefined,
       });
     });
 
@@ -273,6 +313,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
         detail: intel?.summary || m.summary || undefined,
         meta: intel?.attendees?.length ? `${intel.attendees.length} attendees` : undefined,
         href: m.firefliesUrl || undefined,
+        meeting: m,
       });
     });
 
@@ -355,7 +396,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
 
   const counts = useMemo(() => ({
     all: events.length,
-    emails: events.filter(e => e.type === "email_in" || e.type === "email_out").length,
+    emails: events.filter(e => e.type === "email_in" || e.type === "email_out" || e.type === "sequence_paused").length,
     calls: events.filter(e => e.type === "call").length,
     meetings: events.filter(e => e.type === "meeting" || e.type === "calendly").length,
     tasks: events.filter(e => e.type === "task").length,
@@ -474,6 +515,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       onReply={onReply}
                       defaultExpanded={defaultOpenIds.has(ev.id)}
                       stallReason={lead.stallReason}
+                      onOpenTranscript={setTranscriptMeeting}
                     />
                   ))}
                 </div>
@@ -500,6 +542,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       onReply={onReply}
                       defaultExpanded={defaultOpenIds.has(ev.id)}
                       stallReason={lead.stallReason}
+                      onOpenTranscript={setTranscriptMeeting}
                     />
                   ))}
                 </div>
@@ -508,6 +551,12 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
           ))}
         </div>
       )}
+
+      <TranscriptDrawer
+        meeting={transcriptMeeting}
+        open={!!transcriptMeeting}
+        onOpenChange={(o) => { if (!o) setTranscriptMeeting(null); }}
+      />
     </div>
   );
 }
@@ -526,6 +575,7 @@ function TimelineRow({
   onReply,
   defaultExpanded = false,
   stallReason = "",
+  onOpenTranscript,
 }: {
   event: TimelineEvent;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
@@ -534,8 +584,26 @@ function TimelineRow({
   onReply?: (prefill: ReplyPrefill) => void;
   defaultExpanded?: boolean;
   stallReason?: string;
+  onOpenTranscript?: (m: Meeting) => void;
 }) {
-  const expandable = !!event.detail;
+  const isMeeting = event.type === "meeting";
+  const isCall = event.type === "call";
+  const isSequencePaused = event.type === "sequence_paused";
+  const meeting = event.meeting;
+  const intel = meeting?.intelligence;
+  const callIntel = event.callIntel;
+
+  const hasMeetingIntel = !!intel && (
+    !!intel.decisions?.length || !!intel.actionItems?.length || !!intel.nextMeetingRecommendation ||
+    !!intel.engagementLevel || !!intel.buyerJourney || typeof intel.talkRatio === "number"
+  );
+  const hasCallIntel = !!callIntel && (
+    !!callIntel.decisions?.length || !!callIntel.actionItems?.length || !!callIntel.nextStep ||
+    !!callIntel.engagement
+  );
+
+  // Expandable when there is a body OR rich AI intel to reveal
+  const expandable = !!event.detail || hasMeetingIntel || hasCallIntel;
   const [open, setOpen] = useState(defaultExpanded && expandable);
   const isEmail = event.type === "email_in" || event.type === "email_out";
   const isInbound = event.type === "email_in";
@@ -572,6 +640,10 @@ function TimelineRow({
     return "Auto-task";
   })();
 
+  // Call meta extraction (outcome, duration) from activity row
+  const callOutcome = isCall && event.title ? (event.title.match(/Call logged: ([^·]+)/i)?.[1] || "").trim() : "";
+  const callDurationMin = isCall && event.title ? (event.title.match(/(\d+)m/)?.[1] || "") : "";
+
   const handleReply = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!onReply || !email) return;
@@ -601,13 +673,19 @@ function TimelineRow({
         onClick={() => expandable && setOpen(v => !v)}
         className={cn(
           "w-full text-left rounded-md px-3 py-2 transition-colors",
-          expandable && "hover:bg-secondary/40 cursor-pointer"
+          expandable && "hover:bg-secondary/40 cursor-pointer",
+          isSequencePaused && "bg-secondary/30"
         )}
       >
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-medium truncate flex items-center gap-1.5">
             {isPinned && <Pin className="h-2.5 w-2.5 text-foreground/60 shrink-0" />}
             {event.title}
+            {(isMeeting && hasMeetingIntel) || (isCall && hasCallIntel) ? (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5 font-medium ml-1">
+                <Sparkles className="h-2.5 w-2.5" /> AI
+              </Badge>
+            ) : null}
           </p>
           <div className="flex items-center gap-1 shrink-0">
             {canPin && (
@@ -633,6 +711,52 @@ function TimelineRow({
         {event.meta && (
           <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{event.meta}</p>
         )}
+
+        {/* Sequence-paused pill row */}
+        {isSequencePaused && (
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5 font-medium">
+              <PauseCircle className="h-2.5 w-2.5" /> {event.sequenceStep ? `${event.sequenceStep} paused on reply` : "Sequence paused on reply"}
+            </Badge>
+          </div>
+        )}
+
+        {/* Call pill row — outcome + duration */}
+        {isCall && (callOutcome || callDurationMin) && (
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            {callOutcome && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">{callOutcome}</Badge>
+            )}
+            {callDurationMin && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">{callDurationMin} min</Badge>
+            )}
+            {callIntel?.engagement && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">Engagement: {callIntel.engagement}</Badge>
+            )}
+          </div>
+        )}
+
+        {/* Meeting intel pill row */}
+        {isMeeting && intel && (intel.engagementLevel || intel.buyerJourney || intel.internalChampionStrength || typeof intel.talkRatio === "number" || intel.questionQuality) && (
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            {intel.engagementLevel && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">Engagement: {intel.engagementLevel}</Badge>
+            )}
+            {intel.buyerJourney && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">Journey: {intel.buyerJourney}</Badge>
+            )}
+            {intel.internalChampionStrength && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">Champion: {intel.internalChampionStrength}</Badge>
+            )}
+            {typeof intel.talkRatio === "number" && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium tabular-nums">Talk ratio {Math.round(intel.talkRatio)}%</Badge>
+            )}
+            {intel.questionQuality && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">Questions: {intel.questionQuality}</Badge>
+            )}
+          </div>
+        )}
+
         {/* Task pill row — status, source, optional stall reason */}
         {isTask && task && (
           <div className="flex flex-wrap items-center gap-1 mt-1">
@@ -698,17 +822,52 @@ function TimelineRow({
             {event.detail}
           </p>
         )}
+
+        {/* Meeting AI extracted intel */}
+        {isMeeting && open && hasMeetingIntel && intel && (
+          <IntelExtractBlock
+            decisions={intel.decisions}
+            actionItems={intel.actionItems?.map(a => ({ owner: a.owner, item: a.item, deadline: a.deadline }))}
+            nextStep={intel.nextMeetingRecommendation}
+          />
+        )}
+
+        {/* Call AI extracted intel */}
+        {isCall && open && hasCallIntel && callIntel && (
+          <IntelExtractBlock
+            decisions={callIntel.decisions}
+            actionItems={callIntel.actionItems?.map(a => ({
+              owner: a.owner,
+              item: a.item,
+              deadline: a.deadline,
+            }))}
+            nextStep={callIntel.nextStep}
+          />
+        )}
+
         {event.href && open && (
           <a
             href={event.href}
             target="_blank"
             rel="noreferrer"
             onClick={e => e.stopPropagation()}
-            className="text-[11px] text-foreground hover:underline mt-1.5 inline-block"
+            className="text-[11px] text-foreground hover:underline mt-1.5 inline-flex items-center gap-1 mr-3"
           >
             Open recording →
           </a>
         )}
+
+        {/* Open transcript link — meetings with transcript text */}
+        {isMeeting && open && meeting?.transcript && onOpenTranscript && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOpenTranscript(meeting); }}
+            className="text-[11px] text-foreground hover:underline mt-1.5 inline-flex items-center gap-1"
+          >
+            <FileText className="h-3 w-3" /> Open transcript
+          </button>
+        )}
+
         {/* Inline Reply for inbound emails */}
         {isEmail && isInbound && onReply && email && open && (
           <div className="mt-2">
@@ -721,3 +880,64 @@ function TimelineRow({
     </div>
   );
 }
+
+/**
+ * Renders an "AI extracted" block under expanded meeting/call rows.
+ * Three sections, max 3 items each, sober monochrome styling.
+ */
+function IntelExtractBlock({
+  decisions,
+  actionItems,
+  nextStep,
+}: {
+  decisions?: string[];
+  actionItems?: { owner?: string; item: string; deadline?: string }[];
+  nextStep?: string;
+}) {
+  const dec = (decisions || []).filter(Boolean).slice(0, 3);
+  const items = (actionItems || []).filter(a => a && a.item).slice(0, 3);
+  if (dec.length === 0 && items.length === 0 && !nextStep) return null;
+  return (
+    <div className="mt-2 rounded border border-border bg-secondary/30 p-2 space-y-1.5">
+      <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+        <Sparkles className="h-2.5 w-2.5" /> AI extracted
+      </p>
+      {dec.length > 0 && (
+        <div>
+          <p className="text-[10px] font-medium text-foreground/80">Decisions</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {dec.map((d, i) => (
+              <li key={i} className="text-[11px] text-muted-foreground leading-snug">• {d}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {items.length > 0 && (
+        <div>
+          <p className="text-[10px] font-medium text-foreground/80">Action items</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {items.map((a, i) => (
+              <li key={i} className="text-[11px] text-muted-foreground leading-snug flex items-start gap-1">
+                <span>•</span>
+                <span className="flex-1">
+                  {a.owner && (
+                    <Badge variant="outline" className="h-3.5 text-[8px] px-1 mr-1 font-medium uppercase">{a.owner}</Badge>
+                  )}
+                  {a.item}
+                  {a.deadline && <span className="text-muted-foreground/60"> · {a.deadline}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {nextStep && (
+        <div>
+          <p className="text-[10px] font-medium text-foreground/80">Recommended next step</p>
+          <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{nextStep}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+

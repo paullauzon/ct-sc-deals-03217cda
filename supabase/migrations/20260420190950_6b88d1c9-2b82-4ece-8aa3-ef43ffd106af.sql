@@ -1,0 +1,1 @@
+ALTER TABLE public.lead_activity_log ADD COLUMN IF NOT EXISTS metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
