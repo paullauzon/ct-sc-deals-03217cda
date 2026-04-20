@@ -295,6 +295,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   }
 
   const threads = groupByThread(delivered);
+  const flatEmails = [...delivered].sort((a, b) => new Date(b.email_date).getTime() - new Date(a.email_date).getTime());
 
   return (
     <div>
@@ -304,16 +305,30 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
       )}
       <ScrollArea className="max-h-[480px]">
         <div className="space-y-1.5">
-          {threads.map((thread) => (
-            <ThreadCard
-              key={thread.threadId}
-              thread={thread}
-              expandAllSignal={expandAllSignal}
-              onSuggestResponses={(email, objections) => setResponseDialog({ email, objections })}
-              onReply={onReply}
-              onMarkRead={markRead}
-            />
-          ))}
+          {flatten
+            ? flatEmails.map((email) => (
+                <EmailRow
+                  key={email.id}
+                  email={email}
+                  expandAllSignal={expandAllSignal}
+                  onSuggestResponses={(em, objs) => setResponseDialog({ email: em, objections: objs })}
+                  onReply={onReply}
+                  onMarkRead={markRead}
+                  showMailbox={multipleMailboxes}
+                />
+              ))
+            : threads.map((thread) => (
+                <ThreadCard
+                  key={thread.threadId}
+                  thread={thread}
+                  expandAllSignal={expandAllSignal}
+                  onSuggestResponses={(email, objections) => setResponseDialog({ email, objections })}
+                  onReply={onReply}
+                  onMarkRead={markRead}
+                  leadName={lead?.name}
+                  showMailbox={multipleMailboxes}
+                />
+              ))}
         </div>
       </ScrollArea>
 
