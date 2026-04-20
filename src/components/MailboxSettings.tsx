@@ -103,8 +103,11 @@ export function MailboxSettings() {
       if (error) throw error;
       const r = data?.results?.[0];
       if (r) {
+        const matchedHint = r.inserted > 0 && r.matched === 0
+          ? " — unmatched emails will link automatically when leads are added"
+          : "";
         toast.success(
-          `Synced ${r.fetched} message${r.fetched === 1 ? "" : "s"} — ${r.inserted} new, ${r.matched} matched, ${r.skipped_dup} duplicate`,
+          `Synced ${r.fetched} message${r.fetched === 1 ? "" : "s"} — ${r.inserted} new, ${r.matched} matched, ${r.skipped_dup} duplicate${matchedHint}`,
         );
       } else {
         toast.success("Sync complete");
