@@ -51,7 +51,8 @@ interface TimelineEvent {
     | "note"
     | "system"
     | "call"
-    | "task";
+    | "task"
+    | "sequence_paused";
   date: string;
   title: string;
   detail?: string;
@@ -64,6 +65,12 @@ interface TimelineEvent {
   email?: EmailRow;
   /** task-specific enrichment (only set for task rows) */
   task?: TaskRow;
+  /** meeting-specific enrichment (only set for meeting rows) */
+  meeting?: Meeting;
+  /** AI-extracted intel from a call summary (only set for call rows) */
+  callIntel?: CallIntel | null;
+  /** raw sequence step label captured on sequence_paused rows (e.g. "S5-A") */
+  sequenceStep?: string;
 }
 
 interface EmailRow {
@@ -96,6 +103,16 @@ interface TaskRow {
   playbook: string | null;
   created_at: string | null;
   completed_at: string | null;
+}
+
+/** AI-extracted call intelligence shape (matches extract-call-intel edge function output). */
+interface CallIntel {
+  decisions?: string[];
+  actionItems?: { owner?: "us" | "them" | "shared"; item: string; deadline?: string }[];
+  nextStep?: string;
+  engagement?: "Highly Engaged" | "Engaged" | "Passive" | "Disengaged";
+  objections?: string[];
+  painPoints?: string[];
 }
 
 const FILTERS: { key: FilterKey; label: string }[] = [
