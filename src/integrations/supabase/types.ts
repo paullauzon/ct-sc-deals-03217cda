@@ -196,6 +196,57 @@ export type Database = {
         }
         Relationships: []
       }
+      email_sync_runs: {
+        Row: {
+          connection_id: string
+          created_at: string
+          email_address: string
+          errors: Json
+          fetched: number
+          finished_at: string | null
+          id: string
+          inserted: number
+          matched: number
+          mode: string
+          skipped: number
+          started_at: string
+          status: string
+          unmatched: number
+        }
+        Insert: {
+          connection_id: string
+          created_at?: string
+          email_address: string
+          errors?: Json
+          fetched?: number
+          finished_at?: string | null
+          id?: string
+          inserted?: number
+          matched?: number
+          mode?: string
+          skipped?: number
+          started_at?: string
+          status?: string
+          unmatched?: number
+        }
+        Update: {
+          connection_id?: string
+          created_at?: string
+          email_address?: string
+          errors?: Json
+          fetched?: number
+          finished_at?: string | null
+          id?: string
+          inserted?: number
+          matched?: number
+          mode?: string
+          skipped?: number
+          started_at?: string
+          status?: string
+          unmatched?: number
+        }
+        Relationships: []
+      }
       lead_activity_log: {
         Row: {
           created_at: string
