@@ -918,8 +918,8 @@ function TalkRatioDeepDive({ leads }: { leads: Lead[] }) {
         count: ratios.length,
       }))
       .sort((a, b) => {
-        const order = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Lost", "Went Dark", "Closed Won"];
-        return order.indexOf(a.stage) - order.indexOf(b.stage);
+        const order = ["Unassigned", "In Contact", "Discovery Scheduled", "Discovery Completed", "Sample Sent", "Proposal Sent", "Negotiating", "Closed Won", "Closed Lost"];
+        return order.indexOf(normalizeStage(a.stage)) - order.indexOf(normalizeStage(b.stage));
       });
 
     return { byStage };

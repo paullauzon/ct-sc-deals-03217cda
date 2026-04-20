@@ -6,25 +6,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AlertTriangle, Clock, Users, Shield, TrendingUp, Zap } from "lucide-react";
 import { differenceInDays, parseISO } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
-import { isClosedStage, normalizeStage } from "@/lib/leadUtils";
+import { isClosedStage, normalizeStage, ACTIVE_STAGES as V2_ACTIVE_STAGES } from "@/lib/leadUtils";
 
 const STAGE_WEIGHTS: Record<string, number> = {
-  "New Lead": 0.05,
-  "Qualified": 0.15,
-  "Contacted": 0.20,
-  "Meeting Set": 0.30,
-  "Meeting Held": 0.40,
-  "Proposal Sent": 0.60,
-  "Negotiation": 0.75,
-  "Contract Sent": 0.90,
+  "Unassigned": 0.05,
+  "In Contact": 0.15,
+  "Discovery Scheduled": 0.30,
+  "Discovery Completed": 0.40,
+  "Sample Sent": 0.50,
+  "Proposal Sent": 0.65,
+  "Negotiating": 0.85,
 };
 
-const ACTIVE_STAGES: LeadStage[] = [
-  "New Lead", "Qualified", "Contacted", "Meeting Set",
-  "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
-];
+const ACTIVE_STAGES: LeadStage[] = V2_ACTIVE_STAGES;
 
-const TERMINAL_STAGES = ["Closed Won", "Lost", "Went Dark", "Duplicate", "Disqualified"];
+const isTerminalStage = (s: string) => isClosedStage(normalizeStage(s)) || ["Duplicate", "Disqualified"].includes(s);
 const REP_CAPACITY_THRESHOLD = 25;
 const QUARTERLY_TARGET_DEFAULT = 100000;
 
@@ -35,7 +31,7 @@ interface Props {
 
 export function DashboardOperations({ leads, onDrillDown }: Props) {
   const activeLeads = useMemo(
-    () => leads.filter((l) => !TERMINAL_STAGES.includes(l.stage)),
+    () => leads.filter((l) => !isTerminalStage(l.stage)),
     [leads]
   );
 
@@ -819,7 +815,7 @@ function DealTemperatureMomentum({ leads, onDrillDown }: { leads: Lead[]; onDril
     for (const t of temps) for (const m of moms) cells[`${t}|${m}`] = { leads: [], value: 0 };
 
     const activeWithDI = leads.filter(l => {
-      if (TERMINAL_STAGES.includes(l.stage)) return false;
+      if (isTerminalStage(l.stage)) return false;
       const di = l.dealIntelligence as any;
       return di?.winStrategy?.dealTemperature && di?.momentumSignals?.momentum;
     });

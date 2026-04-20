@@ -103,7 +103,7 @@ export function matchesFilters(lead: Lead, filters: PipelineFilters): boolean {
     if (computeDossierCompleteness(lead).pct >= 50) return false;
   }
   if (filters.forecastGap) {
-    const lateStage = ["Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Qualified"];
+    const lateStage = ["Discovery Completed", "Sample Sent", "Proposal Sent", "Negotiating"];
     if (!lateStage.includes(lead.stage)) return false;
     const missingForecast =
       !lead.nextMutualStep?.trim() ||

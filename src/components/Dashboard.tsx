@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { Lead, LeadSource, Brand } from "@/types/lead";
-import { computeDaysInStage, isClosedStage, normalizeStage } from "@/lib/leadUtils";
+import { computeDaysInStage, isClosedStage, normalizeStage, ACTIVE_STAGES as V2_ACTIVE_STAGES } from "@/lib/leadUtils";
 import { LeadDetail } from "@/components/LeadsTable";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics";
@@ -32,7 +32,7 @@ const SOURCE_LABELS: Record<LeadSource, string> = {
   "SC Free Targets Form": "SC Targets",
 };
 
-const ACTIVE_STAGES = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"] as const;
+const ACTIVE_STAGES = V2_ACTIVE_STAGES;
 
 const ALL_SERVICES = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"] as const;
 
@@ -263,11 +263,14 @@ export function Dashboard() {
     // Lead Velocity Rate
     const fourWeeksAgo = new Date(now.getTime() - 28 * 86400000);
     const eightWeeksAgo = new Date(now.getTime() - 56 * 86400000);
-    const qualifiedStages = new Set(["Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won"]);
-    const qualifiedRecent = filteredLeads.filter((l) => new Date(l.dateSubmitted) >= fourWeeksAgo && qualifiedStages.has(l.stage)).length;
+    const isQualified = (s: string) => {
+      const n = normalizeStage(s);
+      return n !== "Unassigned" && n !== "Closed Lost";
+    };
+    const qualifiedRecent = filteredLeads.filter((l) => new Date(l.dateSubmitted) >= fourWeeksAgo && isQualified(l.stage)).length;
     const qualifiedPrior = filteredLeads.filter((l) => {
       const d = new Date(l.dateSubmitted);
-      return d >= eightWeeksAgo && d < fourWeeksAgo && qualifiedStages.has(l.stage);
+      return d >= eightWeeksAgo && d < fourWeeksAgo && isQualified(l.stage);
     }).length;
     const lvrCurrent = Math.round(qualifiedRecent / 4 * 10) / 10;
     const lvrPrior = Math.round(qualifiedPrior / 4 * 10) / 10;
@@ -797,8 +800,8 @@ export function Dashboard() {
                         </div>
                         <div className="grid grid-cols-3 gap-2 text-sm">
                           <div><p className="text-xs text-muted-foreground">Total</p><p className="font-semibold tabular-nums">{data.length}</p></div>
-                          <div><p className="text-xs text-muted-foreground">Pipeline</p><p className="font-semibold tabular-nums">${data.filter((l) => !["Closed Won", "Lost", "Went Dark"].includes(l.stage)).reduce((s, l) => s + l.dealValue, 0).toLocaleString()}</p></div>
-                          <div><p className="text-xs text-muted-foreground">Won</p><p className="font-semibold tabular-nums">{data.filter((l) => l.stage === "Closed Won").length}</p></div>
+                          <div><p className="text-xs text-muted-foreground">Pipeline</p><p className="font-semibold tabular-nums">${data.filter((l) => !isClosedStage(normalizeStage(l.stage))).reduce((s, l) => s + l.dealValue, 0).toLocaleString()}</p></div>
+                          <div><p className="text-xs text-muted-foreground">Won</p><p className="font-semibold tabular-nums">{data.filter((l) => normalizeStage(l.stage) === "Closed Won").length}</p></div>
                         </div>
                       </div>
                     ))}

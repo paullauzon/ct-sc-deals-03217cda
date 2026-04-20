@@ -1,8 +1,9 @@
 import { Lead } from "@/types/lead";
+import { normalizeStage } from "@/lib/leadUtils";
 
-/** Check if a lead was created within the last 24 hours and is still in "New Lead" stage */
+/** Check if a lead was created within the last 24 hours and is still in "Unassigned" stage (v2). */
 export function isNewLead(lead: Lead): boolean {
-  if (lead.stage !== "New Lead") return false;
+  if (normalizeStage(lead.stage) !== "Unassigned") return false;
   // Use dateSubmitted as proxy; for DB-ingested leads created_at would be recent
   const now = Date.now();
   // Check stageEnteredDate first, then dateSubmitted

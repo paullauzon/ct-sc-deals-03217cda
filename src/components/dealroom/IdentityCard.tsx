@@ -1,4 +1,5 @@
 import { Lead } from "@/types/lead";
+import { isClosedStage, normalizeStage } from "@/lib/leadUtils";
 import { CompanyAvatar } from "@/components/CompanyAvatar";
 import { BrandLogo } from "@/components/BrandLogo";
 import {
@@ -66,11 +67,11 @@ function lastTouchpoint(lead: Lead): { label: string; source: string } | null {
  * Uses subtle 1px ring (foreground) — no color, monochrome per design memory.
  */
 function getSuggestedAction(lead: Lead): string | null {
-  const isClosed = ["Closed Won", "Lost", "Went Dark"].includes(lead.stage);
-  if (isClosed) return null;
+  const norm = normalizeStage(lead.stage);
+  if (isClosedStage(norm)) return null;
   // No meeting booked yet → suggest Schedule
   const hasMeeting = (lead.meetings || []).length > 0 || !!lead.calendlyBookedAt || !!lead.meetingDate;
-  if (!hasMeeting && ["New Lead", "Qualified", "Contacted"].includes(lead.stage)) {
+  if (!hasMeeting && ["Unassigned", "In Contact"].includes(norm)) {
     return "Schedule";
   }
   // Overdue follow-up → suggest Email

@@ -46,6 +46,15 @@ const SLA_RULES: SlaRule[] = [
     description: "Inbound lead has been Unassigned for 3+ days with no first touch. Send a personalized first email today before they forget they signed up.",
   },
   {
+    id: "in-contact-stale",
+    stage: "In Contact",
+    legacyStages: ["Contacted", "Qualified"],
+    thresholdDays: 4,
+    taskType: "call",
+    title: "Book the discovery — In Contact deal cooling",
+    description: "Lead has been In Contact for 4+ days with no Discovery booked. Pick up the phone and lock a time today, or move to Closed Lost.",
+  },
+  {
     id: "discovery-scheduled-no-fireflies",
     stage: "Discovery Scheduled",
     legacyStages: ["Meeting Set"],
@@ -61,6 +70,16 @@ const SLA_RULES: SlaRule[] = [
     taskType: "internal",
     title: "Reconcile meeting — sync Fireflies",
     description: "Meeting happened > 24h ago but no Fireflies recording is linked. Sync the transcript or log outcome manually.",
+  },
+  {
+    id: "discovery-completed-no-sample",
+    stage: "Discovery Completed",
+    legacyStages: ["Meeting Held"],
+    thresholdDays: 5,
+    shouldFire: (l) => !l.sample_sent_date,
+    taskType: "email",
+    title: "Send sample or push to Closed Lost — no more graveyard",
+    description: "Discovery completed 5+ days ago but no sample sent. Either ship the sample today (move to Sample Sent) or document why this should be Closed Lost. The whole point of the v2 pipeline is to stop deals dying here.",
   },
   {
     id: "sample-sent-no-outcome",
