@@ -216,7 +216,6 @@ export function LeadProvider({ children }: { children: ReactNode }) {
             // Live-sync core deal fields edited from other tabs / processing jobs
             const liveFields: Array<[string, keyof Lead, (v: any) => any]> = [
               ["stage", "stage", v => v],
-              ["lead_status", "leadStatus", v => v],
               ["priority", "priority", v => v],
               ["deal_value", "dealValue", v => Number(v)],
               ["close_confidence", "closeConfidence", v => v == null ? null : Number(v)],

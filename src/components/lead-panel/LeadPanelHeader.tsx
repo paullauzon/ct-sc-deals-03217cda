@@ -104,20 +104,12 @@ interface LeadPanelHeaderProps {
   showCompactActions?: boolean;
 }
 
-const LEAD_STATUS_TONE: Record<string, string> = {
-  "New": "bg-secondary text-foreground/80",
-  "Working": "bg-secondary text-foreground/80",
-  "Connected": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  "Reviewing": "bg-secondary text-foreground/80",
-  "Stalled": "bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  "Bad Timing": "bg-secondary text-muted-foreground",
-  "Not Now": "bg-secondary text-muted-foreground",
-};
+
 
 function buildDealSummary(lead: Lead, daysInStage: number, lastContact: string | null): string {
   const lines: string[] = [];
   lines.push(`${lead.name}${lead.role ? `, ${lead.role}` : ""}${lead.company ? ` @ ${lead.company}` : ""}`);
-  lines.push(`Stage: ${lead.stage}${lead.leadStatus ? ` · ${lead.leadStatus}` : ""} · ${daysInStage}d in stage`);
+  lines.push(`Stage: ${lead.stage} · ${daysInStage}d in stage`);
   if (lead.dealValue) {
     const tcv = lead.contractMonths ? lead.dealValue * lead.contractMonths : null;
     lines.push(`Value: $${lead.dealValue.toLocaleString()}/mo${tcv ? ` · TCV $${tcv.toLocaleString()}` : ""}${lead.closeConfidence ? ` · ${lead.closeConfidence}% confidence` : ""}`);
@@ -301,15 +293,6 @@ export function LeadPanelHeader({
                 <Mail className="h-2.5 w-2.5" /> {unreadCount} unread
               </span>
             )}
-            <span
-              className={cn(
-                "text-[10px] px-1.5 py-0.5 rounded font-medium",
-                LEAD_STATUS_TONE[lead.leadStatus || "Working"] || "bg-secondary text-foreground/80",
-              )}
-              title={`Lead status: ${lead.leadStatus || "Working"}`}
-            >
-              {lead.leadStatus || "Working"}
-            </span>
             {dealHealth && (
               <span className={cn(
                 "text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 font-medium",

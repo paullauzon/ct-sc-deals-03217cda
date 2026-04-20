@@ -192,7 +192,7 @@ export function MailboxSettings() {
         </p>
       </div>
 
-      <Tabs defaultValue="mailboxes" className="space-y-4">
+      <Tabs defaultValue={typeof window !== "undefined" && new URLSearchParams(window.location.hash.replace("#","")).get("tab") === "automation" ? "automation" : "mailboxes"} className="space-y-4">
         <div className="flex items-center justify-between">
           <TabsList>
             <TabsTrigger value="mailboxes">Mailboxes</TabsTrigger>

@@ -104,14 +104,6 @@ export type IcpFit = "Strong" | "Moderate" | "Weak" | "";
 
 export type BillingFrequency = "Monthly" | "Quarterly" | "Annually" | "";
 
-export type LeadStatus =
-  | "New"
-  | "Working"
-  | "Connected"
-  | "Reviewing"
-  | "Stalled"
-  | "Bad Timing"
-  | "Not Now";
 
 export type StakeholderSentiment =
   | "champion"
@@ -545,8 +537,6 @@ export interface Lead {
   secondaryContacts?: { name: string; email: string }[];
   googleDriveLink: string;
   forecastedCloseDate: string;
-  // v4: Lead status (separate from pipeline stage)
-  leadStatus?: LeadStatus;
   // v4: Mutual close plan
   nextMutualStep?: string;
   nextMutualStepDate?: string;
