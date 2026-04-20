@@ -170,10 +170,12 @@ export function MailboxSettings() {
                   <td className="px-4 py-3 capitalize">{c.provider}</td>
                   <td className="px-4 py-3">
                     {(() => {
-                      // Token expired more than 7 days ago + no successful sync = likely needs reconnect
+                      // Only flag "Reconnect required" when token is expired AND no successful sync ever AND
+                      // the connection is older than 24h. Avoids false positives on brand-new connections.
                       const tokenExpired = c.token_expires_at && new Date(c.token_expires_at) < new Date();
-                      const staleSync = !c.last_synced_at || (new Date().getTime() - new Date(c.last_synced_at).getTime()) > 7 * 24 * 60 * 60 * 1000;
-                      const needsReconnect = c.is_active && tokenExpired && staleSync;
+                      const neverSynced = !c.last_synced_at;
+                      const olderThan24h = (new Date().getTime() - new Date(c.created_at).getTime()) > 24 * 60 * 60 * 1000;
+                      const needsReconnect = c.is_active && tokenExpired && neverSynced && olderThan24h;
 
                       if (!c.is_active) {
                         return (
