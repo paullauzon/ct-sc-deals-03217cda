@@ -176,7 +176,8 @@ export function AutomationHealthPanel() {
         )}>
           <span className={cn("w-1.5 h-1.5 rounded-full", firecrawlStatus.ok ? "bg-foreground/40" : "bg-foreground")} />
           <span className="font-medium">{firecrawlStatus.msg}</span>
-      </div>
+        </div>
+      )}
 
       {firecrawlBroken && (
         <div className="border border-foreground/20 bg-secondary/40 rounded-lg p-3 flex items-start gap-2.5">
