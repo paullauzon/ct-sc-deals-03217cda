@@ -503,6 +503,75 @@ serve(async (req) => {
       );
     }
 
+    // ── RE-FETCH MODE: re-pull transcripts for known firefliesIds whose transcript fetch failed previously ──
+    if (body.mode === "re-fetch" && Array.isArray(body.firefliesIds) && body.firefliesIds.length > 0) {
+      const ids: string[] = body.firefliesIds.slice(0, 50);
+      const results: any[] = [];
+
+      const TRANSCRIPT_QUERY = `
+        query GetTranscript($id: String!) {
+          transcript(id: $id) {
+            id
+            title
+            date
+            duration
+            transcript_url
+            sentences { text speaker_name }
+            participants
+            host_email
+            organizer_email
+          }
+        }
+      `;
+
+      for (const id of ids) {
+        try {
+          const resp = await fetch(FIREFLIES_GRAPHQL, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${FIREFLIES_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ query: TRANSCRIPT_QUERY, variables: { id } }),
+          });
+          const json = await resp.json();
+          const t = json?.data?.transcript;
+          if (!t || !Array.isArray(t.sentences) || t.sentences.length === 0) {
+            results.push({ id, ok: false, error: "Transcript empty or not returned" });
+            continue;
+          }
+          const transcriptText = t.sentences
+            .map((s: any) => `${s.speaker_name ? s.speaker_name + ": " : ""}${s.text || ""}`)
+            .join("\n")
+            .trim();
+
+          if (!transcriptText) {
+            results.push({ id, ok: false, error: "Empty transcript text" });
+            continue;
+          }
+
+          results.push({
+            id,
+            ok: true,
+            title: t.title,
+            date: t.date,
+            transcript: transcriptText,
+            transcriptLength: transcriptText.length,
+            transcript_url: t.transcript_url,
+          });
+        } catch (e) {
+          results.push({ id, ok: false, error: (e as Error).message });
+        }
+      }
+
+      console.log(`[re-fetch] processed ${results.length} firefliesIds, ${results.filter(r => r.ok).length} successful`);
+
+      return new Response(
+        JSON.stringify({ mode: "re-fetch", results }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     if (!OPENAI_API_KEY) {
       return new Response(

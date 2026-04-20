@@ -658,6 +658,85 @@ export function Pipeline() {
                   <span className="text-xs font-medium">Reschedule overdue follow-ups</span>
                   <span className="text-[10px] text-muted-foreground">Pushes all overdue pending tasks for active leads to tomorrow · zero cost</span>
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="flex-col items-start gap-0.5 py-2 cursor-pointer"
+                  onClick={async () => {
+                    toast.info("Scanning for broken Fireflies transcripts…");
+                    try {
+                      // Find leads with meetings that have a firefliesId but empty transcript
+                      const { data: candidates, error: scanErr } = await supabase
+                        .from("leads")
+                        .select("id, brand, meetings")
+                        .is("archived_at", null)
+                        .not("meetings", "eq", "[]");
+                      if (scanErr) throw scanErr;
+
+                      const broken: Array<{ leadId: string; brand: string; firefliesId: string; meetingIdx: number }> = [];
+                      for (const lead of candidates || []) {
+                        const meetings = Array.isArray(lead.meetings) ? lead.meetings : [];
+                        meetings.forEach((m: any, idx: number) => {
+                          if (m?.firefliesId && (!m.transcript || m.transcript.length === 0)) {
+                            broken.push({ leadId: lead.id, brand: lead.brand, firefliesId: m.firefliesId, meetingIdx: idx });
+                          }
+                        });
+                      }
+
+                      if (broken.length === 0) {
+                        toast.success("No broken transcripts found.");
+                        return;
+                      }
+
+                      toast.info(`Re-fetching ${broken.length} broken transcript${broken.length === 1 ? "" : "s"}…`);
+
+                      // Group by brand and fetch
+                      const byBrand: Record<string, typeof broken> = {};
+                      broken.forEach(b => {
+                        const brand = b.brand === "SourceCo" ? "SourceCo" : "Captarget";
+                        (byBrand[brand] = byBrand[brand] || []).push(b);
+                      });
+
+                      let recovered = 0;
+                      const allResults: any[] = [];
+                      for (const [brand, items] of Object.entries(byBrand)) {
+                        const ids = items.map(i => i.firefliesId);
+                        const { data, error } = await supabase.functions.invoke("fetch-fireflies", {
+                          body: { mode: "re-fetch", brand, firefliesIds: ids },
+                        });
+                        if (error) { console.error(`re-fetch ${brand} failed`, error); continue; }
+                        const results = (data?.results || []) as Array<{ id: string; ok: boolean; transcript?: string; transcriptLength?: number }>;
+                        allResults.push(...results.map(r => ({ ...r, brand })));
+                        for (const r of results) {
+                          if (!r.ok || !r.transcript) continue;
+                          const target = items.find(i => i.firefliesId === r.id);
+                          if (!target) continue;
+                          // Patch the meeting in the lead
+                          const lead = candidates!.find((l: any) => l.id === target.leadId);
+                          if (!lead) continue;
+                          const updatedMeetings = (lead.meetings as any[]).map((m: any, idx: number) =>
+                            idx === target.meetingIdx
+                              ? { ...m, transcript: r.transcript, transcriptLength: r.transcriptLength }
+                              : m
+                          );
+                          const { error: upErr } = await supabase
+                            .from("leads")
+                            .update({ meetings: updatedMeetings })
+                            .eq("id", target.leadId);
+                          if (!upErr) recovered++;
+                        }
+                      }
+
+                      const failed = allResults.filter(r => !r.ok).length;
+                      toast.success(`Recovered ${recovered} of ${broken.length} transcript${broken.length === 1 ? "" : "s"}${failed > 0 ? ` · ${failed} still empty in Fireflies` : ""}`);
+                      await refreshLeads();
+                    } catch (err) {
+                      toast.error("Re-fetch failed: " + (err as Error).message);
+                    }
+                  }}
+                >
+                  <span className="text-xs font-medium">Re-fetch broken transcripts</span>
+                  <span className="text-[10px] text-muted-foreground">Re-pulls Fireflies transcripts where the original sync returned empty · feeds stale-transcript queue</span>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
