@@ -89,3 +89,6 @@ verify_jwt = false
 
 [functions.send-gmail-email]
 verify_jwt = false
+
+[functions.track-email-open]
+verify_jwt = false

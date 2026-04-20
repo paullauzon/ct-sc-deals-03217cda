@@ -84,7 +84,15 @@ interface SuggestedResponse {
   body: string;
 }
 
-export function EmailsSection({ leadId, lead, onCompose }: { leadId: string; lead?: Lead; onCompose?: () => void }) {
+export interface ReplyPrefill {
+  to?: string;
+  subject?: string;
+  thread_id?: string;
+  in_reply_to?: string;
+  quote?: string;
+}
+
+export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: string; lead?: Lead; onCompose?: () => void; onReply?: (prefill: ReplyPrefill) => void }) {
   const [emails, setEmails] = useState<LeadEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [responseDialog, setResponseDialog] = useState<{ email: LeadEmail; objections: DetectedObjection[] } | null>(null);
@@ -175,6 +183,7 @@ export function EmailsSection({ leadId, lead, onCompose }: { leadId: string; lea
               key={thread.threadId}
               thread={thread}
               onSuggestResponses={(email, objections) => setResponseDialog({ email, objections })}
+              onReply={onReply}
             />
           ))}
         </div>
@@ -201,11 +210,11 @@ export function EmailsSection({ leadId, lead, onCompose }: { leadId: string; lea
   );
 }
 
-function ThreadCard({ thread, onSuggestResponses }: { thread: ThreadGroup; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void }) {
+function ThreadCard({ thread, onSuggestResponses, onReply }: { thread: ThreadGroup; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void }) {
   const isSingleEmail = thread.emails.length === 1;
 
   if (isSingleEmail) {
-    return <EmailRow email={thread.emails[0]} onSuggestResponses={onSuggestResponses} />;
+    return <EmailRow email={thread.emails[0]} onSuggestResponses={onSuggestResponses} onReply={onReply} />;
   }
 
   return (
@@ -230,7 +239,7 @@ function ThreadCard({ thread, onSuggestResponses }: { thread: ThreadGroup; onSug
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 border-l-2 border-border ml-3 mt-1 mb-2">
           {thread.emails.map((email) => (
-            <EmailRow key={email.id} email={email} compact onSuggestResponses={onSuggestResponses} />
+            <EmailRow key={email.id} email={email} compact onSuggestResponses={onSuggestResponses} onReply={onReply} />
           ))}
         </div>
       </CollapsibleContent>
@@ -238,7 +247,7 @@ function ThreadCard({ thread, onSuggestResponses }: { thread: ThreadGroup; onSug
   );
 }
 
-function EmailRow({ email, compact, onSuggestResponses }: { email: LeadEmail; compact?: boolean; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void }) {
+function EmailRow({ email, compact, onSuggestResponses, onReply }: { email: LeadEmail; compact?: boolean; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void }) {
   const [expanded, setExpanded] = useState(false);
   const isOutbound = email.direction === "outbound";
   const Icon = isOutbound ? ArrowUpRight : ArrowDownLeft;
@@ -339,8 +348,34 @@ function EmailRow({ email, compact, onSuggestResponses }: { email: LeadEmail; co
               {email.body_text}
             </pre>
           )}
-          {hasObjections && onSuggestResponses && (
-            <div className="mt-2 flex justify-end">
+          <div className="mt-2 flex justify-end gap-1.5">
+            {!isOutbound && onReply && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1.5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const subj = email.subject || "";
+                  const replySubj = /^re:/i.test(subj) ? subj : `Re: ${subj}`;
+                  const dateStr = new Date(email.email_date).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+                  const sender = email.from_name ? `${email.from_name} <${email.from_address}>` : email.from_address;
+                  const quoted = (email.body_text || email.body_preview || "")
+                    .split("\n").map(l => `> ${l}`).join("\n");
+                  const quote = `On ${dateStr}, ${sender} wrote:\n${quoted}`;
+                  onReply({
+                    to: email.from_address,
+                    subject: replySubj,
+                    thread_id: email.thread_id || "",
+                    in_reply_to: email.message_id || "",
+                    quote,
+                  });
+                }}
+              >
+                <Reply className="h-3 w-3" /> Reply
+              </Button>
+            )}
+            {hasObjections && onSuggestResponses && (
               <Button
                 variant="outline"
                 size="sm"
@@ -349,8 +384,8 @@ function EmailRow({ email, compact, onSuggestResponses }: { email: LeadEmail; co
               >
                 <Sparkles className="h-3 w-3" /> Suggest 3 responses
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>

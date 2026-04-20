@@ -142,9 +142,50 @@ Deno.serve(async (req) => {
     const fromName = (conn.user_label as string)?.split("—")[0]?.trim() || undefined;
     const rfc822MessageId = `<crm-${crypto.randomUUID()}@${fromAddress.split("@")[1] || "lovable.local"}>`;
 
+    // Pre-insert lead_emails row so we can stamp the pixel URL with its id.
+    // body_html stored without the pixel — pixel only goes in the recipient's copy.
+    const preview = text.slice(0, 280).replace(/\s+/g, " ").trim();
+    const insertRow = {
+      lead_id: typeof lead_id === "string" && lead_id ? lead_id : "unmatched",
+      provider_message_id: null as string | null,
+      message_id: rfc822MessageId,
+      thread_id: typeof thread_id === "string" ? thread_id : "",
+      direction: "outbound",
+      from_address: fromAddress,
+      from_name: fromName ?? "",
+      to_addresses: to,
+      cc_addresses: cc,
+      bcc_addresses: bcc,
+      subject: subj,
+      body_text: text,
+      body_html: html,
+      body_preview: preview,
+      email_date: new Date().toISOString(),
+      source: "gmail",
+      is_read: true,
+      tracked: true,
+      raw_payload: { sent_via: "crm", x_crm_source: "lovable-crm" },
+    };
+    const { data: inserted, error: insertErr } = await supabase
+      .from("lead_emails")
+      .insert(insertRow)
+      .select("id")
+      .single();
+    if (insertErr || !inserted) {
+      throw new Error(`lead_emails pre-insert failed: ${insertErr?.message || "no row"}`);
+    }
+    const leadEmailId = inserted.id as string;
+
+    // Inject open-pixel into the recipient HTML.
+    const trackUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/track-email-open?eid=${leadEmailId}`;
+    const pixelTag = `<img src="${trackUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />`;
+    const htmlWithPixel = html.replace(/<\/body>/i, `${pixelTag}</body>`) === html
+      ? `${html}${pixelTag}`
+      : html.replace(/<\/body>/i, `${pixelTag}</body>`);
+
     const raw = buildRfc822({
       fromAddress, fromName, to, cc, bcc,
-      subject: subj, text, html,
+      subject: subj, text, html: htmlWithPixel,
       inReplyTo: typeof in_reply_to === "string" ? in_reply_to : undefined,
       messageId: rfc822MessageId,
     });
@@ -162,45 +203,24 @@ Deno.serve(async (req) => {
     });
     if (!sendRes.ok) {
       const errTxt = await sendRes.text();
+      // Mark the row as failed so it doesn't sit as a phantom sent.
+      await supabase.from("lead_emails").delete().eq("id", leadEmailId);
       throw new Error(`Gmail send failed: ${sendRes.status} ${errTxt.slice(0, 200)}`);
     }
     const sent = await sendRes.json() as { id: string; threadId: string };
 
-    // Insert into lead_emails so it shows up immediately in the deal room
-    const preview = text.slice(0, 280).replace(/\s+/g, " ").trim();
-    const insertRow = {
-      lead_id: typeof lead_id === "string" && lead_id ? lead_id : "unmatched",
-      provider_message_id: sent.id,
-      message_id: rfc822MessageId,
-      thread_id: sent.threadId ?? "",
-      direction: "outbound",
-      from_address: fromAddress,
-      from_name: fromName ?? "",
-      to_addresses: to,
-      cc_addresses: cc,
-      bcc_addresses: bcc,
-      subject: subj,
-      body_text: text,
-      body_html: html,
-      body_preview: preview,
-      email_date: new Date().toISOString(),
-      source: "gmail",
-      is_read: true,
-      raw_payload: { sent_via: "crm", x_crm_source: "lovable-crm" },
-    };
-    const { data: inserted, error: insertErr } = await supabase
+    // Backfill the gmail provider_message_id + threadId.
+    await supabase
       .from("lead_emails")
-      .insert(insertRow)
-      .select("id")
-      .single();
-    if (insertErr) console.error("lead_emails insert failed:", insertErr);
+      .update({ provider_message_id: sent.id, thread_id: sent.threadId ?? "" })
+      .eq("id", leadEmailId);
 
     return new Response(JSON.stringify({
       ok: true,
       gmail_message_id: sent.id,
       rfc822_message_id: rfc822MessageId,
       thread_id: sent.threadId,
-      lead_email_id: inserted?.id ?? null,
+      lead_email_id: leadEmailId,
     }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

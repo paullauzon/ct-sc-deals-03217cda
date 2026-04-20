@@ -75,6 +75,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
   const [callOpen, setCallOpen] = useState(false);
   const [emailDrawerOpen, setEmailDrawerOpen] = useState(false);
   const [emailDrawerPreset, setEmailDrawerPreset] = useState<"follow-up" | "default" | undefined>(undefined);
+  const [emailReplyContext, setEmailReplyContext] = useState<import("./EmailsSection").ReplyPrefill | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
 
@@ -243,7 +244,12 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
     return s === "Closed Won" || s === "Closed Lost" || s === "Lost" || s === "Went Dark";
   })();
 
-  const onEmail = () => { setEmailDrawerPreset(undefined); setEmailDrawerOpen(true); };
+  const onEmail = () => { setEmailDrawerPreset(undefined); setEmailReplyContext(null); setEmailDrawerOpen(true); };
+  const onReply = (prefill: import("./EmailsSection").ReplyPrefill) => {
+    setEmailDrawerPreset(undefined);
+    setEmailReplyContext(prefill);
+    setEmailDrawerOpen(true);
+  };
   const onSchedule = () => {
     if (lead.calendlyBookedAt) {
       toast(lead.calendlyEventName || "Calendly meeting", {
@@ -260,7 +266,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
   const onArchive = () => setArchiveTarget({ id: lead.id, name: lead.name });
   const onChangeStage = (stage: LeadStage) =>
     save({ stage, stageEnteredDate: new Date().toISOString().split("T")[0] });
-  const onDraftFollowUp = () => { setEmailDrawerPreset("follow-up"); setEmailDrawerOpen(true); };
+  const onDraftFollowUp = () => { setEmailDrawerPreset("follow-up"); setEmailReplyContext(null); setEmailDrawerOpen(true); };
 
   const notesCount = lead.notes ? lead.notes.split(/\n--- /).filter(Boolean).length : 0;
   const filesCount =
@@ -380,7 +386,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
                 <MeetingsSection lead={lead} />
               </TabsContent>
               <TabsContent value="emails" className="p-6 mt-0 max-w-4xl mx-auto">
-                <EmailsSection leadId={lead.id} lead={lead} onCompose={onEmail} />
+                <EmailsSection leadId={lead.id} lead={lead} onCompose={onEmail} onReply={onReply} />
               </TabsContent>
               <TabsContent value="intelligence" className="p-6 mt-0 max-w-5xl mx-auto space-y-6">
                 <AIResearchSection lead={lead} enriching={enriching} onEnrich={handleEnrich} save={save} />
@@ -435,7 +441,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
       <NoteDialog lead={lead} open={noteOpen} onOpenChange={setNoteOpen} save={save} />
       <TaskDialog lead={lead} open={taskOpen} onOpenChange={setTaskOpen} />
       <LogCallDialog lead={lead} open={callOpen} onOpenChange={setCallOpen} save={save} />
-      <EmailComposeDrawer lead={lead} open={emailDrawerOpen} onOpenChange={setEmailDrawerOpen} save={save} presetAction={emailDrawerPreset} />
+      <EmailComposeDrawer lead={lead} open={emailDrawerOpen} onOpenChange={setEmailDrawerOpen} save={save} presetAction={emailDrawerPreset} replyContext={emailReplyContext} />
       <KeyboardCheatsheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <AskDealDrawer lead={lead} open={askOpen} onOpenChange={setAskOpen} />
     </div>
