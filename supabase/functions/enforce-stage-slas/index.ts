@@ -119,6 +119,15 @@ const SLA_RULES: SlaRule[] = [
     title: "Push the close — direct call",
     description: "Negotiation has been open for a week. Get on the phone and surface the real blocker.",
   },
+  {
+    id: "proposal-sent-7d-silent-draft",
+    stage: "Proposal Sent",
+    legacyStages: [],
+    thresholdDays: 7,
+    taskType: "email",
+    title: "Review AI stall-nudge draft",
+    description: "Proposal has been silent 7+ days with no inbound reply. An AI soft-nudge draft has been generated in the Actions tab — review, edit, and send.",
+  },
 ];
 
 function daysInStage(stageEnteredDate: string | null): number {
@@ -171,6 +180,60 @@ Deno.serve(async (req) => {
         if (existing && existing.length > 0) {
           skipped++;
           continue;
+        }
+
+        // Special case: stall-draft rule requires checking for inbound emails
+        // and triggering generate-stage-draft
+        if (rule.id === "proposal-sent-7d-silent-draft") {
+          const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+          const { data: recentInbound } = await supabase
+            .from("lead_emails")
+            .select("id")
+            .eq("lead_id", lead.id)
+            .eq("direction", "inbound")
+            .gte("email_date", sevenDaysAgo)
+            .limit(1);
+          if (recentInbound && recentInbound.length > 0) {
+            skipped++;
+            continue;
+          }
+
+          // Check if a stall draft already exists and is still pending
+          const { data: existingDraft } = await supabase
+            .from("lead_drafts")
+            .select("id")
+            .eq("lead_id", lead.id)
+            .eq("action_key", "stage-stall-Proposal Sent")
+            .eq("status", "draft")
+            .limit(1);
+          if (existingDraft && existingDraft.length > 0) {
+            skipped++;
+            continue;
+          }
+
+          // Invoke generate-stage-draft with trigger='stall'
+          try {
+            const draftRes = await fetch(
+              `${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-stage-draft`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                },
+                body: JSON.stringify({
+                  lead_id: lead.id,
+                  new_stage: "Proposal Sent",
+                  trigger: "stall",
+                }),
+              },
+            );
+            if (!draftRes.ok) {
+              console.error(`generate-stage-draft failed for ${lead.id}:`, await draftRes.text());
+            }
+          } catch (e) {
+            console.error(`generate-stage-draft invocation error for ${lead.id}:`, e);
+          }
         }
 
         const dueDate = new Date().toISOString().split("T")[0];
