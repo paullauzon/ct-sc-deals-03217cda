@@ -92,3 +92,9 @@ verify_jwt = false
 
 [functions.track-email-open]
 verify_jwt = false
+
+[functions.track-email-click]
+verify_jwt = false
+
+[functions.process-scheduled-emails]
+verify_jwt = false
