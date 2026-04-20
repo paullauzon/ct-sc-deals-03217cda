@@ -198,6 +198,8 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
   // Toggle to expand/collapse all detail bodies at once
   const [expandAllNonce, setExpandAllNonce] = useState(0);
   const [forcedOpen, setForcedOpen] = useState<boolean | null>(null);
+  // Transcript drawer state — opened from any meeting row
+  const [transcriptMeeting, setTranscriptMeeting] = useState<Meeting | null>(null);
 
   const refetchActivity = async () => {
     const log = await fetchActivityLog(lead.id);
@@ -394,7 +396,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
 
   const counts = useMemo(() => ({
     all: events.length,
-    emails: events.filter(e => e.type === "email_in" || e.type === "email_out").length,
+    emails: events.filter(e => e.type === "email_in" || e.type === "email_out" || e.type === "sequence_paused").length,
     calls: events.filter(e => e.type === "call").length,
     meetings: events.filter(e => e.type === "meeting" || e.type === "calendly").length,
     tasks: events.filter(e => e.type === "task").length,
