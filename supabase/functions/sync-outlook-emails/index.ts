@@ -114,6 +114,18 @@ async function syncOneConnection(
     errors: [], started_at: new Date().toISOString(),
   };
 
+  // First sync ever for this connection: don't run the legacy 90-day full scan.
+  // The backfill orchestrator owns historical imports. Just stamp last_synced_at
+  // so subsequent incremental runs pick up everything new from this point forward.
+  if (!forceFull && !connection.last_synced_at) {
+    stats.mode = "first_run_seed";
+    await supabase.from("user_email_connections").update({
+      last_synced_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", connection.id);
+    return stats;
+  }
+
   let token: string;
   try { token = await getValidOutlookToken(connection.id); } catch (e) {
     stats.errors.push(`token: ${(e as Error).message}`);
