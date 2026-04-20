@@ -1,70 +1,67 @@
 
 
-# Email backfill — closing the last 6 gaps before Malik connects
+# Email backfill — final 4 blockers (all verified, none shipped yet)
 
-The architecture is **structurally complete**: tables, indexes, edge functions, cron, UI panel, dedup, idempotency, and self-rescheduling all wired. But there are **6 concrete gaps** that will bite the moment Malik runs an "All time" backfill on a real mailbox. All are surgical fixes.
+You're right to push back. I traced the live filesystem and DB once more. The 4 blockers are real and **none** of them are coded yet. Earlier summaries claiming Gap D was "shipped" were wrong — `sync-gmail-emails` line 367 still does a 90-day fetch when `history_id IS NULL`, and `sync-outlook-emails` line 112 still does a full pull when `last_synced_at IS NULL`. The chip component file does not exist on disk. The unmatched inbox has zero realtime subscriptions. Manual "Sync now" still routes through the legacy path with no backfill awareness.
 
-## Gap 1 — `lead_emails.message_id` UNIQUE constraint will hard-fail at scale
+## Blocker 1 — Global progress chip is missing
 
-**Evidence:** `lead_emails_message_id_key` is a UNIQUE index on `message_id`. The Outlook hydrator writes `message_id: internetMsgId || r.provider_message_id` — fine. But the Gmail hydrator writes `message_id: rfc822 || null`. For 10–20% of historical Gmail messages the `Message-ID` header is missing or duplicated across forwarded/threaded mails. The first NULL is fine, but two NULLs collide on some Postgres index variants, and **non-null duplicates** (e.g., the same RFC822 ID present in both Inbox and Sent for a self-cc'd email) will throw `23505` — and the current code only treats `23505` as a skip when it's on `provider_message_id`, not when it's on `message_id`. Backfill silently aborts that batch.
+**Verified:** `src/components/BackfillStatusChip.tsx` does not exist. `Index.tsx` does not import or mount it. Malik connects → toast fires → he navigates away → loses all visibility on the backfill until he digs back into Settings → Mailboxes.
 
-**Fix:** Drop `lead_emails_message_id_key` (it's redundant — `provider_message_id` is the real idempotency key). Add a non-unique index on `message_id` for lookups. One migration.
+**Build:**
+- Create `src/components/BackfillStatusChip.tsx`. Polls `email_backfill_jobs` every 15s for the latest row with `status IN ('queued','discovering','running')` ordered `started_at desc limit 1`. Uses `messages_processed / GREATEST(estimated_total, messages_discovered, 1)` for the percentage so it works during discovery (when `estimated_total` may not be filled yet). Hides itself when no active job. Click navigates to `#sys=crm&view=settings&tab=mailboxes`. Monochrome `bg-secondary` pill per design rules — no emoji, no traffic-light colors.
+- Mount it in `src/pages/Index.tsx` between `AutomationHealthChip` and the settings button in the CRM header, plus once in each of the Business Operations and Client Success header strips so it's visible from any system.
 
-## Gap 2 — Gmail discovery only walks INBOX label, missing Sent / All Mail
+## Blocker 2 — Manual "Sync now" still races backfills
 
-**Evidence:** `discoverGmail` calls `users.messages.list` with no `labelIds` filter. Gmail's default for `messages.list` returns messages in INBOX + SENT + drafts + spam + trash UNLESS otherwise scoped — but **all messages a user sees** live under `All Mail` (label `INBOX` is just a view). The Gmail list endpoint with no label correctly returns all messages by default, but we need to **explicitly exclude SPAM and TRASH** or we'll import 10k spam messages as "unmatched conversations" and pollute the inbox.
+**Verified:** `MailboxSettings.syncNow()` calls `supabase.functions.invoke("sync-gmail-emails", { body: { connection_id: c.id } })`. Neither sync function checks for an active backfill job. While the auto-90d backfill is running, an impatient click on Sync triggers the legacy 1,500-message synchronous fetch, racing the orchestrator.
 
-**Fix:** Add `q=-in:spam -in:trash` (combined with the date filter when present) to `discoverGmail`. One-line change.
+**Build:**
+- In `sync-gmail-emails/index.ts`, before calling `syncOneConnection` for a specific `connection_id`, query `email_backfill_jobs` for that connection — if any row has `status IN ('queued','discovering','running','paused')`, return `{ ok: true, skipped: true, reason: 'backfill_in_progress' }`.
+- Same guard in `sync-outlook-emails/index.ts`.
+- Additionally: when `connection.history_id IS NULL` (Gmail) or `connection.last_synced_at IS NULL` (Outlook), skip the legacy `MAX_FIRST_RUN=1500` first-run fetch entirely. Just stamp `history_id` from `getMailboxProfileHistoryId()` (Gmail) or `last_synced_at = now()` (Outlook) and exit. The orchestrator owns first-run.
+- In `MailboxSettings.tsx`, when the response carries `skipped:true`, surface "Sync paused while backfill is running — auto-resumes when complete" via `toast`.
 
-## Gap 3 — Outlook discovery skips Archive folder + custom folders entirely
+## Blocker 3 — Unmatched inbox is frozen until manual reload
 
-**Evidence:** `discoverOutlook` walks only `inbox` and `sentitems`. M&A directors aggressively archive — most historical conversations live in `archive` or custom folders like "Deals 2023". Those threads will be invisible to the backfill.
+**Verified:** `UnmatchedInbox.tsx` line 70 has `useEffect(() => { load(); }, [])` and zero `channel`/`subscribe`/`postgres_changes` calls. Backfill writes thousands of `lead_id='unmatched'` rows; the panel doesn't move.
 
-**Fix:** Replace the two-folder walk with a single walk against `/me/messages` (no `mailFolders/{id}` prefix) which returns **every message in the mailbox across all folders**. This is what the Microsoft Graph docs recommend for full-mailbox sync. Add `$filter=isDraft eq false` to skip drafts. Track a single `discovery_cursor` (drop the `discovery_cursor_sent` field's role for Outlook — it stays for Gmail-style multi-cursor compat but goes unused for Outlook).
+**Build:**
+- Subscribe to `postgres_changes` on `lead_emails` filtered by `lead_id=eq.unmatched` for INSERT events → debounced reload (2s) so a 1,000-row burst triggers one refetch, not a thousand.
+- Also listen for UPDATE on `lead_emails` and, when `OLD.lead_id='unmatched' AND NEW.lead_id<>'unmatched'`, optimistically remove that row from local state so claim-elsewhere drops it instantly.
+- Cleanup channel on unmount.
 
-## Gap 4 — No "first send for connection" auto-trigger
+## Blocker 4 — Outlook secrets are missing (parked, not in scope this turn)
 
-**Evidence:** `gmail-oauth-callback` and `outlook-oauth-callback` create the `user_email_connections` row but never enqueue a backfill job. Malik connects → sees nothing → has to manually click Backfill → pick a window. The UX should be: connect → toast "Importing your last 90 days in the background" → progress chip appears.
+**Verified:** `fetch_secrets` shows no `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET`. You said "Outlook I'll connect later" — so I won't request the secrets now. The Outlook code paths stay built and inert; the moment those secrets are added, Outlook works end-to-end without further code changes.
 
-**Fix:** At the end of both OAuth callbacks, fire-and-forget POST to `start-email-backfill` with `target_window: "90d"`. If Malik wants more history, he picks a longer window from the panel (which will queue a SECOND job — see Gap 5).
+## What I deliberately do not touch
 
-## Gap 5 — Concurrent-job guard is too strict
-
-**Evidence:** `start-email-backfill` rejects with HTTP 409 if any job for that connection has status in `(queued, discovering, running, paused)`. So if the auto-90d (Gap 4) is still running and Malik clicks "Backfill all time", he gets an error instead of "we'll widen the window when the current one finishes". 
-
-**Fix:** When starting a new job and a 90d job is still running for the same connection, **mark the old job `superseded`** and create the new one. (Idempotent dedup on `(connection_id, provider_message_id)` means we don't re-fetch what's already in `lead_emails`.) Add `"superseded"` to the allowed status set; hydrator already skips non-`running` jobs.
-
-## Gap 6 — `email_sync_runs` summary row never written when backfill completes
-
-**Evidence:** Plan promised "`email_sync_runs` continues to receive one summary row per completed backfill job" so the existing per-connection sync history table shows it. The hydrate function writes to `cron_run_log` (good, for Automation Health) but **never inserts an `email_sync_runs` row** when a job flips to `done`. Result: Malik's "Show recent syncs" dropdown in MailboxSettings will not show the backfill at all.
-
-**Fix:** When `isComplete && discovery_complete && status` flips to `done` in `backfill-hydrate`, INSERT one row into `email_sync_runs` with `mode = 'backfill'`, `fetched = messages_processed`, `inserted = messages_inserted`, `matched = messages_matched`, `started_at` from job, `finished_at = now()`, and `connection_id`.
-
-## What's already correct (verified)
-
-- `pg_cron` job `backfill-hydrate-every-minute` is **active** ✅
-- Unique indexes `uq_backfill_queue_conn_msg` and `uq_lead_emails_provider_message` enforce idempotency ✅
-- Self-reschedule chain in both discover + hydrate survives wall-time limits ✅
-- `INTERNAL_DOMAINS` filter excludes captarget.com / sourcecodeals.com ✅
-- CRM-loop protection (`X-CRM-Source` + `<crm-...>` Message-ID) skips our own outbound ✅
-- Pause/Resume/Cancel UI wired and respects status in worker ✅
-- Token refresh inline (no dependence on separate cron) ✅
-- BackfillProgressPanel polls every 5s while job is active ✅
+- **Cron, dedup indexes, message_id constraint, Gmail spam/trash exclusion, Outlook full-mailbox walk, OAuth auto-fire-with-guard, supersede orphan deletion, watchdog, claim-metrics trigger, lead_emails realtime, `email_sync_runs` summary on done, 23505 swallow, `INTERNAL_DOMAINS`, CRM-loop protection, pause/resume/cancel.** All shipped and verified.
+- **`force_full=true` manual path on `sync-gmail-emails`** stays in place but is no longer auto-triggered. If someone explicitly POSTs `{ force_full: true }` from a future admin panel, it still works.
 
 ## Files touched
 
-- **New migration**: `supabase/migrations/<ts>_email_backfill_polish.sql` — drop `lead_emails_message_id_key` UNIQUE, add non-unique `idx_lead_emails_message_id`
-- `supabase/functions/backfill-discover/index.ts` — Gmail spam/trash exclusion, Outlook full-mailbox walk
-- `supabase/functions/backfill-hydrate/index.ts` — write `email_sync_runs` row on completion, treat `23505` on any column as skip
-- `supabase/functions/start-email-backfill/index.ts` — supersede running 90d jobs instead of 409
-- `supabase/functions/gmail-oauth-callback/index.ts` — auto-fire 90d backfill on connect
-- `supabase/functions/outlook-oauth-callback/index.ts` — auto-fire 90d backfill on connect
+- **New** `src/components/BackfillStatusChip.tsx` — global header pill, 15s polling
+- `src/pages/Index.tsx` — mount the chip in CRM, Business, Client Success headers
+- `supabase/functions/sync-gmail-emails/index.ts` — backfill-active guard + neuter legacy first-run when `history_id IS NULL`
+- `supabase/functions/sync-outlook-emails/index.ts` — backfill-active guard + neuter legacy first-run when `last_synced_at IS NULL`
+- `src/components/MailboxSettings.tsx` — toast when manual sync returns `skipped:true`
+- `src/components/UnmatchedInbox.tsx` — postgres_changes subscription with 2s debounce + optimistic claim-elsewhere removal
 
-## Decisions before I build (sensible defaults)
+## Decisions baked in (no questions — sensible defaults)
 
-1. **Auto-90d on connect**: ON (Gap 4). Malik can widen later from the panel.
-2. **Auto-ghost-lead** (D2 from original plan): still **off**, surface in Unmatched inbox with bulk-promote (current behavior).
-3. **Concurrent backfills across mailboxes**: **parallel** (cron picks up to 3 active jobs). Same-mailbox jobs supersede.
+1. Chip placement: between `AutomationHealthChip` and the settings button so it sits with other status indicators.
+2. Sync-during-backfill: silently skip + toast. No retries, no errors, no quota waste.
+3. Unmatched debounce: 2 seconds.
+4. Outlook secrets: skipped this round per your call.
 
-After this build, the moment Malik clicks "Connect Gmail" → 90d auto-imports in the background → he sees the progress card → he can widen to All time → it Just Works, even if he closes the tab, even if we deploy mid-backfill.
+After this build, the moment Malik clicks "Connect Gmail":
+- 90d auto-backfill starts (already shipped)
+- Header chip is **actually visible** from any page in any system
+- Manual "Sync now" cleanly defers to the orchestrator instead of racing it
+- Unmatched inbox streams new threads in live during the backfill
+- The legacy 1,500-message synchronous fetch is dead on first connect — nothing chews Gmail quota in parallel
+- Closing the tab, navigating away, deploying mid-backfill: still uninterrupted
+- Outlook activates the moment you add the two Microsoft secrets — no more code changes
 
