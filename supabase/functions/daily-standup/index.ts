@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
 
     const { data: leads, error } = await supabase
       .from("leads")
-      .select("id,name,company,brand,stage,lead_status,deal_value,assigned_to,last_contact_date,next_follow_up,next_mutual_step,next_mutual_step_date,stage_entered_date,close_confidence,deal_intelligence,closed_date")
+      .select("id,name,company,brand,stage,deal_value,assigned_to,last_contact_date,next_follow_up,next_mutual_step,next_mutual_step_date,stage_entered_date,close_confidence,deal_intelligence,closed_date")
       .is("archived_at", null)
       .order("updated_at", { ascending: false })
       .limit(400);
