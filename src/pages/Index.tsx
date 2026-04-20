@@ -9,12 +9,14 @@ import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";
 import { SystemSwitcher } from "@/components/SystemSwitcher";
 import { BusinessSystem } from "@/components/BusinessSystem";
 import { ClientSuccessSystem } from "@/components/ClientSuccessSystem";
-import { Search, BarChart3, Kanban, Users, CalendarCheck } from "lucide-react";
+import { PipelineMigrationPage } from "@/components/migration/PipelineMigrationPage";
+import { LEGACY_STAGES } from "@/lib/leadUtils";
+import { Search, BarChart3, Kanban, Users, CalendarCheck, Wrench } from "lucide-react";
 
-type View = "dashboard" | "pipeline" | "leads" | "today";
+type View = "dashboard" | "pipeline" | "leads" | "today" | "migration";
 type System = "crm" | "business" | "client-success";
 
-const VALID_VIEWS = new Set<View>(["dashboard", "pipeline", "leads", "today"]);
+const VALID_VIEWS = new Set<View>(["dashboard", "pipeline", "leads", "today", "migration"]);
 
 function parseHashState(): { view: View; system: System } {
   const hash = window.location.hash.replace("#", "");
@@ -46,9 +48,12 @@ const NAV_ITEMS: { key: View; label: string; desc: string; icon: typeof BarChart
 function AppContent() {
   const [view, setViewState] = useState<View>(() => parseHashState().view);
   const [system, setSystemState] = useState<System>(() => parseHashState().system);
-  const { unseenCount, clearUnseen } = useLeads();
+  const { unseenCount, clearUnseen, leads } = useLeads();
   const [cmdLeadId, setCmdLeadId] = useState<string | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
+
+  // Migration tab visible only while legacy stage rows still exist.
+  const showMigration = leads.some(l => LEGACY_STAGES.includes(l.stage as any));
 
   const setView = useCallback((v: View) => {
     setViewState(v);
@@ -115,6 +120,20 @@ function AppContent() {
                     )}
                   </button>
                 ))}
+                {showMigration && (
+                  <button
+                    onClick={() => setView("migration")}
+                    className={`relative flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors border-b-2 ${
+                      view === "migration"
+                        ? "border-foreground text-foreground font-medium"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                    title="One-time pipeline v2 migration tool"
+                  >
+                    <Wrench className="h-3.5 w-3.5" />
+                    <span>Migration</span>
+                  </button>
+                )}
               </div>
               <div className="ml-auto">
                 <button
@@ -143,6 +162,7 @@ function AppContent() {
           {view === "dashboard" && <Dashboard />}
           {view === "leads" && <LeadsTable />}
           {view === "pipeline" && <Pipeline />}
+          {view === "migration" && <PipelineMigrationPage />}
         </>
       )}
 
