@@ -34,7 +34,7 @@ export function PipelineHealthV2() {
   }, [leads.length]);
 
   const { dropoffs, slaPerStage, nurtureCounts, totalActive } = useMemo(() => {
-    const active = leads.filter(l => !l.archivedAt);
+    const active = leads;
     const byStage: Record<string, number> = {};
     for (const l of active) {
       const s = normalizeStage(l.stage);
