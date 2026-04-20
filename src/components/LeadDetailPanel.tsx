@@ -15,11 +15,13 @@ import { ArchiveDialog } from "@/components/ArchiveDialog";
 import {
   Activity as ActivityIcon, Calendar, Mail, Brain, FolderOpen, MessageSquare,
   Zap, Trophy, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen,
+  LayoutDashboard,
 } from "lucide-react";
 import { LeadPanelHeader } from "./lead-panel/LeadPanelHeader";
 import { LeadPanelLeftRail } from "./lead-panel/LeadPanelLeftRail";
 import { LeadPanelRightRail } from "./lead-panel/LeadPanelRightRail";
 import { LeadActivityTab } from "./lead-panel/LeadActivityTab";
+import { LeadOverviewTab } from "./lead-panel/LeadOverviewTab";
 import { LeadFilesTab } from "./lead-panel/LeadFilesTab";
 import { LeadActionsTab } from "./lead-panel/LeadActionsTab";
 import { LeadDebriefTab } from "./lead-panel/LeadDebriefTab";
@@ -96,7 +98,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
   const onNext = () => { if (hasNext) goTo(order[idx + 1]); };
 
   useEffect(() => {
-    if (open) setActiveTab("activity");
+    if (open) setActiveTab("overview");
   }, [activeLeadId, open]);
 
   // Fetch email count for tab label
@@ -143,6 +145,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
       if (e.key === "[") { e.preventDefault(); setLeftOpen(v => !v); return; }
       if (e.key === "]") { e.preventDefault(); setRightOpen(v => !v); return; }
       switch (e.key.toLowerCase()) {
+        case "o": setActiveTab("overview"); break;
         case "a": setActiveTab("activity"); break;
         case "c": setActiveTab("actions"); break;
         case "m": setActiveTab("meetings"); break;
@@ -337,6 +340,9 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
             <div className="border-b border-border px-4 shrink-0 relative">
               <div className="overflow-x-auto scrollbar-hide -mx-4 px-4">
                 <TabsList className="bg-transparent h-10 p-0 gap-0 w-max">
+                  <TabsTrigger value="overview" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
+                    <LayoutDashboard className="h-3.5 w-3.5" /> Overview
+                  </TabsTrigger>
                   <TabsTrigger value="activity" className="text-xs gap-1.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-foreground rounded-none h-10">
                     <ActivityIcon className="h-3.5 w-3.5" /> Activity
                   </TabsTrigger>
@@ -371,11 +377,14 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
             </div>
 
             <div className="flex-1 overflow-y-auto">
+              <TabsContent value="overview" className="mt-0">
+                <LeadOverviewTab lead={lead} />
+              </TabsContent>
               <TabsContent value="activity" className="mt-0">
                 <div className="px-6 pt-4 max-w-3xl mx-auto">
                   <DealHealthAlerts lead={lead} />
                 </div>
-                <LeadActivityTab lead={lead} save={save} onDraftFollowUp={onDraftFollowUp} />
+                <LeadActivityTab lead={lead} save={save} onDraftFollowUp={onDraftFollowUp} onReply={onReply} />
               </TabsContent>
               {!isClosed && (
                 <TabsContent value="actions" className="mt-0">

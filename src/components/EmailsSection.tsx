@@ -101,17 +101,24 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   const [emails, setEmails] = useState<LeadEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [responseDialog, setResponseDialog] = useState<{ email: LeadEmail; objections: DetectedObjection[] } | null>(null);
+  const [showMarketing, setShowMarketing] = useState(false);
+  const [expandAllSignal, setExpandAllSignal] = useState<"expand" | "collapse" | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function fetchEmails() {
-      const { data, error } = await supabase
+      // Fetch 1-to-1 by default; marketing/transactional hidden unless toggled
+      let query = supabase
         .from("lead_emails")
         .select("*")
         .eq("lead_id", leadId)
         .order("email_date", { ascending: false })
         .limit(100);
+      if (!showMarketing) {
+        query = query.in("email_type", ["one_to_one", "sequence"]);
+      }
+      const { data, error } = await query;
 
       if (!cancelled) {
         if (data) setEmails(data as unknown as LeadEmail[]);
@@ -122,7 +129,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
 
     fetchEmails();
 
-    // Realtime subscription — listen for inserts AND updates (e.g. is_read flip, scheduled cancel)
+    // Realtime subscription — listen for inserts AND updates
     const channel = supabase
       .channel(`lead-emails-${leadId}`)
       .on(
@@ -130,6 +137,8 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
         { event: "INSERT", schema: "public", table: "lead_emails", filter: `lead_id=eq.${leadId}` },
         (payload) => {
           const newEmail = payload.new as unknown as LeadEmail;
+          const type = (newEmail as any).email_type || "one_to_one";
+          if (!showMarketing && !["one_to_one", "sequence"].includes(type)) return;
           setEmails((prev) => [newEmail, ...prev]);
         }
       )
@@ -155,7 +164,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [leadId]);
+  }, [leadId, showMarketing]);
 
   const markRead = async (emailId: string) => {
     setEmails((prev) => prev.map(e => e.id === emailId ? { ...e, is_read: true } : e));
@@ -169,16 +178,45 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     toast.success("Scheduled email cancelled");
   };
 
+  // Thread-level aggregate stats
+  const totalOpens = emails.reduce((sum, e) => sum + (Array.isArray(e.opens) ? e.opens.length : 0), 0);
+  const totalClicks = emails.reduce((sum, e) => sum + (Array.isArray(e.clicks) ? e.clicks.length : 0), 0);
+  const totalReplies = emails.filter(e => e.replied_at).length;
+
   const header = onCompose ? (
-    <div className="flex items-center justify-between border-b border-border pb-2 mb-3">
-      <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between border-b border-border pb-2 mb-3 flex-wrap gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-          Email Correspondence{emails.length > 0 ? ` (${emails.length})` : ""}
+          Emails{lead?.name ? ` with ${lead.name}` : ""}{emails.length > 0 ? ` (${emails.length})` : ""}
         </h3>
+        {(totalOpens > 0 || totalClicks > 0 || totalReplies > 0) && (
+          <span className="text-[10px] text-muted-foreground">
+            {totalOpens > 0 && `${totalOpens} open${totalOpens !== 1 ? "s" : ""}`}
+            {totalClicks > 0 && ` · ${totalClicks} click${totalClicks !== 1 ? "s" : ""}`}
+            {totalReplies > 0 && ` · ${totalReplies} repl${totalReplies !== 1 ? "ies" : "y"}`}
+          </span>
+        )}
       </div>
-      <Button variant="outline" size="sm" onClick={onCompose} className="h-7 text-xs gap-1.5">
-        <PenSquare className="h-3 w-3" /> Compose
-      </Button>
+      <div className="flex items-center gap-1.5">
+        <Button
+          variant="ghost" size="sm"
+          onClick={() => setShowMarketing(v => !v)}
+          className="h-7 text-[10px] text-muted-foreground"
+          title={showMarketing ? "Hide marketing/transactional" : "Show marketing/transactional"}
+        >
+          {showMarketing ? "1-to-1 only" : "Show all"}
+        </Button>
+        <Button
+          variant="ghost" size="sm"
+          onClick={() => setExpandAllSignal(s => s === "expand" ? "collapse" : "expand")}
+          className="h-7 text-[10px] text-muted-foreground"
+        >
+          {expandAllSignal === "expand" ? "Collapse all" : "Expand all"}
+        </Button>
+        <Button variant="outline" size="sm" onClick={onCompose} className="h-7 text-xs gap-1.5">
+          <PenSquare className="h-3 w-3" /> Compose
+        </Button>
+      </div>
     </div>
   ) : null;
 
