@@ -18,6 +18,7 @@ interface Connection {
 
 export function MailboxSettings() {
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [recentCounts, setRecentCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
@@ -29,7 +30,25 @@ export function MailboxSettings() {
       .from("user_email_connections")
       .select("*")
       .order("created_at", { ascending: false });
-    setConnections((data || []) as Connection[]);
+    const conns = (data || []) as Connection[];
+    setConnections(conns);
+
+    // 24h insert health badge per mailbox — counts lead_emails (source=gmail) where
+    // this mailbox is either sender or recipient. Cheap head-only count, parallel per row.
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const counts: Record<string, number> = {};
+    await Promise.all(
+      conns.map(async (c) => {
+        const { count } = await supabase
+          .from("lead_emails")
+          .select("id", { count: "exact", head: true })
+          .eq("source", "gmail")
+          .gte("created_at", since)
+          .or(`from_address.eq.${c.email_address},to_addresses.cs.{${c.email_address}}`);
+        counts[c.id] = count ?? 0;
+      }),
+    );
+    setRecentCounts(counts);
     setLoading(false);
   };
 
@@ -203,9 +222,16 @@ export function MailboxSettings() {
                     })()}
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {c.last_synced_at
-                      ? formatDistanceToNow(new Date(c.last_synced_at), { addSuffix: true })
-                      : "Not yet synced"}
+                    <div>
+                      {c.last_synced_at
+                        ? formatDistanceToNow(new Date(c.last_synced_at), { addSuffix: true })
+                        : "Not yet synced"}
+                    </div>
+                    {c.is_active && (
+                      <div className="mt-0.5 text-[11px]">
+                        <span className="text-foreground font-medium">{recentCounts[c.id] ?? 0}</span> in last 24h
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">

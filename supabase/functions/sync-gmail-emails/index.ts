@@ -83,7 +83,11 @@ const INTERNAL_DOMAINS = new Set([
   "sourcecodeals.com",
 ]);
 
-const MAX_MESSAGES_PER_RUN = 250;
+// Split caps: first-time backfill pulls a deeper window, incremental stays small.
+const MAX_FIRST_RUN = 1500;
+const MAX_INCREMENTAL = 250;
+// First-run backfill window. 90d gives meaningful deal history without hammering Gmail.
+const FIRST_RUN_WINDOW = "newer_than:90d";
 
 interface GmailMessage {
   id: string;
@@ -167,17 +171,42 @@ async function findLeadIdByEmail(
   candidates: string[],
 ): Promise<string | null> {
   if (candidates.length === 0) return null;
-  // exact email match against leads.email (case insensitive)
   const lowered = candidates.map((c) => c.toLowerCase());
-  const { data } = await supabase
+
+  // 1) Exact email match against leads.email
+  const { data: exact } = await supabase
     .from("leads")
     .select("id, email")
     .in("email", lowered)
     .limit(1);
-  if (data && data.length > 0) return (data[0] as { id: string }).id;
+  if (exact && exact.length > 0) return (exact[0] as { id: string }).id;
 
-  // Fallback: match by domain → leads.company_url contains domain (rough)
-  // Skip for now to avoid false positives; rely on exact email.
+  // 2) Domain-fallback: extract external domains and match against leads where the
+  // primary contact email or company_url shares the same domain. Internal domains
+  // are already filtered out by the caller. We bound the search to non-archived,
+  // non-duplicate leads to avoid linking to stale records.
+  const domains = Array.from(new Set(
+    lowered.map(domainOf).filter((d) => d && !INTERNAL_DOMAINS.has(d)),
+  ));
+  if (domains.length === 0) return null;
+
+  // Build OR filter for company_url ILIKE %domain% across all candidate domains.
+  // PostgREST .or() syntax: comma-separated, parens-wrapped — domains are alphanumeric+dot,
+  // safe to embed without escaping.
+  const orParts: string[] = [];
+  for (const d of domains) {
+    orParts.push(`email.ilike.%@${d}`);
+    orParts.push(`company_url.ilike.%${d}%`);
+  }
+  const { data: fuzzy } = await supabase
+    .from("leads")
+    .select("id, email, company_url, archived_at, is_duplicate")
+    .or(orParts.join(","))
+    .is("archived_at", null)
+    .eq("is_duplicate", false)
+    .limit(1);
+  if (fuzzy && fuzzy.length > 0) return (fuzzy[0] as { id: string }).id;
+
   return null;
 }
 
@@ -198,8 +227,8 @@ async function listMessageIdsFull(token: string): Promise<string[]> {
   let pageToken: string | undefined;
   do {
     const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-    url.searchParams.set("q", "newer_than:7d");
-    url.searchParams.set("maxResults", "100");
+    url.searchParams.set("q", FIRST_RUN_WINDOW);
+    url.searchParams.set("maxResults", "500");
     if (pageToken) url.searchParams.set("pageToken", pageToken);
     const res = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${token}` },
@@ -208,9 +237,9 @@ async function listMessageIdsFull(token: string): Promise<string[]> {
     const json = await res.json() as { messages?: { id: string }[]; nextPageToken?: string };
     json.messages?.forEach((m) => ids.push(m.id));
     pageToken = json.nextPageToken;
-    if (ids.length >= MAX_MESSAGES_PER_RUN) break;
+    if (ids.length >= MAX_FIRST_RUN) break;
   } while (pageToken);
-  return ids.slice(0, MAX_MESSAGES_PER_RUN);
+  return ids.slice(0, MAX_FIRST_RUN);
 }
 
 async function listMessageIdsIncremental(
@@ -244,9 +273,9 @@ async function listMessageIdsIncremental(
     });
     if (json.historyId) latestHistoryId = json.historyId;
     pageToken = json.nextPageToken;
-    if (ids.size >= MAX_MESSAGES_PER_RUN) break;
+    if (ids.size >= MAX_INCREMENTAL) break;
   } while (pageToken);
-  return { ids: Array.from(ids).slice(0, MAX_MESSAGES_PER_RUN), latestHistoryId, reset: false };
+  return { ids: Array.from(ids).slice(0, MAX_INCREMENTAL), latestHistoryId, reset: false };
 }
 
 async function fetchMessage(token: string, id: string): Promise<GmailMessage | null> {
