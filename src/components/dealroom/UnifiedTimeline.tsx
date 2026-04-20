@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Lead } from "@/types/lead";
+import { Lead, Meeting, MeetingIntelligence } from "@/types/lead";
 import { supabase } from "@/integrations/supabase/client";
 import { ActivityLogEntry, fetchActivityLog } from "@/lib/activityLog";
+import { TranscriptDrawer } from "@/components/lead-panel/dialogs/TranscriptDrawer";
 import {
   Mail,
   GitCommit,
@@ -25,6 +26,8 @@ import {
   Phone,
   CheckSquare,
   AlertTriangle,
+  PauseCircle,
+  FileText,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
