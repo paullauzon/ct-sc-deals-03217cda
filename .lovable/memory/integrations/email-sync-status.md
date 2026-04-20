@@ -1,32 +1,42 @@
 ---
 name: Email Sync Status
-description: Phase 1 done — Gmail OAuth + Settings UI live. Outlook still paused pending tenant admin consent.
+description: Phase 1 + 2 done — Gmail OAuth + inbound sync live (cron 10min). Outbound (Phase 3) and Outlook still ahead.
 type: feature
 ---
 
-## Phase 1 — DONE (this session)
+## Phase 1 — DONE
 
-**Gmail OAuth foundation shipped:**
-- `gmail-oauth-start` edge function — generates Google consent URL with offline access + scopes (gmail.readonly, gmail.send, gmail.modify, userinfo.email)
-- `gmail-oauth-callback` edge function — exchanges code for tokens, fetches user email, upserts into `user_email_connections`. Returns minimal HTML + redirect to settings page.
-- `refresh-gmail-token` edge function — exports `getValidAccessToken(connectionId)` helper for sync/send functions, plus standalone HTTP endpoint that refreshes one or all gmail connections.
-- `MailboxSettings.tsx` UI mounted at `#sys=crm&view=settings` — Connect Gmail button, table of connected mailboxes, refresh-token + disconnect actions. Settings cog in main nav.
-- Secrets: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` configured.
+**Gmail OAuth foundation:**
+- `gmail-oauth-start` / `gmail-oauth-callback` / `refresh-gmail-token` edge functions
+- `MailboxSettings.tsx` UI at `#sys=crm&view=settings` — Connect Gmail, refresh token, disconnect
+- Secrets: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`
 - Redirect URI: `https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/gmail-oauth-callback`
 
-## Phase 2 — Inbound sync (next session)
+## Phase 2 — DONE (this session)
 
-- `sync-gmail-emails` cron (every 10 min) — uses Gmail History API via `history_id`
-- Threading/dedup against existing `lead_emails` from Zapier (use `provider_message_id`)
-- Auto-match to lead by from/to address
-- Decommission Zapier `ingest-email` once parity confirmed
+**Gmail inbound sync shipped:**
+- `sync-gmail-emails` edge function
+  - First run: `messages.list?q=newer_than:7d` (capped 250 per run)
+  - Incremental: `users.history.list?startHistoryId=X&historyTypes=messageAdded`
+  - 404 fallback: history pruned → resets to 7-day full scan, logs `mode='history-reset'`
+  - Stores `historyId` from `users.profile` after full runs
+  - Parses RFC2822 headers (From/To/Cc/Bcc/Subject/Date/Message-ID), base64url decodes plain + html parts
+  - Direction = outbound if From matches mailbox address, else inbound
+  - Lead match: exact lowercase `leads.email` against external participants (skips own address + captarget.com / sourcecodeals.com)
+  - Unmatched rows stored with `lead_id='unmatched'` (consistent with existing Zapier behavior)
+  - Dedup: `provider_message_id = msg.id OR message_id = rfc822_id` against `lead_emails` before insert
+  - Inserted rows tagged `source='gmail'`
+- pg_cron `sync-gmail-emails-10min` runs every 10 min (uses anon key, function has `verify_jwt=false`)
+- "Sync now" button per mailbox in `MailboxSettings.tsx` — calls function with `connection_id`, toasts `fetched / inserted / matched / skipped_dup`
 
-## Phase 3 — Outbound + tracking
+**Parity period:** Zapier `ingest-email` (currently a no-op `410 Gone`) stays disabled. Existing Zapier-sourced rows (`source='zapier'`) are preserved and dedup logic prevents doubles when Gmail backfills the same thread. Run for one week, then officially retire Zapier.
+
+## Phase 3 — Outbound + tracking (next session)
 
 - `send-gmail-email` edge function (Gmail `users.messages.send` with base64url RFC 2822)
 - Wire `EmailComposeDrawer` to actually send (currently just drafts)
 - Open pixel + click rewriter
-- "Sent from CRM" filtering to avoid sync-loops
+- "Sent from CRM" filtering to avoid sync-loops (X-CRM-Source header → skip in dedup or always insert as outbound)
 
 ## Phase 4 — Polish
 

@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.refresh-gmail-token]
 verify_jwt = false
+
+[functions.sync-gmail-emails]
+verify_jwt = false
