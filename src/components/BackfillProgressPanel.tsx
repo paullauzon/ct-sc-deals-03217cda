@@ -161,6 +161,7 @@ export function BackfillProgressPanel({ connectionId, emailAddress, provider }: 
       case "done": return "Complete";
       case "failed": return "Failed";
       case "cancelled": return "Cancelled";
+      case "superseded": return "Replaced by newer backfill";
       default: return job.status;
     }
   };
