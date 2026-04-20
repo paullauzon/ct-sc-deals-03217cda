@@ -67,9 +67,11 @@ interface LeadActionsTabProps {
   save: (updates: Partial<Lead>) => void;
   /** External trigger from QuickActionBar "Draft AI" — same key used to bind to NBA card */
   draftSignal?: number;
+  /** Opens the compose drawer prefilled from a saved AI draft. Stamps ai_drafted=true on send + flips draft to status='sent'. */
+  onSendAiDraft?: (draftId: string, content: string) => void;
 }
 
-export function LeadActionsTab({ lead, allLeads, save, draftSignal }: LeadActionsTabProps) {
+export function LeadActionsTab({ lead, allLeads, save, draftSignal, onSendAiDraft }: LeadActionsTabProps) {
   const [showPrepDialog, setShowPrepDialog] = useState(false);
   const [prepBrief, setPrepBrief] = useState<MeetingPrepBrief | null>(null);
   const [generatingPrep, setGeneratingPrep] = useState(false);
