@@ -205,7 +205,7 @@ async function syncOneConnection(
         const text = m.body?.contentType === "text" ? m.body.content : "";
         const preview = (m.bodyPreview || "").substring(0, 280);
 
-        const { error: insertErr } = await supabase.from("lead_emails").insert({
+        const { data: insertedRow, error: insertErr } = await supabase.from("lead_emails").insert({
           lead_id: leadId || "unmatched",
           message_id: internetMsgId || m.id,
           provider_message_id: m.id,
@@ -225,10 +225,55 @@ async function syncOneConnection(
           is_read: !!m.isRead,
           attachments: m.hasAttachments ? [{ has: true }] : [],
           raw_payload: m as unknown as Record<string, unknown>,
-        });
+        }).select("id").single();
 
-        if (!insertErr) stats.inserted++;
-        else stats.errors.push(`insert: ${insertErr.message}`);
+        if (insertErr) {
+          stats.errors.push(`insert: ${insertErr.message}`);
+          continue;
+        }
+        stats.inserted++;
+
+        // Inbound-reply intelligence (parity with sync-gmail-emails):
+        //   1) Auto-discard pending stall drafts — the reply obviates the soft nudge.
+        //   2) For active selling stages, queue a contextual reply draft via generate-stage-draft.
+        if (direction === "inbound" && leadId && insertedRow) {
+          try {
+            await (supabase as any)
+              .from("lead_drafts")
+              .update({ status: "superseded", updated_at: new Date().toISOString() })
+              .eq("lead_id", leadId)
+              .like("action_key", "stage-stall-%")
+              .eq("status", "draft");
+
+            const { data: leadRow } = await supabase
+              .from("leads")
+              .select("stage")
+              .eq("id", leadId)
+              .single();
+            const stage = (leadRow as { stage?: string } | null)?.stage || "";
+            const replyStages = new Set([
+              "Proposal Sent", "Negotiating", "Negotiation",
+              "Sample Sent", "Meeting Held", "Discovery Completed",
+            ]);
+            if (replyStages.has(stage)) {
+              fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-stage-draft`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                },
+                body: JSON.stringify({
+                  lead_id: leadId,
+                  new_stage: stage,
+                  trigger: "reply",
+                  inbound_email_id: (insertedRow as { id: string }).id,
+                }),
+              }).catch((err) => console.error("outlook reply-draft trigger failed:", err));
+            }
+          } catch (replyErr) {
+            console.error("outlook inbound-reply hook (non-fatal):", replyErr);
+          }
+        }
       }
     }
   }
