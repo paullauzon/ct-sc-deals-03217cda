@@ -1,113 +1,110 @@
 
 
-# Gmail integration — full end-to-end verification
+# What remains in the email/communication system — full sweep
 
-## TL;DR
+Gmail core sync is done. Here's everything else that was deferred across past plans, ranked by impact. None are blockers; all are "next-tier" polish that move the system from "works" to "excellent."
 
-**Everything is working correctly.** Manual sync just executed cleanly, audit row was written, and every subsystem is wired correctly. One small "ghost" gap was investigated and resolved: the audit table looked empty after the last deployment, but a fresh sync at 13:13 confirmed the audit logging works — the two earlier cron ticks (13:00, 13:10) just ran on the previous deployment that didn't have audit logging yet.
+## Gap A — Click tracking (link analytics)
+**Today:** We track opens via 1×1 pixel. We do NOT track link clicks. Reps can't see which CTAs land.
+**Build:**
+- New `track-email-click` edge function — accepts `eid` + `url`, appends `{at, url, ua}` to `lead_emails.clicks`, then 302-redirects to the original URL.
+- `send-gmail-email` — rewrite every `<a href="X">` in the outbound HTML to `https://.../track-email-click?eid={id}&url={encoded X}` BEFORE sending. Skip rewriting `mailto:`, `tel:`, and our own pixel URL.
+- DB trigger already aggregates clicks into `lead_email_metrics` — no schema change needed.
+- `EmailsSection` already shows click badges — they'll light up automatically.
 
-## Live state — verified just now
+## Gap B — Mailbox health monitoring (bounces, quota, quarantine)
+**Today:** `lead_email_metrics` has `email_quarantined` + `unsubscribed_all` columns but nothing writes to them. Bounces from Gmail are invisible.
+**Build:**
+- `sync-gmail-emails` — detect bounce notifications (sender = `mailer-daemon@`, subject starts with "Delivery Status Notification"). Parse the failed recipient and write `bounce_reason` on the matching outbound `lead_emails` row, then increment `lead_email_metrics.total_bounces`.
+- Auto-flag `email_quarantined=true` after 2 hard bounces from the same recipient.
+- `EmailsSection` — show a small "Bounced" pill on outbound rows that bounced, plus a banner on the lead detail panel when `email_quarantined=true`.
 
-| Layer | Result |
-|---|---|
-| Mailbox row | `id@captarget.com` — active, refresh token present, label "Captarget" |
-| Token freshness | Valid until 13:51 UTC, auto-refreshes before expiry |
-| `last_synced_at` | 13:13:13 UTC (manual sync I just triggered) |
-| Cron `sync-gmail-emails-10min` | Active, `*/10 * * * *`, last 6 ticks all `succeeded` |
-| Manual sync invocation | HTTP 200, `{ok: true, fetched: 0, ...}` — clean |
-| `email_sync_runs` row written by manual sync | ✅ Yes, status `success`, mode `incremental`, finished_at populated |
-| `lead_emails` (source=gmail) | 1 row — Google Security alert, correctly classified inbound + unmatched |
-| Edge function errors | None |
+## Gap C — Reply detection (close the loop on outbound)
+**Today:** `lead_emails.replied_at` exists but is never populated. So "did they reply?" is invisible in metrics.
+**Build:**
+- `sync-gmail-emails` — when inserting an inbound email, look up the most recent outbound email in the same `thread_id` and set its `replied_at = email_date`.
+- Existing `update_lead_email_metrics` trigger already increments `total_replies` and `last_replied_date` from `replied_at`. No new schema.
+- Surfaces immediately in `EmailMetricsCard` as response rate.
 
-## Code verification — line-by-line
+## Gap D — Mark inbound as read when opened in CRM
+**Today:** `lead_emails.is_read` exists but is always `false`. The "X unread" badge can't be built.
+**Build:**
+- `EmailsSection` — when a user expands an inbound email row, `UPDATE lead_emails SET is_read=true WHERE id=$1`.
+- Add an unread count badge per lead in the Activity tab and on the lead detail panel header.
 
-### `sync-gmail-emails/index.ts` (538 lines)
-- 90-day first-run window via `FIRST_RUN_WINDOW = "newer_than:90d"` (line 90) ✅
-- Split caps `MAX_FIRST_RUN = 1500` / `MAX_INCREMENTAL = 250` (lines 87-88) ✅
-- Token refresh with 60s buffer + DB update (lines 22-74) ✅
-- Domain-fallback matching via `findLeadIdByEmail` — exact email then domain match against `leads.email` ILIKE + `leads.company_url` ILIKE, archived/duplicate filtered (lines 169-211) ✅
-- Internal domain exclusion `captarget.com` + `sourcecodeals.com` (lines 81-84) ✅
-- CRM-sent dedupe via `X-CRM-Source` header + `<crm-` Message-ID prefix (lines 383-390) ✅
-- Provider-message-id dedupe (lines 372-380) ✅
-- History reset fallback when Gmail returns 404 (lines 262-264, 333-336) ✅
-- Audit row write after every sync, non-fatal try/catch (lines 461-483) ✅ — confirmed working live
+## Gap E — Email templates (snippets / canned responses)
+**Today:** Compose drawer is blank every time. Reps retype the same intro paragraphs daily.
+**Build:**
+- New table `email_templates` (id, name, brand, subject_template, body_template, variables[], created_by, created_at).
+- New panel inside `EmailComposeDrawer`: "Insert template" dropdown, with `{{first_name}}`, `{{company}}`, `{{deal_value}}` variable interpolation from the lead.
+- Seed 4-6 templates: Discovery follow-up, Proposal nudge, Proof case study, Re-engage stale, Calendly link.
+- "Save as template" button on any sent email.
 
-### `ingest-lead/index.ts` — unmatched sweep (lines 394-439)
-- Direct address sweep: `from_address.eq` OR `to_addresses.cs.{email}` ✅
-- Domain-fallback sweep with `from_address ILIKE %@domain%`, capped at 500 rows ✅
-- Skips internal + freemail domains (gmail.com, yahoo.com, hotmail.com, outlook.com, icloud.com, proton.me) ✅
-- Wrapped in try/catch — never blocks lead creation ✅
+## Gap F — Scheduled send / send later
+**Today:** Sends fire immediately. Reps writing at 11pm send at 11pm.
+**Build:**
+- Add `scheduled_for` column on `lead_emails`, plus a status `scheduled`.
+- `EmailComposeDrawer` — "Send" button gets a dropdown: Now / In 1 hour / Tomorrow 8am / Pick time.
+- New cron `process-scheduled-emails` runs every 5 min — finds rows where `status='scheduled' AND scheduled_for <= now()`, calls `send-gmail-email` for each.
+- "Cancel send" button on any row with `status='scheduled'`.
 
-### `MailboxSettings.tsx` (418 lines)
-- Tabs: Mailboxes / Unmatched inbox ✅
-- 24h insert count per mailbox via filtered `lead_emails` query ✅
-- Recent syncs drawer per mailbox (last 10 from `email_sync_runs`) ✅
-- Reconnect-required guard only fires when token expired AND never synced AND >24h old ✅
-- Connect Gmail flow uses proper Dialog (not `window.prompt`) ✅
-- Returns to `#sys=crm&view=settings&connected=1` after OAuth ✅
+## Gap G — Per-user mailbox ownership / RLS
+**Today:** Any authenticated user sees every connection. There is no RLS — `user_email_connections` has a public-allow policy.
+**Decision needed first:** Should Adam see only his mailbox, or all team mailboxes?
+**Build (after decision):**
+- Add `user_id` column to `user_email_connections`.
+- Replace blanket policy with: own connection always; if role=admin, see all.
+- Filter `MailboxSettings.tsx` accordingly. Sync stays admin/system-wide.
 
-### `UnmatchedInbox.tsx` (326 lines)
-- Lists unmatched emails (cap 500) with sender, subject, preview, time ✅
-- Loads up to 1000 active leads for the picker ✅
-- "Claim to lead" — sets `lead_id` on one row ✅
-- "Claim all from sender" — bulk update by `from_address` ✅
-- "Dismiss" — hard delete with confirm ✅
-- Search filters across sender/subject/body ✅
+## Gap H — Gmail rate-limit handling (429)
+**Today:** A 429 response during message fetch is logged and skipped. Rare today, real risk at 4-5 mailboxes backfilling at once.
+**Build:**
+- Wrap the Gmail message fetch in a small retry helper: respect `Retry-After`, exponential backoff (1s, 2s, 4s) up to 3 attempts, then defer to next cron tick.
+- Pause the entire mailbox's run on the second 429 of a single batch — don't burn quota.
 
-### `gmail-oauth-start.ts` + `gmail-oauth-callback.ts`
-- UTF-8-safe base64url state encoding + decoding ✅
-- Refresh-token preservation on reconnect (callback line 156) ✅
-- Hard guard: refuses to persist a connection without a refresh token ✅
-- Sanitizes `return_to` to safe http(s) URLs only ✅
-- Friendly error pages for `access_denied`, missing email, token exchange failure ✅
+## Gap I — Image-proxy false-positive opens
+**Today:** Gmail prefetches images via Google's proxy as soon as it's delivered. Our pixel can fire within seconds of send, registering a "fake open" before the recipient opens.
+**Build:**
+- Detect `User-Agent` containing `GoogleImageProxy` in `track-email-open`.
+- Either: tag those opens as `proxy: true` and exclude from "real opens" count, OR ignore opens that arrive within 30s of `email_date`.
+- Filter accordingly in `EmailsSection` open badge.
 
-### `send-gmail-email/index.ts` (289 lines)
-- Token refresh inline ✅
-- Threading via `In-Reply-To` + `References` headers ✅
-- Custom `X-CRM-Source` header + `<crm-...>` Message-ID for sync dedupe ✅
-- Pixel open tracking on outbound HTML ✅
+## Gap J — Outlook (still paused, real product gap)
+**Today:** `sync-outlook-emails` exists but dormant. SourceCo team's emails are invisible.
+**Status:** Blocked on `MICROSOFT_OUTLOOK_API_KEY` + sourcecodeals.com tenant admin consent. Zero code change until that's unblocked. When it is, mirror the full Gmail pattern (OAuth start/callback, token refresh, send, reply, pixel, sync-runs audit).
 
-### Database schema
-- `email_sync_runs` table: 14 columns including connection_id, mode, status, fetched, inserted, matched, unmatched, skipped, errors (jsonb), started_at, finished_at ✅
-- Index `idx_email_sync_runs_connection_started (connection_id, started_at DESC)` ✅
-- Filtered index `idx_lead_emails_unmatched WHERE lead_id='unmatched'` ✅
-- Trigger function `update_lead_email_metrics` SECURITY DEFINER, writes to `lead_email_metrics` on insert, skips `lead_id='unmatched'` ✅
-- `verify_jwt = false` for all 5 Gmail functions in `supabase/config.toml` ✅
+## Gap K — Email features tied to nurture / next-steps
+**Today:** Inbound replies don't trigger anything. A "yes please send a proposal" email sits passively in the thread.
+**Build (smaller, fast):**
+- When `sync-gmail-emails` inserts an inbound email matched to a lead, also write a `lead_activity_log` row with `event_type='email_received'`. Already have `next_steps` engine — it can detect "unanswered inbound" as a 16th signal.
+- `useUnansweredEmails` hook already exists — wire it into `ActionQueue` so unanswered inbound emails surface as a top action chip.
 
-## Why the audit table briefly looked empty
+## Recommended order for next session
 
-The two cron runs at 13:00 and 13:10 didn't write rows because they ran on the deployment that immediately preceded today's audit-logging code. As soon as I manually invoked sync at 13:13, the new code wrote a row instantly with `status: success`, mode: `incremental`, `finished_at` populated. From the next cron tick onward, every sync will leave a trail.
+1. **Gap C (reply detection)** — 30 lines in sync function, instant value, zero risk.
+2. **Gap D (mark as read)** — small UI change, unlocks the unread badge UX.
+3. **Gap A (click tracking)** — high analytical value, ~80 lines.
+4. **Gap B (bounce detection)** — protects sender reputation as volume grows.
+5. **Gap E (templates)** — biggest daily-rep time saver.
+6. Then tackle F (scheduled send), I (proxy filter), H (rate-limit), K (nurture link), and finally G (per-user RLS) once you've decided the ownership model.
 
-## Behavioral verification (live)
+## What I'd skip / defer indefinitely
 
-Manual sync just produced this exact response:
-```json
-{"ok": true, "results": [{"connection_id": "8fdb...", "email": "id@captarget.com",
- "errors": [], "fetched": 0, "inserted": 0, "matched": 0, "mode": "incremental",
- "skipped_dup": 0, "skipped_internal": 0, "started_at": "2026-04-20T13:13:12.852Z"}]}
-```
-And the audit table now has:
-```
-mode=incremental, status=success, fetched=0, inserted=0, matched=0,
-started_at=13:13:12.852, finished_at=13:13:13.358 — total 506ms
-```
-This proves the entire happy-path executes in under a second on an empty incremental run.
+- Outlook (Gap J) — blocked externally, no code work possible.
+- Don't add A/B subject-line testing, smart-send-time prediction, or AI-summarized thread digests until templates + replies + clicks are live and producing data to learn from.
 
-## Real gaps that remain (none block production)
+## Files / changes
 
-1. **Google Testing-mode 7-day token expiry** — still pending. Switch User Type to Internal in Google Cloud Console (zero code change) to eliminate weekly reconnects.
-2. **No real sales mailbox connected yet** — `id@captarget.com` is transactional, has no lead conversations, so the matching engine has only been verified on synthetic paths. Connecting Adam's mailbox is the only remaining unknown.
-3. **Rate-limit handling** — 429 responses from Gmail are logged and skipped, no retry. Fine at current load (1 mailbox), worth handling once 4-5 mailboxes run concurrent backfills.
-4. **Per-user mailbox ownership / RLS** — currently every authenticated user sees every connection. Product decision pending: should Adam see only his mailbox, or all team mailboxes?
+- `supabase/functions/sync-gmail-emails/index.ts` — reply detection (C), bounce detection (B), rate-limit retry (H), activity log writes (K)
+- `supabase/functions/send-gmail-email/index.ts` — link rewriter (A)
+- New `supabase/functions/track-email-click/index.ts` — click endpoint (A)
+- `supabase/functions/track-email-open/index.ts` — proxy filter (I)
+- New `supabase/functions/process-scheduled-emails/index.ts` — scheduled send dispatcher (F)
+- `src/components/EmailsSection.tsx` — bounce pill, mark-as-read on expand, unread badges (B, D)
+- `src/components/lead-panel/dialogs/EmailComposeDrawer.tsx` — template picker, scheduled send picker (E, F)
+- New `src/components/EmailTemplates.tsx` — template manager + seed UI (E)
+- New migration — `email_templates` table + `lead_emails.scheduled_for` + `lead_emails.status` columns
+- `supabase/config.toml` — `verify_jwt = false` for `track-email-click` and `process-scheduled-emails`
 
-## Recommended next action (no plan needed)
-
-Connect Adam's real sales mailbox in the published app, click Sync now, then open one known lead's Activity tab. That single test exercises: 90-day backfill, 1500-message cap, exact-email match, domain-fallback match, internal-domain skip, Zapier dedupe, metrics trigger, and audit logging — all on real data. After that, every other priority is incremental polish.
-
-## What I am NOT recommending
-
-- No code changes are warranted right now. Every previously-approved improvement is live and verified working.
-- Don't build retry/backoff yet — premature for current load.
-- Don't add per-user RLS until you've decided the ownership model.
-- Don't extend backfill beyond 90 days until you see whether 90 completes cleanly on Adam's mailbox.
+Pick which gap(s) you want me to implement next and I'll build them in one focused pass.
 
