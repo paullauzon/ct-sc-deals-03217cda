@@ -178,16 +178,45 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     toast.success("Scheduled email cancelled");
   };
 
+  // Thread-level aggregate stats
+  const totalOpens = emails.reduce((sum, e) => sum + (Array.isArray(e.opens) ? e.opens.length : 0), 0);
+  const totalClicks = emails.reduce((sum, e) => sum + (Array.isArray(e.clicks) ? e.clicks.length : 0), 0);
+  const totalReplies = emails.filter(e => e.replied_at).length;
+
   const header = onCompose ? (
-    <div className="flex items-center justify-between border-b border-border pb-2 mb-3">
-      <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between border-b border-border pb-2 mb-3 flex-wrap gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-          Email Correspondence{emails.length > 0 ? ` (${emails.length})` : ""}
+          Emails{lead?.name ? ` with ${lead.name}` : ""}{emails.length > 0 ? ` (${emails.length})` : ""}
         </h3>
+        {(totalOpens > 0 || totalClicks > 0 || totalReplies > 0) && (
+          <span className="text-[10px] text-muted-foreground">
+            {totalOpens > 0 && `${totalOpens} open${totalOpens !== 1 ? "s" : ""}`}
+            {totalClicks > 0 && ` · ${totalClicks} click${totalClicks !== 1 ? "s" : ""}`}
+            {totalReplies > 0 && ` · ${totalReplies} repl${totalReplies !== 1 ? "ies" : "y"}`}
+          </span>
+        )}
       </div>
-      <Button variant="outline" size="sm" onClick={onCompose} className="h-7 text-xs gap-1.5">
-        <PenSquare className="h-3 w-3" /> Compose
-      </Button>
+      <div className="flex items-center gap-1.5">
+        <Button
+          variant="ghost" size="sm"
+          onClick={() => setShowMarketing(v => !v)}
+          className="h-7 text-[10px] text-muted-foreground"
+          title={showMarketing ? "Hide marketing/transactional" : "Show marketing/transactional"}
+        >
+          {showMarketing ? "1-to-1 only" : "Show all"}
+        </Button>
+        <Button
+          variant="ghost" size="sm"
+          onClick={() => setExpandAllSignal(s => s === "expand" ? "collapse" : "expand")}
+          className="h-7 text-[10px] text-muted-foreground"
+        >
+          {expandAllSignal === "expand" ? "Collapse all" : "Expand all"}
+        </Button>
+        <Button variant="outline" size="sm" onClick={onCompose} className="h-7 text-xs gap-1.5">
+          <PenSquare className="h-3 w-3" /> Compose
+        </Button>
+      </div>
     </div>
   ) : null;
 
