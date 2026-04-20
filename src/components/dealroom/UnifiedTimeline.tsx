@@ -440,6 +440,21 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
     return new Set(ordered.slice(0, 10));
   }, [pinned, unpinned]);
 
+  // Map of inbound email id → sequence step that was paused (so we can render an inline
+  // "Sx paused" chip directly on the inbound row, in addition to the sibling pause row).
+  const pausedByInboundEmailId = useMemo(() => {
+    const map = new Map<string, string>();
+    activity.forEach(a => {
+      if (a.event_type !== "sequence_paused") return;
+      const meta = (a as any).metadata as Record<string, unknown> | undefined;
+      const inboundId = meta && typeof meta === "object" ? (meta as any).inbound_email_id : undefined;
+      if (typeof inboundId === "string" && inboundId) {
+        map.set(inboundId, a.new_value || "");
+      }
+    });
+    return map;
+  }, [activity]);
+
   return (
     <div className="space-y-3">
       {/* Controls bar */}
