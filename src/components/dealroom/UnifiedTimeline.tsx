@@ -137,7 +137,7 @@ const RANGES: { key: DateRange; label: string; days: number | null }[] = [
 function eventMatchesFilter(e: TimelineEvent, f: FilterKey): boolean {
   if (f === "all") return true;
   if (f === "pinned") return !!e.pinnedAt;
-  if (f === "emails") return e.type === "email_in" || e.type === "email_out";
+  if (f === "emails") return e.type === "email_in" || e.type === "email_out" || e.type === "sequence_paused";
   if (f === "calls") return e.type === "call";
   if (f === "meetings") return e.type === "meeting" || e.type === "calendly";
   if (f === "tasks") return e.type === "task";
@@ -158,6 +158,7 @@ function iconFor(type: TimelineEvent["type"]) {
     case "submission": return <FileInput className="h-3.5 w-3.5" />;
     case "call": return <Phone className="h-3.5 w-3.5" />;
     case "task": return <CheckSquare className="h-3.5 w-3.5" />;
+    case "sequence_paused": return <PauseCircle className="h-3.5 w-3.5" />;
     default: return <Clock className="h-3.5 w-3.5" />;
   }
 }
