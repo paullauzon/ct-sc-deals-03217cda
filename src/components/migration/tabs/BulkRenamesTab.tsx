@@ -95,7 +95,7 @@ export function BulkRenamesTab({ counts, onChange }: { counts: StageCounts; onCh
                 {count} deal{count === 1 ? "" : "s"}
               </div>
               {done ? (
-                <div className="flex items-center gap-1.5 text-xs text-emerald-600 w-24 justify-end">
+                <div className="flex items-center gap-1.5 text-xs text-foreground w-24 justify-end">
                   <CheckCircle2 className="h-4 w-4" />
                   Done
                 </div>

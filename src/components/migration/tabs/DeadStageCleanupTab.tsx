@@ -59,6 +59,7 @@ export function DeadStageCleanupTab({ counts, onChange }: { counts: StageCounts;
       const updatePayload: Record<string, any> = { stage: c.to, ...(c.patch || {}) };
       const { error } = await supabase
         .from("leads")
+        // @ts-ignore — dynamic patch with optional v2 fields
         .update(updatePayload)
         .eq("stage", c.from)
         .is("archived_at", null);
@@ -107,7 +108,7 @@ export function DeadStageCleanupTab({ counts, onChange }: { counts: StageCounts;
                   {count} deal{count === 1 ? "" : "s"}
                 </div>
                 {done ? (
-                  <div className="flex items-center gap-1.5 text-xs text-emerald-600 w-24 justify-end">
+                  <div className="flex items-center gap-1.5 text-xs text-foreground w-24 justify-end">
                     <CheckCircle2 className="h-4 w-4" />
                     Done
                   </div>
