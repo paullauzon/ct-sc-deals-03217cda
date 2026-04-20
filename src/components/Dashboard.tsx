@@ -294,7 +294,7 @@ export function Dashboard() {
     // Owner breakdown
     const owners = ["Malik", "Valeria", "Tomos", ""] as const;
     const ownerData = owners.map((owner) => {
-      const owned = filteredLeads.filter((l) => l.assignedTo === owner && !closedStages.has(l.stage));
+      const owned = filteredLeads.filter((l) => l.assignedTo === owner && !isClosedStage(normalizeStage(l.stage)));
       return {
         owner: owner || "Unassigned",
         count: owned.length,
@@ -330,7 +330,7 @@ export function Dashboard() {
       : null;
 
     // Deal health summary
-    const activeLeads = filteredLeads.filter((l) => !closedStages.has(l.stage));
+    const activeLeads = filteredLeads.filter((l) => !isClosedStage(normalizeStage(l.stage)));
     let criticalAlerts = 0;
     let warningAlerts = 0;
     let atRiskRevenue = 0;
@@ -375,9 +375,9 @@ export function Dashboard() {
     const forecastGap = Math.max(0, forecastTarget - commitValue);
 
     // Sales velocity for overview
-    const activeDeals = filteredLeads.filter(l => !closedStages.has(l.stage));
-    const wonLeads2 = filteredLeads.filter(l => l.stage === "Closed Won");
-    const lostLeads2 = filteredLeads.filter(l => l.stage === "Lost");
+    const activeDeals = filteredLeads.filter(l => !isClosedStage(normalizeStage(l.stage)));
+    const wonLeads2 = filteredLeads.filter(l => normalizeStage(l.stage) === "Closed Won");
+    const lostLeads2 = filteredLeads.filter(l => normalizeStage(l.stage) === "Closed Lost");
     const totalClosed = wonLeads2.length + lostLeads2.length;
     const winRateVal = totalClosed > 0 ? wonLeads2.length / totalClosed : 0;
     const avgDealVal = activeDeals.length > 0
