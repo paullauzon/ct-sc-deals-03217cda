@@ -131,6 +131,7 @@ function AppContent() {
                   <span className="flex-1 text-left">Search…</span>
                   <kbd className="text-[10px] font-mono bg-background border border-border rounded px-1.5 py-0.5">⌘K</kbd>
                 </button>
+                <BackfillStatusChip />
                 <AutomationHealthChip onClick={() => {
                   const params = new URLSearchParams(window.location.hash.replace("#",""));
                   params.set("view", "settings"); params.set("sys", "crm"); params.set("tab", "automation");
