@@ -8,6 +8,8 @@ import { useProcessing } from "@/contexts/ProcessingContext";
 import { LeadStage, Lead } from "@/types/lead";
 import { LeadDetail } from "@/components/LeadsTable";
 import { computeDaysInStage, getCompanyAssociates, ALL_STAGES as V2_ALL_STAGES, TERMINAL_STAGES, normalizeStage } from "@/lib/leadUtils";
+import { getGateForStage } from "@/lib/stageGates";
+import { StageGateGuard } from "@/components/lead-panel/dialogs/StageGateGuard";
 import { PipelineFilterBar, PipelineFilters, matchesFilters } from "@/components/PipelineFilters";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
@@ -171,7 +173,7 @@ export function Pipeline() {
   const [archiveTarget, setArchiveTarget] = useState<{ id: string; name: string } | null>(null);
   const [enrichmentGap, setEnrichmentGap] = useState<number | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [closeWonGuard, setCloseWonGuard] = useState<{ leadId: string; leadName: string; missing: string[] } | null>(null);
+  const [gateGuard, setGateGuard] = useState<{ leadId: string; targetStage: LeadStage } | null>(null);
   const sourceCoCount = useMemo(
     () => leads.filter(l => l.brand === "SourceCo" && !["Lost", "Went Dark", "Closed Won"].includes(l.stage)).length,
     [leads]
@@ -370,17 +372,12 @@ export function Pipeline() {
     setDragOverStage(null);
     const leadId = e.dataTransfer.getData("text/plain");
     if (!leadId) return;
-    if (targetStage === "Closed Won") {
-      const lead = leads.find(l => l.id === leadId);
-      if (lead && lead.stage !== "Closed Won") {
-        const missing: string[] = [];
-        if (!lead.subscriptionValue || lead.subscriptionValue === 0) missing.push("subscription value");
-        if (!lead.contractEnd) missing.push("contract end date");
-        if (missing.length > 0) {
-          setCloseWonGuard({ leadId, leadName: lead.name, missing });
-          return;
-        }
-      }
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead || lead.stage === targetStage) return;
+    // Unified gate enforcement — same modal used by LeadPanelHeader, audit-logged overrides.
+    if (getGateForStage(targetStage)) {
+      setGateGuard({ leadId, targetStage });
+      return;
     }
     commitStageChange(leadId, targetStage);
   };
@@ -1118,31 +1115,27 @@ export function Pipeline() {
         onConfirm={(reason) => { if (archiveTarget) { archiveLead(archiveTarget.id, reason); setArchiveTarget(null); } }}
         onCancel={() => setArchiveTarget(null)}
       />
-      <AlertDialog open={!!closeWonGuard} onOpenChange={(o) => { if (!o) setCloseWonGuard(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Billing fields incomplete</AlertDialogTitle>
-            <AlertDialogDescription>
-              <span className="font-medium text-foreground">{closeWonGuard?.leadName}</span> is missing{" "}
-              <span className="font-medium text-foreground">{closeWonGuard?.missing.join(" and ")}</span>.
-              Valeria's Client Success pipeline will be incomplete without these fields. Continue anyway?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (closeWonGuard) {
-                  commitStageChange(closeWonGuard.leadId, "Closed Won");
-                  setCloseWonGuard(null);
-                }
-              }}
-            >
-              Mark Won anyway
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {gateGuard && (() => {
+        const guardedLead = leads.find(l => l.id === gateGuard.leadId);
+        if (!guardedLead) return null;
+        return (
+          <StageGateGuard
+            lead={guardedLead}
+            targetStage={gateGuard.targetStage}
+            onCancel={() => setGateGuard(null)}
+            onCommit={async (updates, target) => {
+              // Persist gate-field edits + the stage change in one updateLead call
+              updateLead(gateGuard.leadId, { ...updates, stage: target });
+              if (target === "Closed Won") {
+                toast.success("Account handed off to Valeria — Client Success pipeline updated");
+              } else {
+                toast.success(`Moved to ${target}`);
+              }
+              setGateGuard(null);
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

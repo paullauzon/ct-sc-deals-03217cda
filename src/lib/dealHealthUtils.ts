@@ -1,5 +1,5 @@
 import { Lead, DealIntelligence } from "@/types/lead";
-import { computeDaysInStage } from "@/lib/leadUtils";
+import { computeDaysInStage, normalizeStage } from "@/lib/leadUtils";
 
 // ─── Mark Action Item Done ───
 
@@ -272,9 +272,9 @@ export function getObjectionPlaybook(lead: Lead, allLeads: Lead[]): ObjectionPla
 }
 
 // ─── Active stages for "going dark" detection ───
-
-const ACTIVE_STAGES = new Set(["Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"]);
-const POST_MEETING_STAGES = new Set(["Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"]);
+// v2 stages — using normalizeStage() in callers so legacy values still match.
+const ACTIVE_STAGES = new Set(["Discovery Completed", "Sample Sent", "Proposal Sent", "Negotiating"]);
+const POST_MEETING_STAGES = new Set(["Discovery Completed", "Sample Sent", "Proposal Sent", "Negotiating"]);
 
 // ─── Unified Action Count ───
 
