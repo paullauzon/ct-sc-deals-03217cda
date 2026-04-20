@@ -106,9 +106,12 @@ export default function TeamPage() {
           <span className="text-xs text-muted-foreground ml-2">
             {loading ? "Loading…" : `${members.length} ${members.length === 1 ? "member" : "members"}`}
           </span>
-          {!isAdmin && (
-            <span className="ml-auto text-[11px] text-muted-foreground">Read-only · Admin required to manage roles</span>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            {!isAdmin && (
+              <span className="text-[11px] text-muted-foreground">Read-only · Admin required to manage roles</span>
+            )}
+            {isAdmin && <InviteTeammateDialog onInvited={load} />}
+          </div>
         </div>
       </nav>
 
@@ -146,7 +149,7 @@ export default function TeamPage() {
                       <TableCell className="py-3">
                         <div className="flex items-center gap-2">
                           <div className="h-7 w-7 flex items-center justify-center rounded-full bg-secondary text-[10px] font-semibold text-foreground">
-                            {(m.name || m.email || "?").slice(0, 2).toUpperCase()}
+                            {initialsOf(m.name, m.email)}
                           </div>
                           <div className="flex flex-col">
                             <span className="text-sm">{m.name || "—"}{isSelf && <span className="ml-1.5 text-[10px] text-muted-foreground">(you)</span>}</span>
