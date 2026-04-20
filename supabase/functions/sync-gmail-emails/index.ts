@@ -279,20 +279,60 @@ async function listMessageIdsIncremental(
   return { ids: Array.from(ids).slice(0, MAX_INCREMENTAL), latestHistoryId, reset: false };
 }
 
+async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3): Promise<Response> {
+  let attempt = 0;
+  let lastRes: Response | null = null;
+  while (attempt < maxAttempts) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 && res.status !== 503) return res;
+    lastRes = res;
+    const retryAfterHeader = res.headers.get("Retry-After");
+    const retryAfterMs = retryAfterHeader && /^\d+$/.test(retryAfterHeader)
+      ? parseInt(retryAfterHeader) * 1000
+      : Math.min(4000, 1000 * Math.pow(2, attempt));
+    await new Promise((r) => setTimeout(r, retryAfterMs));
+    attempt += 1;
+  }
+  return lastRes!;
+}
+
 async function fetchMessage(token: string, id: string): Promise<GmailMessage | null> {
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetchWithRetry(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) return null;
   return await res.json() as GmailMessage;
 }
 
 async function getMailboxProfileHistoryId(token: string): Promise<string | null> {
-  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
+  const res = await fetchWithRetry("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return null;
   const json = await res.json() as { historyId?: string };
   return json.historyId ?? null;
+}
+
+// Bounce detection — Gmail delivers DSNs from mailer-daemon@ with a Subject like
+// "Delivery Status Notification (Failure)". We extract the failed recipient from the
+// body or X-Failed-Recipients header. Returns null if it's not a bounce.
+function detectBounce(msg: GmailMessage, fromAddress: string, subject: string, bodyText: string): { recipient: string; reason: string } | null {
+  const isDaemon = /mailer-daemon|postmaster/i.test(fromAddress);
+  const isDsn = /delivery status notification|undeliverable|delivery has failed|address not found/i.test(subject)
+    || /delivery status notification|message not delivered|550 5\.|address not found|user unknown/i.test(bodyText);
+  if (!isDaemon && !isDsn) return null;
+  const xFailed = header(msg.payload, "X-Failed-Recipients");
+  let recipient = "";
+  if (xFailed) recipient = xFailed.trim().toLowerCase();
+  if (!recipient) {
+    const m = bodyText.match(/(?:to:|recipient:|<)\s*([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
+    if (m) recipient = m[1].toLowerCase();
+  }
+  if (!recipient) return null;
+  const reasonMatch = bodyText.match(/(550 5\.[\d.]+[^\n]{0,180})/i)
+    || bodyText.match(/(reason:[^\n]{0,180})/i)
+    || bodyText.match(/(diagnostic-code:[^\n]{0,180})/i);
+  const reason = (reasonMatch ? reasonMatch[1] : "delivery failed").trim().slice(0, 240);
+  return { recipient, reason };
 }
 
 async function syncOneConnection(
