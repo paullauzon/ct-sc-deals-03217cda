@@ -1,47 +1,62 @@
 
 
-## Verification — Right Rail Deal Snapshot vs. wireframe
+## Polish the right rail to match the expanded wireframe screenshots
 
-### ✅ Fully implemented (10/10 from approved plan)
+The structure is right. What's missing is the **detail and polish** inside each card. Five focused upgrades.
 
-| Requirement | Status | Evidence |
-|---|---|---|
-| `DealSnapshotCard` — brand stripe, headline ($/mo + TCV), stage progress, chips | ✅ | Brand stripe (red/amber), MRR/TCV, "Stage X of 8" + colored bar, brand+service+owner+priority chips |
-| 16-row inline-editable snapshot table | ✅ | Deal value, MRR, est. close, contract end, created, days in stage, meeting set/held, sample sent/outcome, competing, decision blocker, stall reason, budget/authority confirmed, tier, Fireflies, Drive |
-| `PipelineStagesCard` — **uses our actual 12 stages** (8 active + 4 terminal), not wireframe's generic 9 | ✅ | `ACTIVE_STAGES` (8) + `TERMINAL_STAGES` (Revisit, Closed Won, Lost, Went Dark) from `leadUtils.ts` |
-| "← here" current-stage highlight in amber | ✅ | StageRow with amber bg + label |
-| Closed Won handoff hint callout (Valeria's pipeline → Onboarding) | ✅ | Emerald tinted block, hidden when already Closed Won |
-| Click stage → routes through existing `closeWonGuard` (no duplicate modals) | ✅ | Custom `request-stage-change` event listened to in `LeadPanelHeader` (lines 219-227) |
-| `AssociatedCompanyCard` — firm name, type, AUM, active searches, EBITDA, geography, contacts at firm, website | ✅ | Uses `useStakeholderCount` for live counts |
-| `OpenTasksCard` with `+ Add` button → opens existing TaskDialog | ✅ | Wired via `onTask` prop |
-| `SignalsCard` — count badge, shared `getDealSignals(lead)` with Activity tab | ✅ | Single source of truth in `shared.tsx` |
-| `FirefliesRecordingsCard` → opens existing `TranscriptDrawer` | ✅ | List filtered to meetings with `firefliesUrl`/`transcript`, sorted desc |
-| `AttachmentsCard` — Drive link + meeting attachments aggregated | ✅ | |
-| `StakeholderCard` relocated from Activity tab to right rail (no duplication) | ✅ | Only imported in `LeadPanelRightRail.tsx`; `LeadActivityTab.tsx` no longer renders it |
-| `ForecastCard` + `LinkedAccountCard` (Closed Won handoff) preserved | ✅ | Bottom of rail |
-| Right rail width bumped to `w-[320px]` | ✅ | |
-| `ACTIVE_STAGES` extracted to `leadUtils.ts` | ✅ | Single source |
-| `getDealSignals(lead)` extracted in `shared.tsx` | ✅ | Used by Activity alerts and SignalsCard |
+### 1. Deal Health — show factor breakdown + progress bar
+`computeDealHealthScore` already returns a `factors[]` array (e.g. "Champion identified +20", "Stalling -15"). The card hides it. Add:
+- A green→gray gradient bar under the score (like wireframe).
+- Render `factors` as a list with the impact value right-aligned and color-coded (emerald for positive, red for negative).
+- Keep momentum + sentiment lines below the divider as today.
 
-### ⚠️ Minor cleanup recommended (1 issue, low priority)
+File: `src/components/dealroom/RightRailCards.tsx`
 
-**Duplicate `ACTIVE_STAGES` constant in `LeadPanelHeader.tsx` (line 27)**
-The shared constant was extracted to `src/lib/leadUtils.ts`, but `LeadPanelHeader.tsx` still defines its own local copy:
-```ts
-const ACTIVE_STAGES: LeadStage[] = ["New Lead", "Qualified", ...];
-```
-Functionally identical, but creates two sources of truth. If we ever add/rename a stage, header progress bar would silently drift from the right-rail checklist.
+### 2. Signals — switch from alert chips to dot+title+subtitle list
+Wireframe is a clean info list, not a warning panel.
+- Extend `getDealSignals` in `shared.tsx` to return `{ severity, title, description }` (description optional). Today it returns `{ severity, message }` only — derive title from existing message and add a one-line description per signal type (e.g. for "stage stale" → "No activity logged in Xd since proposal. Auto-task was created but not completed.").
+- Rewrite `SignalsCard` to render a simple list: a colored dot (amber=warning, emerald=positive, red=critical), bold title, muted description. Drop the boxed alert styling.
+- Backwards-compat: `LeadActivityTab` consumers of `getDealSignals` still get `message` (alias to `title`).
 
-**Fix:** Delete line 27 in `LeadPanelHeader.tsx` and import from `@/lib/leadUtils` (already imports `computeDaysInStage` from there).
+Files: `src/components/lead-panel/shared.tsx`, `src/components/lead-panel/cards/SignalsCard.tsx`
 
-### Verdict
-**Implementation matches approved plan and wireframe accurately.** All cards render, no duplication, stages reflect the actual 12-stage pipeline, click-to-change routes through the existing close-won guard, handoff hint visible on non-Won deals, Linked Account auto-appears when Closed Won. Snapshot table covers 16 fields from the wireframe with inline editing for the 9 manual ones. Stakeholder count, signals, and stage constants share single sources of truth.
+### 3. Open Tasks — show assignee, priority, and "auto-created" badge
+- Surface `task.task_type` as the auto-created hint (any task with a non-empty `playbook` field is auto-created — show small `auto-created` chip).
+- Show "Assigned to {lead.assignedTo} · {priority}" subtitle. Priority comes from a heuristic: tasks tied to overdue follow-ups or close-won SLA = "High priority", otherwise "Normal".
+- Move the date to the right side in red/amber when overdue, neutral otherwise (matches wireframe's red "Apr 26" / "Apr 24").
 
-The one nit (duplicate constant) is a maintenance hazard, not a user-visible bug. Recommend a 30-second cleanup.
+File: `src/components/lead-panel/cards/OpenTasksCard.tsx`
 
-### Plan to ship the cleanup
+### 4. Stakeholders — add smart coaching callout
+Add an info banner at the top of the card that adapts to coverage:
+- 0 stakeholders → "No stakeholders mapped. Add the people involved in this deal to multi-thread."
+- 1 → "Single-threaded. Identify a second contact before the next milestone."
+- ≥2 with no champion → "{N} stakeholders, no champion confirmed. Push for explicit advocacy."
+- ≥2 with champion → "Stakeholder count confirmed: {N}. {champion name} flagged as champion."
+Uses existing `getStakeholderCoverage` + the local `items` state. Also add small initial-avatar circles next to each stakeholder name (currently absent — wireframe shows "JM", "SR", "TK").
 
-1. `src/components/lead-panel/LeadPanelHeader.tsx` — remove local `ACTIVE_STAGES` declaration on line 27, add `ACTIVE_STAGES` to the existing `import { computeDaysInStage } from "@/lib/leadUtils"` on line 9.
+File: `src/components/lead-panel/cards/StakeholderCard.tsx`
 
-That's it. No other changes needed — implementation is complete and correct.
+### 5. Fireflies + Attachments — visual polish
+**FirefliesRecordingsCard**: replace the generic external-link icon with an emerald **"Transcript ↗"** pill on the right; show attendees inline ("Malik + {first attendee name}") when intelligence has them; show duration when available (`m.intelligence?.durationMinutes` if present, fall back to nothing).
+
+**AttachmentsCard**: 
+- Add a colored **file-type badge** (PDF=red, CSV=emerald, DOC=blue, XLS=emerald, default=gray) using filename extension.
+- Subtitle becomes "Added {date} · {uploader} · {size}" using `attachment.uploadedAt`/`uploadedBy`/`size` if present in the meeting attachment payload, else fall back to `From: {meetingTitle} · {size}`.
+- Add small `+ Upload` button in the header (opens a "Coming soon" toast — the upload backend is out of scope; the button just signals the affordance per wireframe).
+
+Files: `src/components/lead-panel/cards/FirefliesRecordingsCard.tsx`, `src/components/lead-panel/cards/AttachmentsCard.tsx`
+
+### Trade-offs
+- **Win:** Right rail visually matches the screenshots — actionable factor breakdown for Deal Health, scannable Signals list, richer task context, stakeholder coaching, branded attachments.
+- **Risk:** A few fields (uploader, durationMinutes, signal descriptions) may be empty for older records — graceful fallbacks ensure no blank rows.
+- **Out of scope:** Real file upload backend (button is a stub), per-task explicit priority/assignee fields (heuristic from existing data).
+
+### Verification
+1. Open any lead with `dealIntelligence` → Deal Health shows score + gradient bar + factor list with green +N / red -N values
+2. Open a lead with multiple signals → Signals card shows dot+title+description list (no alert boxes)
+3. Open a lead with auto-created tasks → Open Tasks shows "auto-created" chip + "Assigned to {owner}" subtitle
+4. Open Stakeholders → coaching callout reflects current coverage; avatars show initials
+5. Open a lead with Fireflies meetings → list shows "Transcript ↗" pill + attendees inline
+6. Open a lead with PDF/CSV attachments → colored extension badges render correctly
 
