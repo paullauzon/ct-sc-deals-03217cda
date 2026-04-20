@@ -37,6 +37,28 @@ interface LeadEmail {
   is_read?: boolean | null;
   scheduled_for?: string | null;
   send_status?: string;
+  ai_drafted?: boolean;
+  email_type?: string;
+  sequence_step?: string | null;
+}
+
+/** Compute thread reply status for the header pill. */
+function getThreadStatus(emails: LeadEmail[], leadName?: string): { label: string; tone: "neutral" | "muted" | "success" | "auto" } | null {
+  if (!emails.length) return null;
+  const inbound = emails.filter(e => e.direction === "inbound");
+  const outbound = emails.filter(e => e.direction === "outbound");
+  // Auto-triggered: from Calendly / system addresses
+  const allAuto = emails.every(e => /calendly|noreply|no-reply|mailer-daemon/i.test(e.from_address || ""));
+  if (allAuto) return { label: "Auto-triggered", tone: "auto" };
+  // AI from Fireflies recap
+  const allAi = outbound.length > 0 && outbound.every(e => e.ai_drafted) && /recap|fireflies|meeting notes/i.test(emails[0].subject || "");
+  if (allAi) return { label: "AI from Fireflies", tone: "auto" };
+  if (inbound.length > 0) {
+    const first = leadName?.split(" ")[0] || "Lead";
+    return { label: `${first} replied`, tone: "success" };
+  }
+  if (outbound.length > 0) return { label: "Thread — no reply yet", tone: "muted" };
+  return null;
 }
 
 function formatDate(dateStr: string): string {
