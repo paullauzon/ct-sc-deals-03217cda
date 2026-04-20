@@ -244,15 +244,29 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
   const events = useMemo<TimelineEvent[]>(() => {
     const out: TimelineEvent[] = [];
 
-    // Activity log (stage changes, field updates, notes, calls) — these can be pinned
+    // Activity log (stage changes, field updates, notes, calls, sequence-paused) — pinnable
     activity.forEach(a => {
       const actor = (a as any).actor_name as string | undefined;
+      const meta = (a as any).metadata as Record<string, unknown> | undefined;
       const evType: TimelineEvent["type"] =
         a.event_type === "stage_change" ? "stage_change"
         : a.event_type === "note_added" ? "note"
         : a.event_type === "meeting_added" ? "meeting"
         : a.event_type === "call_logged" ? "call"
+        : a.event_type === "sequence_paused" ? "sequence_paused"
         : "system";
+
+      // Extract call intel from metadata when present
+      const callIntel: CallIntel | null =
+        evType === "call" && meta && typeof meta === "object" && (meta as any).intel
+          ? ((meta as any).intel as CallIntel)
+          : null;
+
+      // For calls, prefer the raw summary as the expandable detail (mockup parity).
+      const callSummary = evType === "call" && meta && typeof (meta as any).summary === "string"
+        ? ((meta as any).summary as string)
+        : "";
+
       out.push({
         id: `act-${a.id}`,
         activityId: a.id,
@@ -260,7 +274,10 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
         type: evType,
         date: a.created_at,
         title: a.description,
+        detail: callSummary || undefined,
         meta: actor && actor.trim() ? `by ${actor}` : "by System",
+        callIntel,
+        sequenceStep: evType === "sequence_paused" ? (a.new_value || "") : undefined,
       });
     });
 
@@ -294,6 +311,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
         detail: intel?.summary || m.summary || undefined,
         meta: intel?.attendees?.length ? `${intel.attendees.length} attendees` : undefined,
         href: m.firefliesUrl || undefined,
+        meeting: m,
       });
     });
 
