@@ -12,7 +12,6 @@ import { ClientSuccessSystem } from "@/components/ClientSuccessSystem";
 import { Search, BarChart3, Kanban, Users, CalendarCheck, Settings } from "lucide-react";
 import { MailboxSettings } from "@/components/MailboxSettings";
 import { UserMenu } from "@/components/UserMenu";
-import { CommandPalette as CP2 } from "@/components/CommandPalette";
 
 type View = "dashboard" | "pipeline" | "leads" | "today" | "settings";
 type System = "crm" | "business" | "client-success";
@@ -144,10 +143,16 @@ function AppContent() {
             </>
           )}
           {system === "business" && (
-            <span className="text-sm text-muted-foreground">Business Operations</span>
+            <div className="flex items-center gap-3 ml-auto">
+              <span className="text-sm text-muted-foreground">Business Operations</span>
+              <UserMenu />
+            </div>
           )}
           {system === "client-success" && (
-            <span className="text-sm text-muted-foreground">Client Success · Account Management</span>
+            <div className="flex items-center gap-3 ml-auto">
+              <span className="text-sm text-muted-foreground">Client Success · Account Management</span>
+              <UserMenu />
+            </div>
           )}
         </div>
       </nav>
