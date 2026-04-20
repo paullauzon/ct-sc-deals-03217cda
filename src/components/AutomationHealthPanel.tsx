@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, RefreshCw, AlertTriangle, ExternalLink } from "lucide-react";
+import { Loader2, Play, RefreshCw, AlertTriangle, ExternalLink, Zap, Wifi } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -35,11 +35,24 @@ interface RunRow {
   details: Record<string, unknown> | null;
 }
 
+// Daily automation jobs that need a manual kick when their UTC slot is hours away
+// but the work backlog is huge (e.g. 556 overdue tasks, 150 unenriched leads).
+const DAILY_JOBS = [
+  "auto-enrich-ai-tier",
+  "auto-backfill-linkedin",
+  "auto-backfill-company-url",
+  "auto-reschedule-overdue",
+  "auto-process-stale-transcripts",
+];
+
 export function AutomationHealthPanel() {
   const [latestByJob, setLatestByJob] = useState<Record<string, RunRow | null>>({});
   const [loading, setLoading] = useState(true);
   const [runningJob, setRunningJob] = useState<string | null>(null);
+  const [runningAllDaily, setRunningAllDaily] = useState(false);
   const [firecrawlBroken, setFirecrawlBroken] = useState(false);
+  const [firecrawlTesting, setFirecrawlTesting] = useState(false);
+  const [firecrawlStatus, setFirecrawlStatus] = useState<null | { ok: boolean; code: number; msg: string }>(null);
 
   const load = async () => {
     setLoading(true);
@@ -54,7 +67,6 @@ export function AutomationHealthPanel() {
     let firecrawl403 = false;
     (data ?? []).forEach((r: any) => {
       if (!map[r.job_name]) map[r.job_name] = r as RunRow;
-      // Detect Firecrawl 403 either in the details flag or error message text
       const detailsFlag = r?.details && typeof r.details === "object" && (r.details as any).firecrawl403 === true;
       const errorHasFirecrawl = String(r?.error_message || "").toLowerCase().includes("firecrawl");
       if (detailsFlag || errorHasFirecrawl) firecrawl403 = true;
@@ -72,12 +84,50 @@ export function AutomationHealthPanel() {
       const { error } = await supabase.functions.invoke(job.endpoint, { body: job.body });
       if (error) throw error;
       toast.success(`${job.label} triggered`);
-      // brief delay then refresh — log inserts happen at end of run
       setTimeout(load, 1500);
     } catch (e) {
       toast.error(`Failed: ${(e as Error).message}`);
     } finally {
       setRunningJob(null);
+    }
+  };
+
+  const runAllDaily = async () => {
+    setRunningAllDaily(true);
+    const dailyJobs = JOBS.filter(j => DAILY_JOBS.includes(j.jobName));
+    toast.info(`Triggering ${dailyJobs.length} daily automations…`);
+    const results = await Promise.allSettled(
+      dailyJobs.map(j => supabase.functions.invoke(j.endpoint, { body: j.body }))
+    );
+    const ok = results.filter(r => r.status === "fulfilled" && !(r.value as any)?.error).length;
+    const failed = results.length - ok;
+    if (failed === 0) toast.success(`All ${ok} daily jobs triggered. Logs will appear shortly.`);
+    else toast.warning(`${ok} succeeded, ${failed} failed. Check individual rows.`);
+    setRunningAllDaily(false);
+    setTimeout(load, 2500);
+  };
+
+  const testFirecrawl = async () => {
+    setFirecrawlTesting(true);
+    setFirecrawlStatus(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("test-firecrawl", { body: {} });
+      if (error) throw error;
+      const code = (data as any)?.status ?? 0;
+      const ok = code >= 200 && code < 300;
+      setFirecrawlStatus({
+        ok,
+        code,
+        msg: ok ? "Firecrawl is responding (200)" :
+             code === 402 ? "Out of credits (402)" :
+             code === 403 ? "Auth failed (403) — reconnect Firecrawl" :
+             code ? `HTTP ${code}` : "No response",
+      });
+      if (!ok && code === 403) setFirecrawlBroken(true);
+    } catch (e) {
+      setFirecrawlStatus({ ok: false, code: 0, msg: `Test failed: ${(e as Error).message}` });
+    } finally {
+      setFirecrawlTesting(false);
     }
   };
 
@@ -90,10 +140,44 @@ export function AutomationHealthPanel() {
             Background jobs that fill data, send queued emails, and recover broken transcripts. A red dot means the job hasn't reported in 1.5× its interval.
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={load} className="h-7 px-2" title="Refresh">
-          <RefreshCw className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runAllDaily}
+            disabled={runningAllDaily}
+            className="h-7 px-2.5 text-xs gap-1.5"
+            title="Trigger all 5 daily automation jobs in parallel"
+          >
+            {runningAllDaily ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+            Run all daily
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={testFirecrawl}
+            disabled={firecrawlTesting}
+            className="h-7 px-2.5 text-xs gap-1.5"
+            title="Ping Firecrawl API to verify connectivity"
+          >
+            {firecrawlTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wifi className="h-3 w-3" />}
+            Test Firecrawl
+          </Button>
+          <Button variant="ghost" size="sm" onClick={load} className="h-7 px-2" title="Refresh">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
+
+      {firecrawlStatus && (
+        <div className={cn(
+          "border rounded-lg p-2.5 text-xs flex items-center gap-2",
+          firecrawlStatus.ok ? "border-foreground/10 bg-secondary/20" : "border-foreground/30 bg-secondary/40"
+        )}>
+          <span className={cn("w-1.5 h-1.5 rounded-full", firecrawlStatus.ok ? "bg-foreground/40" : "bg-foreground")} />
+          <span className="font-medium">{firecrawlStatus.msg}</span>
+        </div>
+      )}
 
       {firecrawlBroken && (
         <div className="border border-foreground/20 bg-secondary/40 rounded-lg p-3 flex items-start gap-2.5">

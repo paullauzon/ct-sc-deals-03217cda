@@ -1,16 +1,16 @@
 // Retry runner for broken Fireflies transcripts.
 //
 // On each tick (every 15 min via pg_cron) this function:
-//   1. AUTO-BOOTSTRAP: if the retry queue is empty AND there are leads with a
-//      fireflies_url but a missing/short transcript, enqueue up to 30 of them
-//      with staggered next_attempt_at (2 min apart) so we don't spike the
-//      Fireflies API. This eliminates the "manual button nobody clicks"
-//      failure mode for the existing 110-lead backlog.
-//   2. DRAIN: pick up `pending` rows whose next_attempt_at <= now(),
-//      re-fetch the transcript via fetch-fireflies (mode=re-fetch),
-//      patch the owning lead's meetings JSON on success, and apply
-//      exponential backoff on failure. Marks the row `gave_up` after
-//      max_attempts.
+//   1. AUTO-BOOTSTRAP: scans leads with `fireflies_url` set but a missing/short
+//      `fireflies_transcript` (< 200 chars), parses the firefliesId from the
+//      URL (segment after `::`, before `?`), and enqueues up to 30 with
+//      staggered next_attempt_at (2 min apart). This eliminates the "manual
+//      button nobody clicks" failure mode for the 110-lead backlog where
+//      `meetings: []` is empty (the firefliesId only lives in the URL).
+//   2. DRAIN: pick up `pending` rows whose next_attempt_at <= now(), re-fetch
+//      via fetch-fireflies (mode=re-fetch), patch the lead's
+//      `fireflies_transcript` (and `meetings` if present) on success, exp
+//      backoff on failure, mark `gave_up` after max_attempts.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logCronRun } from "../_shared/cron-log.ts";
 
@@ -23,6 +23,24 @@ const BACKOFF_MINUTES = [5, 30, 120, 360, 1440]; // 5m, 30m, 2h, 6h, 24h
 const JOB_NAME = "process-fireflies-retry-queue";
 const BOOTSTRAP_BATCH_SIZE = 30;
 const BOOTSTRAP_STAGGER_MIN = 2;
+
+/** Extract the Fireflies meeting id from a viewer URL.
+ *  Examples:
+ *   https://app.fireflies.ai/view/Ruslan-and-Malik-Hayes::01JVMTWEF9A4KDDE8KVWQSD6HW?... → 01JVMTWEF9A4KDDE8KVWQSD6HW
+ *   https://app.fireflies.ai/view/abc123                                                  → abc123
+ */
+function parseFirefliesIdFromUrl(url: string): string | null {
+  if (!url) return null;
+  try {
+    // Strip query string, take last `/` segment, then split on `::` and take last part.
+    const noQuery = url.split("?")[0];
+    const lastSeg = noQuery.split("/").filter(Boolean).pop() || "";
+    const id = lastSeg.includes("::") ? lastSeg.split("::").pop()! : lastSeg;
+    return id && id.length >= 8 ? id : null;
+  } catch {
+    return null;
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -41,35 +59,53 @@ Deno.serve(async (req) => {
   const errors: string[] = [];
 
   try {
-    // ── 1. Auto-bootstrap: if queue is empty, seed broken leads ──
+    // ── 1. Auto-bootstrap: scan all broken leads (URL-based, not meetings-based) ──
     const { count: queueCount } = await supabase
       .from("fireflies_retry_queue")
       .select("id", { count: "exact", head: true })
       .eq("status", "pending");
 
     if ((queueCount ?? 0) === 0) {
+      // Pull a generous slice of leads with a fireflies_url; we filter transcript length client-side
+      // because Postgrest doesn't support LENGTH() filters directly without RPC.
       const { data: brokenLeads } = await supabase
         .from("leads")
         .select("id, fireflies_url, fireflies_transcript, meetings")
         .is("archived_at", null)
         .neq("fireflies_url", "")
-        .limit(200);
+        .limit(300);
 
       const candidates: { lead_id: string; fireflies_id: string }[] = [];
+      const seen = new Set<string>();
+
       for (const l of (brokenLeads ?? [])) {
+        // Path A — meetings[] has firefliesId but transcript is missing/short
         const meetings = Array.isArray(l.meetings) ? l.meetings : [];
         for (const m of meetings) {
           const tlen = (m?.transcript || "").length;
-          if (m?.firefliesId && tlen < 200) {
+          if (m?.firefliesId && tlen < 200 && !seen.has(m.firefliesId)) {
             candidates.push({ lead_id: l.id, fireflies_id: m.firefliesId });
+            seen.add(m.firefliesId);
             if (candidates.length >= BOOTSTRAP_BATCH_SIZE) break;
           }
         }
         if (candidates.length >= BOOTSTRAP_BATCH_SIZE) break;
+
+        // Path B — meetings is empty (or no usable id), but fireflies_url exists
+        // and lead-level transcript is missing/short.
+        const leadTranscriptLen = (l.fireflies_transcript || "").length;
+        if (leadTranscriptLen < 200) {
+          const ffId = parseFirefliesIdFromUrl(l.fireflies_url || "");
+          if (ffId && !seen.has(ffId)) {
+            candidates.push({ lead_id: l.id, fireflies_id: ffId });
+            seen.add(ffId);
+            if (candidates.length >= BOOTSTRAP_BATCH_SIZE) break;
+          }
+        }
       }
 
       if (candidates.length > 0) {
-        // Filter out any already-queued (status != pending) so we don't duplicate
+        // Filter out any already-queued so we don't duplicate
         const ffIds = candidates.map(c => c.fireflies_id);
         const { data: existing } = await supabase
           .from("fireflies_retry_queue")
@@ -108,16 +144,20 @@ Deno.serve(async (req) => {
     if (dueErr) throw dueErr;
     const rows = dueRows ?? [];
 
-    // Group by lead to fetch their meetings once
+    // Group by lead to fetch their meetings + brand once
     const leadIds = Array.from(new Set(rows.map(r => r.lead_id)));
-    const leadMap = new Map<string, { brand: string; meetings: any[] }>();
+    const leadMap = new Map<string, { brand: string; meetings: any[]; fireflies_url: string }>();
     if (leadIds.length > 0) {
       const { data: leads } = await supabase
         .from("leads")
-        .select("id, brand, meetings")
+        .select("id, brand, meetings, fireflies_url")
         .in("id", leadIds);
       (leads ?? []).forEach((l: any) =>
-        leadMap.set(l.id, { brand: l.brand || "Captarget", meetings: Array.isArray(l.meetings) ? l.meetings : [] })
+        leadMap.set(l.id, {
+          brand: l.brand || "Captarget",
+          meetings: Array.isArray(l.meetings) ? l.meetings : [],
+          fireflies_url: l.fireflies_url || "",
+        })
       );
     }
 
@@ -140,14 +180,41 @@ Deno.serve(async (req) => {
         const result = (json?.results || []).find((r: any) => r.id === row.fireflies_id);
 
         if (result?.ok && result.transcript && result.transcript.length > 0) {
-          const updatedMeetings = lead.meetings.map((m: any) =>
-            m?.firefliesId === row.fireflies_id
-              ? { ...m, transcript: result.transcript, transcriptLength: result.transcriptLength ?? result.transcript.length }
-              : m
-          );
+          // Patch meetings[]: update existing entry OR append new one if absent.
+          const transcriptLen = result.transcriptLength ?? result.transcript.length;
+          let updatedMeetings: any[];
+          const hasEntry = lead.meetings.some((m: any) => m?.firefliesId === row.fireflies_id);
+          if (hasEntry) {
+            updatedMeetings = lead.meetings.map((m: any) =>
+              m?.firefliesId === row.fireflies_id
+                ? { ...m, transcript: result.transcript, transcriptLength: transcriptLen }
+                : m
+            );
+          } else {
+            updatedMeetings = [
+              ...lead.meetings,
+              {
+                firefliesId: row.fireflies_id,
+                title: result.title || "Fireflies meeting",
+                date: result.date || new Date().toISOString(),
+                duration: result.duration || 0,
+                transcript: result.transcript,
+                transcriptLength: transcriptLen,
+                summary: result.summary || "",
+                actionItems: result.actionItems || [],
+                source: "auto-recovered",
+              },
+            ];
+          }
+
+          // Write transcript to BOTH lead-level field AND meetings[] so both views stay in sync.
           const { error: upErr } = await supabase
             .from("leads")
-            .update({ meetings: updatedMeetings })
+            .update({
+              meetings: updatedMeetings,
+              fireflies_transcript: result.transcript,
+              fireflies_summary: result.summary || undefined,
+            })
             .eq("id", row.lead_id);
 
           if (upErr) throw upErr;
