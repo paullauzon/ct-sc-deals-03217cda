@@ -46,7 +46,7 @@ const NAV_ITEMS: { key: View; label: string; desc: string; icon: typeof BarChart
 function AppContent() {
   const [view, setViewState] = useState<View>(() => parseHashState().view);
   const [system, setSystemState] = useState<System>(() => parseHashState().system);
-  const { unseenCount, clearUnseen, leads } = useLeads();
+  const { unseenCount, clearUnseen } = useLeads();
   const [cmdLeadId, setCmdLeadId] = useState<string | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
 
