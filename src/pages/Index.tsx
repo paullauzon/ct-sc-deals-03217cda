@@ -9,15 +9,16 @@ import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";
 import { SystemSwitcher } from "@/components/SystemSwitcher";
 import { BusinessSystem } from "@/components/BusinessSystem";
 import { ClientSuccessSystem } from "@/components/ClientSuccessSystem";
-import { Search, BarChart3, Kanban, Users, CalendarCheck, Settings } from "lucide-react";
+import { Search, BarChart3, Kanban, Users, CalendarCheck, Settings, Workflow } from "lucide-react";
 import { MailboxSettings } from "@/components/MailboxSettings";
 import { UserMenu } from "@/components/UserMenu";
 import { AutomationHealthChip } from "@/components/AutomationHealthChip";
+import { SequencesView } from "@/components/sequences/SequencesView";
 
-type View = "dashboard" | "pipeline" | "leads" | "today" | "settings";
+type View = "dashboard" | "pipeline" | "leads" | "today" | "sequences" | "settings";
 type System = "crm" | "business" | "client-success";
 
-const VALID_VIEWS = new Set<View>(["dashboard", "pipeline", "leads", "today", "settings"]);
+const VALID_VIEWS = new Set<View>(["dashboard", "pipeline", "leads", "today", "sequences", "settings"]);
 
 function parseHashState(): { view: View; system: System } {
   const hash = window.location.hash.replace("#", "");
@@ -44,6 +45,7 @@ const NAV_ITEMS: { key: View; label: string; desc: string; icon: typeof BarChart
   { key: "pipeline", label: "Pipeline", desc: "Deal Flow", icon: Kanban },
   { key: "leads", label: "Leads", desc: "All Contacts", icon: Users },
   { key: "today", label: "Command", desc: "Sales Cockpit", icon: CalendarCheck },
+  { key: "sequences", label: "Sequences", desc: "Email Campaigns", icon: Workflow },
 ];
 
 function AppContent() {
@@ -180,6 +182,7 @@ function AppContent() {
           {view === "dashboard" && <Dashboard />}
           {view === "leads" && <LeadsTable />}
           {view === "pipeline" && <Pipeline />}
+          {view === "sequences" && <SequencesView />}
           {view === "settings" && <MailboxSettings />}
         </>
       )}
