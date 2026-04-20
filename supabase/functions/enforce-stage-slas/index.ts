@@ -37,6 +37,15 @@ interface SlaRule {
 
 const SLA_RULES: SlaRule[] = [
   {
+    id: "unassigned-stale",
+    stage: "Unassigned",
+    legacyStages: ["New Lead"],
+    thresholdDays: 3,
+    taskType: "email",
+    title: "Send first outreach — inbound going cold",
+    description: "Inbound lead has been Unassigned for 3+ days with no first touch. Send a personalized first email today before they forget they signed up.",
+  },
+  {
     id: "discovery-scheduled-no-fireflies",
     stage: "Discovery Scheduled",
     legacyStages: ["Meeting Set"],

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Lead, LeadSource, LeadStage, Brand } from "@/types/lead";
-import { computeDaysInStage } from "@/lib/leadUtils";
+import { computeDaysInStage, ACTIVE_STAGES as V2_ACTIVE_STAGES, isClosedStage, normalizeStage } from "@/lib/leadUtils";
 import { BrandLogo } from "@/components/BrandLogo";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,8 +10,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
-const ACTIVE_STAGES = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"] as const;
+const isClosed = (s: string) => isClosedStage(normalizeStage(s));
+const ACTIVE_STAGES = V2_ACTIVE_STAGES;
 
 const SOURCE_LABELS: Record<LeadSource, string> = {
   "CT Contact Form": "CT Contact",
@@ -35,9 +35,9 @@ interface BrandMetrics {
 
 function computeBrandMetrics(leads: Lead[], brand: Brand): BrandMetrics {
   const brandLeads = leads.filter(l => l.brand === brand);
-  const active = brandLeads.filter(l => !CLOSED_STAGES.has(l.stage));
-  const won = brandLeads.filter(l => l.stage === "Closed Won");
-  const lost = brandLeads.filter(l => l.stage === "Lost");
+  const active = brandLeads.filter(l => !isClosed(l.stage));
+  const won = brandLeads.filter(l => normalizeStage(l.stage) === "Closed Won");
+  const lost = brandLeads.filter(l => normalizeStage(l.stage) === "Closed Lost");
   const totalClosed = won.length + lost.length;
 
   const mrr = won.reduce((s, l) => {
