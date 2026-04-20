@@ -104,7 +104,9 @@ async function discoverGmail(
 
   while (pages < MAX_PAGES_PER_INVOCATION) {
     const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-    if (after) url.searchParams.set("q", `after:${after}`);
+    // Always exclude spam/trash. Combine with date filter when present.
+    const q = after ? `after:${after} -in:spam -in:trash` : `-in:spam -in:trash`;
+    url.searchParams.set("q", q);
     url.searchParams.set("maxResults", String(PAGE_SIZE_GMAIL));
     if (pageToken) url.searchParams.set("pageToken", pageToken);
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
@@ -153,69 +155,61 @@ async function discoverOutlook(
 ): Promise<{ done: boolean; pages: number; idsThisRun: number; estimate: number }> {
   const token = await getValidOutlookToken(supabase, job.connection_id);
   const sinceIso = windowToIso(job.target_window);
-  const filter = sinceIso ? `&$filter=receivedDateTime ge ${sinceIso}` : "";
+  // Single full-mailbox walk against /me/messages — captures ALL folders
+  // (inbox, sent, archive, custom). Skip drafts. Microsoft Graph recommended
+  // pattern for full-mailbox sync.
+  const filterParts: string[] = ["isDraft eq false"];
+  if (sinceIso) filterParts.push(`receivedDateTime ge ${sinceIso}`);
+  const filter = `&$filter=${encodeURIComponent(filterParts.join(" and "))}`;
   let pages = 0;
   let idsThisRun = 0;
   let estimate = job.estimated_total;
 
-  // Walk both folders, persisting cursors separately so a partial run resumes correctly.
-  const folders: Array<{ key: "inbox" | "sentitems"; cursorField: "discovery_cursor" | "discovery_cursor_sent"; current: string | null }> = [
-    { key: "inbox", cursorField: "discovery_cursor", current: job.discovery_cursor },
-    { key: "sentitems", cursorField: "discovery_cursor_sent", current: job.discovery_cursor_sent },
-  ];
+  let url: string | null = job.discovery_cursor ||
+    `https://graph.microsoft.com/v1.0/me/messages?$select=id&$top=${PAGE_SIZE_GRAPH}&$orderby=receivedDateTime desc${filter}&$count=true`;
+  let done = false;
 
-  let allDone = true;
-  const updates: Record<string, unknown> = {};
-
-  for (const f of folders) {
-    if (pages >= MAX_PAGES_PER_INVOCATION) { allDone = false; break; }
-    let url: string | null = f.current ||
-      `https://graph.microsoft.com/v1.0/me/mailFolders/${f.key}/messages?$select=id&$top=${PAGE_SIZE_GRAPH}&$orderby=receivedDateTime desc${filter}&$count=true`;
-    let folderDone = false;
-
-    while (pages < MAX_PAGES_PER_INVOCATION && url) {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: "eventual" } });
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`graph list ${f.key} ${res.status}: ${txt.slice(0, 200)}`);
-      }
-      const data = await res.json() as { value?: Array<{ id: string }>; "@odata.nextLink"?: string; "@odata.count"?: number };
-      if (typeof data["@odata.count"] === "number") estimate = Math.max(estimate, data["@odata.count"]);
-      const ids = (data.value || []).map((m) => m.id);
-      if (ids.length > 0) {
-        const rows = ids.map((id) => ({
-          job_id: job.id,
-          connection_id: job.connection_id,
-          provider_message_id: id,
-          folder: f.key,
-        }));
-        const { error: insErr } = await supabase.from("email_backfill_queue").upsert(rows, {
-          onConflict: "connection_id,provider_message_id",
-          ignoreDuplicates: true,
-        });
-        if (insErr) throw new Error(`queue insert failed: ${insErr.message}`);
-        idsThisRun += ids.length;
-      }
-      url = data["@odata.nextLink"] || null;
-      pages += 1;
-      if (!url) { folderDone = true; break; }
+  while (pages < MAX_PAGES_PER_INVOCATION && url) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: "eventual" } });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`graph list ${res.status}: ${txt.slice(0, 200)}`);
     }
-    updates[f.cursorField] = folderDone ? null : url;
-    if (!folderDone) allDone = false;
+    const data = await res.json() as { value?: Array<{ id: string }>; "@odata.nextLink"?: string; "@odata.count"?: number };
+    if (typeof data["@odata.count"] === "number") estimate = Math.max(estimate, data["@odata.count"]);
+    const ids = (data.value || []).map((m) => m.id);
+    if (ids.length > 0) {
+      const rows = ids.map((id) => ({
+        job_id: job.id,
+        connection_id: job.connection_id,
+        provider_message_id: id,
+        folder: "all",
+      }));
+      const { error: insErr } = await supabase.from("email_backfill_queue").upsert(rows, {
+        onConflict: "connection_id,provider_message_id",
+        ignoreDuplicates: true,
+      });
+      if (insErr) throw new Error(`queue insert failed: ${insErr.message}`);
+      idsThisRun += ids.length;
+    }
+    url = data["@odata.nextLink"] || null;
+    pages += 1;
+    if (!url) { done = true; break; }
   }
 
   const discovered = (await supabase.from("email_backfill_queue").select("id", { count: "exact", head: true }).eq("job_id", job.id)).count || 0;
 
   await supabase.from("email_backfill_jobs").update({
-    ...updates,
-    discovery_complete: allDone,
+    discovery_cursor: done ? null : url,
+    discovery_cursor_sent: null, // unused for Outlook full-mailbox walk
+    discovery_complete: done,
     estimated_total: Math.max(estimate, 0),
     messages_discovered: discovered,
-    status: allDone ? "running" : "discovering",
+    status: done ? "running" : "discovering",
     last_chunked_at: new Date().toISOString(),
   }).eq("id", job.id);
 
-  return { done: allDone, pages, idsThisRun, estimate };
+  return { done, pages, idsThisRun, estimate };
 }
 
 Deno.serve(async (req) => {
