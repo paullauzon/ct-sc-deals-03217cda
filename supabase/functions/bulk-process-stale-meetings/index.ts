@@ -446,6 +446,14 @@ Deno.serve(async (req) => {
       console.log(`[bulk-process-stale] ${lead.id}: meetings=${r.processed} intel=${r.intelOk} fields=${r.fieldsWritten}`);
     }
 
+    try {
+      await supabase.from("cron_run_log").insert({
+        job_name: "auto-process-stale-transcripts", status: "success",
+        items_processed: intelGenerated,
+        details: { candidates: candidates.length, meetings_processed: totalProcessed, fields_written: totalFields },
+      });
+    } catch {/* swallow */}
+
     return new Response(
       JSON.stringify({
         status: "ok",
@@ -459,6 +467,13 @@ Deno.serve(async (req) => {
     );
   } catch (err) {
     console.error("[bulk-process-stale-meetings]", err);
+    try {
+      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await sb.from("cron_run_log").insert({
+        job_name: "auto-process-stale-transcripts", status: "error", items_processed: 0,
+        error_message: (err as Error).message.slice(0, 200),
+      });
+    } catch {/* swallow */}
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

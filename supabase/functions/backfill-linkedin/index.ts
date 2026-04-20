@@ -1664,6 +1664,14 @@ Deno.serve(async (req) => {
     const avgTurns = totalProcessed > 0 ? (totalTurns / totalProcessed).toFixed(1) : "0";
     console.log(`\nAll chains complete: ${totalFound}/${totalProcessed} matched across ${chainsRun} chains, cache had ${companyCache.size} companies`);
 
+    try {
+      await supabase.from("cron_run_log").insert({
+        job_name: "auto-backfill-linkedin", status: "success",
+        items_processed: totalFound,
+        details: { processed: totalProcessed, gaveUp: totalGaveUp, chainsRun },
+      });
+    } catch {/* swallow */}
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -1675,12 +1683,18 @@ Deno.serve(async (req) => {
         gaveUpReasons: allGaveUpReasons,
         chainsRun,
         companyCacheHits: companyCache.size,
-        
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
     console.error("backfill-linkedin error:", err);
+    try {
+      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await sb.from("cron_run_log").insert({
+        job_name: "auto-backfill-linkedin", status: "error", items_processed: 0,
+        error_message: (err as Error).message.slice(0, 200),
+      });
+    } catch {/* swallow */}
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
