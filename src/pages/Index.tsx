@@ -13,6 +13,7 @@ import { Search, BarChart3, Kanban, Users, CalendarCheck, Settings, Workflow } f
 import { MailboxSettings } from "@/components/MailboxSettings";
 import { UserMenu } from "@/components/UserMenu";
 import { AutomationHealthChip } from "@/components/AutomationHealthChip";
+import { BackfillStatusChip } from "@/components/BackfillStatusChip";
 import { SequencesView } from "@/components/sequences/SequencesView";
 
 type View = "dashboard" | "pipeline" | "leads" | "today" | "sequences" | "settings";
