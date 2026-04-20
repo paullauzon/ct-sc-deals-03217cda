@@ -18,6 +18,8 @@ const STAGE_WEIGHTS: Record<string, number> = {
 
 const isWonStage = (s: string) => normalizeStage(s) === "Closed Won";
 const isLostStage = (s: string) => normalizeStage(s) === "Closed Lost";
+// Shim for legacy `.has(stage)` callsites that still use CLOSED_STAGES.
+const CLOSED_STAGES = { has: (s: string) => isClosedStage(s as any) };
 
 interface Props {
   leads: Lead[];

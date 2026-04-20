@@ -13,6 +13,8 @@ const POST_MEETING_STAGES = new Set([
   "Closed Won", "Closed Lost",
 ]);
 const ACTIVE_STAGE_ORDER = [...ACTIVE_STAGES];
+// Shim for legacy `.has(stage)` callsites still using CLOSED_STAGES.
+const CLOSED_STAGES = { has: (s: string) => isClosedStage(s as any) };
 
 function pct(n: number, d: number) { return d > 0 ? Math.round((n / d) * 100) : 0; }
 function fmt$(v: number) { return v >= 1000 ? `$${Math.round(v / 1000)}K` : `$${Math.round(v)}`; }
