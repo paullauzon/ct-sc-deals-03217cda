@@ -45,12 +45,23 @@ serve(async (req) => {
 
     const count = data?.length ?? 0;
     console.log(`[auto-reschedule-overdue] rescheduled ${count} task(s) to ${todayStr}`);
+    await supabase.from("cron_run_log").insert({
+      job_name: "auto-reschedule-overdue", status: "success", items_processed: count,
+      details: { due_date: todayStr },
+    });
     return new Response(
       JSON.stringify({ rescheduled: count, due_date: todayStr }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     console.error("auto-reschedule-overdue error:", err);
+    try {
+      const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await supabase.from("cron_run_log").insert({
+        job_name: "auto-reschedule-overdue", status: "error", items_processed: 0,
+        error_message: (err as Error).message.slice(0, 200),
+      });
+    } catch {/* swallow */}
     return new Response(
       JSON.stringify({ error: (err as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
