@@ -873,6 +873,7 @@ export function Pipeline() {
 
                         // Unified action count
                         const leadPlaybookTasks = allPlaybookTasks.filter(t => t.lead_id === lead.id);
+                        const slaTasks = leadPlaybookTasks.filter(t => t.playbook?.startsWith("sla-"));
                         // Detect meeting prep needed: future meeting date + no prep meetings
                         let hasMeetingPrep = false;
                         if (lead.meetingDate) {
