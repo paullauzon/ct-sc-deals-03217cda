@@ -84,7 +84,15 @@ interface SuggestedResponse {
   body: string;
 }
 
-export function EmailsSection({ leadId, lead, onCompose }: { leadId: string; lead?: Lead; onCompose?: () => void }) {
+export interface ReplyPrefill {
+  to?: string;
+  subject?: string;
+  thread_id?: string;
+  in_reply_to?: string;
+  quote?: string;
+}
+
+export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: string; lead?: Lead; onCompose?: () => void; onReply?: (prefill: ReplyPrefill) => void }) {
   const [emails, setEmails] = useState<LeadEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [responseDialog, setResponseDialog] = useState<{ email: LeadEmail; objections: DetectedObjection[] } | null>(null);
@@ -175,6 +183,7 @@ export function EmailsSection({ leadId, lead, onCompose }: { leadId: string; lea
               key={thread.threadId}
               thread={thread}
               onSuggestResponses={(email, objections) => setResponseDialog({ email, objections })}
+              onReply={onReply}
             />
           ))}
         </div>
@@ -201,11 +210,11 @@ export function EmailsSection({ leadId, lead, onCompose }: { leadId: string; lea
   );
 }
 
-function ThreadCard({ thread, onSuggestResponses }: { thread: ThreadGroup; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void }) {
+function ThreadCard({ thread, onSuggestResponses, onReply }: { thread: ThreadGroup; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void }) {
   const isSingleEmail = thread.emails.length === 1;
 
   if (isSingleEmail) {
-    return <EmailRow email={thread.emails[0]} onSuggestResponses={onSuggestResponses} />;
+    return <EmailRow email={thread.emails[0]} onSuggestResponses={onSuggestResponses} onReply={onReply} />;
   }
 
   return (
@@ -230,7 +239,7 @@ function ThreadCard({ thread, onSuggestResponses }: { thread: ThreadGroup; onSug
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 border-l-2 border-border ml-3 mt-1 mb-2">
           {thread.emails.map((email) => (
-            <EmailRow key={email.id} email={email} compact onSuggestResponses={onSuggestResponses} />
+            <EmailRow key={email.id} email={email} compact onSuggestResponses={onSuggestResponses} onReply={onReply} />
           ))}
         </div>
       </CollapsibleContent>
@@ -238,7 +247,7 @@ function ThreadCard({ thread, onSuggestResponses }: { thread: ThreadGroup; onSug
   );
 }
 
-function EmailRow({ email, compact, onSuggestResponses }: { email: LeadEmail; compact?: boolean; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void }) {
+function EmailRow({ email, compact, onSuggestResponses, onReply }: { email: LeadEmail; compact?: boolean; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void }) {
   const [expanded, setExpanded] = useState(false);
   const isOutbound = email.direction === "outbound";
   const Icon = isOutbound ? ArrowUpRight : ArrowDownLeft;
