@@ -19,6 +19,31 @@ function formatJoined(iso?: string) {
   }
 }
 
+function formatDateTime(iso?: string | null) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "—";
+  }
+}
+
+function initialsOf(name?: string | null, email?: string | null): string {
+  const source = (name?.trim() || email?.split("@")[0] || "").trim();
+  if (!source) return "?";
+  const parts = source.split(/[\s._-]+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function providerLabel(user: any): string {
+  const provider = user?.app_metadata?.provider || user?.identities?.[0]?.provider;
+  if (provider === "google") return "Signed in via Google";
+  if (provider === "email") return "Email & password";
+  if (typeof provider === "string" && provider.length) return `Signed in via ${provider}`;
+  return "Email & password";
+}
+
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { user, profile, role, loading, refreshProfile, signOut } = useAuth();
@@ -84,12 +109,12 @@ export default function ProfilePage() {
       <main className="max-w-2xl mx-auto px-6 py-10 space-y-8">
         <section className="flex items-center gap-4">
           <div className="h-14 w-14 flex items-center justify-center rounded-full bg-foreground text-background text-sm font-semibold">
-            {(name || profile?.email || "?").slice(0, 2).toUpperCase()}
+            {initialsOf(profile?.name, profile?.email)}
           </div>
           <div className="space-y-1">
             <div className="text-base font-medium text-foreground">{profile?.name || "Unnamed user"}</div>
             <div className="text-xs text-muted-foreground">{profile?.email}</div>
-            <div className="flex items-center gap-2 pt-0.5">
+            <div className="flex items-center gap-2 pt-0.5 flex-wrap">
               <span className="inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
                 {role === "admin" ? <ShieldCheck className="h-2.5 w-2.5" /> : <UserIcon className="h-2.5 w-2.5" />}
                 {role || "—"}
@@ -98,6 +123,17 @@ export default function ProfilePage() {
                 Joined {formatJoined(profile?.created_at)}
               </span>
             </div>
+          </div>
+        </section>
+
+        <section className="border border-border rounded-lg bg-card p-4 text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Sign-in method</span>
+            <span className="text-foreground">{providerLabel(user)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Last sign-in</span>
+            <span className="text-foreground">{formatDateTime((user as any)?.last_sign_in_at)}</span>
           </div>
         </section>
 

@@ -1018,6 +1018,30 @@ export type Database = {
         }
         Relationships: []
       }
+      pending_invites: {
+        Row: {
+          email: string
+          invited_at: string
+          invited_by: string | null
+          name: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          email: string
+          invited_at?: string
+          invited_by?: string | null
+          name?: string
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          email?: string
+          invited_at?: string
+          invited_by?: string | null
+          name?: string
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
       pipeline_snapshots: {
         Row: {
           created_at: string
