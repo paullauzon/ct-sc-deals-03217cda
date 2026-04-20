@@ -336,16 +336,29 @@ function ScheduledStrip({ scheduled, onCancel }: { scheduled: LeadEmail[]; onCan
   );
 }
 
-function ThreadCard({ thread, onSuggestResponses, onReply, onMarkRead }: { thread: ThreadGroup; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void }) {
+function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMarkRead }: { thread: ThreadGroup; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void }) {
   const isSingleEmail = thread.emails.length === 1;
   const unreadCount = thread.emails.filter(e => e.direction === "inbound" && !e.is_read).length;
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (expandAllSignal === "expand") setOpen(true);
+    else if (expandAllSignal === "collapse") setOpen(false);
+  }, [expandAllSignal]);
+
+  // Latest inbound reply preview
+  const latestInbound = [...thread.emails]
+    .filter(e => e.direction === "inbound")
+    .sort((a, b) => new Date(b.email_date).getTime() - new Date(a.email_date).getTime())[0];
+  const replyPreview = latestInbound && thread.emails.length > 1 ? latestInbound.body_preview?.trim() : "";
+  const truncatedPreview = replyPreview && replyPreview.length > 120 ? replyPreview.slice(0, 120) + "…" : replyPreview;
 
   if (isSingleEmail) {
-    return <EmailRow email={thread.emails[0]} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} />;
+    return <EmailRow email={thread.emails[0]} expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} />;
   }
 
   return (
-    <Collapsible>
+    <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="w-full text-left">
         <div className="flex items-center gap-2 p-2 rounded-md hover:bg-secondary/40 transition-colors">
           <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -359,17 +372,22 @@ function ThreadCard({ thread, onSuggestResponses, onReply, onMarkRead }: { threa
                 {thread.emails.length}
               </Badge>
             </div>
+            {truncatedPreview && (
+              <div className="text-[10px] text-muted-foreground/80 truncate mt-0.5 italic">
+                Last reply · {formatDate(latestInbound.email_date)} · "{truncatedPreview}"
+              </div>
+            )}
             <div className="text-[10px] text-muted-foreground">
               {formatDate(thread.latestDate)}
             </div>
           </div>
-          <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0 transition-transform" />
+          <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", open && "rotate-180")} />
         </div>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 border-l-2 border-border ml-3 mt-1 mb-2">
           {thread.emails.map((email) => (
-            <EmailRow key={email.id} email={email} compact onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} />
+            <EmailRow key={email.id} email={email} compact expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} />
           ))}
         </div>
       </CollapsibleContent>
