@@ -77,6 +77,9 @@ export function LeadActionsTab({ lead, allLeads, save, draftSignal, onSendAiDraf
   const [generatingPrep, setGeneratingPrep] = useState(false);
   const [draftingPriority, setDraftingPriority] = useState<string | null>(null);
   const [draftedPriorityEmails, setDraftedPriorityEmails] = useState<Record<string, string>>({});
+  /** Auto-generated drafts (stage entry, stall nudge, inbound reply) keyed by action_key.
+   *  Each row carries its DB id so we can pass it to send-gmail-email and stamp ai_drafted=true. */
+  const [autoDrafts, setAutoDrafts] = useState<Array<{ id: string; action_key: string; content: string; context_label: string; updated_at: string }>>([]);
 
   const leadIdArray = lead?.id ? [lead.id] : [];
   const { unansweredIds } = useUnansweredEmails(leadIdArray);
@@ -89,8 +92,16 @@ export function LeadActionsTab({ lead, allLeads, save, draftSignal, onSendAiDraf
       const { data } = await supabase.from("lead_drafts").select("*").eq("lead_id", lead.id).eq("status", "draft");
       if (data && data.length > 0) {
         const loaded: Record<string, string> = {};
-        (data as any[]).forEach(d => { loaded[d.action_key] = d.content; });
+        const auto: Array<{ id: string; action_key: string; content: string; context_label: string; updated_at: string }> = [];
+        (data as any[]).forEach(d => {
+          loaded[d.action_key] = d.content;
+          // Auto-generated drafts: stage entries, stall nudges, inbound-reply triggers.
+          if (d.action_key.startsWith("stage-entry-") || d.action_key.startsWith("stage-stall-") || d.action_key.startsWith("reply-")) {
+            auto.push({ id: d.id, action_key: d.action_key, content: d.content, context_label: d.context_label || "", updated_at: d.updated_at });
+          }
+        });
         setDraftedPriorityEmails(loaded);
+        setAutoDrafts(auto.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
       }
     })();
   }, [lead?.id]);
