@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from "react";
 import { useLeads } from "@/contexts/LeadContext";
 import { Lead, LeadSource, Brand } from "@/types/lead";
-import { computeDaysInStage } from "@/lib/leadUtils";
+import { computeDaysInStage, isClosedStage, normalizeStage } from "@/lib/leadUtils";
 import { LeadDetail } from "@/components/LeadsTable";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { DashboardAdvancedMetrics } from "@/components/DashboardAdvancedMetrics";
@@ -79,12 +79,12 @@ export function Dashboard() {
 
   // Recompute metrics based on filtered leads
   const m = useMemo(() => {
-    const closedStages = new Set(["Closed Won", "Lost", "Went Dark"]);
-    const activeLeads = filteredLeads.filter(l => !closedStages.has(l.stage));
+    const isClosed = (s: string) => isClosedStage(normalizeStage(s));
+    const activeLeads = filteredLeads.filter(l => !isClosed(l.stage));
     const totalPipelineValue = activeLeads.reduce((s, l) => s + l.dealValue, 0);
-    const wonLeads = filteredLeads.filter(l => l.stage === "Closed Won");
-    const lostLeads = filteredLeads.filter(l => l.stage === "Lost");
-    const wentDark = filteredLeads.filter(l => l.stage === "Went Dark");
+    const wonLeads = filteredLeads.filter(l => normalizeStage(l.stage) === "Closed Won");
+    const lostLeads = filteredLeads.filter(l => normalizeStage(l.stage) === "Closed Lost");
+    const wentDark: Lead[] = [];
     const totalClosed = wonLeads.length + lostLeads.length;
     const conversionRate = totalClosed > 0 ? Math.round((wonLeads.length / totalClosed) * 100) : 0;
 
@@ -274,15 +274,15 @@ export function Dashboard() {
     const lvrChange = lvrPrior > 0 ? Math.round(((lvrCurrent - lvrPrior) / lvrPrior) * 100) : 0;
 
     // Stale leads
-    const closedStages = new Set(["Closed Won", "Lost", "Went Dark"]);
+    const isClosed2 = (s: string) => isClosedStage(normalizeStage(s));
     const staleLeads = filteredLeads
-      .filter((l) => !closedStages.has(l.stage) && computeDaysInStage(l.stageEnteredDate) > 14)
+      .filter((l) => !isClosed2(l.stage) && computeDaysInStage(l.stageEnteredDate) > 14)
       .sort((a, b) => computeDaysInStage(b.stageEnteredDate) - computeDaysInStage(a.stageEnteredDate));
 
     // Priority distribution
     const priorityData = (["High", "Medium", "Low"] as const).map((p) => ({
       priority: p,
-      count: filteredLeads.filter((l) => l.priority === p && !closedStages.has(l.stage)).length,
+      count: filteredLeads.filter((l) => l.priority === p && !isClosed2(l.stage)).length,
     }));
 
     // Forecast summary
@@ -476,9 +476,9 @@ export function Dashboard() {
           <div className="grid grid-cols-4 gap-4">
             {[
               { label: "Total Leads", value: String(m.totalLeads), drillLeads: filteredLeads, drillTitle: "All Leads" },
-              { label: "Pipeline Value", value: `$${m.totalPipelineValue.toLocaleString()}`, drillLeads: filteredLeads.filter(l => !["Closed Won", "Lost", "Went Dark"].includes(l.stage)), drillTitle: "Active Pipeline" },
-              { label: "MRR (Won)", value: `$${Math.round(analytics.totalMRR).toLocaleString()}`, drillLeads: filteredLeads.filter(l => l.stage === "Closed Won"), drillTitle: "Closed Won" },
-              { label: "Win Rate", value: `${m.conversionRate}%`, drillLeads: filteredLeads.filter(l => ["Closed Won", "Lost"].includes(l.stage)), drillTitle: "Closed Deals" },
+              { label: "Pipeline Value", value: `$${m.totalPipelineValue.toLocaleString()}`, drillLeads: filteredLeads.filter(l => !isClosedStage(normalizeStage(l.stage))), drillTitle: "Active Pipeline" },
+              { label: "MRR (Won)", value: `$${Math.round(analytics.totalMRR).toLocaleString()}`, drillLeads: filteredLeads.filter(l => normalizeStage(l.stage) === "Closed Won"), drillTitle: "Closed Won" },
+              { label: "Win Rate", value: `${m.conversionRate}%`, drillLeads: filteredLeads.filter(l => isClosedStage(normalizeStage(l.stage))), drillTitle: "Closed Deals" },
             ].map((stat) => (
               <div
                 key={stat.label}

@@ -7,9 +7,10 @@ import { cn } from "@/lib/utils";
 import { format, parseISO, differenceInDays, addDays, isBefore } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { computeDealHealthScore } from "@/lib/dealHealthUtils";
+import { ACTIVE_STAGES as V2_ACTIVE, isClosedStage, normalizeStage } from "@/lib/leadUtils";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
-const ACTIVE_STAGES = new Set(["Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"]);
+const CLOSED_STAGES = { has: (s: string) => isClosedStage(normalizeStage(s)) };
+const ACTIVE_STAGES = { has: (s: string) => V2_ACTIVE.includes(normalizeStage(s)) };
 
 function KpiCard({ label, value, subValue, icon: Icon, accent }: { label: string; value: string; subValue?: string; icon: typeof Activity; accent?: string }) {
   return (

@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activityLog";
 import { toast } from "sonner";
 import { CompanyActivityCard } from "./cards/CompanyActivityCard";
 import { useLeads } from "@/contexts/LeadContext";
+import { isClosedStage, normalizeStage } from "@/lib/leadUtils";
 
 interface Props {
   lead: Lead;
@@ -16,7 +17,7 @@ interface Props {
 /** Inline action chips on the follow-up overdue banner */
 function FollowUpActionBanner({ lead, save, onDraftFollowUp }: Props) {
   const today = new Date();
-  const isClosed = ["Closed Won", "Lost", "Went Dark"].includes(lead.stage);
+  const isClosed = isClosedStage(normalizeStage(lead.stage));
   if (isClosed) return null;
 
   let daysOverdue = 0;

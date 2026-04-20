@@ -50,7 +50,7 @@ function makeSCLead(
     dateSubmitted: r.date,
     message: r.message,
     dealsPlanned: "",
-    stage: "New Lead",
+    stage: "Unassigned",
     serviceInterest: "TBD",
     dealValue: 0,
     assignedTo: "",

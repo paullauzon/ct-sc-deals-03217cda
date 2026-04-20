@@ -1,4 +1,5 @@
 import * as React from "react";
+import { isClosedStage, normalizeStage } from "@/lib/leadUtils";
 import { useState } from "react";
 import { Lead, LeadEnrichment, SuggestedFieldUpdate, SuggestedUpdates, Submission, LeadSource } from "@/types/lead";
 import { Input } from "@/components/ui/input";
@@ -274,7 +275,7 @@ export function getDealSignals(lead: Lead): DealSignal[] {
   const today = new Date();
 
   const meetings = lead.meetings || [];
-  if (meetings.length > 0 && !["Closed Won", "Lost", "Went Dark"].includes(lead.stage)) {
+  if (meetings.length > 0 && !isClosedStage(normalizeStage(lead.stage))) {
     const latestMeetingDate = meetings.map(m => m.date).filter(Boolean).sort().pop();
     if (latestMeetingDate) {
       const daysSince = Math.floor((today.getTime() - new Date(latestMeetingDate).getTime()) / 86400000);
@@ -305,7 +306,7 @@ export function getDealSignals(lead: Lead): DealSignal[] {
         unmitigated[0].risk));
   }
 
-  if (!["Closed Won", "Lost", "Went Dark"].includes(lead.stage)) {
+  if (!isClosedStage(normalizeStage(lead.stage))) {
     if (!lead.nextFollowUp)
       alerts.push(sig("warning", "No follow-up scheduled",
         "Add a next step so this deal stays on the calendar."));

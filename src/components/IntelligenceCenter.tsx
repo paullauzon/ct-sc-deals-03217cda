@@ -12,8 +12,9 @@ import {
   AlertTriangle, Timer, Mic, HelpCircle, Target, BarChart3,
   Route, Shield, Handshake, Lock
 } from "lucide-react";
+import { isClosedStage, normalizeStage } from "@/lib/leadUtils";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
+const CLOSED_STAGES = { has: (s: string) => isClosedStage(normalizeStage(s)) };
 
 type SubTab = "signals" | "competitors" | "risks" | "coaching" | "gtm";
 
@@ -1249,8 +1250,8 @@ function ChannelIntelCorrelation({ leads }: { leads: Lead[] }) {
     return sources.map(source => {
       const srcLeads = leads.filter(l => l.source === source);
       const withMeetings = srcLeads.filter(l => (l.meetings || []).length > 0);
-      const won = srcLeads.filter(l => l.stage === "Closed Won");
-      const closed = srcLeads.filter(l => ["Closed Won", "Lost", "Went Dark"].includes(l.stage));
+      const won = srcLeads.filter(l => normalizeStage(l.stage) === "Closed Won");
+      const closed = srcLeads.filter(l => isClosedStage(normalizeStage(l.stage)));
       const avgMeetings = srcLeads.length > 0
         ? (srcLeads.reduce((s, l) => s + (l.meetings?.length || 0), 0) / srcLeads.length).toFixed(1)
         : "0";

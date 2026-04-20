@@ -375,7 +375,7 @@ export function DashboardBusiness({ leads, onDrillDown }: Props) {
             }
 
             // Captarget pipeline concentration
-            const ctActive = leads.filter(l => l.brand === "Captarget" && !CLOSED_STAGES.has(l.stage));
+            const ctActive = leads.filter(l => l.brand === "Captarget" && !isClosed(l.stage));
             const ctMalik = ctActive.filter(l => l.assignedTo === "Malik").length;
             if (ctActive.length > 0) {
               insights.push({
@@ -388,7 +388,7 @@ export function DashboardBusiness({ leads, onDrillDown }: Props) {
             // Stale pipeline (no contact > 30 days)
             const now = Date.now();
             const staleActive = leads.filter(l => {
-              if (CLOSED_STAGES.has(l.stage)) return false;
+              if (isClosed(l.stage)) return false;
               if (!l.lastContactDate) return true;
               return (now - new Date(l.lastContactDate).getTime()) > 30 * 86400000;
             });
