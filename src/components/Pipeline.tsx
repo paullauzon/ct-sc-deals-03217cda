@@ -687,55 +687,32 @@ export function Pipeline() {
                         return;
                       }
 
-                      toast.info(`Re-fetching ${broken.length} broken transcript${broken.length === 1 ? "" : "s"}…`);
+                      // Stagger enqueue across 30 minutes so we don't spike Fireflies API
+                      const now = Date.now();
+                      const rows = broken.map((b, idx) => ({
+                        fireflies_id: b.firefliesId,
+                        lead_id: b.leadId,
+                        attempts: 0,
+                        max_attempts: 5,
+                        status: "pending",
+                        next_attempt_at: new Date(now + Math.floor((idx / broken.length) * 30 * 60 * 1000)).toISOString(),
+                      }));
 
-                      // Group by brand and fetch
-                      const byBrand: Record<string, typeof broken> = {};
-                      broken.forEach(b => {
-                        const brand = b.brand === "SourceCo" ? "SourceCo" : "Captarget";
-                        (byBrand[brand] = byBrand[brand] || []).push(b);
-                      });
+                      const { error: enqErr } = await supabase
+                        .from("fireflies_retry_queue")
+                        .upsert(rows, { onConflict: "fireflies_id" });
+                      if (enqErr) throw enqErr;
 
-                      let recovered = 0;
-                      const allResults: any[] = [];
-                      for (const [brand, items] of Object.entries(byBrand)) {
-                        const ids = items.map(i => i.firefliesId);
-                        const { data, error } = await supabase.functions.invoke("fetch-fireflies", {
-                          body: { mode: "re-fetch", brand, firefliesIds: ids },
-                        });
-                        if (error) { console.error(`re-fetch ${brand} failed`, error); continue; }
-                        const results = (data?.results || []) as Array<{ id: string; ok: boolean; transcript?: string; transcriptLength?: number }>;
-                        allResults.push(...results.map(r => ({ ...r, brand })));
-                        for (const r of results) {
-                          if (!r.ok || !r.transcript) continue;
-                          const target = items.find(i => i.firefliesId === r.id);
-                          if (!target) continue;
-                          // Patch the meeting in the lead
-                          const lead = candidates!.find((l: any) => l.id === target.leadId);
-                          if (!lead) continue;
-                          const updatedMeetings = (lead.meetings as any[]).map((m: any, idx: number) =>
-                            idx === target.meetingIdx
-                              ? { ...m, transcript: r.transcript, transcriptLength: r.transcriptLength }
-                              : m
-                          );
-                          const { error: upErr } = await supabase
-                            .from("leads")
-                            .update({ meetings: updatedMeetings })
-                            .eq("id", target.leadId);
-                          if (!upErr) recovered++;
-                        }
-                      }
-
-                      const failed = allResults.filter(r => !r.ok).length;
-                      toast.success(`Recovered ${recovered} of ${broken.length} transcript${broken.length === 1 ? "" : "s"}${failed > 0 ? ` · ${failed} still empty in Fireflies` : ""}`);
-                      await refreshLeads();
+                      toast.success(
+                        `Queued ${broken.length} transcript${broken.length === 1 ? "" : "s"} for retry — runs every 15 min`
+                      );
                     } catch (err) {
-                      toast.error("Re-fetch failed: " + (err as Error).message);
+                      toast.error("Enqueue failed: " + (err as Error).message);
                     }
                   }}
                 >
-                  <span className="text-xs font-medium">Re-fetch broken transcripts</span>
-                  <span className="text-[10px] text-muted-foreground">Re-pulls Fireflies transcripts where the original sync returned empty · feeds stale-transcript queue</span>
+                  <span className="text-xs font-medium">Queue broken transcripts for retry</span>
+                  <span className="text-[10px] text-muted-foreground">Enqueues all empty Fireflies transcripts · retry runner picks them up every 15 min with exponential backoff</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

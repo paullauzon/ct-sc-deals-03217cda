@@ -190,6 +190,24 @@ serve(async (req) => {
         let intelligence = null;
         const hasTranscript = bestMatch.transcript && bestMatch.transcript.length > 50;
 
+        // Empty transcript path: enqueue into retry queue and skip writing the meeting.
+        // The retry runner will re-fetch and patch the meeting in once a transcript lands.
+        if (!hasTranscript && bestMatch.firefliesId) {
+          await supabase
+            .from("fireflies_retry_queue")
+            .upsert({
+              fireflies_id: bestMatch.firefliesId,
+              lead_id: lead.id,
+              attempts: 0,
+              max_attempts: 5,
+              status: "pending",
+              next_attempt_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+            }, { onConflict: "fireflies_id" });
+          console.log(`[sync-fireflies] Lead ${lead.name}: empty transcript — enqueued for retry.`);
+          results.push({ leadId: lead.id, name: lead.name, status: "enqueued_for_retry" });
+          continue;
+        }
+
         if (hasTranscript) {
           try {
             // Get prior meetings for context
