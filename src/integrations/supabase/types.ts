@@ -226,6 +226,128 @@ export type Database = {
         }
         Relationships: []
       }
+      email_backfill_jobs: {
+        Row: {
+          connection_id: string
+          created_at: string
+          discovery_complete: boolean
+          discovery_cursor: string | null
+          discovery_cursor_sent: string | null
+          email_address: string
+          estimated_total: number
+          finished_at: string | null
+          id: string
+          last_chunked_at: string | null
+          last_error: string | null
+          messages_discovered: number
+          messages_inserted: number
+          messages_matched: number
+          messages_processed: number
+          messages_skipped: number
+          messages_unmatched: number
+          provider: string
+          started_at: string
+          status: string
+          target_window: string
+          updated_at: string
+        }
+        Insert: {
+          connection_id: string
+          created_at?: string
+          discovery_complete?: boolean
+          discovery_cursor?: string | null
+          discovery_cursor_sent?: string | null
+          email_address: string
+          estimated_total?: number
+          finished_at?: string | null
+          id?: string
+          last_chunked_at?: string | null
+          last_error?: string | null
+          messages_discovered?: number
+          messages_inserted?: number
+          messages_matched?: number
+          messages_processed?: number
+          messages_skipped?: number
+          messages_unmatched?: number
+          provider: string
+          started_at?: string
+          status?: string
+          target_window?: string
+          updated_at?: string
+        }
+        Update: {
+          connection_id?: string
+          created_at?: string
+          discovery_complete?: boolean
+          discovery_cursor?: string | null
+          discovery_cursor_sent?: string | null
+          email_address?: string
+          estimated_total?: number
+          finished_at?: string | null
+          id?: string
+          last_chunked_at?: string | null
+          last_error?: string | null
+          messages_discovered?: number
+          messages_inserted?: number
+          messages_matched?: number
+          messages_processed?: number
+          messages_skipped?: number
+          messages_unmatched?: number
+          provider?: string
+          started_at?: string
+          status?: string
+          target_window?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      email_backfill_queue: {
+        Row: {
+          attempts: number
+          connection_id: string
+          enqueued_at: string
+          folder: string
+          id: number
+          job_id: string
+          last_error: string | null
+          processed_at: string | null
+          provider_message_id: string
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          connection_id: string
+          enqueued_at?: string
+          folder?: string
+          id?: number
+          job_id: string
+          last_error?: string | null
+          processed_at?: string | null
+          provider_message_id: string
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          connection_id?: string
+          enqueued_at?: string
+          folder?: string
+          id?: number
+          job_id?: string
+          last_error?: string | null
+          processed_at?: string | null
+          provider_message_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_backfill_queue_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "email_backfill_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_sync_runs: {
         Row: {
           connection_id: string
