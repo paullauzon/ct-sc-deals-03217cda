@@ -40,11 +40,9 @@ interface LeadContextType {
 
 const LeadContext = createContext<LeadContextType | null>(null);
 
-const STAGES: LeadStage[] = [
-  "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held",
-  "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect",
-  "Lost", "Went Dark", "Closed Won",
-];
+import { ALL_STAGES as STAGES_FROM_UTILS, normalizeStage, TERMINAL_STAGES } from "@/lib/leadUtils";
+
+const STAGES: LeadStage[] = STAGES_FROM_UTILS;
 
 async function fetchLeadsFromDb(): Promise<Lead[] | null> {
   const { data, error } = await supabase.from("leads").select("*").is("archived_at", null);

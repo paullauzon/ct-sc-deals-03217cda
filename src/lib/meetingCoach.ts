@@ -2,20 +2,29 @@ import { Meeting, Lead, LeadStage } from "@/types/lead";
 
 // Curated question checklist by stage. If any of these wasn't asked,
 // it surfaces as a "question gap" coaching signal.
+// v2 stage keys are primary; legacy keys mirror them so old data still scores.
+const DISCOVERY_SCHEDULED_CHECKLIST = [
+  { label: "Acquisition criteria (size/sector/geo)", keywords: ["criteria", "buybox", "size range", "ebitda", "revenue range", "geography", "sector"] },
+  { label: "Decision process", keywords: ["decision", "approve", "ic ", "investment committee", "who else"] },
+  { label: "Timeline / urgency", keywords: ["timeline", "when", "by end of", "this quarter", "this year"] },
+  { label: "Current sourcing approach", keywords: ["currently", "today", "right now", "in-house", "banker", "broker"] },
+  { label: "Budget / spend today", keywords: ["budget", "spending", "paying", "cost", "investment"] },
+];
+const DISCOVERY_COMPLETED_CHECKLIST = [
+  { label: "Champion buy-in", keywords: ["champion", "internally", "team thinks", "partners think"] },
+  { label: "Other stakeholders", keywords: ["who else", "anyone else", "your team", "partner"] },
+  { label: "Competitive evaluation", keywords: ["others", "evaluating", "comparing", "alternatives", "vendors"] },
+  { label: "Success metric", keywords: ["success", "looks like", "measure", "outcome", "win"] },
+  { label: "Specific next step", keywords: ["next step", "follow up", "send you", "schedule"] },
+];
 const STAGE_QUESTION_CHECKLIST: Partial<Record<LeadStage, { label: string; keywords: string[] }[]>> = {
-  "Meeting Set": [
-    { label: "Acquisition criteria (size/sector/geo)", keywords: ["criteria", "buybox", "size range", "ebitda", "revenue range", "geography", "sector"] },
-    { label: "Decision process", keywords: ["decision", "approve", "ic ", "investment committee", "who else"] },
-    { label: "Timeline / urgency", keywords: ["timeline", "when", "by end of", "this quarter", "this year"] },
-    { label: "Current sourcing approach", keywords: ["currently", "today", "right now", "in-house", "banker", "broker"] },
-    { label: "Budget / spend today", keywords: ["budget", "spending", "paying", "cost", "investment"] },
-  ],
-  "Meeting Held": [
-    { label: "Champion buy-in", keywords: ["champion", "internally", "team thinks", "partners think"] },
-    { label: "Other stakeholders", keywords: ["who else", "anyone else", "your team", "partner"] },
-    { label: "Competitive evaluation", keywords: ["others", "evaluating", "comparing", "alternatives", "vendors"] },
-    { label: "Success metric", keywords: ["success", "looks like", "measure", "outcome", "win"] },
-    { label: "Specific next step", keywords: ["next step", "follow up", "send you", "schedule"] },
+  // v2 keys (primary)
+  "Discovery Scheduled": DISCOVERY_SCHEDULED_CHECKLIST,
+  "Discovery Completed": DISCOVERY_COMPLETED_CHECKLIST,
+  "Sample Sent": [
+    { label: "Sample reaction captured", keywords: ["thoughts", "reaction", "feedback", "useful", "what did you think"] },
+    { label: "Decision criteria reaffirmed", keywords: ["criteria", "looking for", "must have", "important"] },
+    { label: "Pricing temperature check", keywords: ["price", "investment", "fee", "budget"] },
   ],
   "Proposal Sent": [
     { label: "Pricing reaction", keywords: ["price", "pricing", "investment", "fee", "cost"] },
@@ -23,6 +32,14 @@ const STAGE_QUESTION_CHECKLIST: Partial<Record<LeadStage, { label: string; keywo
     { label: "Timeline to decision", keywords: ["timeline", "by when", "when will", "deciding"] },
     { label: "Open concerns", keywords: ["concern", "worry", "hesitation", "question"] },
   ],
+  "Negotiating": [
+    { label: "Final blockers", keywords: ["blocker", "hold up", "needs", "before signing"] },
+    { label: "Decision-maker buy-in", keywords: ["partner", "principal", "managing", "boss"] },
+    { label: "Specific close date", keywords: ["sign", "close", "by", "this week", "next week"] },
+  ],
+  // Legacy aliases — same checklists so old data still scores
+  "Meeting Set": DISCOVERY_SCHEDULED_CHECKLIST,
+  "Meeting Held": DISCOVERY_COMPLETED_CHECKLIST,
   "Negotiation": [
     { label: "Final blockers", keywords: ["blocker", "hold up", "needs", "before signing"] },
     { label: "Decision-maker buy-in", keywords: ["partner", "principal", "managing", "boss"] },
