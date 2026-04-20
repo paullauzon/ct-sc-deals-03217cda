@@ -1,60 +1,110 @@
 
 
-# What remains from the pipeline v2 rebuild — final verification
+# Email intelligence — corrected interpretation of your mockup
 
-## Ground truth (verified live just now)
+## What your annotations actually mean
 
-Everything from the original 6-step migration plan in your screenshots is **already shipped and working**. Here's the complete state:
+The blue callouts in the screenshots aren't UI to render — they're **routing rules** telling me which tab owns which email type:
 
-| Your original plan step | Status |
+| Your annotation | What it means |
 |---|---|
-| 1. Bulk rename stages (New Lead→Unassigned, Meeting Set→Discovery Scheduled, etc.) | ✅ **Done** — 0 legacy stages in DB (only 3 archived test rows) |
-| 2. Kill Contract Sent, Qualified, Contacted, Went Dark | ✅ **Done** — all merged into v2 equivalents |
-| 3. Add Sample Sent stage between Discovery Completed and Proposal Sent | ✅ **Done** — stage exists, gate enforces 8 required fields |
-| 4. Triage Revisit/Reconnect (264 deals) | ✅ **Done** — 283 now in Closed Lost, all 283 enrolled in active 90-day nurture |
-| 5. Work the 44 Discovery Completed deals | ✅ **Tooling shipped** — Discovery Triage tab surfaces all 44 with Promote→Sample Sent, Close Lost, Snooze buttons; 44 triage tasks already created |
-| 6. 90-day nurture for new Closed Lost | ✅ **Done** — `nurture-engine` cron running daily; 337 drafts queued, 40 manual call tasks active |
+| "Primary home of all emails — sent, received, auto-logged, AI-drafted" | **Activities tab** = single source of truth for every email, merged with notes/calls/meetings/stage changes chronologically |
+| "Threaded, one-to-one emails only" | **Email tab** = focused inbox view. Excludes sequences, marketing, auto-logged bulk sends. Reply-first UX. |
+| "Where emails live in this record" (on Overview) | **Overview tab** = summary stats only (total touchpoints, last contact date). No email list. Just the headline numbers that tell you "this deal has 14 emails, last one 2 days ago." |
 
-**Auto AI features tied to stage moves:** All wired:
-- Stage gates (`stageGates.ts`) block advancement without required fields
-- Auto-playbook tasks fire on every stage change (`playbooks.ts`, 9 playbooks)
-- SLA cron (`enforce-stage-slas`, every 15 min) — 196 pending SLA tasks currently active across 8 rules
-- Closed Lost → auto-enroll in nurture + 90-day sequence
-- Closed Won → auto-create Client Success account (`handle_closed_won` trigger)
-- DB trigger `enforce_stage_v2_gates` soft-warns via activity log on gate gaps
-- Pipeline Health v2 widget on Dashboard shows drop-off, SLA-stuck, nurture buckets
+So the rule is: **Activities = everything. Email = 1-to-1 focus. Overview = counts only.** No explainer cards, no dismissible banners. Clean.
 
-## What's actually left — four small polish items
+## Revised scope
 
-### 1. Dashboard loss-reason analytics on `lost_reason_v2`
+### Phase 1 — Gmail backfill (unchanged)
+- `sync-gmail-emails` gets `force_full=true` flag → 90-day sweep ignoring historyId.
+- "Backfill 90 days" button per mailbox in Settings.
+- Expected outcome: ~300–1000 emails match against existing 437 leads within minutes.
+- **Auto-connect for new mailboxes:** already works — cron loops through all active `user_email_connections` every 10 min. Any new OAuth-added mailbox joins the rotation automatically. No extra work.
 
-The DB has the locked `lost_reason_v2` column and the gate writes to it, but `DashboardLossIntelligence.tsx` still reads the old `lostReason` free-text field. With 283 Closed Lost deals now carrying structured reasons, a proper breakdown chart ("Went Dark: 40%, Budget: 15%, Lost to competitor: 8%…") would finally be meaningful. Swap the source field and add a bar chart.
+### Phase 2 — Activities tab = true unified timeline
+Replace current Activity tab content:
+- Filter chip row: `All · Emails · Meetings · Calls · Notes · Tasks · Stage changes`
+- Debounced search box across subject + body_preview + note text
+- Per-email row enrichments:
+  - Open count pill (`Opened 5×`) with hover tooltip showing last open timestamp
+  - Click count pill (`Clicked 2×`)
+  - `Replied` chip when thread has an inbound reply
+  - `AI-drafted` badge when `ai_drafted=true`
+  - Sequence tag (`S6-B`) from `sequence_step` column when populated
+  - Attachment count chip
+- Inline Reply + Compose from any email row (reuses EmailComposeDrawer)
+- Actor name on every row (already wired via `actor_name`)
 
-### 2. Sample Outcome column on the Pipeline card
+### Phase 3 — Overview tab (new, minimal)
+New first tab. Four stat cards + pinned note + top 2 upcoming tasks. That's it:
+- `Stage · N/9 · Xd in stage`
+- `Deal value · $X · Forecast Y%`
+- `Deal health · Score /100`
+- `Touchpoints · N total · last Apr 10`
+- Pinned note banner (if any)
+- Top 2 upcoming tasks
 
-Cards in the Sample Sent column should show the `sampleOutcome` badge (Approved / Lukewarm / Needs revision / No response / Rejected) so Malik can scan the column at a glance. Currently the field exists and the gate enforces it going to Proposal Sent, but it's invisible on the card.
+No explainer cards. No "where emails live" text. Just numbers.
 
-### 3. "Stall reason" prompt on Proposal Sent > 14 days
+### Phase 4 — Email tab refinements
+Keep existing `EmailsSection` architecture; tighten to 1-to-1 focus:
+- Header: "Emails with {lead.name}" + `Compose` CTA
+- Filter out `email_type IN ('marketing','transactional')` by default
+- Thread-level aggregated stats line under each thread subject: `Opened 7× · Clicked 4× · 3 replies · 2 attachments`
+- Latest-reply preview line: `Last reply Apr 8: "This is exactly what we're looking for…"` (truncated 120 chars)
+- Global `Expand all replies · Collapse all replies` toggle
 
-The SLA function creates an internal task at day 14, but there's no inline UI on the lead panel asking "Why has this proposal stalled?" with the locked dropdown. A small banner at the top of the Deal Room when `daysInStage > 14 && stage === 'Proposal Sent' && !stallReason` with a dropdown + save would close that loop.
+### Phase 5 — AI drafts triggered by stage + inbox signals
+Extend `draft-followup` edge function + add new stage-entry triggers that write to `lead_drafts`:
 
-### 4. Kill legacy stage values from the TypeScript union
+| Trigger | Draft |
+|---|---|
+| `Discovery Completed → Sample Sent` | Sample cover note referencing 15 targets + mandate fields |
+| `Sample Sent → Proposal Sent` | Proposal cover email pulling deal value + scope |
+| `Proposal Sent > 7d silent (no inbound reply)` | Soft nudge; references `stall_reason` if set |
+| Inbound reply received on stalled proposal | Draft response using reply context + 80-word rule |
+| `Closed Won` | Kickoff email copying Valeria |
 
-`src/types/lead.ts` still lists 10 legacy stages (`"New Lead"`, `"Meeting Set"`, etc.) in the `LeadStage` union for compile safety. Per the memory file they're kept "indefinitely" until phase 5. Since the DB now has 0 legacy values in active leads, we can actually drop them. But this risks breaking compile in ~667 references — skip unless you want a full sweep.
+Every draft appears as pending card in Actions tab with `Send · Edit · Discard`. Nothing auto-sends. `ai_drafted=true` stamped on send so Activity tab badges it.
 
-## Recommendation
+## Schema (one migration)
 
-**Do #1, #2, #3 — skip #4.** They're all under ~100 lines of code total and directly improve daily usage. #4 is a cleanup with no user-facing benefit and real risk.
+```sql
+ALTER TABLE lead_emails
+  ADD COLUMN ai_drafted boolean NOT NULL DEFAULT false,
+  ADD COLUMN email_type text NOT NULL DEFAULT 'one_to_one'
+    CHECK (email_type IN ('one_to_one','marketing','transactional','sequence')),
+  ADD COLUMN sequence_step text;
 
-## Files to touch
+CREATE INDEX IF NOT EXISTS lead_emails_lead_type_date_idx
+  ON lead_emails (lead_id, email_type, email_date DESC);
+```
+
+## Files touched
 
 | File | Change |
 |---|---|
-| `src/components/DashboardLossIntelligence.tsx` | Read `lostReasonV2` instead of `lostReason`; add grouped bar chart |
-| `src/components/Pipeline.tsx` | Add `SampleOutcomeBadge` to cards when `stage === 'Sample Sent'` |
-| `src/components/lead-panel/LeadPanelHeader.tsx` (or a new `StallReasonBanner.tsx`) | Inline banner with locked dropdown + save to `stall_reason` |
+| `supabase/functions/sync-gmail-emails/index.ts` | `force_full=true` → 90-day `messages.list` sweep |
+| `supabase/functions/send-gmail-email/index.ts` | Stamp `ai_drafted=true` when body came from `lead_drafts` |
+| `supabase/functions/draft-followup/index.ts` | New stage-entry trigger hooks + stall/reply prompts |
+| `src/components/MailboxSettings.tsx` | "Backfill 90 days" button per mailbox row |
+| `src/components/lead-panel/LeadOverviewTab.tsx` *(new)* | 4 stat cards + pinned note + top tasks |
+| `src/components/lead-panel/LeadActivityTab.tsx` | Filter chips + search + enriched email rows |
+| `src/components/dealroom/UnifiedTimeline.tsx` | Accept `filter` + `search` props; read new email columns |
+| `src/components/EmailsSection.tsx` | Default-filter to 1-to-1; thread-level stat line; reply preview; expand-all toggle |
+| `src/components/LeadDetailPanel.tsx` | Mount Overview tab before Activity; default to Overview |
+| `supabase/migrations/<ts>_email_flags.sql` | Schema above |
+
+## Rollout order
+
+1. Phase 1 first (backfill) — drains the inbox into existing leads immediately. High signal, zero risk.
+2. Phase 2 (Activities tab) — becomes the true home for every comm signal.
+3. Phase 3 (Overview tab) — clean landing page.
+4. Phase 4 (Email tab polish) — focused inbox view.
+5. Phase 5 (AI drafts) — last, because it builds on the filtered timeline signals from earlier phases.
 
 ## End state
 
-The 9-stage pipeline, all auto-AI features, stage gates, SLA enforcement, playbooks, 90-day nurture, Discovery Triage inbox, Pipeline Health v2 dashboard, and actor-tracked activity log are **all live and draining backlog automatically**. After this polish pass, Malik sees sample outcomes at a glance, proposal stalls force documentation, and the Lost breakdown becomes a real analytic instead of a word cloud. Everything else from your original prompt is shipped.
+Overview = numbers. Activities = everything that happened, filterable. Email = 1-to-1 inbox with reply UX. Every new mailbox any teammate connects joins the sync rotation automatically. Every stage change + signal pattern offers an AI draft for review. No explainer cards cluttering the UI — your annotations stayed on the mockup where they belong.
 
