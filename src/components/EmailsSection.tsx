@@ -37,6 +37,28 @@ interface LeadEmail {
   is_read?: boolean | null;
   scheduled_for?: string | null;
   send_status?: string;
+  ai_drafted?: boolean;
+  email_type?: string;
+  sequence_step?: string | null;
+}
+
+/** Compute thread reply status for the header pill. */
+function getThreadStatus(emails: LeadEmail[], leadName?: string): { label: string; tone: "neutral" | "muted" | "success" | "auto" } | null {
+  if (!emails.length) return null;
+  const inbound = emails.filter(e => e.direction === "inbound");
+  const outbound = emails.filter(e => e.direction === "outbound");
+  // Auto-triggered: from Calendly / system addresses
+  const allAuto = emails.every(e => /calendly|noreply|no-reply|mailer-daemon/i.test(e.from_address || ""));
+  if (allAuto) return { label: "Auto-triggered", tone: "auto" };
+  // AI from Fireflies recap
+  const allAi = outbound.length > 0 && outbound.every(e => e.ai_drafted) && /recap|fireflies|meeting notes/i.test(emails[0].subject || "");
+  if (allAi) return { label: "AI from Fireflies", tone: "auto" };
+  if (inbound.length > 0) {
+    const first = leadName?.split(" ")[0] || "Lead";
+    return { label: `${first} replied`, tone: "success" };
+  }
+  if (outbound.length > 0) return { label: "Thread — no reply yet", tone: "muted" };
+  return null;
 }
 
 function formatDate(dateStr: string): string {
@@ -103,6 +125,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   const [responseDialog, setResponseDialog] = useState<{ email: LeadEmail; objections: DetectedObjection[] } | null>(null);
   const [showMarketing, setShowMarketing] = useState(false);
   const [expandAllSignal, setExpandAllSignal] = useState<"expand" | "collapse" | null>(null);
+  const [flatten, setFlatten] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,11 +206,27 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   const totalClicks = emails.reduce((sum, e) => sum + (Array.isArray(e.clicks) ? e.clicks.length : 0), 0);
   const totalReplies = emails.filter(e => e.replied_at).length;
 
+  // Mailbox scoping — distinct outbound from-addresses (rep mailboxes)
+  const mailboxes = Array.from(new Set(
+    emails.filter(e => e.direction === "outbound" && e.from_address).map(e => e.from_address.toLowerCase())
+  ));
+  const multipleMailboxes = mailboxes.length > 1;
+
+  const deliveredForCount = emails.filter(e => e.send_status !== "scheduled");
+  const threadCount = groupByThread(deliveredForCount).length;
+  const emailCount = deliveredForCount.length;
+  const firstName = lead?.name?.split(" ")[0] || lead?.name || "";
+
   const header = onCompose ? (
     <div className="flex items-center justify-between border-b border-border pb-2 mb-3 flex-wrap gap-2">
       <div className="flex items-center gap-2 flex-wrap">
-        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-          Emails{lead?.name ? ` with ${lead.name}` : ""}{emails.length > 0 ? ` (${emails.length})` : ""}
+        <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.12em]">
+          All email threads{firstName ? ` — ${firstName}` : ""}
+          {emailCount > 0 && (
+            <span className="ml-1 text-muted-foreground/70 normal-case tracking-normal font-normal">
+              ({threadCount} thread{threadCount !== 1 ? "s" : ""}, {emailCount} email{emailCount !== 1 ? "s" : ""} total)
+            </span>
+          )}
         </h3>
         {(totalOpens > 0 || totalClicks > 0 || totalReplies > 0) && (
           <span className="text-[10px] text-muted-foreground">
@@ -205,6 +244,14 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
           title={showMarketing ? "Hide marketing/transactional" : "Show marketing/transactional"}
         >
           {showMarketing ? "1-to-1 only" : "Show all"}
+        </Button>
+        <Button
+          variant="ghost" size="sm"
+          onClick={() => setFlatten(v => !v)}
+          className="h-7 text-[10px] text-muted-foreground"
+          title={flatten ? "Group emails into threads" : "Show one row per email"}
+        >
+          {flatten ? "Group threads" : "Individual rows"}
         </Button>
         <Button
           variant="ghost" size="sm"
@@ -248,6 +295,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   }
 
   const threads = groupByThread(delivered);
+  const flatEmails = [...delivered].sort((a, b) => new Date(b.email_date).getTime() - new Date(a.email_date).getTime());
 
   return (
     <div>
@@ -257,16 +305,30 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
       )}
       <ScrollArea className="max-h-[480px]">
         <div className="space-y-1.5">
-          {threads.map((thread) => (
-            <ThreadCard
-              key={thread.threadId}
-              thread={thread}
-              expandAllSignal={expandAllSignal}
-              onSuggestResponses={(email, objections) => setResponseDialog({ email, objections })}
-              onReply={onReply}
-              onMarkRead={markRead}
-            />
-          ))}
+          {flatten
+            ? flatEmails.map((email) => (
+                <EmailRow
+                  key={email.id}
+                  email={email}
+                  expandAllSignal={expandAllSignal}
+                  onSuggestResponses={(em, objs) => setResponseDialog({ email: em, objections: objs })}
+                  onReply={onReply}
+                  onMarkRead={markRead}
+                  showMailbox={multipleMailboxes}
+                />
+              ))
+            : threads.map((thread) => (
+                <ThreadCard
+                  key={thread.threadId}
+                  thread={thread}
+                  expandAllSignal={expandAllSignal}
+                  onSuggestResponses={(email, objections) => setResponseDialog({ email, objections })}
+                  onReply={onReply}
+                  onMarkRead={markRead}
+                  leadName={lead?.name}
+                  showMailbox={multipleMailboxes}
+                />
+              ))}
         </div>
       </ScrollArea>
 
@@ -336,7 +398,7 @@ function ScheduledStrip({ scheduled, onCancel }: { scheduled: LeadEmail[]; onCan
   );
 }
 
-function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMarkRead }: { thread: ThreadGroup; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void }) {
+function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMarkRead, leadName, showMailbox }: { thread: ThreadGroup; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; leadName?: string; showMailbox?: boolean }) {
   const isSingleEmail = thread.emails.length === 1;
   const unreadCount = thread.emails.filter(e => e.direction === "inbound" && !e.is_read).length;
   const [open, setOpen] = useState(false);
@@ -353,8 +415,14 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
   const replyPreview = latestInbound && thread.emails.length > 1 ? latestInbound.body_preview?.trim() : "";
   const truncatedPreview = replyPreview && replyPreview.length > 120 ? replyPreview.slice(0, 120) + "…" : replyPreview;
 
+  // Thread-level signals
+  const threadStatus = getThreadStatus(thread.emails, leadName);
+  const hasAi = thread.emails.some(e => e.ai_drafted);
+  // Pick the earliest sequence step touched in this thread (for display anchor)
+  const sequenceStep = thread.emails.find(e => e.sequence_step)?.sequence_step;
+
   if (isSingleEmail) {
-    return <EmailRow email={thread.emails[0]} expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} />;
+    return <EmailRow email={thread.emails[0]} expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} showMailbox={showMailbox} />;
   }
 
   return (
@@ -363,7 +431,7 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
         <div className="flex items-center gap-2 p-2 rounded-md hover:bg-secondary/40 transition-colors">
           <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {unreadCount > 0 && (
                 <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" title={`${unreadCount} unread`} />
               )}
@@ -371,6 +439,29 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
               <Badge variant="outline" className="text-[10px] shrink-0">
                 {thread.emails.length}
               </Badge>
+              {sequenceStep && (
+                <Badge variant="secondary" className="text-[9px] shrink-0 font-mono px-1.5 py-0">
+                  {sequenceStep}
+                </Badge>
+              )}
+              {hasAi && (
+                <Badge variant="secondary" className="text-[9px] shrink-0 gap-0.5">
+                  <Sparkles className="h-2.5 w-2.5" />AI
+                </Badge>
+              )}
+              {threadStatus && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "text-[9px] shrink-0",
+                    threadStatus.tone === "success" && "text-emerald-600 border-emerald-500/30 bg-emerald-500/5",
+                    threadStatus.tone === "muted" && "text-muted-foreground",
+                    threadStatus.tone === "auto" && "text-muted-foreground italic",
+                  )}
+                >
+                  {threadStatus.label}
+                </Badge>
+              )}
             </div>
             {truncatedPreview && (
               <div className="text-[10px] text-muted-foreground/80 truncate mt-0.5 italic">
@@ -387,7 +478,7 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 border-l-2 border-border ml-3 mt-1 mb-2">
           {thread.emails.map((email) => (
-            <EmailRow key={email.id} email={email} compact expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} />
+            <EmailRow key={email.id} email={email} compact expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} showMailbox={showMailbox} />
           ))}
         </div>
       </CollapsibleContent>
@@ -395,7 +486,7 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
   );
 }
 
-function EmailRow({ email, compact, expandAllSignal, onSuggestResponses, onReply, onMarkRead }: { email: LeadEmail; compact?: boolean; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void }) {
+function EmailRow({ email, compact, expandAllSignal, onSuggestResponses, onReply, onMarkRead, showMailbox }: { email: LeadEmail; compact?: boolean; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; showMailbox?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const hasFullBody = !!(email.body_html || email.body_text);
   useEffect(() => {
@@ -450,6 +541,21 @@ function EmailRow({ email, compact, expandAllSignal, onSuggestResponses, onReply
             {!compact && (
               <Badge variant="outline" className={`text-[9px] shrink-0 ${dirColor}`}>
                 {dirLabel}
+              </Badge>
+            )}
+            {email.sequence_step && (
+              <Badge variant="secondary" className="text-[9px] shrink-0 font-mono px-1.5 py-0">
+                {email.sequence_step}
+              </Badge>
+            )}
+            {email.ai_drafted && (
+              <Badge variant="secondary" className="text-[9px] shrink-0 gap-0.5" title="AI-drafted">
+                <Sparkles className="h-2.5 w-2.5" />AI
+              </Badge>
+            )}
+            {showMailbox && isOutbound && email.from_address && (
+              <Badge variant="outline" className="text-[9px] shrink-0 text-muted-foreground" title={`Sent from ${email.from_address}`}>
+                {email.from_address.split("@")[0]}
               </Badge>
             )}
             {email.replied_at && (
