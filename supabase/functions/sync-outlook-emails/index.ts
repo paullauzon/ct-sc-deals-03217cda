@@ -106,13 +106,24 @@ async function syncOneConnection(
   connection: { id: string; email_address: string; last_synced_at: string | null },
   forceFull: boolean,
 ): Promise<SyncStats> {
+  const isFirstRun = !connection.last_synced_at;
   const stats: SyncStats = {
     connection_id: connection.id,
     email: connection.email_address,
-    mode: forceFull || !connection.last_synced_at ? "full" : "incremental",
+    mode: forceFull ? "full" : isFirstRun ? "first_run_skipped" : "incremental",
     fetched: 0, inserted: 0, matched: 0, skipped_dup: 0, skipped_internal: 0,
     errors: [], started_at: new Date().toISOString(),
   };
+
+  // First-run with no forceFull: do NOT pull 90d here. The backfill orchestrator owns first-run.
+  // Just stamp last_synced_at so next incremental works normally.
+  if (isFirstRun && !forceFull) {
+    await supabase.from("user_email_connections").update({
+      last_synced_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", connection.id);
+    return stats;
+  }
 
   let token: string;
   try { token = await getValidOutlookToken(connection.id); } catch (e) {
