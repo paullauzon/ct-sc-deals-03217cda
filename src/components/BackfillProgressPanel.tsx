@@ -76,10 +76,41 @@ export function BackfillProgressPanel({ connectionId, emailAddress, provider }: 
       .from("email_backfill_jobs")
       .select("*")
       .eq("connection_id", connectionId)
+      .not("status", "eq", "superseded")
       .order("started_at", { ascending: false })
       .limit(1);
-    setJob(((data || [])[0] as Job) || null);
+    const latest = ((data || [])[0] as Job) || null;
+    setJob(latest);
     setLoading(false);
+
+    // Issue 1: auto-enroll active connections that never had a backfill job.
+    // Guarded by localStorage so it only fires once per connection across refreshes.
+    if (!latest) {
+      const enrollKey = `backfill-auto-enrolled-${connectionId}`;
+      if (!localStorage.getItem(enrollKey)) {
+        localStorage.setItem(enrollKey, new Date().toISOString());
+        try {
+          const { data: started, error } = await supabase.functions.invoke("start-email-backfill", {
+            body: { connection_id: connectionId, target_window: "90d" },
+          });
+          if (error || !started?.ok) throw new Error(error?.message || started?.error || "auto-enroll failed");
+          toast.success("Importing your last 90 days in the background", { duration: 6000 });
+          setTimeout(() => {
+            supabase
+              .from("email_backfill_jobs")
+              .select("*")
+              .eq("connection_id", connectionId)
+              .not("status", "eq", "superseded")
+              .order("started_at", { ascending: false })
+              .limit(1)
+              .then(({ data: d2 }) => setJob(((d2 || [])[0] as Job) || null));
+          }, 1000);
+        } catch {
+          // Clear the guard so a future open retries — silent fail is fine.
+          localStorage.removeItem(enrollKey);
+        }
+      }
+    }
   };
 
   useEffect(() => {
