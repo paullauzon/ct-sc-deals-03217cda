@@ -489,6 +489,7 @@ export type Database = {
       }
       lead_emails: {
         Row: {
+          ai_drafted: boolean
           attachments: Json | null
           bcc_addresses: string[] | null
           body_html: string | null
@@ -500,6 +501,7 @@ export type Database = {
           created_at: string | null
           direction: string
           email_date: string
+          email_type: string
           from_address: string
           from_name: string | null
           id: string
@@ -513,6 +515,7 @@ export type Database = {
           replied_at: string | null
           scheduled_for: string | null
           send_status: string
+          sequence_step: string | null
           source: string | null
           subject: string | null
           thread_id: string | null
@@ -520,6 +523,7 @@ export type Database = {
           tracked: boolean | null
         }
         Insert: {
+          ai_drafted?: boolean
           attachments?: Json | null
           bcc_addresses?: string[] | null
           body_html?: string | null
@@ -531,6 +535,7 @@ export type Database = {
           created_at?: string | null
           direction?: string
           email_date?: string
+          email_type?: string
           from_address: string
           from_name?: string | null
           id?: string
@@ -544,6 +549,7 @@ export type Database = {
           replied_at?: string | null
           scheduled_for?: string | null
           send_status?: string
+          sequence_step?: string | null
           source?: string | null
           subject?: string | null
           thread_id?: string | null
@@ -551,6 +557,7 @@ export type Database = {
           tracked?: boolean | null
         }
         Update: {
+          ai_drafted?: boolean
           attachments?: Json | null
           bcc_addresses?: string[] | null
           body_html?: string | null
@@ -562,6 +569,7 @@ export type Database = {
           created_at?: string | null
           direction?: string
           email_date?: string
+          email_type?: string
           from_address?: string
           from_name?: string | null
           id?: string
@@ -575,6 +583,7 @@ export type Database = {
           replied_at?: string | null
           scheduled_for?: string | null
           send_status?: string
+          sequence_step?: string | null
           source?: string | null
           subject?: string | null
           thread_id?: string | null

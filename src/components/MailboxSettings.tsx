@@ -51,6 +51,7 @@ export function MailboxSettings() {
   const [connecting, setConnecting] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [backfillingId, setBackfillingId] = useState<string | null>(null);
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
 
   // Connect-Gmail dialog state (replaces window.prompt)
@@ -183,6 +184,33 @@ export function MailboxSettings() {
     }
   };
 
+  const backfill90d = async (id: string, email: string) => {
+    if (!window.confirm(
+      `Backfill the last 90 days of Gmail history for ${email}?\n\nThis scans up to 1,500 messages and matches them against existing leads. Safe to run multiple times — duplicates are skipped. May take 1–3 minutes.`
+    )) return;
+    setBackfillingId(id);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-gmail-emails", {
+        body: { connection_id: id, force_full: true },
+      });
+      if (error) throw error;
+      const r = data?.results?.[0];
+      if (r) {
+        toast.success(
+          `Backfilled ${r.fetched} message${r.fetched === 1 ? "" : "s"} — ${r.inserted} new rows, ${r.matched} matched to leads`,
+          { duration: 6000 }
+        );
+      } else {
+        toast.success("Backfill complete");
+      }
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Backfill failed");
+    } finally {
+      setBackfillingId(null);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
       <div>
@@ -304,6 +332,18 @@ export function MailboxSettings() {
                                   {syncingId === c.id
                                     ? <Loader2 className="h-3 w-3 animate-spin" />
                                     : <DownloadCloud className="h-3 w-3" />}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-[10px] px-2 gap-1"
+                                  onClick={() => backfill90d(c.id, c.email_address)}
+                                  disabled={backfillingId === c.id}
+                                  title="Scan the last 90 days of Gmail and match to existing leads"
+                                >
+                                  {backfillingId === c.id
+                                    ? <><Loader2 className="h-3 w-3 animate-spin" /> Backfilling…</>
+                                    : <>Backfill 90d</>}
                                 </Button>
                                 <Button
                                   variant="ghost"
