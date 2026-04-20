@@ -233,6 +233,43 @@ async function syncOneConnection(
         }
         stats.inserted++;
 
+        // Reply detection — when an inbound matched to a lead lands in a conversation that
+        // already has an outbound, stamp replied_at on that outbound row (parity with Gmail).
+        if (direction === "inbound" && leadId && m.conversationId && insertedRow) {
+          const { data: prevOutbound } = await supabase
+            .from("lead_emails")
+            .select("id")
+            .eq("lead_id", leadId)
+            .eq("thread_id", m.conversationId)
+            .eq("direction", "outbound")
+            .is("replied_at", null)
+            .order("email_date", { ascending: false })
+            .limit(1);
+          const replyTarget = (prevOutbound as { id: string }[] | null)?.[0];
+          if (replyTarget) {
+            await supabase.from("lead_emails")
+              .update({ replied_at: emailDate })
+              .eq("id", replyTarget.id);
+
+            // If the matched outbound carried a sequence_step, log a sequence_paused row.
+            const { data: stepRow } = await supabase
+              .from("lead_emails")
+              .select("sequence_step")
+              .eq("id", replyTarget.id)
+              .maybeSingle();
+            const step = (stepRow as { sequence_step?: string | null } | null)?.sequence_step;
+            if (step) {
+              await supabase.from("lead_activity_log").insert({
+                lead_id: leadId,
+                event_type: "sequence_paused",
+                description: `Sequence ${step} auto-paused on reply`,
+                new_value: step,
+                metadata: { trigger: "inbound_reply", inbound_email_id: (insertedRow as { id: string }).id },
+              });
+            }
+          }
+        }
+
         // Inbound-reply intelligence (parity with sync-gmail-emails):
         //   1) Auto-discard pending stall drafts — the reply obviates the soft nudge.
         //   2) For active selling stages, queue a contextual reply draft via generate-stage-draft.
