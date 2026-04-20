@@ -1,9 +1,18 @@
 import { useMemo } from "react";
 import { Lead } from "@/types/lead";
+import { normalizeStage, isClosedStage, ACTIVE_STAGES } from "@/lib/leadUtils";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
-const POST_MEETING_STAGES = new Set(["Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Closed Won", "Lost", "Went Dark"]);
-const ACTIVE_STAGE_ORDER = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
+const isWonStage = (s: string) => normalizeStage(s) === "Closed Won";
+const isLostStage = (s: string) => {
+  const n = normalizeStage(s);
+  return n === "Closed Lost";
+};
+// Post-discovery v2 stages (anything past Discovery Scheduled)
+const POST_MEETING_STAGES = new Set([
+  "Discovery Scheduled", "Discovery Completed", "Sample Sent", "Proposal Sent", "Negotiating",
+  "Closed Won", "Closed Lost",
+]);
+const ACTIVE_STAGE_ORDER = [...ACTIVE_STAGES];
 
 function pct(n: number, d: number) { return d > 0 ? Math.round((n / d) * 100) : 0; }
 function fmt$(v: number) { return v >= 1000 ? `$${Math.round(v / 1000)}K` : `$${Math.round(v)}`; }
