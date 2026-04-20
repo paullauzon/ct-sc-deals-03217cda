@@ -336,6 +336,18 @@ export function MailboxSettings() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
+                                  className="h-7 text-[10px] px-2 gap-1"
+                                  onClick={() => backfill90d(c.id, c.email_address)}
+                                  disabled={backfillingId === c.id}
+                                  title="Scan the last 90 days of Gmail and match to existing leads"
+                                >
+                                  {backfillingId === c.id
+                                    ? <><Loader2 className="h-3 w-3 animate-spin" /> Backfilling…</>
+                                    : <>Backfill 90d</>}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
                                   className="h-7 px-2"
                                   onClick={() => refreshToken(c.id)}
                                   disabled={refreshingId === c.id}
