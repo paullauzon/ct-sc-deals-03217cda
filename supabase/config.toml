@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.backfill-buyer-dossier]
 verify_jwt = false
+
+[functions.nurture-engine]
+verify_jwt = false
