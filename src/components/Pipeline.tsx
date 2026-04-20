@@ -869,11 +869,9 @@ export function Pipeline() {
                           momentum === "Steady" ? "Steady pace" : momentum;
                         const slipRisk = computeSlipRisk(lead);
                         const showSlipChip = !closed && slipRisk && (slipRisk.band === "watch" || slipRisk.band === "at-risk" || slipRisk.band === "critical");
-                        const hasIntelBadges = health || coverage || momentum || showSlipChip || slaTasks.length > 0;
-
-                        // Unified action count
                         const leadPlaybookTasks = allPlaybookTasks.filter(t => t.lead_id === lead.id);
                         const slaTasks = leadPlaybookTasks.filter(t => t.playbook?.startsWith("sla-"));
+                        const hasIntelBadges = health || coverage || momentum || showSlipChip || slaTasks.length > 0;
                         // Detect meeting prep needed: future meeting date + no prep meetings
                         let hasMeetingPrep = false;
                         if (lead.meetingDate) {
