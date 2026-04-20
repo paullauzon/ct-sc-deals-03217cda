@@ -59,11 +59,21 @@ export type SampleOutcome =
 /** 90-day nurture sequence states. */
 export type NurtureSequenceStatus =
   | null
-  | "needs_triage"   // backfilled on legacy R/R deals
+  | "needs_triage"      // backfilled on legacy R/R deals
   | "active"
   | "re_engaged"
   | "completed"
-  | "archived";
+  | "archived"
+  | "exited_referral";  // Scope Mismatch — single referral email, then exits
+
+/** Append-only log of nurture milestones emitted by the engine. */
+export interface NurtureStepLogEntry {
+  step: "N0" | "N30" | "N45" | "N90" | "REFERRAL";
+  sent_at: string;
+  draft_id?: string;
+  email_id?: string;
+  replied?: boolean;
+}
 
 export type ServiceInterest =
   | "Off-Market Email Origination"

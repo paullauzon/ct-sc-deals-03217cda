@@ -323,16 +323,24 @@ export function LeadProvider({ children }: { children: ReactNode }) {
             updated.closedDate = "";
             dbPayload.closedDate = "";
           }
-          // Auto-enroll in 90-day nurture when entering Closed Lost (v2 or legacy)
+          // Auto-enroll in 90-day nurture when entering Closed Lost (v2 or legacy).
+          // Scope Mismatch leads bypass the active sequence and get a one-time
+          // referral email via the engine's exit branch instead.
           if (normalizedNew === "Closed Lost" && !l.nurtureSequenceStatus) {
-            updated.nurtureSequenceStatus = "active";
+            const isScopeMismatch = (updates.lostReasonV2 ?? l.lostReasonV2) === "Scope Mismatch";
+            const status = isScopeMismatch ? "exited_referral" : "active";
+            updated.nurtureSequenceStatus = status as any;
             updated.nurtureStartedAt = now.toISOString();
             const reEngage = new Date(now);
             reEngage.setDate(reEngage.getDate() + 90);
             updated.nurtureReEngageDate = reEngage.toISOString().split("T")[0];
-            dbPayload.nurtureSequenceStatus = "active";
+            dbPayload.nurtureSequenceStatus = status;
             dbPayload.nurtureStartedAt = now.toISOString();
             dbPayload.nurtureReEngageDate = reEngage.toISOString().split("T")[0];
+            if (isScopeMismatch) {
+              (updated as any).nurtureExitReason = "Scope Mismatch";
+              (dbPayload as any).nurtureExitReason = "Scope Mismatch";
+            }
           }
           // Archive stale playbook tasks then generate new ones (v2 playbook lookup uses normalized stage)
           const playbook = getPlaybookForStage(updates.stage);
