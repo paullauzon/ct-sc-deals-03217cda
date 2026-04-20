@@ -1,112 +1,129 @@
 
 
-# What's left in the email/communication system
+# What truly remains across the whole system — full sweep
 
-Backend infrastructure for Gaps A, B, C, F, H, I, K is fully deployed. The remaining work is **almost entirely user-facing** — surfacing what the backend already produces and unlocking workflows reps will use daily.
+Email/Gmail is done. Digging into the live DB and codebase, here's what's actually unfinished — sorted from "blocks production" to "polish."
 
-## Status snapshot
+## Verified state right now (live DB)
 
-| Gap | What it is | Status |
+| Check | Count | Status |
 |---|---|---|
-| A | Click tracking | ✅ Backend live (`track-email-click` + link rewriter); UI badges already render clicks |
-| B | Bounce detection | ✅ Backend live; bounce pill already renders in `EmailsSection` |
-| C | Reply detection | ✅ Backend stamps `replied_at`; "Replied" badge already renders |
-| D | Mark inbound as read | ❌ **Not wired** — column exists, never written, no badge |
-| E | Email templates | 🟡 Table seeded with 6 templates; **no picker, no manager UI** |
-| F | Scheduled send | 🟡 Backend dispatcher + cron live; **no "Send later" picker in compose** |
-| G | Per-user mailbox RLS | ⏸ Product decision pending — defer |
-| H | Rate-limit retry | ✅ `fetchWithRetry` live |
-| I | Image-proxy false opens | ✅ Filter live in `track-email-open` |
-| J | Outlook | ⏸ Blocked on tenant admin — defer |
-| K | Unanswered → ActionQueue | ✅ Already wired in `LeadActionsTab` priority list |
+| Active leads | 150 | baseline |
+| AI-tier enrichment (`firm_aum`/`deal_type`/`transaction_type`) | **0 / 150** | banner exists, never clicked across 10+ sessions |
+| Active leads missing LinkedIn URL | **200** (was 55 in session 9) | button exists, never clicked |
+| Active leads missing `company_url` | 122 | button exists, never clicked |
+| Pending tasks already overdue | **556** | reschedule button exists, never clicked |
+| Late-stage leads missing forecast fields | 4 | UI nudge present, awaiting rep entry |
+| Stale Fireflies transcripts (`transcript_len = 0`) | 4 | needs Fireflies re-fetch path |
+| Auth / login | **none** | RLS is `true/true` on every table |
+| Outlook deep sync | dormant | needs `MICROSOFT_OUTLOOK_API_KEY` + admin consent |
 
-**Real work remaining: D, E, F.** Three tightly-scoped UI features. No new edge functions, no migrations.
+## Pattern: every "open" item is a button that nobody clicks
 
----
-
-## Work item 1 — Email templates (Gap E)
-
-The 6 seeded templates are invisible today. Reps still type from scratch.
-
-**Compose drawer changes (`EmailComposeDrawer.tsx`):**
-- New "Insert template" dropdown above the Subject field, filtered by `lead.brand`.
-- On select: load template, run variable interpolation, replace Subject + Body.
-- Variables supported: `{{first_name}}`, `{{name}}`, `{{company}}`, `{{role}}`, `{{deal_value}}`, `{{stage}}`, `{{my_name}}` (from mailbox label).
-- "Save as template" button next to "Save draft" — opens a tiny inline form (name + category) and inserts into `email_templates` with the current subject/body.
-- After insert, `usage_count` increments on the chosen template (one-line update).
-
-**Templates manager (new component `EmailTemplatesPanel.tsx` inside Settings):**
-- New tab in `MailboxSettings.tsx` alongside Mailboxes / Unmatched: **Templates**.
-- List view: name, brand, category, usage_count, last updated.
-- Inline create / edit / delete with a simple drawer.
-- Each row shows the variable tokens it uses (parsed from body).
+10 sessions of audits show the same root cause — fixes ship as one-click buttons inside the app that depend on a human noticing a banner. The honest fix is **automate the buttons via cron**, so coverage rises whether or not anyone clicks anything.
 
 ---
 
-## Work item 2 — Send Later (Gap F)
+## Work item 1 — Authentication (CRITICAL — biggest unaddressed gap)
 
-Backend dispatcher already runs every 5 min. Just needs a UI to enqueue.
+The app has zero auth. `App.tsx` wraps routes with no `Session` provider. Every table's RLS is `using (true) with check (true)`. Anyone with the published URL has full read+write to leads, emails, tokens, refresh tokens — the entire CRM.
 
-**Compose drawer changes:**
-- Replace single "Send" button with split button: **Send** + chevron menu.
-- Menu options: Now (default), In 1 hour, Tomorrow 8am, Tomorrow 1pm, Pick time…
-- "Pick time" opens a small popover with a date + time input.
-- On schedule: insert a `lead_emails` row with `send_status='scheduled'`, `scheduled_for=<chosen>`, full message context (to/cc/bcc/subject/body_text/body_html), and `raw_payload = { connection_id, in_reply_to }`.
-- Toast: "Scheduled for Tue, Apr 22 at 8:00 AM" with an Undo (5s) that deletes the placeholder row.
+**Build:**
+- Add Supabase email/password + Google sign-in. New `src/pages/Auth.tsx` — sign-in + sign-up tabs.
+- Wrap `<Routes>` with a session guard — redirect to `/auth` when no session, show app when authenticated.
+- New `profiles` table (id = auth.uid, name, email, default_brand) auto-created via on-auth-insert trigger.
+- New `user_roles` table + `app_role` enum (`admin`, `rep`) + `has_role(uid, role)` SECURITY DEFINER function — per the project's role pattern.
+- Tighten RLS on every table to `authenticated` only (still permissive within the team — single-tenant, no per-user split yet).
+- Auth requirement does NOT apply to webhooks: `ingest-lead`, `ingest-email`, `ingest-calendly-booking`, `track-email-open`, `track-email-click` keep `verify_jwt = false`.
+- Edge functions invoked from the UI (`backfill-*`, `bulk-*`, `process-*`, `summarize-*`, `send-gmail-email`) get `verify_jwt = true` so only authenticated reps can trigger them.
 
-**Scheduled-queue surface (small addition to `EmailsSection.tsx`):**
-- New collapsed strip at the top: "1 scheduled email" with expand-to-list.
-- Each scheduled row shows recipient, subject preview, scheduled time, and a **Cancel** button (deletes the row).
-- Realtime: subscribe to `send_status=eq.scheduled` for the lead.
+This is the single highest-value remaining change. Without it, "publish the URL" effectively means "make the CRM public."
 
 ---
 
-## Work item 3 — Mark inbound as read + unread badges (Gap D)
+## Work item 2 — Cron-automate the buttons that nobody clicks
 
-`is_read` exists but no code touches it. Badge is impossible today.
+All five gaps below already have working code paths invoked via UI buttons. Wire them to cron so coverage rises automatically.
 
-**Read-state writes (`EmailsSection.tsx`):**
-- When an `EmailRow` for an inbound email is expanded AND `is_read=false`, fire a single update: `UPDATE lead_emails SET is_read=true WHERE id=$1`.
-- Update local state optimistically so the dot disappears immediately.
+| Cron | Schedule | Calls | Cap per run |
+|---|---|---|---|
+| `auto-enrich-ai-tier` | every 30 min, 09:00–18:00 weekdays | `bulk-enrich-sourceco` `{limit:10, onlyEmptyAum:true}` | 10 leads |
+| `auto-backfill-linkedin` | daily 02:00 UTC | `backfill-linkedin` `{}` | 25 leads |
+| `auto-backfill-company-url` | daily 02:30 UTC | new helper that derives URL from email domain | 50 leads |
+| `auto-reschedule-overdue` | daily 06:00 UTC | bulk update `lead_tasks.due_date = current_date` where overdue & status='pending' | unlimited |
+| `auto-process-stale-transcripts` | daily 03:00 UTC | `bulk-process-stale-meetings` `{limit:5}` | 5 leads (TPM-safe) |
 
-**Unread visual cues:**
-- Inside `EmailRow`: small indigo dot to the left of the subject when `direction='inbound' AND is_read=false`.
-- Subject in semibold (vs. regular) when unread.
+All five use existing edge functions; only schedule + ~30 lines of `pg_cron.schedule()` in a migration. Banners in the UI stay (so reps still see real-time state) but progress no longer depends on clicks.
 
-**Unread count badge (lead detail header):**
-- Tiny new query in `LeadPanelHeader.tsx`: `SELECT count(*) WHERE lead_id=$1 AND direction='inbound' AND is_read=false`.
-- Badge next to the lead name, e.g. `2 unread`, monochrome `bg-secondary`, hidden at 0.
+**Cost ceiling:** caps prevent runaway spend. AI-tier cron at 10 leads × 18 ticks/day × $0.02 ≈ $3.60/day max, only running until the queue empties.
 
-**Pipeline-card unread chip (optional, low-cost):**
-- Extend `useUnansweredEmails` to also return `unreadByLead: Map<id, count>`.
-- `Pipeline.tsx` already consumes the hook — show a small "2" chip on cards with unread inbound. Skip if it crowds the card; this is a stretch.
+---
+
+## Work item 3 — Recover broken Fireflies transcripts (4 leads)
+
+Four leads have `firefliesId` populated but `transcript_len = 0` (transcript fetch failed at sync time). Currently dead-end — `bulk-process-stale-meetings` skips them because there's nothing to summarize.
+
+**Build:**
+- Extend `fetch-fireflies` with a `mode='re-fetch'` that takes a list of `firefliesId`s and re-pulls transcript + sentences from the Fireflies API, then writes them back into the meeting JSON.
+- One-shot dropdown item in Pipeline header: "Re-fetch broken transcripts (4)".
+- After re-fetch, the existing stale-transcripts cron (Work item 2) picks them up next tick.
+
+---
+
+## Work item 4 — Outlook deep email sync (unblock SourceCo)
+
+Code path is fully built (`sync-outlook-emails`, the OAuth equivalents, gateway integration). Two blockers:
+1. `MICROSOFT_OUTLOOK_API_KEY` secret not set.
+2. SourceCo M365 tenant admin consent not granted.
+
+Both are external. **No code work possible until both are resolved** — but I'll add a one-time setup checklist component in Settings → Mailboxes that shows the exact admin-consent URL to request and the connector setup steps, so the moment those land, the rest of the wiring is one click. Otherwise SourceCo emails stay invisible.
+
+---
+
+## Work item 5 — Per-user mailbox ownership / RLS (Gap G, decision needed)
+
+Originally deferred pending product decision. With auth landing in Work item 1, the call is overdue. Two options:
+
+- **Option A — Single shared inbox view (simpler):** all authenticated team members see all connected mailboxes. RLS = `authenticated` only. Done in Work item 1.
+- **Option B — Per-rep ownership (adds friction):** each rep sees only their connected mailbox; admins see all. Requires `user_id` column on `user_email_connections` + RLS conditioning on `auth.uid()` or admin role.
+
+I'll **default to Option A** as part of Work item 1 (lower friction, matches how a 5-person team actually works) and leave a 1-line comment in the migration showing how to flip to Option B later.
 
 ---
 
 ## What I am explicitly NOT doing
 
-- **Gap G (per-user RLS)** — needs a product decision (each rep sees only their mailbox vs. all team mailboxes). Won't touch until that's answered.
-- **Gap J (Outlook)** — blocked externally.
-- **A/B subject testing, smart-send-time prediction, AI thread digests** — premature; need templates + clicks + replies producing real data first.
-- **Click rewriting for `mailto:` and `tel:`** — already correctly skipped in the live rewriter.
-- **Rich-text composer** — current plain-text + HTML conversion is fine for SDR-style emails.
+- **A/B subject testing, smart-send-time, AI thread digests** — premature; let templates + clicks accumulate data first.
+- **Mobile responsive deal room redesign** — out of scope; current desktop-first is fine for an internal CRM.
+- **Multi-tenant org separation** — overkill for a 5-person team on one Lovable project.
+- **Stripe / billing for the CRM itself** — internal tool, not a SaaS product.
+- **Real-time presence indicators** — nice-to-have, no current pain.
 
-## Files that change
+## Order of execution (single focused pass)
+
+1. **Auth (Work item 1)** — can't ship anything else securely until this lands.
+2. **Five crons (Work item 2)** — single migration, eliminates 5+ persistent operational gaps in one shot.
+3. **Stale transcript re-fetch (Work item 3)** — one new function + one dropdown item.
+4. **Outlook setup checklist (Work item 4)** — small Settings component, no logic.
+5. **Per-user RLS decision baked into Work item 1** — Option A by default.
+
+After this pass, the system runs itself: data fills automatically, the URL is no longer publicly accessible, and the only manual rep work left is real selling.
+
+## Files / migrations
 
 | File | Change |
 |---|---|
-| `src/components/lead-panel/dialogs/EmailComposeDrawer.tsx` | Template picker, "Save as template", split Send button, schedule popover |
-| `src/components/EmailsSection.tsx` | Unread dot + bold, mark-read on expand, scheduled-emails strip |
-| `src/components/lead-panel/LeadPanelHeader.tsx` | Unread count badge |
-| `src/components/MailboxSettings.tsx` | New "Templates" tab |
-| `src/components/EmailTemplatesPanel.tsx` (new) | Templates list + inline CRUD |
-| `src/hooks/useUnansweredEmails.ts` | Add unread-count map (small extension) |
+| `src/pages/Auth.tsx` (new) | Sign-in / sign-up screen, Google OAuth + email/password |
+| `src/App.tsx` | Wrap routes in `SessionGuard`, add `/auth` route |
+| `src/contexts/AuthContext.tsx` (new) | `useAuth()` hook, session subscription |
+| `src/components/MailboxSettings.tsx` | "Outlook setup checklist" sub-section |
+| `supabase/migrations/<ts>_auth_and_rls.sql` (new) | `profiles`, `user_roles`, `app_role` enum, `has_role`, tighten RLS on all tables |
+| `supabase/migrations/<ts>_automation_crons.sql` (new) | 5 pg_cron jobs |
+| `supabase/functions/auto-backfill-company-url/index.ts` (new) | Derive URL from email domain for active leads |
+| `supabase/functions/auto-reschedule-overdue/index.ts` (new) | Bulk push overdue pending tasks to today |
+| `supabase/functions/fetch-fireflies/index.ts` | Add `mode='re-fetch'` for broken transcripts |
+| `src/components/Pipeline.tsx` | Dropdown item "Re-fetch broken transcripts (4)" |
+| `supabase/config.toml` | `verify_jwt = true` on rep-triggered functions; keep `false` on webhooks |
 
-## Order of execution
-
-1. Templates (highest daily-rep impact — saves them typing every email).
-2. Send Later (small UI, backend already runs).
-3. Read state + unread badges (smallest change, finishes the inbox feel).
-
-End state: composing an email becomes pick template → personalize → send now or schedule. Inbound emails clearly show what's new and what's been read. Settings holds both the mailbox health view and the team's reusable templates. After this, the email system is complete enough to stop iterating until real usage reveals the next bottleneck.
+End state: the CRM is auth-protected, fills its own coverage gaps via cron, recovers broken transcripts, and SourceCo Outlook is one admin click away from working.
 
