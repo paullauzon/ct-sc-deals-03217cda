@@ -269,12 +269,18 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
         ? ((meta as any).summary as string)
         : "";
 
+      // Bias sequence_paused rows by -1ms so they sort directly under the inbound email
+      // that triggered them when both share the same created_at second (mockup stacking).
+      const projectedDate = evType === "sequence_paused"
+        ? new Date(new Date(a.created_at).getTime() - 1).toISOString()
+        : a.created_at;
+
       out.push({
         id: `act-${a.id}`,
         activityId: a.id,
         pinnedAt: (a as any).pinned_at || null,
         type: evType,
-        date: a.created_at,
+        date: projectedDate,
         title: a.description,
         detail: callSummary || undefined,
         meta: actor && actor.trim() ? `by ${actor}` : "by System",

@@ -536,6 +536,24 @@ async function syncOneConnection(
             await supabase.from("lead_emails")
               .update({ replied_at: emailDate })
               .eq("id", replyTarget.id);
+
+            // If the matched outbound carried a sequence_step, log a sequence_paused
+            // activity row so the Activities tab shows "[S5 paused on reply]" under the inbound.
+            const { data: stepRow } = await supabase
+              .from("lead_emails")
+              .select("sequence_step")
+              .eq("id", replyTarget.id)
+              .maybeSingle();
+            const step = (stepRow as { sequence_step?: string | null } | null)?.sequence_step;
+            if (step) {
+              await supabase.from("lead_activity_log").insert({
+                lead_id: leadId,
+                event_type: "sequence_paused",
+                description: `Sequence ${step} auto-paused on reply`,
+                new_value: step,
+                metadata: { trigger: "inbound_reply", inbound_email_id: (insertedRow as { id: string }).id },
+              });
+            }
           }
         }
 
