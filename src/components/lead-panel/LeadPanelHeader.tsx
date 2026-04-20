@@ -141,7 +141,31 @@ export function LeadPanelHeader({
   const [pendingStage, setPendingStage] = useState<LeadStage | null>(null);
   const [gateStage, setGateStage] = useState<LeadStage | null>(null);
   const [fillingGaps, setFillingGaps] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const { updateLead } = useLeads();
+
+  // Fetch unread inbound email count + subscribe to changes
+  useEffect(() => {
+    let cancelled = false;
+    const fetchUnread = async () => {
+      const { count } = await supabase
+        .from("lead_emails")
+        .select("id", { count: "exact", head: true })
+        .eq("lead_id", lead.id)
+        .eq("direction", "inbound")
+        .eq("is_read", false);
+      if (!cancelled) setUnreadCount(count ?? 0);
+    };
+    fetchUnread();
+    const ch = supabase
+      .channel(`unread-${lead.id}`)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "lead_emails", filter: `lead_id=eq.${lead.id}` },
+        () => fetchUnread())
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, [lead.id]);
+
   const dealHealth = computeDealHealthScore(lead);
   const coverage = getStakeholderCoverage(lead);
   const lastContact = lastContactLabel(lead);
@@ -269,6 +293,14 @@ export function LeadPanelHeader({
             )}
             <BrandLogo brand={lead.brand} size="sm" />
             <Badge variant="outline" className="text-[10px]">{lead.stage}</Badge>
+            {unreadCount > 0 && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-foreground/80 font-medium inline-flex items-center gap-1"
+                title={`${unreadCount} unread inbound email${unreadCount === 1 ? "" : "s"}`}
+              >
+                <Mail className="h-2.5 w-2.5" /> {unreadCount} unread
+              </span>
+            )}
             <span
               className={cn(
                 "text-[10px] px-1.5 py-0.5 rounded font-medium",
