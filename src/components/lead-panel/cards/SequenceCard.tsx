@@ -101,7 +101,7 @@ export function SequenceCard({ lead }: { lead: Lead }) {
             >
               <Pause className="h-3 w-3" /> Pause
             </button>
-          ) : status === "archived" ? (
+          ) : (status === "paused" || status === "archived") ? (
             <button
               onClick={resume}
               disabled={busy}
@@ -110,7 +110,7 @@ export function SequenceCard({ lead }: { lead: Lead }) {
               <Play className="h-3 w-3" /> Resume
             </button>
           ) : null}
-          {(isActive || status === "archived") && (
+          {(isActive || status === "paused" || status === "archived") && (
             <button
               onClick={exitSeq}
               disabled={busy}
