@@ -13,7 +13,8 @@ const STATUS_LABEL: Record<string, string> = {
   re_engaged: "Re-engaged",
   completed: "Completed",
   exited_referral: "Exited (referral)",
-  archived: "Archived",
+  paused: "Paused",
+  archived: "Paused",
 };
 
 type SortKey = "name" | "lostReason" | "day" | "status";
