@@ -1,6 +1,6 @@
 ---
 name: Pipeline Workflow v2
-description: 9 Pipeline v2 stages + gate definitions, SLA auto-tasks, and 90-day nurture replacement for R/R
+description: 9 Pipeline v2 stages + gate definitions, SLA auto-tasks, 90-day nurture, Phase 5 cleanup notes
 type: feature
 ---
 
@@ -36,6 +36,7 @@ type: feature
 - Proposal Sent > 14d no stallReason → "Document stall reason"
 - Negotiating > 7d → "Push the close — direct call"
 Each rule is idempotent (won't re-fire within 7 days for same lead).
+SLA tasks are stored with `playbook = sla-<rule>` so the UI can group them.
 
 ## v2 Playbooks (`src/lib/playbooks.ts`)
 Keyed by v2 stage names; `getPlaybookForStage()` normalizes legacy stage values.
@@ -48,7 +49,7 @@ Keyed by v2 stage names; `getPlaybookForStage()` normalizes legacy stage values.
 - `STAGE_LABEL_MAP` translates legacy DB stage values → v2 display labels at read time.
 - `normalizeStage()` is the canonical translation function — used everywhere reads happen.
 - `Pipeline.tsx` columns aggregate by normalized stage so legacy "Meeting Held" deals appear under "Discovery Completed" without touching the DB.
-- Legacy stage names stay in the `LeadStage` type union until phase 5 cleanup.
+- **Phase 5 decision**: Legacy stage names stay as deprecated aliases in the `LeadStage` type union *indefinitely*. 667 references across 42 files (lead detail panel, deal health, dashboards, etc.) still compare against legacy literals — removing the union members would break compile in places `normalizeStage()` doesn't reach. The DB has been fully migrated (Apr 2026), so no new legacy values should appear.
 
 ## Auto-enrollment
 - Moving a deal to Closed Lost auto-sets `nurtureSequenceStatus = "active"`, `nurtureStartedAt`, and `nurtureReEngageDate` (today + 90 days).
@@ -60,3 +61,16 @@ Keyed by v2 stage names; `getPlaybookForStage()` normalizes legacy stage values.
 - `stage_gate_overrides` jsonb audit log
 - `discovery_call_completed_at`
 - DB trigger `enforce_stage_v2_gates()` — soft-warns via `lead_activity_log`
+
+## Pipeline Health v2 widget (`src/components/dashboard/PipelineHealthV2.tsx`)
+Lives at top of Dashboard → Pipeline tab. Three sections:
+1. **Stage drop-off %** between consecutive active stages (highlights leaks)
+2. **Deals past SLA** — count of leads with pending `sla-*` tasks per stage
+3. **90-day nurture** — active / re-engaged / completed / archived buckets
+
+## Backfill tooling
+- **`backfill-stage-v2-tasks` edge function** — one-time backfill that creates v2 playbook tasks for any active lead missing them. Idempotent (skips lead+playbook pairs that already have tasks). Supports `{ dryRun: true }`. Initial Apr 2026 run created 450 tasks across 149 leads.
+- **PipelineMigrationPage** (`src/components/migration/`) — 4-tab UI for legacy → v2 stage migration. Hidden once `LEGACY_STAGES` count drops to 0.
+
+## SLA badge on pipeline cards
+Each card in `Pipeline.tsx` shows a "SLA: N pending" chip when the lead has any `playbook LIKE 'sla-%'` pending tasks. Tooltip lists titles. Lives in the intel-badges row alongside Health, Coverage, Slip-risk.

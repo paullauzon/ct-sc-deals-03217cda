@@ -869,10 +869,9 @@ export function Pipeline() {
                           momentum === "Steady" ? "Steady pace" : momentum;
                         const slipRisk = computeSlipRisk(lead);
                         const showSlipChip = !closed && slipRisk && (slipRisk.band === "watch" || slipRisk.band === "at-risk" || slipRisk.band === "critical");
-                        const hasIntelBadges = health || coverage || momentum || showSlipChip;
-
-                        // Unified action count
                         const leadPlaybookTasks = allPlaybookTasks.filter(t => t.lead_id === lead.id);
+                        const slaTasks = leadPlaybookTasks.filter(t => t.playbook?.startsWith("sla-"));
+                        const hasIntelBadges = health || coverage || momentum || showSlipChip || slaTasks.length > 0;
                         // Detect meeting prep needed: future meeting date + no prep meetings
                         let hasMeetingPrep = false;
                         if (lead.meetingDate) {
@@ -967,6 +966,23 @@ export function Pipeline() {
                                         <ul className="space-y-0.5">
                                           {slipRisk!.reasons.map((r, i) => (
                                             <li key={i} className="text-xs text-muted-foreground">• {r}</li>
+                                          ))}
+                                        </ul>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                  {slaTasks.length > 0 && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="px-2 py-1 rounded bg-secondary text-foreground/70 font-medium tabular-nums">
+                                          SLA: {slaTasks.length} pending
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-[240px] p-3">
+                                        <p className="text-xs font-medium mb-1.5">Stage SLA tasks</p>
+                                        <ul className="space-y-0.5">
+                                          {slaTasks.slice(0, 4).map((t) => (
+                                            <li key={t.id} className="text-xs text-muted-foreground">• {t.title}</li>
                                           ))}
                                         </ul>
                                       </TooltipContent>

@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.nurture-engine]
 verify_jwt = false
+
+[functions.backfill-stage-v2-tasks]
+verify_jwt = false

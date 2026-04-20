@@ -9,6 +9,7 @@ import { DashboardPersonaMetrics } from "@/components/DashboardPersonaMetrics";
 import { DashboardTrends } from "@/components/DashboardTrends";
 import { IntelligenceCenter } from "@/components/IntelligenceCenter";
 import { DailyStandupCard } from "@/components/DailyStandupCard";
+import { PipelineHealthV2 } from "@/components/dashboard/PipelineHealthV2";
 
 import { getBrandBorderClass, getBrandDotClass } from "@/lib/brandColors";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -632,6 +633,7 @@ export function Dashboard() {
       {/* ═══════════════════ PIPELINE TAB ═══════════════════ */}
       {activeTab === "pipeline" && (
         <div className="space-y-6">
+          <PipelineHealthV2 />
           <DashboardAdvancedMetrics leads={filteredLeads} onSelectLead={setSelectedLeadId} section="pipeline" onDrillDown={handleDrillDown} />
 
           {/* Pipeline Funnel */}
