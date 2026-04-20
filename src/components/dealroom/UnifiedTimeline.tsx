@@ -225,6 +225,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
         meta: isOut
           ? `To ${(e.to_addresses || []).slice(0, 2).join(", ")}`
           : `From ${e.from_name || e.from_address}`,
+        email: e,
       });
     });
 
