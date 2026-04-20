@@ -44,6 +44,7 @@ export function UnmatchedInbox() {
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [leads, setLeads] = useState<LeadOption[]>([]);
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -67,7 +68,44 @@ export function UnmatchedInbox() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+
+    const debouncedReload = () => {
+      if (reloadTimer.current) clearTimeout(reloadTimer.current);
+      reloadTimer.current = setTimeout(() => { load(); }, 2000);
+    };
+
+    const channel = supabase
+      .channel("unmatched-inbox-stream")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "lead_emails", filter: "lead_id=eq.unmatched" },
+        () => debouncedReload(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "lead_emails" },
+        (payload: any) => {
+          const oldLead = payload?.old?.lead_id;
+          const newLead = payload?.new?.lead_id;
+          // Email moved out of unmatched (claimed elsewhere) — drop optimistically
+          if (oldLead === "unmatched" && newLead && newLead !== "unmatched") {
+            setEmails((prev) => prev.filter((e) => e.id !== payload.new.id));
+          }
+          // Email moved INTO unmatched (rare) — pull a fresh snapshot
+          if (oldLead && oldLead !== "unmatched" && newLead === "unmatched") {
+            debouncedReload();
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (reloadTimer.current) clearTimeout(reloadTimer.current);
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
