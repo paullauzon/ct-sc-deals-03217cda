@@ -732,7 +732,6 @@ export type Database = {
           known_firm_match: string | null
           last_acquisition_year: number | null
           last_contact_date: string
-          lead_status: string
           linkedin_ma_experience: boolean | null
           linkedin_score: number | null
           linkedin_search_log: Json | null
@@ -847,7 +846,6 @@ export type Database = {
           known_firm_match?: string | null
           last_acquisition_year?: number | null
           last_contact_date?: string
-          lead_status?: string
           linkedin_ma_experience?: boolean | null
           linkedin_score?: number | null
           linkedin_search_log?: Json | null
@@ -962,7 +960,6 @@ export type Database = {
           known_firm_match?: string | null
           last_acquisition_year?: number | null
           last_contact_date?: string
-          lead_status?: string
           linkedin_ma_experience?: boolean | null
           linkedin_score?: number | null
           linkedin_search_log?: Json | null
