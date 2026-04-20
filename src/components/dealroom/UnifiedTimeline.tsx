@@ -169,6 +169,7 @@ function formatTime(iso: string): string {
 export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (prefill: ReplyPrefill) => void }) {
   const [activity, setActivity] = useState<ActivityLogEntry[]>([]);
   const [emails, setEmails] = useState<EmailRow[]>([]);
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
   const [range, setRange] = useState<DateRange>("all");
@@ -193,10 +194,17 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
         .eq("lead_id", lead.id)
         .order("email_date", { ascending: false })
         .limit(200),
-    ]).then(([log, emailRes]) => {
+      supabase
+        .from("lead_tasks")
+        .select("id,title,description,due_date,status,task_type,playbook,created_at,completed_at")
+        .eq("lead_id", lead.id)
+        .order("due_date", { ascending: false })
+        .limit(200),
+    ]).then(([log, emailRes, taskRes]) => {
       if (cancelled) return;
       setActivity(log);
       setEmails((emailRes.data as unknown as EmailRow[]) || []);
+      setTasks((taskRes.data as unknown as TaskRow[]) || []);
       setLoading(false);
     });
     return () => { cancelled = true; };
