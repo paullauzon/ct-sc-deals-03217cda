@@ -494,11 +494,39 @@ Deno.serve(async (req) => {
         messages_processed: (doneCount || 0) + (skippedCount || 0),
         last_chunked_at: new Date().toISOString(),
       };
-      if (isComplete && jr.discovery_complete && jr.status !== "paused" && jr.status !== "cancelled") {
+      const willComplete = isComplete && jr.discovery_complete && jr.status !== "paused" && jr.status !== "cancelled" && jr.status !== "done";
+      if (willComplete) {
         updates.status = "done";
         updates.finished_at = new Date().toISOString();
       }
       await supabase.from("email_backfill_jobs").update(updates).eq("id", job.id);
+
+      // Write a single email_sync_runs summary row when the job completes,
+      // so the per-connection "Show recent syncs" dropdown surfaces it.
+      if (willComplete) {
+        const { data: finalJob } = await supabase
+          .from("email_backfill_jobs")
+          .select("started_at, messages_processed, messages_inserted, messages_matched, messages_skipped, target_window")
+          .eq("id", job.id).single();
+        const fj = finalJob as { started_at: string; messages_processed: number; messages_inserted: number; messages_matched: number; messages_skipped: number; target_window: string } | null;
+        if (fj) {
+          const unmatched = Math.max(0, (fj.messages_inserted || 0) - (fj.messages_matched || 0));
+          await supabase.from("email_sync_runs").insert({
+            connection_id: job.connection_id,
+            email_address: job.email_address,
+            mode: "backfill",
+            status: "success",
+            started_at: fj.started_at,
+            finished_at: new Date().toISOString(),
+            fetched: fj.messages_processed || 0,
+            inserted: fj.messages_inserted || 0,
+            matched: fj.messages_matched || 0,
+            unmatched,
+            skipped: fj.messages_skipped || 0,
+            errors: [{ note: `backfill window=${fj.target_window}` }],
+          });
+        }
+      }
 
       totalInserted += insThisJob;
       totalMatched += matThisJob;

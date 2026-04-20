@@ -53,19 +53,24 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Refuse to start a second job for the same connection while one is running.
+    // If a job is already running for this connection, mark it superseded
+    // instead of rejecting. Idempotent dedup on (connection_id, provider_message_id)
+    // means the new (typically wider) job will skip anything already imported.
     const { data: existing } = await supabase
       .from("email_backfill_jobs")
       .select("id, status")
       .eq("connection_id", connectionId)
-      .in("status", ["queued", "discovering", "running", "paused"])
-      .limit(1);
+      .in("status", ["queued", "discovering", "running", "paused"]);
     if (existing && existing.length > 0) {
-      return new Response(JSON.stringify({
-        ok: false,
-        error: "A backfill is already in progress for this mailbox",
-        existing_job_id: (existing[0] as { id: string }).id,
-      }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const ids = (existing as Array<{ id: string }>).map((e) => e.id);
+      await supabase
+        .from("email_backfill_jobs")
+        .update({
+          status: "superseded",
+          finished_at: new Date().toISOString(),
+          last_error: "superseded by new backfill request",
+        })
+        .in("id", ids);
     }
 
     const { data: job, error: jobErr } = await supabase
