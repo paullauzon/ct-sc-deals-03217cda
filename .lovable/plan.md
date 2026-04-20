@@ -1,100 +1,89 @@
 
 
-# Root cause: Google OAuth app is not configured to allow this user
+# Short answer: No, you do NOT need to publish
 
-The screenshot is Google's generic 403 page, which Google shows in **three completely different scenarios** that all look identical. The Google OAuth flow never reaches our `gmail-oauth-callback` function — it's blocked before the redirect.
+You can connect Gmail from **either** the Preview URL or the Live URL. Both work identically. The choice depends on which database you want the connection stored in.
 
-## What's actually happening
+## Why publishing doesn't matter for OAuth
 
-Our code is fine. The OAuth start function builds a valid Google auth URL and redirects the browser. Google then refuses to show the consent screen and serves the 403 instead. This happens for one of three reasons:
+The OAuth flow has three URLs in play. Only one of them needs to be registered with Google:
 
-### Cause 1 — App is in "Testing" mode and the user isn't on the test users list (most likely)
+```text
+1. Where you START the flow      → Preview OR Live (your choice)
+   https://id-preview--...lovable.app/#sys=crm&view=settings
+   OR
+   https://ct-sc-deals.lovable.app/#sys=crm&view=settings
 
-Google Cloud OAuth apps default to **Testing** publishing status. In Testing mode:
-- Only emails explicitly added to the **Test Users** list can authorize the app
-- All others get exactly this 403 page
-- We're requesting **restricted scopes** (`gmail.readonly`, `gmail.modify`, `gmail.send`), which makes Testing mode even stricter — Google does not allow these scopes to be used with arbitrary users until the app is verified
+2. Where Google REDIRECTS to     → Always Supabase (registered in Google Console)
+   https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/gmail-oauth-callback
 
-### Cause 2 — Restricted Gmail scopes require Google verification before public use
-
-`gmail.readonly` and `gmail.modify` are classified as **restricted scopes**. To move the app from Testing → Production, Google requires:
-- A privacy policy URL
-- A homepage URL
-- App domain verification (proving you own the domain)
-- Security assessment (CASA) for production-grade Gmail apps reading mail
-
-Until this is done, the app stays in Testing and only test users can connect.
-
-### Cause 3 — Wrong Google account is signed in / Google Workspace blocked the app
-
-If the connecting user's Google Workspace admin (e.g. captarget.com or sourcecodeals.com) has restricted third-party app access, the same 403 appears. This is admin-controlled at the Workspace level.
-
-## Why the 403 is so confusing
-
-The page literally says *"you do not have access to this document"* — this is Google's generic permissions page that's reused across Drive, Docs, AND OAuth. There is no OAuth-specific error UI. Even Google's own engineers have complained about this.
-
-## Recommended fix (priority order)
-
-### Step 1 — Add test users (5 minutes, unblocks today)
-
-In the Google Cloud Console for the OAuth client whose credentials are stored in `GOOGLE_OAUTH_CLIENT_ID`:
-
-1. Go to **APIs & Services → OAuth consent screen**
-2. Confirm **Publishing status: Testing**
-3. Scroll to **Test users** → click **+ ADD USERS**
-4. Add every email that needs to connect: `adam@captarget.com`, `malik@…`, etc. (up to 100 test users allowed)
-5. Save
-
-The user being added must be the **same Google account** they sign in with on the consent screen. Adding `adam@captarget.com` does not authorize `adam.haile@gmail.com`.
-
-### Step 2 — Confirm the OAuth consent screen has the correct scopes registered
-
-Same console screen, **Scopes** tab. Make sure all five scopes from `gmail-oauth-start/index.ts` are listed:
-- `.../auth/gmail.readonly`
-- `.../auth/gmail.send`
-- `.../auth/gmail.modify`
-- `.../auth/userinfo.email`
-- `.../auth/userinfo.profile`
-
-If a requested scope is missing here, Google also blocks consent (sometimes with this same 403).
-
-### Step 3 — Confirm the redirect URI is exact
-
-**APIs & Services → Credentials → OAuth 2.0 Client IDs → [our client]**, under **Authorized redirect URIs** there must be an exact match (no trailing slash, no path differences):
-
-```
-https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/gmail-oauth-callback
+3. Where the callback BOUNCES    → Back to wherever you started (step 1)
+   Stored in the `state` param, used by gmail-oauth-callback
 ```
 
-If this is wrong you usually get `redirect_uri_mismatch`, but it's worth confirming while you're in the console.
+Google only cares that step 2 matches what you registered. Steps 1 and 3 are handled inside our code via the `return_to` param.
 
-### Step 4 — Plan for production (later, when ready to roll out beyond the test users)
+## What actually matters: WHICH database
 
-Two options:
+You have two completely separate Supabase databases (per `mem://project/environment-separation`):
 
-**Option A — Stay in Testing forever.** Up to 100 test users. Refresh tokens expire after 7 days, forcing reconnection weekly. Fine for an internal team of 5–10 people IF we accept the weekly reconnect.
+| You connect from | Connection saved in | Sync runs against |
+|---|---|---|
+| Preview URL | Preview DB | Preview DB leads |
+| Live URL | Live DB | Live DB leads |
 
-**Option B — Submit for Google verification.** Required for production use of `gmail.readonly` / `gmail.modify`. Process:
-1. Add Privacy Policy + Terms URLs
-2. Verify domain ownership in Google Search Console
-3. Record a YouTube demo of OAuth flow
-4. Submit for review (4–6 weeks for restricted scopes)
-5. May require third-party CASA security assessment (~$15K)
+**Both URLs share the same Supabase project ref `qlvlftqzctywlrsdlyty`** — wait, actually they don't. Let me be precise: the redirect URI in the code points to `qlvlftqzctywlrsdlyty.supabase.co`, which is whatever environment that `.env` file is built against. So whichever environment that ref belongs to is where the token lands.
 
-For an internal CRM with <100 users, **Option A is the right choice**. Document the weekly reconnect in `MailboxSettings`.
+## The real question to answer first
 
-## What I'll change in code (after Step 1 unblocks you)
+Before connecting, decide: **do you want this mailbox connected for testing in Preview, or for production use on the Live URL?**
 
-Two small UX improvements once OAuth works:
+- **If testing**: connect from Preview URL. Inbound emails will sync into your Preview DB and match against Preview-DB leads only.
+- **If production**: publish first (click Publish → Update), then connect from `https://ct-sc-deals.lovable.app`. The connection will live in the Live DB and sync against your real leads.
 
-1. **Better error surfacing in `gmail-oauth-callback`**: detect Google's `error=access_denied` query param and return a friendly HTML page that says "This Google account isn't on the test users list — ask Adam to add you in Google Cloud Console" instead of just `Authorization denied: access_denied`.
+You'll likely want to do **both eventually** — connect once in Preview to verify it works end-to-end, then connect again in Live for actual use. Each environment is a separate connection in a separate database.
 
-2. **Token-refresh failure handling in `MailboxSettings`**: when a refresh token expires (the 7-day Testing-mode limit), surface a clear "Reconnect required" badge per mailbox instead of silently failing the next sync.
+## What you need to do right now
 
-## What this plan does NOT touch
+### Step 1 — Confirm Google Console is set up (do this first regardless)
 
+Go to Google Cloud Console for the OAuth client behind `GOOGLE_OAUTH_CLIENT_ID`:
+
+1. **APIs & Services → Credentials → [our OAuth client] → Authorized redirect URIs**
+   Must contain (exactly, no trailing slash):
+   ```
+   https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/gmail-oauth-callback
+   ```
+
+2. **APIs & Services → OAuth consent screen → Test users**
+   Add the Google account email you'll click "Allow" with (e.g. `adam@captarget.com`).
+
+3. **OAuth consent screen → Authorized domains**
+   Add `lovable.app` (covers both preview and live subdomains) and `supabase.co`.
+
+### Step 2 — Pick where to connect
+
+**For first-time testing (recommended):**
+- Stay on Preview URL
+- Go to Settings → Mailbox Settings → "Connect Gmail"
+- Sign in with the Google account you added as a test user
+- Verify connection succeeds, run "Sync Now", check that inbound emails appear on a known lead
+
+**For production rollout (after testing works):**
+- Click Publish → Update (top right)
+- Open `https://ct-sc-deals.lovable.app`
+- Repeat the connect flow there
+- This creates a separate connection in the Live DB
+
+### Step 3 — Both environments will need separate connections
+
+Adam connecting Gmail in Preview does NOT connect him in Live, and vice versa. This is unavoidable because the two DBs don't share rows. For each real user (Adam, Malik, Valeria), you'll connect once per environment they need to operate in. Most likely just Live for daily use; Preview only for your own QA.
+
+## What this plan does NOT change
+
+- No code changes
 - No DB migrations
-- No new edge functions
-- No changes to `sync-gmail-emails`, `send-gmail-email`, or `track-email-open`
-- The code is correct — only the Google Cloud Console configuration needs to change
+- No Google Console scope changes (already set in earlier session)
+
+The integration is built and deployed. Publishing is optional and only affects which database the connection lives in.
 
