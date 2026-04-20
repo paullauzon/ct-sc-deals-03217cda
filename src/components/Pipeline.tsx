@@ -875,6 +875,28 @@ export function Pipeline() {
                       {/* Row 4a: Days in stage + Outcome */}
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <span className={`tabular-nums ${days > 14 ? "text-foreground font-medium" : ""}`}>{days}d in stage</span>
+                        {normalizeStage(lead.stage) === "Sample Sent" && (
+                          lead.sampleOutcome ? (
+                            <span
+                              className={cn(
+                                "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                                lead.sampleOutcome === "Approved" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" :
+                                lead.sampleOutcome === "Rejected" ? "bg-red-500/10 text-red-600 dark:text-red-400" :
+                                "bg-secondary text-foreground/80",
+                              )}
+                              title={`Sample outcome: ${lead.sampleOutcome}`}
+                            >
+                              {lead.sampleOutcome}
+                            </span>
+                          ) : (
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-secondary/60 text-muted-foreground border border-dashed border-border"
+                              title="Sample outcome not yet logged — required to advance to Proposal Sent"
+                            >
+                              Outcome pending
+                            </span>
+                          )
+                        )}
                         {lead.meetingOutcome && <span className="ml-auto">{lead.meetingOutcome}</span>}
                       </div>
                       {/* Row 4b: Meeting details (Calendly + Fireflies) */}

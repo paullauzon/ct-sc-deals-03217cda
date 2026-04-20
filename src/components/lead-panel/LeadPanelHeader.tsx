@@ -27,6 +27,7 @@ import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { logActivity } from "@/lib/activityLog";
 import { supabase } from "@/integrations/supabase/client";
+import { StallReasonBanner } from "@/components/lead-panel/StallReasonBanner";
 
 function ClickableProgressBar({ currentStage, onAdvance }: { currentStage: LeadStage; onAdvance: (s: LeadStage) => void }) {
   const currentIdx = ACTIVE_STAGES.indexOf(currentStage);
@@ -499,6 +500,9 @@ export function LeadPanelHeader({
           </button>
         </div>
       </div>
+
+      {/* Stall reason prompt — only when a Proposal has been sitting > 14d with no reason */}
+      <StallReasonBanner lead={lead} daysInStage={daysInStage} />
 
       {/* Clickable stage progress */}
       <div className="px-5 pb-2">
