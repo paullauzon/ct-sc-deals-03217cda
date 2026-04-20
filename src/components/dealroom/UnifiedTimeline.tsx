@@ -165,6 +165,7 @@ export function UnifiedTimeline({ lead }: { lead: Lead }) {
 
     // Activity log (stage changes, field updates, notes) — these can be pinned
     activity.forEach(a => {
+      const actor = (a as any).actor_name as string | undefined;
       out.push({
         id: `act-${a.id}`,
         activityId: a.id,
@@ -175,6 +176,7 @@ export function UnifiedTimeline({ lead }: { lead: Lead }) {
           : "system",
         date: a.created_at,
         title: a.description,
+        meta: actor && actor.trim() ? `by ${actor}` : "by System",
       });
     });
 

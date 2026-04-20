@@ -11,6 +11,7 @@ import { BusinessSystem } from "@/components/BusinessSystem";
 import { ClientSuccessSystem } from "@/components/ClientSuccessSystem";
 import { Search, BarChart3, Kanban, Users, CalendarCheck, Settings } from "lucide-react";
 import { MailboxSettings } from "@/components/MailboxSettings";
+import { UserMenu } from "@/components/UserMenu";
 
 type View = "dashboard" | "pipeline" | "leads" | "today" | "settings";
 type System = "crm" | "business" | "client-success";
@@ -137,6 +138,7 @@ function AppContent() {
                 >
                   <Settings className="h-3.5 w-3.5" />
                 </button>
+                <UserMenu />
               </div>
             </>
           )}
