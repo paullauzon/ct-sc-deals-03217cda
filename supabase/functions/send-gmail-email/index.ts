@@ -245,12 +245,14 @@ Deno.serve(async (req) => {
     }
     const leadEmailId = inserted.id as string;
 
-    // Inject open-pixel into the recipient HTML.
-    const trackUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/track-email-open?eid=${leadEmailId}`;
+    // Inject open-pixel + rewrite links into the recipient HTML.
+    const baseUrl = Deno.env.get("SUPABASE_URL")!;
+    const trackUrl = `${baseUrl}/functions/v1/track-email-open?eid=${leadEmailId}`;
     const pixelTag = `<img src="${trackUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />`;
-    const htmlWithPixel = html.replace(/<\/body>/i, `${pixelTag}</body>`) === html
-      ? `${html}${pixelTag}`
-      : html.replace(/<\/body>/i, `${pixelTag}</body>`);
+    const rewritten = rewriteLinks(html, leadEmailId, baseUrl);
+    const htmlWithPixel = rewritten.replace(/<\/body>/i, `${pixelTag}</body>`) === rewritten
+      ? `${rewritten}${pixelTag}`
+      : rewritten.replace(/<\/body>/i, `${pixelTag}</body>`);
 
     const raw = buildRfc822({
       fromAddress, fromName, to, cc, bcc,
