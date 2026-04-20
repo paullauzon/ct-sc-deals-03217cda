@@ -7,15 +7,17 @@ import { toast } from "sonner";
 import { CompanyActivityCard } from "./cards/CompanyActivityCard";
 import { useLeads } from "@/contexts/LeadContext";
 import { isClosedStage, normalizeStage } from "@/lib/leadUtils";
+import type { ReplyPrefill } from "@/components/EmailsSection";
 
 interface Props {
   lead: Lead;
   save: (updates: Partial<Lead>) => void;
   onDraftFollowUp: () => void;
+  onReply?: (prefill: ReplyPrefill) => void;
 }
 
 /** Inline action chips on the follow-up overdue banner */
-function FollowUpActionBanner({ lead, save, onDraftFollowUp }: Props) {
+function FollowUpActionBanner({ lead, save, onDraftFollowUp }: { lead: Lead; save: (u: Partial<Lead>) => void; onDraftFollowUp: () => void }) {
   const today = new Date();
   const isClosed = isClosedStage(normalizeStage(lead.stage));
   if (isClosed) return null;
@@ -74,12 +76,12 @@ function FollowUpActionBanner({ lead, save, onDraftFollowUp }: Props) {
   );
 }
 
-export function LeadActivityTab({ lead, save, onDraftFollowUp }: Props) {
+export function LeadActivityTab({ lead, save, onDraftFollowUp, onReply }: Props) {
   const { leads } = useLeads();
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <FollowUpActionBanner lead={lead} save={save} onDraftFollowUp={onDraftFollowUp} />
-      <UnifiedTimeline lead={lead} />
+      <UnifiedTimeline lead={lead} onReply={onReply} />
       <div className="mt-2 border-t border-border pt-2">
         <CompanyActivityCard lead={lead} allLeads={leads} />
       </div>
