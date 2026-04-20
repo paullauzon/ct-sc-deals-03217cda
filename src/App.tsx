@@ -2,14 +2,31 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useParams, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useParams, useNavigate, Navigate } from "react-router-dom";
+import { ReactNode } from "react";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import AuthPage from "./pages/Auth";
 import { LeadProvider } from "@/contexts/LeadContext";
 import { ProcessingProvider } from "@/contexts/ProcessingContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { LeadDetailPanel } from "@/components/LeadDetailPanel";
+import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
+
+function SessionGuard({ children }: { children: ReactNode }) {
+  const { session, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (!session) return <Navigate to="/auth" replace />;
+  return <>{children}</>;
+}
 
 function LeadDetailRoute() {
   const { id } = useParams<{ id: string }>();
@@ -33,16 +50,37 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <LeadProvider>
-          <ProcessingProvider>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/deal/:id" element={<LeadDetailRoute />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </ProcessingProvider>
-        </LeadProvider>
+        <AuthProvider>
+          <Routes>
+            <Route path="/auth" element={<AuthPage />} />
+            <Route
+              path="/"
+              element={
+                <SessionGuard>
+                  <LeadProvider>
+                    <ProcessingProvider>
+                      <Index />
+                    </ProcessingProvider>
+                  </LeadProvider>
+                </SessionGuard>
+              }
+            />
+            <Route
+              path="/deal/:id"
+              element={
+                <SessionGuard>
+                  <LeadProvider>
+                    <ProcessingProvider>
+                      <LeadDetailRoute />
+                    </ProcessingProvider>
+                  </LeadProvider>
+                </SessionGuard>
+              }
+            />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
