@@ -57,7 +57,7 @@ export function MailboxSettings() {
   const [connecting, setConnecting] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
-  const [backfillingId, setBackfillingId] = useState<string | null>(null);
+  
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
 
   // Connect dialog state
