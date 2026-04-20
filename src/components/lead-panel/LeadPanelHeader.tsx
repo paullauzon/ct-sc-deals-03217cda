@@ -27,6 +27,7 @@ import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { logActivity } from "@/lib/activityLog";
 import { supabase } from "@/integrations/supabase/client";
+import { StallReasonBanner } from "@/components/lead-panel/StallReasonBanner";
 
 function ClickableProgressBar({ currentStage, onAdvance }: { currentStage: LeadStage; onAdvance: (s: LeadStage) => void }) {
   const currentIdx = ACTIVE_STAGES.indexOf(currentStage);
