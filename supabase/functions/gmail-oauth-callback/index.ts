@@ -33,7 +33,14 @@ Deno.serve(async (req) => {
     const stateRaw = url.searchParams.get("state") || "";
     const error = url.searchParams.get("error");
 
-    if (error) return htmlResponse(`Authorization denied: ${error}`);
+    if (error) {
+      if (error === "access_denied") {
+        return htmlResponse(
+          "Access denied — your Google account isn't on the test users list. Ask the admin to add your email in Google Cloud Console → OAuth consent screen → Test users.",
+        );
+      }
+      return htmlResponse(`Authorization denied: ${error}`);
+    }
     if (!code) return htmlResponse("Missing authorization code");
 
     let userLabel = "Default";
