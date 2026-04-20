@@ -220,6 +220,7 @@ interface SyncStats {
   skipped_dup: number;
   skipped_internal: number;
   errors: string[];
+  started_at: string;
 }
 
 async function listMessageIdsFull(token: string): Promise<string[]> {
@@ -308,6 +309,7 @@ async function syncOneConnection(
     skipped_dup: 0,
     skipped_internal: 0,
     errors: [],
+    started_at: new Date().toISOString(),
   };
 
   let token: string;
@@ -455,6 +457,30 @@ async function syncOneConnection(
       updated_at: new Date().toISOString(),
     })
     .eq("id", connection.id);
+
+  // Audit log: persist this sync run so the UI can render history without scraping logs.
+  // Non-fatal — never let a logging failure mask the sync result.
+  try {
+    const status = stats.errors.length === 0
+      ? "success"
+      : stats.inserted > 0 ? "partial" : "failed";
+    await supabase.from("email_sync_runs").insert({
+      connection_id: connection.id,
+      email_address: connection.email_address,
+      mode: stats.mode === "incremental" ? "incremental" : "first_run",
+      started_at: stats.started_at,
+      finished_at: new Date().toISOString(),
+      fetched: stats.fetched,
+      inserted: stats.inserted,
+      matched: stats.matched,
+      unmatched: Math.max(0, stats.inserted - stats.matched),
+      skipped: stats.skipped_dup + stats.skipped_internal,
+      errors: stats.errors,
+      status,
+    });
+  } catch (logErr) {
+    console.error("email_sync_runs insert failed (non-fatal):", logErr);
+  }
 
   return stats;
 }

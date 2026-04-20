@@ -391,6 +391,53 @@ Deno.serve(async (req) => {
 
     if (insertError) throw insertError;
 
+    // Self-healing unmatched bucket: when a new lead is created, claim any
+    // previously-orphaned `lead_emails` rows whose participants match this lead's
+    // email or company domain. Without this, emails received before the lead exists
+    // stay invisible forever. Internal employee domains are skipped.
+    try {
+      const leadEmailLower = email.toLowerCase().trim();
+      const leadDomain = leadEmailLower.split("@")[1] || "";
+      const companyDomain = (() => {
+        const raw = (body.companyUrl as string) || "";
+        if (!raw) return "";
+        try {
+          const u = new URL(raw.startsWith("http") ? raw : `https://${raw}`);
+          return u.hostname.replace(/^www\./, "").toLowerCase();
+        } catch { return ""; }
+      })();
+      const INTERNAL = ["captarget.com", "sourcecodeals.com", "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "icloud.com", "proton.me", "protonmail.com"];
+      const candidateDomains = Array.from(new Set([leadDomain, companyDomain].filter(d => d && !INTERNAL.includes(d))));
+
+      // 1) Direct address match (cheap, exact)
+      await supabase
+        .from("lead_emails")
+        .update({ lead_id: leadId })
+        .eq("lead_id", "unmatched")
+        .or(`from_address.eq.${leadEmailLower},to_addresses.cs.{${leadEmailLower}}`);
+
+      // 2) Domain-fallback match — fetch unmatched rows whose from_address ends with a candidate domain.
+      // PostgREST .or() with ilike works cleanly on a single column.
+      if (candidateDomains.length > 0) {
+        const orParts = candidateDomains.map(d => `from_address.ilike.%@${d}`).join(",");
+        const { data: fuzzy } = await supabase
+          .from("lead_emails")
+          .select("id")
+          .eq("lead_id", "unmatched")
+          .or(orParts)
+          .limit(500);
+        const ids = (fuzzy || []).map((r: { id: string }) => r.id);
+        if (ids.length > 0) {
+          await supabase
+            .from("lead_emails")
+            .update({ lead_id: leadId })
+            .in("id", ids);
+        }
+      }
+    } catch (sweepErr) {
+      console.error("Unmatched email sweep failed (non-fatal):", sweepErr);
+    }
+
     // Auto-create initial follow-up task so this lead appears in Action Queue / Follow-Ups tab
     // (previously only `next_follow_up` was set, leaving 90 New Leads invisible to reps).
     try {
