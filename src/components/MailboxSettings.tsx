@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { UnmatchedInbox } from "./UnmatchedInbox";
 import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
+import { OutlookSetupChecklist } from "./OutlookSetupChecklist";
 
 interface Connection {
   id: string;
@@ -374,6 +375,9 @@ export function MailboxSettings() {
             <p className="font-medium text-foreground">Testing-mode note</p>
             <p>The Google OAuth app runs in Testing mode, so refresh tokens expire every 7 days. If a mailbox shows "Reconnect required", click "Connect Gmail" again with the same account to restore sync.</p>
           </div>
+
+          {/* Outlook setup checklist — pending external admin consent + API key */}
+          <OutlookSetupChecklist />
         </TabsContent>
 
         <TabsContent value="unmatched">
