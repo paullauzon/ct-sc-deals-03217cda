@@ -575,6 +575,7 @@ function TimelineRow({
   onReply,
   defaultExpanded = false,
   stallReason = "",
+  onOpenTranscript,
 }: {
   event: TimelineEvent;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
@@ -583,8 +584,26 @@ function TimelineRow({
   onReply?: (prefill: ReplyPrefill) => void;
   defaultExpanded?: boolean;
   stallReason?: string;
+  onOpenTranscript?: (m: Meeting) => void;
 }) {
-  const expandable = !!event.detail;
+  const isMeeting = event.type === "meeting";
+  const isCall = event.type === "call";
+  const isSequencePaused = event.type === "sequence_paused";
+  const meeting = event.meeting;
+  const intel = meeting?.intelligence;
+  const callIntel = event.callIntel;
+
+  const hasMeetingIntel = !!intel && (
+    !!intel.decisions?.length || !!intel.actionItems?.length || !!intel.nextMeetingRecommendation ||
+    !!intel.engagementLevel || !!intel.buyerJourney || typeof intel.talkRatio === "number"
+  );
+  const hasCallIntel = !!callIntel && (
+    !!callIntel.decisions?.length || !!callIntel.actionItems?.length || !!callIntel.nextStep ||
+    !!callIntel.engagement
+  );
+
+  // Expandable when there is a body OR rich AI intel to reveal
+  const expandable = !!event.detail || hasMeetingIntel || hasCallIntel;
   const [open, setOpen] = useState(defaultExpanded && expandable);
   const isEmail = event.type === "email_in" || event.type === "email_out";
   const isInbound = event.type === "email_in";
@@ -621,6 +640,10 @@ function TimelineRow({
     return "Auto-task";
   })();
 
+  // Call meta extraction (outcome, duration) from activity row
+  const callOutcome = isCall && event.title ? (event.title.match(/Call logged: ([^·]+)/i)?.[1] || "").trim() : "";
+  const callDurationMin = isCall && event.title ? (event.title.match(/(\d+)m/)?.[1] || "") : "";
+
   const handleReply = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!onReply || !email) return;
@@ -650,13 +673,19 @@ function TimelineRow({
         onClick={() => expandable && setOpen(v => !v)}
         className={cn(
           "w-full text-left rounded-md px-3 py-2 transition-colors",
-          expandable && "hover:bg-secondary/40 cursor-pointer"
+          expandable && "hover:bg-secondary/40 cursor-pointer",
+          isSequencePaused && "bg-secondary/30"
         )}
       >
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-medium truncate flex items-center gap-1.5">
             {isPinned && <Pin className="h-2.5 w-2.5 text-foreground/60 shrink-0" />}
             {event.title}
+            {(isMeeting && hasMeetingIntel) || (isCall && hasCallIntel) ? (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5 font-medium ml-1">
+                <Sparkles className="h-2.5 w-2.5" /> AI
+              </Badge>
+            ) : null}
           </p>
           <div className="flex items-center gap-1 shrink-0">
             {canPin && (
@@ -682,6 +711,52 @@ function TimelineRow({
         {event.meta && (
           <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{event.meta}</p>
         )}
+
+        {/* Sequence-paused pill row */}
+        {isSequencePaused && (
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5 font-medium">
+              <PauseCircle className="h-2.5 w-2.5" /> {event.sequenceStep ? `${event.sequenceStep} paused on reply` : "Sequence paused on reply"}
+            </Badge>
+          </div>
+        )}
+
+        {/* Call pill row — outcome + duration */}
+        {isCall && (callOutcome || callDurationMin) && (
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            {callOutcome && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">{callOutcome}</Badge>
+            )}
+            {callDurationMin && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">{callDurationMin} min</Badge>
+            )}
+            {callIntel?.engagement && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">Engagement: {callIntel.engagement}</Badge>
+            )}
+          </div>
+        )}
+
+        {/* Meeting intel pill row */}
+        {isMeeting && intel && (intel.engagementLevel || intel.buyerJourney || intel.internalChampionStrength || typeof intel.talkRatio === "number" || intel.questionQuality) && (
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            {intel.engagementLevel && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">Engagement: {intel.engagementLevel}</Badge>
+            )}
+            {intel.buyerJourney && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">Journey: {intel.buyerJourney}</Badge>
+            )}
+            {intel.internalChampionStrength && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">Champion: {intel.internalChampionStrength}</Badge>
+            )}
+            {typeof intel.talkRatio === "number" && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium tabular-nums">Talk ratio {Math.round(intel.talkRatio)}%</Badge>
+            )}
+            {intel.questionQuality && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">Questions: {intel.questionQuality}</Badge>
+            )}
+          </div>
+        )}
+
         {/* Task pill row — status, source, optional stall reason */}
         {isTask && task && (
           <div className="flex flex-wrap items-center gap-1 mt-1">
@@ -747,17 +822,52 @@ function TimelineRow({
             {event.detail}
           </p>
         )}
+
+        {/* Meeting AI extracted intel */}
+        {isMeeting && open && hasMeetingIntel && intel && (
+          <IntelExtractBlock
+            decisions={intel.decisions}
+            actionItems={intel.actionItems?.map(a => ({ owner: a.owner, item: a.item, deadline: a.deadline }))}
+            nextStep={intel.nextMeetingRecommendation}
+          />
+        )}
+
+        {/* Call AI extracted intel */}
+        {isCall && open && hasCallIntel && callIntel && (
+          <IntelExtractBlock
+            decisions={callIntel.decisions}
+            actionItems={callIntel.actionItems?.map(a => ({
+              owner: a.owner,
+              item: a.item,
+              deadline: a.deadline,
+            }))}
+            nextStep={callIntel.nextStep}
+          />
+        )}
+
         {event.href && open && (
           <a
             href={event.href}
             target="_blank"
             rel="noreferrer"
             onClick={e => e.stopPropagation()}
-            className="text-[11px] text-foreground hover:underline mt-1.5 inline-block"
+            className="text-[11px] text-foreground hover:underline mt-1.5 inline-flex items-center gap-1 mr-3"
           >
             Open recording →
           </a>
         )}
+
+        {/* Open transcript link — meetings with transcript text */}
+        {isMeeting && open && meeting?.transcript && onOpenTranscript && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOpenTranscript(meeting); }}
+            className="text-[11px] text-foreground hover:underline mt-1.5 inline-flex items-center gap-1"
+          >
+            <FileText className="h-3 w-3" /> Open transcript
+          </button>
+        )}
+
         {/* Inline Reply for inbound emails */}
         {isEmail && isInbound && onReply && email && open && (
           <div className="mt-2">
@@ -770,3 +880,64 @@ function TimelineRow({
     </div>
   );
 }
+
+/**
+ * Renders an "AI extracted" block under expanded meeting/call rows.
+ * Three sections, max 3 items each, sober monochrome styling.
+ */
+function IntelExtractBlock({
+  decisions,
+  actionItems,
+  nextStep,
+}: {
+  decisions?: string[];
+  actionItems?: { owner?: string; item: string; deadline?: string }[];
+  nextStep?: string;
+}) {
+  const dec = (decisions || []).filter(Boolean).slice(0, 3);
+  const items = (actionItems || []).filter(a => a && a.item).slice(0, 3);
+  if (dec.length === 0 && items.length === 0 && !nextStep) return null;
+  return (
+    <div className="mt-2 rounded border border-border bg-secondary/30 p-2 space-y-1.5">
+      <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+        <Sparkles className="h-2.5 w-2.5" /> AI extracted
+      </p>
+      {dec.length > 0 && (
+        <div>
+          <p className="text-[10px] font-medium text-foreground/80">Decisions</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {dec.map((d, i) => (
+              <li key={i} className="text-[11px] text-muted-foreground leading-snug">• {d}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {items.length > 0 && (
+        <div>
+          <p className="text-[10px] font-medium text-foreground/80">Action items</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {items.map((a, i) => (
+              <li key={i} className="text-[11px] text-muted-foreground leading-snug flex items-start gap-1">
+                <span>•</span>
+                <span className="flex-1">
+                  {a.owner && (
+                    <Badge variant="outline" className="h-3.5 text-[8px] px-1 mr-1 font-medium uppercase">{a.owner}</Badge>
+                  )}
+                  {a.item}
+                  {a.deadline && <span className="text-muted-foreground/60"> · {a.deadline}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {nextStep && (
+        <div>
+          <p className="text-[10px] font-medium text-foreground/80">Recommended next step</p>
+          <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{nextStep}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
