@@ -689,8 +689,25 @@ Deno.serve(async (req) => {
     if (error) throw error;
 
     const results: SyncStats[] = [];
+    const skipped: Array<{ connection_id: string; email: string; reason: string }> = [];
     for (const c of conns ?? []) {
       const conn = c as { id: string; email_address: string; history_id: string | null };
+
+      // Defer to the backfill orchestrator if a backfill job is active for this connection.
+      // Avoids racing the orchestrator + chewing Gmail quota.
+      if (!forceFull) {
+        const { data: activeJobs } = await supabase
+          .from("email_backfill_jobs")
+          .select("id, status")
+          .eq("connection_id", conn.id)
+          .in("status", ["queued", "discovering", "running", "paused"])
+          .limit(1);
+        if (activeJobs && activeJobs.length > 0) {
+          skipped.push({ connection_id: conn.id, email: conn.email_address, reason: "backfill_in_progress" });
+          continue;
+        }
+      }
+
       // Null out history_id locally to force the full 90-day backfill path.
       // The sync will set latest history_id at the end so next incremental runs work normally.
       const effective = forceFull ? { ...conn, history_id: null } : conn;
