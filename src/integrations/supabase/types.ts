@@ -761,9 +761,11 @@ export type Database = {
           next_mutual_step: string
           next_mutual_step_date: string
           notes: string
+          nurture_exit_reason: string
           nurture_re_engage_date: string | null
           nurture_sequence_status: string | null
           nurture_started_at: string | null
+          nurture_step_log: Json
           pe_backed: boolean | null
           pe_backed_stage2: boolean | null
           pe_sponsor_name: string | null
@@ -875,9 +877,11 @@ export type Database = {
           next_mutual_step?: string
           next_mutual_step_date?: string
           notes?: string
+          nurture_exit_reason?: string
           nurture_re_engage_date?: string | null
           nurture_sequence_status?: string | null
           nurture_started_at?: string | null
+          nurture_step_log?: Json
           pe_backed?: boolean | null
           pe_backed_stage2?: boolean | null
           pe_sponsor_name?: string | null
@@ -989,9 +993,11 @@ export type Database = {
           next_mutual_step?: string
           next_mutual_step_date?: string
           notes?: string
+          nurture_exit_reason?: string
           nurture_re_engage_date?: string | null
           nurture_sequence_status?: string | null
           nurture_started_at?: string | null
+          nurture_step_log?: Json
           pe_backed?: boolean | null
           pe_backed_stage2?: boolean | null
           pe_sponsor_name?: string | null
