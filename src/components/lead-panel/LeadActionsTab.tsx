@@ -121,6 +121,7 @@ export function LeadActionsTab({ lead, allLeads, save, draftSignal, onSendAiDraf
       delete next[actionKey];
       return next;
     });
+    setAutoDrafts(prev => prev.filter(d => d.action_key !== actionKey));
     await supabase.from("lead_drafts").update({ status: "discarded" } as any).eq("lead_id", lead.id).eq("action_key", actionKey);
     toast("Draft discarded");
   }, [lead?.id]);
