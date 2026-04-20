@@ -432,8 +432,10 @@ export function LeadProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // Pipeline v2: group by NORMALIZED stage so legacy "Meeting Held" deals
+  // land in the "Discovery Completed" column without touching DB rows.
   const getLeadsByStage = useCallback(
-    (stage: LeadStage) => leads.filter((l) => l.stage === stage),
+    (stage: LeadStage) => leads.filter((l) => normalizeStage(l.stage) === normalizeStage(stage)),
     [leads]
   );
 
