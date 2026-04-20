@@ -36,15 +36,29 @@ serve(async (req) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // 2. Push all overdue pending tasks to today
-    const { data, error } = await supabase
+    // 2. Push overdue pending tasks to today — capped at 500/run, oldest first.
+    // Subsequent ticks pick up the rest, so a 1000-task backlog can't time out a single run.
+    const { data: overdue, error: selErr } = await supabase
       .from("lead_tasks")
-      .update({ due_date: todayStr })
+      .select("id")
       .eq("status", "pending")
       .lt("due_date", todayStr)
       .in("lead_id", ids)
-      .select("id");
-    if (error) throw error;
+      .order("due_date", { ascending: true })
+      .limit(500);
+    if (selErr) throw selErr;
+
+    const overdueIds = (overdue || []).map((t: any) => t.id);
+    let data: any[] | null = [];
+    if (overdueIds.length > 0) {
+      const { data: updated, error } = await supabase
+        .from("lead_tasks")
+        .update({ due_date: todayStr })
+        .in("id", overdueIds)
+        .select("id");
+      if (error) throw error;
+      data = updated;
+    }
 
     const count = data?.length ?? 0;
     console.log(`[auto-reschedule-overdue] rescheduled ${count} task(s) to ${todayStr}`);
