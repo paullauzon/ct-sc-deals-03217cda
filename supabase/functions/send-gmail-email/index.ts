@@ -177,7 +177,10 @@ Deno.serve(async (req) => {
       to: toRaw, cc: ccRaw, bcc: bccRaw,
       subject, body_text, body_html,
       in_reply_to, thread_id,
+      ai_drafted, source_draft_id,
     } = body as Record<string, unknown>;
+    const isAiDrafted = ai_drafted === true;
+    const sourceDraftId = typeof source_draft_id === "string" && source_draft_id ? source_draft_id : null;
 
     if (!connection_id || typeof connection_id !== "string") {
       return new Response(JSON.stringify({ ok: false, error: "connection_id required" }), {
@@ -233,7 +236,12 @@ Deno.serve(async (req) => {
       source: "gmail",
       is_read: true,
       tracked: true,
-      raw_payload: { sent_via: "crm", x_crm_source: "lovable-crm" },
+      ai_drafted: isAiDrafted,
+      raw_payload: {
+        sent_via: "crm",
+        x_crm_source: "lovable-crm",
+        ...(sourceDraftId ? { source_draft_id: sourceDraftId } : {}),
+      },
     };
     const { data: inserted, error: insertErr } = await supabase
       .from("lead_emails")
@@ -285,6 +293,14 @@ Deno.serve(async (req) => {
       .from("lead_emails")
       .update({ provider_message_id: sent.id, thread_id: sent.threadId ?? "" })
       .eq("id", leadEmailId);
+
+    // Mark source draft as sent so the Actions tab no longer surfaces it.
+    if (sourceDraftId) {
+      await (supabase as any)
+        .from("lead_drafts")
+        .update({ status: "sent", updated_at: new Date().toISOString() })
+        .eq("id", sourceDraftId);
+    }
 
     return new Response(JSON.stringify({
       ok: true,

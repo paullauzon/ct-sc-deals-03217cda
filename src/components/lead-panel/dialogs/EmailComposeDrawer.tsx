@@ -34,6 +34,10 @@ interface Props {
   save: (updates: Partial<Lead>) => void;
   presetAction?: "follow-up" | "default";
   replyContext?: ReplyContext | null;
+  /** When set, marks the outgoing email as ai_drafted=true and flips the source draft to status='sent'. */
+  sourceDraftId?: string | null;
+  /** Optional prefill (subject/body) used when opening from an AI draft in the Actions tab. */
+  prefill?: { subject?: string; body?: string } | null;
 }
 
 interface Mailbox {
@@ -85,7 +89,7 @@ function buildVars(lead: Lead, myName: string): Record<string, string> {
   };
 }
 
-export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetAction, replyContext }: Props) {
+export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetAction, replyContext, sourceDraftId, prefill }: Props) {
   const [to, setTo] = useState(lead.email || "");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -117,6 +121,12 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
         setBody(replyContext.quote ? `\n\n${replyContext.quote}` : "");
         setThreadId(replyContext.thread_id || "");
         setInReplyTo(replyContext.in_reply_to || "");
+      } else if (prefill && (prefill.subject || prefill.body)) {
+        setTo(lead.email || "");
+        setSubject(prefill.subject || "");
+        setBody(prefill.body || "");
+        setThreadId("");
+        setInReplyTo("");
       } else {
         setTo(lead.email || "");
         setSubject("");
@@ -285,6 +295,7 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
           body_text: body,
           ...(threadId ? { thread_id: threadId } : {}),
           ...(inReplyTo ? { in_reply_to: inReplyTo } : {}),
+          ...(sourceDraftId ? { ai_drafted: true, source_draft_id: sourceDraftId } : {}),
         },
       });
       if (error) throw error;
