@@ -202,3 +202,117 @@ export default function TeamPage() {
     </div>
   );
 }
+
+function initialsOf(name?: string | null, email?: string | null): string {
+  const source = (name?.trim() || email?.split("@")[0] || "").trim();
+  if (!source) return "?";
+  const parts = source.split(/[\s._-]+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function InviteTeammateDialog({ onInvited }: { onInvited: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<"admin" | "rep">("rep");
+  const [submitting, setSubmitting] = useState(false);
+
+  const reset = () => {
+    setEmail("");
+    setName("");
+    setRole("rep");
+  };
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      toast.error("Enter a valid email address");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("invite-user", {
+        body: { email: trimmedEmail, name: name.trim(), role },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(`Invite sent to ${trimmedEmail}`);
+      reset();
+      setOpen(false);
+      onInvited();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send invite");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) reset(); }}>
+      <DialogTrigger asChild>
+        <Button size="sm" className="gap-1.5 h-8 text-xs">
+          <UserPlus className="h-3.5 w-3.5" />
+          Invite teammate
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-sm">Invite teammate</DialogTitle>
+          <DialogDescription className="text-xs">
+            They'll get a magic-link email. When they sign up, their role is applied automatically.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="invite-email" className="text-xs">Work email</Label>
+            <div className="relative">
+              <Mail className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="invite-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="teammate@company.com"
+                className="pl-8"
+                required
+                disabled={submitting}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="invite-name" className="text-xs">Name (optional)</Label>
+            <Input
+              id="invite-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Jane Doe"
+              disabled={submitting}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="invite-role" className="text-xs">Role</Label>
+            <Select value={role} onValueChange={(v) => setRole(v as "admin" | "rep")} disabled={submitting}>
+              <SelectTrigger id="invite-role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="rep">Rep — standard access</SelectItem>
+                <SelectItem value="admin">Admin — can manage team</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting} className="min-w-[120px]">
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send invite"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
