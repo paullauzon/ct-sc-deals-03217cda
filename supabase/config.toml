@@ -119,3 +119,6 @@ verify_jwt = false
 
 [functions.sync-outlook-emails]
 verify_jwt = false
+
+[functions.extract-call-intel]
+verify_jwt = false
