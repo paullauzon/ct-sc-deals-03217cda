@@ -1,84 +1,58 @@
 
 
-# Sequences — monitoring + AI-personalized nurture campaign
+# Sequences — closing the last gaps
 
-## What exists today (audit)
+The build is 90% complete. Four concrete gaps remain that block the wireframe from working end-to-end. All four are small, surgical fixes.
 
-- `nurture-engine` edge function runs daily at 13:00 UTC (verified in `cron.job`), enrolls Closed Lost leads automatically (LeadContext L325-329), 283 leads currently `active`, fires 4 milestones (d0/d30/d45/d90) into `lead_drafts` and `lead_tasks`, flips to `re_engaged` on inbound, completes after d97.
-- Activity tab already renders `sequence_paused` rows with inline pills (shipped last build).
-- **Zero monitoring UI.** No "Sequences" page, no campaign overview, no per-step funnel, no enrolled-leads list.
-- **Email copy is generic placeholder text** with no AI personalization. The mockup explicitly requires personalization by *Lost Reason + Mandate (Sector + EBITDA range + Acquisition Timeline + Firm Type)* and Malik's Day 45 manual touch references the Fireflies transcript.
-- The mockup also requires logic the engine doesn't have: **9 lost reasons, 8 enrolled in S8, 1 (Scope Mismatch) gets a referral email and exits** — today every Closed Lost lead enrolls regardless of reason.
+## Gap 1 — Nurture sends don't stamp `sequence_step` on `lead_emails`
 
-## What you'll get
+**Symptom:** When Malik approves a Day 30 nurture draft and sends it, the resulting `lead_emails` row has `sequence_step = null`. Result: the existing inline "N30 paused on reply" chip in the Activity tab never fires for nurture emails, and the "auto-task from sequence N30" suffix never appears either. The Activity tab plumbing was built for this — nurture is the only sender that doesn't feed it.
 
-A new top-level **Sequences** view (in the CRM nav, next to Pipeline) that is the single place to monitor every email sequence. The 90-day post-loss nurture is the first campaign — built so additional sequences (re-engagement, sample-sent stall, post-discovery cold, Closed Won onboarding, etc.) plug into the same UI with no rework.
+**Fix:** In `send-gmail-email` and `send-outlook-email`, when the request body includes `source_draft_id`, look up the draft's `action_key`. If it matches `^(N0|N30|N90|REFERRAL)$`, write that value to `lead_emails.sequence_step` on insert. One small SELECT + one column on the INSERT, in both edge functions.
 
-### 1. Sequences index page (`/#view=sequences`)
-List of all sequences as cards. For each: name, trigger condition, total enrolled (active / completed / re-engaged / exited), reply rate, conversion-to-meeting rate, last run timestamp, next run countdown. Click a card → campaign detail.
+## Gap 2 — Pausing a lead makes it vanish from the campaign
 
-### 2. Campaign detail — "Sequence 8: Core 90-day post-loss nurture"
+**Symptom:** Click Pause on the SequenceCard → status becomes `"archived"`. But `leadEnrolledIn()` only counts `active | completed | re_engaged | exited_referral`. A paused lead silently disappears from the Enrolled tab, the index card counts, and the funnel. There's also no "Paused" chip in the status filter row.
 
-Three tabs:
+**Fix:**
+- Rename the Pause status from `"archived"` to `"paused"` (clearer intent, no confusion with `archived_at`).
+- Add `"paused"` to `leadEnrolledIn()`'s allowed set.
+- Add a "Paused" filter chip to the Enrolled tab and the Overview summary stats grid (becomes 6-up).
+- Add a "Paused" status badge to `EnrolledLeadsTable`'s STATUS_LABEL.
+- Update `nurture-engine`: skip leads with status `"paused"` (it currently only queries `active`, so this already works, but make it explicit by handling the value if it ever appears in a lookup).
+- Update `SequenceCard` to use `"paused"` everywhere it currently says `"archived"`.
 
-**a. Overview**
-- Trigger rule shown in plain English ("Lead enters Closed Lost with `lost_reason_v2 ≠ Scope Mismatch`")
-- 4-step timeline (Day 0 / 30 / 45 / 90) matching your wireframe verbatim — each step shows: type pill (`AI-personalized` / `Auto` / `Malik manual`), subject template, body template with `[bracket]` merge fields, AI personalization inputs panel
-- Funnel widget: Enrolled → d0 sent → d30 sent → d45 done → d90 sent → Re-engaged
-- Summary stats: enrolled, active, completed, re-engaged %, replies, exited (Scope Mismatch referrals)
+## Gap 3 — `nurture-engine` has never run + no manual trigger
 
-**b. Enrolled leads**
-Sortable table: Lead · Lost reason · Day in sequence · Last touch · Next touch · Status · Replied? · Pause/Resume/Exit actions. Click a row → opens deal panel.
+**Symptom:** `cron_run_log` is empty for `nurture-engine`. The cron is scheduled (daily 13:00 UTC, verified) but the new code hasn't fired yet, so 283 active leads are sitting with no Day 0 drafts generated. Also there's no UI button to trigger it on demand for testing.
 
-**c. Activity log**
-Reverse-chrono feed of every send/skip/exit/re-engagement across all enrolled leads. Filterable by step (d0/d30/d45/d90) and outcome (sent/replied/exited).
+**Fix:**
+- Add a small "Run engine now" button on the Sequences index (admin-only via existing `useUserRole` pattern, top-right of header). Invokes `nurture-engine` directly and toasts the summary `{ processed, drafts, tasks, completed, reEngaged, exited }`.
+- After Gap 1 and 2 are merged, click the button once. This also surfaces any latent runtime errors in the engine before the next cron tick.
 
-### 3. Per-lead "Sequence" card in the deal panel right rail
-On any Closed Lost lead: shows current step, day count, next touch date, replied status, and Pause/Exit buttons. Clickable header opens the campaign detail page filtered to this lead.
+## Gap 4 — `logCronRun` may not write (schema mismatch)
 
-### 4. AI personalization (the actual "feel like a human relationship" upgrade)
+**Symptom:** `cron_run_log` has columns `ran_at` etc., but I didn't audit the `_shared/cron-log.ts` helper to confirm column names match. If they don't, the engine runs successfully but logs nothing, breaking the Automation Health panel for this job.
 
-Replace the static placeholder copy in `nurture-engine` with a new edge function `generate-nurture-email` (GPT-4o, direct OpenAI per your standing rule). For each milestone draft:
+**Fix:** Open `supabase/functions/_shared/cron-log.ts`, confirm INSERT column names match `cron_run_log` schema, and adjust if needed. Five-minute check.
 
-- **Day 0 inputs**: lost reason, target sector, EBITDA range, deal type, brand → produces an insight email that references their specific sector dynamics. Lost Reason → insight angle:
-  - `Going DIY` → data-quality challenges insight
-  - `Chose Axial` → off-market vs listed inventory dynamics
-  - `Price was too high` → ROI/cost-per-deal math
-  - `Timing` → market timing for their sector
-  - `Went Dark / No response` → low-pressure relevance ping
-  - `Other / Stale` → neutral sector observation
-- **Day 30 inputs**: sector, EBITDA range, acquisition timeline → if timeline was "3-6 months" and 30 days have passed, explicitly acknowledges "you mentioned Q3 was when you'd be more actively deploying — is that still the plan?"
-- **Day 45**: stays manual (Malik writes himself, no AI) — surfaces the Fireflies transcript link + Malik's notes inline so he can write something specific in 60 seconds. This matches your wireframe note: *"the Fireflies transcript is Malik's memory."*
-- **Day 90 inputs**: firm type (PE fund / search fund / corp dev / family office) + sector + EBITDA → "We've helped [similar buyer type] source [X] targets in [range] recently."
+## Out of scope (intentionally deferred)
 
-All AI copy obeys your standing rules (max 80 words, no filler, no em/en dashes, peer tone). All emails sent from Malik's connected mailbox (Gmail/Outlook) via existing `send-gmail-email` / `send-outlook-email` so they look human.
+- A/B testing on AI copy
+- Editing AI prompts from the UI
+- Building S5 sample-stall, S3 post-discovery cold, S10 Closed Won onboarding (the framework supports them — adding each is a separate request)
+- Backfilling Day 0 drafts for the 283 leads enrolled before AI personalization shipped (next cron tick + manual button covers it)
 
-### 5. Scope Mismatch exit branch
-Engine adds a one-time `lost_reason_v2 == "Scope Mismatch"` check at enrollment: instead of `nurture_sequence_status = 'active'`, it generates a single referral email draft (Day 0 only, no further touches) and sets status to `exited_referral`. Tracked in the campaign detail's "Exited" bucket.
+## Files touched
 
-### 6. Activity tab integration (already mostly done)
-Every nurture send adds a `sequence_step = 'N0' / 'N30' / 'N45' / 'N90'` to `lead_emails` so the existing inline `Nx paused on reply` chip + auto-task suffix works for nurture emails too — no extra timeline work.
+- `supabase/functions/send-gmail-email/index.ts` — sequence_step stamp
+- `supabase/functions/send-outlook-email/index.ts` — sequence_step stamp
+- `supabase/functions/_shared/cron-log.ts` — schema audit, fix if needed
+- `src/components/sequences/sequenceConfig.tsx` — add `paused` to `leadEnrolledIn`
+- `src/components/sequences/SequencesIndex.tsx` — add admin "Run engine now" button
+- `src/components/sequences/CampaignDetail.tsx` — add Paused stat + filter chip
+- `src/components/sequences/EnrolledLeadsTable.tsx` — add Paused label
+- `src/components/lead-panel/cards/SequenceCard.tsx` — `archived` → `paused`
 
-## Technical details
-
-- **DB**: add `nurture_step_log` (jsonb on `leads`) tracking `{step, sent_at, draft_id, email_id, replied}` per step. No new table needed; reuse existing `lead_drafts`, `lead_emails`, `lead_activity_log`, `cron_run_log` (already wired). Add `nurture_exit_reason` text column to `leads` for Scope Mismatch / manual exit.
-- **New edge function**: `generate-nurture-email` (called by `nurture-engine` per milestone). Direct OpenAI GPT-4o, structured prompt per step with lost reason + mandate context.
-- **Engine update**: `nurture-engine/index.ts` — add Scope Mismatch branch at top of loop, replace placeholder copy blocks with `generate-nurture-email` invocations, stamp `sequence_step = 'N{day}'` on the inserted `lead_drafts.action_key` and on the eventual `lead_emails.sequence_step` when sent (the existing send pipeline already carries `sequence_step` through).
-- **Auto-enroll guard in `LeadContext`**: skip enrollment when `lostReasonV2 === 'Scope Mismatch'` (kick to referral branch instead).
-- **Cron logging**: `nurture-engine` already runs daily; add `logCronRun` call (same pattern as `process-scheduled-emails`) so it appears in Automation Health panel.
-- **New UI files**:
-  - `src/components/sequences/SequencesIndex.tsx` (campaign list)
-  - `src/components/sequences/CampaignDetail.tsx` (3-tab detail view)
-  - `src/components/sequences/EnrolledLeadsTable.tsx`
-  - `src/components/sequences/SequenceTimeline.tsx` (the 4-step visual matching the wireframe)
-  - `src/components/lead-panel/cards/SequenceCard.tsx` (right-rail card on deal panel for enrolled leads)
-- **Routing**: add `"sequences"` to the `View` type in `src/pages/Index.tsx` and a nav button (icon `Send` or `Workflow`).
-- **Brand/aesthetic**: monochrome cards, no traffic-light colors except the existing amber pill for `sequence_paused`, badges in `bg-secondary`, lucide icons only — matches your standing design memory.
-
-## Out of scope
-
-- Building additional sequences beyond the 90-day nurture (the framework supports them — adding S5 sample-stall etc. is a follow-up)
-- A/B testing on AI copy (single-variant first, can layer on later)
-- Editing AI prompts from the UI (prompts stay in code for v1)
-- Letting reps preview the AI-generated email *before* the cron fires (drafts still land in the existing Action Center for review/approve/send, same as today)
+After this build the Sequences feature is complete end-to-end against the original wireframe.
 
