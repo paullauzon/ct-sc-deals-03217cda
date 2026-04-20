@@ -1,110 +1,112 @@
 
 
-# What remains in the email/communication system — full sweep
+# What's left in the email/communication system
 
-Gmail core sync is done. Here's everything else that was deferred across past plans, ranked by impact. None are blockers; all are "next-tier" polish that move the system from "works" to "excellent."
+Backend infrastructure for Gaps A, B, C, F, H, I, K is fully deployed. The remaining work is **almost entirely user-facing** — surfacing what the backend already produces and unlocking workflows reps will use daily.
 
-## Gap A — Click tracking (link analytics)
-**Today:** We track opens via 1×1 pixel. We do NOT track link clicks. Reps can't see which CTAs land.
-**Build:**
-- New `track-email-click` edge function — accepts `eid` + `url`, appends `{at, url, ua}` to `lead_emails.clicks`, then 302-redirects to the original URL.
-- `send-gmail-email` — rewrite every `<a href="X">` in the outbound HTML to `https://.../track-email-click?eid={id}&url={encoded X}` BEFORE sending. Skip rewriting `mailto:`, `tel:`, and our own pixel URL.
-- DB trigger already aggregates clicks into `lead_email_metrics` — no schema change needed.
-- `EmailsSection` already shows click badges — they'll light up automatically.
+## Status snapshot
 
-## Gap B — Mailbox health monitoring (bounces, quota, quarantine)
-**Today:** `lead_email_metrics` has `email_quarantined` + `unsubscribed_all` columns but nothing writes to them. Bounces from Gmail are invisible.
-**Build:**
-- `sync-gmail-emails` — detect bounce notifications (sender = `mailer-daemon@`, subject starts with "Delivery Status Notification"). Parse the failed recipient and write `bounce_reason` on the matching outbound `lead_emails` row, then increment `lead_email_metrics.total_bounces`.
-- Auto-flag `email_quarantined=true` after 2 hard bounces from the same recipient.
-- `EmailsSection` — show a small "Bounced" pill on outbound rows that bounced, plus a banner on the lead detail panel when `email_quarantined=true`.
+| Gap | What it is | Status |
+|---|---|---|
+| A | Click tracking | ✅ Backend live (`track-email-click` + link rewriter); UI badges already render clicks |
+| B | Bounce detection | ✅ Backend live; bounce pill already renders in `EmailsSection` |
+| C | Reply detection | ✅ Backend stamps `replied_at`; "Replied" badge already renders |
+| D | Mark inbound as read | ❌ **Not wired** — column exists, never written, no badge |
+| E | Email templates | 🟡 Table seeded with 6 templates; **no picker, no manager UI** |
+| F | Scheduled send | 🟡 Backend dispatcher + cron live; **no "Send later" picker in compose** |
+| G | Per-user mailbox RLS | ⏸ Product decision pending — defer |
+| H | Rate-limit retry | ✅ `fetchWithRetry` live |
+| I | Image-proxy false opens | ✅ Filter live in `track-email-open` |
+| J | Outlook | ⏸ Blocked on tenant admin — defer |
+| K | Unanswered → ActionQueue | ✅ Already wired in `LeadActionsTab` priority list |
 
-## Gap C — Reply detection (close the loop on outbound)
-**Today:** `lead_emails.replied_at` exists but is never populated. So "did they reply?" is invisible in metrics.
-**Build:**
-- `sync-gmail-emails` — when inserting an inbound email, look up the most recent outbound email in the same `thread_id` and set its `replied_at = email_date`.
-- Existing `update_lead_email_metrics` trigger already increments `total_replies` and `last_replied_date` from `replied_at`. No new schema.
-- Surfaces immediately in `EmailMetricsCard` as response rate.
+**Real work remaining: D, E, F.** Three tightly-scoped UI features. No new edge functions, no migrations.
 
-## Gap D — Mark inbound as read when opened in CRM
-**Today:** `lead_emails.is_read` exists but is always `false`. The "X unread" badge can't be built.
-**Build:**
-- `EmailsSection` — when a user expands an inbound email row, `UPDATE lead_emails SET is_read=true WHERE id=$1`.
-- Add an unread count badge per lead in the Activity tab and on the lead detail panel header.
+---
 
-## Gap E — Email templates (snippets / canned responses)
-**Today:** Compose drawer is blank every time. Reps retype the same intro paragraphs daily.
-**Build:**
-- New table `email_templates` (id, name, brand, subject_template, body_template, variables[], created_by, created_at).
-- New panel inside `EmailComposeDrawer`: "Insert template" dropdown, with `{{first_name}}`, `{{company}}`, `{{deal_value}}` variable interpolation from the lead.
-- Seed 4-6 templates: Discovery follow-up, Proposal nudge, Proof case study, Re-engage stale, Calendly link.
-- "Save as template" button on any sent email.
+## Work item 1 — Email templates (Gap E)
 
-## Gap F — Scheduled send / send later
-**Today:** Sends fire immediately. Reps writing at 11pm send at 11pm.
-**Build:**
-- Add `scheduled_for` column on `lead_emails`, plus a status `scheduled`.
-- `EmailComposeDrawer` — "Send" button gets a dropdown: Now / In 1 hour / Tomorrow 8am / Pick time.
-- New cron `process-scheduled-emails` runs every 5 min — finds rows where `status='scheduled' AND scheduled_for <= now()`, calls `send-gmail-email` for each.
-- "Cancel send" button on any row with `status='scheduled'`.
+The 6 seeded templates are invisible today. Reps still type from scratch.
 
-## Gap G — Per-user mailbox ownership / RLS
-**Today:** Any authenticated user sees every connection. There is no RLS — `user_email_connections` has a public-allow policy.
-**Decision needed first:** Should Adam see only his mailbox, or all team mailboxes?
-**Build (after decision):**
-- Add `user_id` column to `user_email_connections`.
-- Replace blanket policy with: own connection always; if role=admin, see all.
-- Filter `MailboxSettings.tsx` accordingly. Sync stays admin/system-wide.
+**Compose drawer changes (`EmailComposeDrawer.tsx`):**
+- New "Insert template" dropdown above the Subject field, filtered by `lead.brand`.
+- On select: load template, run variable interpolation, replace Subject + Body.
+- Variables supported: `{{first_name}}`, `{{name}}`, `{{company}}`, `{{role}}`, `{{deal_value}}`, `{{stage}}`, `{{my_name}}` (from mailbox label).
+- "Save as template" button next to "Save draft" — opens a tiny inline form (name + category) and inserts into `email_templates` with the current subject/body.
+- After insert, `usage_count` increments on the chosen template (one-line update).
 
-## Gap H — Gmail rate-limit handling (429)
-**Today:** A 429 response during message fetch is logged and skipped. Rare today, real risk at 4-5 mailboxes backfilling at once.
-**Build:**
-- Wrap the Gmail message fetch in a small retry helper: respect `Retry-After`, exponential backoff (1s, 2s, 4s) up to 3 attempts, then defer to next cron tick.
-- Pause the entire mailbox's run on the second 429 of a single batch — don't burn quota.
+**Templates manager (new component `EmailTemplatesPanel.tsx` inside Settings):**
+- New tab in `MailboxSettings.tsx` alongside Mailboxes / Unmatched: **Templates**.
+- List view: name, brand, category, usage_count, last updated.
+- Inline create / edit / delete with a simple drawer.
+- Each row shows the variable tokens it uses (parsed from body).
 
-## Gap I — Image-proxy false-positive opens
-**Today:** Gmail prefetches images via Google's proxy as soon as it's delivered. Our pixel can fire within seconds of send, registering a "fake open" before the recipient opens.
-**Build:**
-- Detect `User-Agent` containing `GoogleImageProxy` in `track-email-open`.
-- Either: tag those opens as `proxy: true` and exclude from "real opens" count, OR ignore opens that arrive within 30s of `email_date`.
-- Filter accordingly in `EmailsSection` open badge.
+---
 
-## Gap J — Outlook (still paused, real product gap)
-**Today:** `sync-outlook-emails` exists but dormant. SourceCo team's emails are invisible.
-**Status:** Blocked on `MICROSOFT_OUTLOOK_API_KEY` + sourcecodeals.com tenant admin consent. Zero code change until that's unblocked. When it is, mirror the full Gmail pattern (OAuth start/callback, token refresh, send, reply, pixel, sync-runs audit).
+## Work item 2 — Send Later (Gap F)
 
-## Gap K — Email features tied to nurture / next-steps
-**Today:** Inbound replies don't trigger anything. A "yes please send a proposal" email sits passively in the thread.
-**Build (smaller, fast):**
-- When `sync-gmail-emails` inserts an inbound email matched to a lead, also write a `lead_activity_log` row with `event_type='email_received'`. Already have `next_steps` engine — it can detect "unanswered inbound" as a 16th signal.
-- `useUnansweredEmails` hook already exists — wire it into `ActionQueue` so unanswered inbound emails surface as a top action chip.
+Backend dispatcher already runs every 5 min. Just needs a UI to enqueue.
 
-## Recommended order for next session
+**Compose drawer changes:**
+- Replace single "Send" button with split button: **Send** + chevron menu.
+- Menu options: Now (default), In 1 hour, Tomorrow 8am, Tomorrow 1pm, Pick time…
+- "Pick time" opens a small popover with a date + time input.
+- On schedule: insert a `lead_emails` row with `send_status='scheduled'`, `scheduled_for=<chosen>`, full message context (to/cc/bcc/subject/body_text/body_html), and `raw_payload = { connection_id, in_reply_to }`.
+- Toast: "Scheduled for Tue, Apr 22 at 8:00 AM" with an Undo (5s) that deletes the placeholder row.
 
-1. **Gap C (reply detection)** — 30 lines in sync function, instant value, zero risk.
-2. **Gap D (mark as read)** — small UI change, unlocks the unread badge UX.
-3. **Gap A (click tracking)** — high analytical value, ~80 lines.
-4. **Gap B (bounce detection)** — protects sender reputation as volume grows.
-5. **Gap E (templates)** — biggest daily-rep time saver.
-6. Then tackle F (scheduled send), I (proxy filter), H (rate-limit), K (nurture link), and finally G (per-user RLS) once you've decided the ownership model.
+**Scheduled-queue surface (small addition to `EmailsSection.tsx`):**
+- New collapsed strip at the top: "1 scheduled email" with expand-to-list.
+- Each scheduled row shows recipient, subject preview, scheduled time, and a **Cancel** button (deletes the row).
+- Realtime: subscribe to `send_status=eq.scheduled` for the lead.
 
-## What I'd skip / defer indefinitely
+---
 
-- Outlook (Gap J) — blocked externally, no code work possible.
-- Don't add A/B subject-line testing, smart-send-time prediction, or AI-summarized thread digests until templates + replies + clicks are live and producing data to learn from.
+## Work item 3 — Mark inbound as read + unread badges (Gap D)
 
-## Files / changes
+`is_read` exists but no code touches it. Badge is impossible today.
 
-- `supabase/functions/sync-gmail-emails/index.ts` — reply detection (C), bounce detection (B), rate-limit retry (H), activity log writes (K)
-- `supabase/functions/send-gmail-email/index.ts` — link rewriter (A)
-- New `supabase/functions/track-email-click/index.ts` — click endpoint (A)
-- `supabase/functions/track-email-open/index.ts` — proxy filter (I)
-- New `supabase/functions/process-scheduled-emails/index.ts` — scheduled send dispatcher (F)
-- `src/components/EmailsSection.tsx` — bounce pill, mark-as-read on expand, unread badges (B, D)
-- `src/components/lead-panel/dialogs/EmailComposeDrawer.tsx` — template picker, scheduled send picker (E, F)
-- New `src/components/EmailTemplates.tsx` — template manager + seed UI (E)
-- New migration — `email_templates` table + `lead_emails.scheduled_for` + `lead_emails.status` columns
-- `supabase/config.toml` — `verify_jwt = false` for `track-email-click` and `process-scheduled-emails`
+**Read-state writes (`EmailsSection.tsx`):**
+- When an `EmailRow` for an inbound email is expanded AND `is_read=false`, fire a single update: `UPDATE lead_emails SET is_read=true WHERE id=$1`.
+- Update local state optimistically so the dot disappears immediately.
 
-Pick which gap(s) you want me to implement next and I'll build them in one focused pass.
+**Unread visual cues:**
+- Inside `EmailRow`: small indigo dot to the left of the subject when `direction='inbound' AND is_read=false`.
+- Subject in semibold (vs. regular) when unread.
+
+**Unread count badge (lead detail header):**
+- Tiny new query in `LeadPanelHeader.tsx`: `SELECT count(*) WHERE lead_id=$1 AND direction='inbound' AND is_read=false`.
+- Badge next to the lead name, e.g. `2 unread`, monochrome `bg-secondary`, hidden at 0.
+
+**Pipeline-card unread chip (optional, low-cost):**
+- Extend `useUnansweredEmails` to also return `unreadByLead: Map<id, count>`.
+- `Pipeline.tsx` already consumes the hook — show a small "2" chip on cards with unread inbound. Skip if it crowds the card; this is a stretch.
+
+---
+
+## What I am explicitly NOT doing
+
+- **Gap G (per-user RLS)** — needs a product decision (each rep sees only their mailbox vs. all team mailboxes). Won't touch until that's answered.
+- **Gap J (Outlook)** — blocked externally.
+- **A/B subject testing, smart-send-time prediction, AI thread digests** — premature; need templates + clicks + replies producing real data first.
+- **Click rewriting for `mailto:` and `tel:`** — already correctly skipped in the live rewriter.
+- **Rich-text composer** — current plain-text + HTML conversion is fine for SDR-style emails.
+
+## Files that change
+
+| File | Change |
+|---|---|
+| `src/components/lead-panel/dialogs/EmailComposeDrawer.tsx` | Template picker, "Save as template", split Send button, schedule popover |
+| `src/components/EmailsSection.tsx` | Unread dot + bold, mark-read on expand, scheduled-emails strip |
+| `src/components/lead-panel/LeadPanelHeader.tsx` | Unread count badge |
+| `src/components/MailboxSettings.tsx` | New "Templates" tab |
+| `src/components/EmailTemplatesPanel.tsx` (new) | Templates list + inline CRUD |
+| `src/hooks/useUnansweredEmails.ts` | Add unread-count map (small extension) |
+
+## Order of execution
+
+1. Templates (highest daily-rep impact — saves them typing every email).
+2. Send Later (small UI, backend already runs).
+3. Read state + unread badges (smallest change, finishes the inbox feel).
+
+End state: composing an email becomes pick template → personalize → send now or schedule. Inbound emails clearly show what's new and what's been read. Settings holds both the mailbox health view and the team's reusable templates. After this, the email system is complete enough to stop iterating until real usage reveals the next bottleneck.
 
