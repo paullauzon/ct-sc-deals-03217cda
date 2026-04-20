@@ -633,6 +633,28 @@ function TimelineRow({
         {event.meta && (
           <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{event.meta}</p>
         )}
+        {/* Task pill row — status, source, optional stall reason */}
+        {isTask && task && (
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            <Badge
+              variant="outline"
+              className={cn(
+                "h-4 text-[9px] px-1.5 gap-0.5 font-medium",
+                taskIsOverdue && "border-destructive/40 text-destructive"
+              )}
+            >
+              {taskIsDone ? "Done" : taskIsOverdue ? <><AlertTriangle className="h-2.5 w-2.5" /> Overdue</> : "Upcoming"}
+            </Badge>
+            <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">
+              {taskSourceLabel}
+            </Badge>
+            {!taskIsDone && stallReason && stallReason.trim() && (
+              <span className="text-[10px] text-muted-foreground italic">
+                Stall reason: {stallReason}
+              </span>
+            )}
+          </div>
+        )}
         {/* Email enrichment pill row — only for email events */}
         {isEmail && email && (opens > 0 || clicks > 0 || replied || aiDrafted || sequence || attachments > 0) && (
           <div className="flex flex-wrap items-center gap-1 mt-1">
