@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check, Clock, X } from "lucide-react";
 import { Lead } from "@/types/lead";
 import { detectEmailObjections, DetectedObjection } from "@/lib/meetingCoach";
 import { toast } from "sonner";
+import { format, formatDistanceToNow } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface LeadEmail {
   id: string;
@@ -32,6 +34,9 @@ interface LeadEmail {
   email_date: string;
   source: string;
   created_at: string;
+  is_read?: boolean | null;
+  scheduled_for?: string | null;
+  send_status?: string;
 }
 
 function formatDate(dateStr: string): string {
@@ -117,7 +122,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
 
     fetchEmails();
 
-    // Realtime subscription
+    // Realtime subscription — listen for inserts AND updates (e.g. is_read flip, scheduled cancel)
     const channel = supabase
       .channel(`lead-emails-${leadId}`)
       .on(
@@ -128,6 +133,22 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
           setEmails((prev) => [newEmail, ...prev]);
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "lead_emails", filter: `lead_id=eq.${leadId}` },
+        (payload) => {
+          const updated = payload.new as unknown as LeadEmail;
+          setEmails((prev) => prev.map((e) => e.id === updated.id ? updated : e));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "lead_emails", filter: `lead_id=eq.${leadId}` },
+        (payload) => {
+          const deletedId = (payload.old as { id: string }).id;
+          setEmails((prev) => prev.filter((e) => e.id !== deletedId));
+        }
+      )
       .subscribe();
 
     return () => {
@@ -135,6 +156,18 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
       supabase.removeChannel(channel);
     };
   }, [leadId]);
+
+  const markRead = async (emailId: string) => {
+    setEmails((prev) => prev.map(e => e.id === emailId ? { ...e, is_read: true } : e));
+    await supabase.from("lead_emails").update({ is_read: true } as any).eq("id", emailId);
+  };
+
+  const cancelScheduled = async (emailId: string) => {
+    if (!window.confirm("Cancel this scheduled email?")) return;
+    const { error } = await supabase.from("lead_emails").delete().eq("id", emailId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Scheduled email cancelled");
+  };
 
   const header = onCompose ? (
     <div className="flex items-center justify-between border-b border-border pb-2 mb-3">
@@ -160,7 +193,12 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     );
   }
 
-  if (emails.length === 0) {
+  const scheduled = emails.filter(e => e.send_status === "scheduled").sort(
+    (a, b) => new Date(a.scheduled_for || a.email_date).getTime() - new Date(b.scheduled_for || b.email_date).getTime()
+  );
+  const delivered = emails.filter(e => e.send_status !== "scheduled");
+
+  if (delivered.length === 0 && scheduled.length === 0) {
     return (
       <div>
         {header}
@@ -171,11 +209,14 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     );
   }
 
-  const threads = groupByThread(emails);
+  const threads = groupByThread(delivered);
 
   return (
     <div>
       {header}
+      {scheduled.length > 0 && (
+        <ScheduledStrip scheduled={scheduled} onCancel={cancelScheduled} />
+      )}
       <ScrollArea className="max-h-[480px]">
         <div className="space-y-1.5">
           {threads.map((thread) => (
@@ -184,6 +225,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
               thread={thread}
               onSuggestResponses={(email, objections) => setResponseDialog({ email, objections })}
               onReply={onReply}
+              onMarkRead={markRead}
             />
           ))}
         </div>
@@ -210,11 +252,57 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   );
 }
 
-function ThreadCard({ thread, onSuggestResponses, onReply }: { thread: ThreadGroup; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void }) {
+function ScheduledStrip({ scheduled, onCancel }: { scheduled: LeadEmail[]; onCancel: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-border rounded-md mb-2 bg-secondary/30">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-secondary/50 transition-colors rounded-md"
+      >
+        <div className="flex items-center gap-2 text-xs">
+          <Clock className="h-3 w-3 text-muted-foreground" />
+          <span className="font-medium">{scheduled.length} scheduled email{scheduled.length === 1 ? "" : "s"}</span>
+        </div>
+        <ChevronDown className={cn("h-3 w-3 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="border-t border-border divide-y divide-border">
+          {scheduled.map((e) => (
+            <div key={e.id} className="flex items-start gap-2 px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium truncate">{e.subject || "(no subject)"}</div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  To: {(e.to_addresses || []).join(", ")}
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  {e.scheduled_for ? format(new Date(e.scheduled_for), "EEE, MMM d 'at' h:mm a") : ""}
+                  {" · "}
+                  {e.scheduled_for ? formatDistanceToNow(new Date(e.scheduled_for), { addSuffix: true }) : ""}
+                </div>
+              </div>
+              <Button
+                variant="ghost" size="sm"
+                className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+                onClick={() => onCancel(e.id)}
+              >
+                <X className="h-3 w-3" /> Cancel
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThreadCard({ thread, onSuggestResponses, onReply, onMarkRead }: { thread: ThreadGroup; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void }) {
   const isSingleEmail = thread.emails.length === 1;
+  const unreadCount = thread.emails.filter(e => e.direction === "inbound" && !e.is_read).length;
 
   if (isSingleEmail) {
-    return <EmailRow email={thread.emails[0]} onSuggestResponses={onSuggestResponses} onReply={onReply} />;
+    return <EmailRow email={thread.emails[0]} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} />;
   }
 
   return (
@@ -224,7 +312,10 @@ function ThreadCard({ thread, onSuggestResponses, onReply }: { thread: ThreadGro
           <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium truncate">{thread.subject}</span>
+              {unreadCount > 0 && (
+                <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" title={`${unreadCount} unread`} />
+              )}
+              <span className={cn("text-xs truncate", unreadCount > 0 ? "font-semibold" : "font-medium")}>{thread.subject}</span>
               <Badge variant="outline" className="text-[10px] shrink-0">
                 {thread.emails.length}
               </Badge>
@@ -239,7 +330,7 @@ function ThreadCard({ thread, onSuggestResponses, onReply }: { thread: ThreadGro
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 border-l-2 border-border ml-3 mt-1 mb-2">
           {thread.emails.map((email) => (
-            <EmailRow key={email.id} email={email} compact onSuggestResponses={onSuggestResponses} onReply={onReply} />
+            <EmailRow key={email.id} email={email} compact onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} />
           ))}
         </div>
       </CollapsibleContent>
@@ -247,9 +338,10 @@ function ThreadCard({ thread, onSuggestResponses, onReply }: { thread: ThreadGro
   );
 }
 
-function EmailRow({ email, compact, onSuggestResponses, onReply }: { email: LeadEmail; compact?: boolean; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void }) {
+function EmailRow({ email, compact, onSuggestResponses, onReply, onMarkRead }: { email: LeadEmail; compact?: boolean; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const isOutbound = email.direction === "outbound";
+  const isUnread = !isOutbound && email.is_read === false;
   const Icon = isOutbound ? ArrowUpRight : ArrowDownLeft;
   const dirColor = isOutbound
     ? "text-blue-600 bg-blue-500/10"
@@ -271,7 +363,13 @@ function EmailRow({ email, compact, onSuggestResponses, onReply }: { email: Lead
     <div className={`rounded-md hover:bg-secondary/30 transition-colors ${compact ? "py-1" : ""}`}>
       <button
         type="button"
-        onClick={() => hasFullBody && setExpanded((v) => !v)}
+        onClick={() => {
+          if (hasFullBody) {
+            const next = !expanded;
+            setExpanded(next);
+            if (next && isUnread && onMarkRead) onMarkRead(email.id);
+          }
+        }}
         className={`w-full text-left flex items-start gap-2 p-2 ${hasFullBody ? "cursor-pointer" : ""}`}
       >
         <div className={`rounded-full p-1 shrink-0 mt-0.5 ${dirColor}`}>
@@ -279,7 +377,10 @@ function EmailRow({ email, compact, onSuggestResponses, onReply }: { email: Lead
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-medium truncate">
+            {isUnread && (
+              <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" title="Unread" />
+            )}
+            <span className={cn("text-xs truncate", isUnread ? "font-semibold" : "font-medium")}>
               {compact ? (email.from_name || email.from_address) : (email.subject || "(No subject)")}
             </span>
             {!compact && (

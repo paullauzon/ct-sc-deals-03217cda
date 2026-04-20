@@ -16,6 +16,7 @@ import { Mail, Plus, Loader2, Trash2, RefreshCw, CheckCircle2, AlertCircle, Down
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { UnmatchedInbox } from "./UnmatchedInbox";
+import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
 
 interface Connection {
   id: string;
@@ -194,6 +195,7 @@ export function MailboxSettings() {
           <TabsList>
             <TabsTrigger value="mailboxes">Mailboxes</TabsTrigger>
             <TabsTrigger value="unmatched">Unmatched inbox</TabsTrigger>
+            <TabsTrigger value="templates">Templates</TabsTrigger>
           </TabsList>
           <Button onClick={() => { setLabelDraft(""); setConnectOpen(true); }} size="sm">
             <Plus className="h-3.5 w-3.5 mr-1.5" />
@@ -376,6 +378,10 @@ export function MailboxSettings() {
 
         <TabsContent value="unmatched">
           <UnmatchedInbox />
+        </TabsContent>
+
+        <TabsContent value="templates">
+          <EmailTemplatesPanel />
         </TabsContent>
       </Tabs>
 
