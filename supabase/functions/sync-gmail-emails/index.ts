@@ -726,10 +726,11 @@ Deno.serve(async (req) => {
       { fetched: 0, inserted: 0, matched: 0, skipped_dup: 0, skipped_internal: 0 },
     );
 
-    return new Response(JSON.stringify({ ok: true, summary, results }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const allSkipped = results.length === 0 && skipped.length > 0;
+    return new Response(
+      JSON.stringify({ ok: true, summary, results, skipped: allSkipped, deferred: skipped, reason: allSkipped ? "backfill_in_progress" : undefined }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (e) {
     console.error("sync-gmail-emails error:", e);
     return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {
