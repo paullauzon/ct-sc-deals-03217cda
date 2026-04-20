@@ -1,192 +1,94 @@
 
+# Pipeline rebuild — what's actually built vs. what's still broken
 
-# Pipeline rebuild — comprehensive multi-phase plan
+I audited the full system end-to-end: DB state, edge functions, cron jobs, every UI surface, and the `getCompanyAssociates`/playbook/SLA wiring. Here's the truth.
 
-The screenshots specify a complete pipeline restructure with stage renames, merges, deletions, one critical new stage (Sample Sent), gate-to-advance enforcement, SLA-driven auto-tasks, and a 90-day nurture sequence replacing the 264-deal Revisit/Reconnect graveyard.
+## What actually shipped (and works)
 
-This is large enough to ship in **5 phases across multiple sessions**. Each phase is independently shippable and reversible.
+| Area | Status |
+|---|---|
+| 9-stage v2 type union + `normalizeStage()` | ✅ Live |
+| `STAGE_GATES` definitions + `StageGateGuard` modal | ✅ Wired into LeadPanelHeader |
+| Pipeline.tsx Kanban shows 9 columns incl. Sample Sent | ✅ Live |
+| Right-rail `PipelineStagesCard` uses `ACTIVE_STAGES` v2 | ✅ Live |
+| `enforce-stage-slas` cron (15-min) | ✅ Active, 14 SLA tasks created |
+| `nurture-engine` cron (daily 13:00 UTC) | ✅ Active |
+| `PipelineHealthV2` dashboard widget | ✅ Mounted under Dashboard → Pipeline tab |
+| DB migration | ✅ All 459 leads on v2 stages — **zero legacy rows** |
+| 471 v2 playbook tasks backfilled | ✅ Done |
 
-## The target structure (from screenshots)
+## What's actually broken or unfinished
 
-| # | New stage | Old stage | Action |
-|---|-----------|-----------|--------|
-| 1 | Unassigned | New Lead | Rename |
-| 2 | In Contact | Qualified + Contacted | Merge two into one |
-| 3 | Discovery Scheduled | Meeting Set | Rename |
-| 4 | Discovery Completed | Meeting Held | Rename |
-| 5 | **Sample Sent** | — | **NEW** (between Discovery Completed and Proposal Sent) |
-| 6 | Proposal Sent | Proposal Sent | Keep |
-| 7 | Negotiating | Negotiation + Contract Sent | Merge (Contract Sent killed — it's an activity, not a stage) |
-| 8 | Closed Won | Closed Won | Keep |
-| 9 | Closed Lost | Lost + Went Dark | Merge (Went Dark becomes a Lost Reason) |
-| — | Revisit/Reconnect | Revisit/Reconnect | **Killed** — replaced by 90-day nurture sequence on Closed Lost |
+### 1. The migration UI is dead code (will never render)
+DB query confirms: `legacy_stage_count = 0`. The 4-tab `PipelineMigrationPage` (BulkRenames, DeadStages, DiscoveryWorklist, RRTriage) was rendered obsolete the moment Phase 5's SQL migration ran. The page now always shows the "Migration complete" empty state. The nav link is hidden. **Dead code — should be deleted or repurposed.**
 
-Current DB state (verified live): R/R holds 264 deals = $380K MRR. Discovery Completed has 44 deals = $217.8K (the richest stage). 91% drop-off Discovery Completed → Proposal Sent is the core leak Sample Sent fixes.
+### 2. Nurture engine is silently broken — 0 nurture tasks created for 264 enrolled leads
+- 264 leads have `nurture_sequence_status='needs_triage'` (set by the bulk SQL backfill, not 'active')
+- 19 leads have `nurture_sequence_status='active'` — but they all have `nurture_started_at = today`, so day-0 milestones haven't fired
+- The cron runs once daily at 13:00 UTC — it has run, but produced **0 tasks and 0 drafts**
+- The `nurture-engine` function is checking only `'active'` status; the 264 `needs_triage` leads are invisible to it
 
----
+### 3. The 91% drop-off problem is **completely unfixed** — only 1 deal in `In Contact`, 0 in `Sample Sent`
+The structural change shipped, but no Discovery Completed deals (44 sitting at $217.8K) were ever moved through the new Sample Sent stage. The DiscoveryWorklistTab that would have triaged them is now unreachable.
 
-## Phase 1 — Type system + DB schema migration (foundation)
+### 4. 8 files still reference legacy stage names with no `normalizeStage()` wrapper
+Hardcoded literals that break analytics/health for any deal stored on a legacy alias:
+- `src/lib/dealHealthUtils.ts` — 6 references (`"Meeting Held"`, `"Negotiation"`, `"Contract Sent"`, `"New Lead"`, `"Qualified"`)
+- `src/components/DashboardForecast.tsx` — full STAGE_WEIGHTS map keyed to legacy names; ignores Sample Sent entirely
+- `src/components/Pipeline.tsx` lines 33, 117, 376–384 — close-won guard uses pre-v2 fields; `ClickableProgressBar` checks `["Closed Won", "Lost", "Went Dark"]` but DB only has `"Closed Lost"` now
+- `src/data/leadData.ts` seed data — sets `stage: "New Lead"` (no longer in DB)
+- 5 dashboard subcomponents I traced (Operations, PersonaMetrics, Competitive, Signal, Trends) — TBD scan
 
-The new stages must exist in code before any UI can use them. Old stages stay in the type union temporarily so existing data renders.
+### 5. Pipeline.tsx drag-to-Closed-Won uses old gate, not StageGateGuard
+Lines 376–384 still have a hand-rolled `closeWonGuard` checking `subscriptionValue` + `contractEnd`. The new `StageGateGuard` (with override audit trail) is only wired into `LeadPanelHeader.handleStageClick`. Dragging a card to Closed Won bypasses v2 gates entirely.
 
-**1.1 — Update `LeadStage` union in `src/types/lead.ts`**
-Add the 9 new names. Keep old names as deprecated aliases until phase 5.
-```
-"Unassigned" | "In Contact" | "Discovery Scheduled" | "Discovery Completed" |
-"Sample Sent" | "Proposal Sent" | "Negotiating" | "Closed Won" | "Closed Lost"
-// + legacy: "New Lead" | "Qualified" | "Contacted" | "Meeting Set" |
-//   "Meeting Held" | "Negotiation" | "Contract Sent" | "Revisit/Reconnect" |
-//   "Lost" | "Went Dark"
-```
+### 6. SLA badge wired but only 14 tasks live system-wide
+Pipeline.tsx line 873 reads `slaTasks` correctly, but `enforce-stage-slas` only generated 14. Why: cron just started running today and most stuck deals don't yet have `stage_entered_date` set far enough back. Will populate naturally over time, but **a one-time backfill against `meeting_date` / `created_at` is missing.**
 
-**1.2 — Rebuild `src/lib/leadUtils.ts`** as the single source of truth:
-- `ACTIVE_STAGES` = the 7 working stages (Unassigned → Negotiating)
-- `TERMINAL_STAGES` = `["Closed Won", "Closed Lost"]`
-- `LEGACY_STAGES` = old names still in DB
-- `STAGE_LABEL_MAP` for old→new display rename without DB migration
-- `normalizeStage(stage)` helper — translates legacy → new at read time
-- `CLOSED_STAGES`, `LATE_STAGES` updated everywhere (single import — kills the 17+ duplicated literal arrays found across the codebase)
+### 7. `getPlaybookForStage` not wired to auto-fire on stage change
+The v2 playbooks exist in `src/lib/playbooks.ts` but I see no invocation in `LeadContext.updateLead()` or any stage-change handler that calls `generateTasksFromPlaybook()`. The 471 backfilled tasks were a one-shot from the edge function — **future stage changes won't auto-create the v2 playbook tasks**.
 
-**1.3 — DB migration `add_pipeline_v2_fields`** — adds new columns and lost-reason enum:
-- `nurture_sequence_status` (text: `null | "active" | "re_engaged" | "completed" | "archived"`)
-- `nurture_started_at` (timestamptz)
-- `nurture_re_engage_date` (date) — when day-0 nurture email goes out
-- `lost_reason_v2` (text) — locked dropdown of 9 values incl. "Went Dark / No response", "Budget", "Timing", "Lost to competitor", etc.
-- `stage_gate_overrides` (jsonb) — audit log of when a rep bypasses a gate
-- `discovery_call_completed_at` (timestamptz)
-- `sample_sent_outcome` (text — already exists as `sample_outcome`, will reuse)
-- Trigger `enforce_stage_v2_gates()` — soft-warns on missing gate fields via `lead_activity_log` (not blocking — UI handles hard gating)
-
-**1.4 — Migration data backfill** — does NOT auto-move deals. Just normalizes display:
-- All 90 New Lead deals → still stored as "New Lead", displayed as "Unassigned"
-- All 264 R/R deals → flagged `nurture_sequence_status = "needs_triage"` (the bulk renaming UI in phase 4 walks through these)
-- Lost (18) + Went Dark (1) → stored as "Lost"/"Went Dark", displayed as "Closed Lost"
-- No deal is moved between stages without rep confirmation
+### 8. Dashboard widget hidden behind a tab that may not be discoverable
+`PipelineHealthV2` lives at `Dashboard.tsx:636` inside `activeTab === "pipeline"` — fine if the Pipeline tab is the default or visible, otherwise users won't find it.
 
 ---
 
-## Phase 2 — Gates + SLA engine (the differentiator)
+## Plan: 4 focused fixes to actually finish the job
 
-This is what makes the new pipeline actually enforce sales discipline.
+### Fix 1 — Wake the nurture engine for the 264 graveyard deals
+- Update the SQL migration: flip the 264 `needs_triage` leads to `'active'` with `nurture_started_at` set to their original `closed_date` (so day-0 emails fire immediately for ones already past day 0, day-30 fires for ones >30d in graveyard, etc.)
+- Manually invoke `nurture-engine` once to backfill all milestone tasks/drafts retroactively
+- Result: ~264 nurture tasks/drafts appear in Action Center, replacing the dead R/R queue
 
-**2.1 — `src/lib/stageGates.ts` (new)** — pure data definitions:
-```ts
-STAGE_GATES: Record<NewStage, { requiredFields: (keyof Lead)[]; description: string }>
-```
-- **Discovery Scheduled → Discovery Completed**: Fireflies URL required
-- **Discovery Completed → Sample Sent**: 8 fields required (Fireflies URL, firmType, serviceInterest, target sectors, geography, ebitdaMin/Max, dealType, competingAgainst, budgetConfirmed, authorityConfirmed)
-- **Sample Sent → Proposal Sent**: `sampleOutcome` filled (Approved/Lukewarm/Needs revision/No response/Rejected)
-- **Proposal Sent → Negotiating**: `dealValue` is a real number > $100
-- **Negotiating → Closed Won**: `subscriptionValue`, `contractEnd`, `tier` (CT) OR `successFeePct`, `engagementStartDate` (SC)
-- **Closed Lost (any → )**: `lostReasonV2` required from locked dropdown
+### Fix 2 — Wire v2 playbooks into stage transitions (the biggest miss)
+- Add to `LeadContext.updateLead()`: when `stage` changes, call `getPlaybookForStage(newStage)` and `generateTasksFromPlaybook()`, supersede prior pending tasks of the old playbook
+- Add migration to reuse existing `lead_tasks.playbook` field — already in place
+- Result: every deal that moves into Sample Sent / Discovery Completed / Negotiating / etc. auto-gets its 3-7 step task sequence
 
-**2.2 — Gate enforcement in `LeadPanelHeader.handleStageClick()`**
-Generalize the existing `closeWonGuard` modal into a `StageGateGuard` modal that:
-- Shows missing fields as a checklist
-- Inline-edits each missing field directly in the modal (no second navigation)
-- "Override gate" button (logged to `stage_gate_overrides`) — for legit edge cases
-- Routes through the existing `request-stage-change` event so right-rail PipelineStagesCard reuses it
+### Fix 3 — Replace hand-rolled close-won guard in Pipeline.tsx with StageGateGuard
+- Drop lines 373–386 close-won-only check
+- Render `<StageGateGuard>` from drag-drop handler too (same modal already used in lead detail header)
+- Update `ClickableProgressBar` closed-stage check to `TERMINAL_STAGES` from leadUtils
+- Result: gate enforcement consistent everywhere a stage moves (drag, click, keyboard)
 
-**2.3 — SLA auto-tasks via cron** — new edge function `enforce-stage-slas` (15-min cron):
-- Proposal Sent in stage > 3 days with no movement → auto-task "Follow up on proposal"
-- Proposal Sent in stage > 14 days → require `stallReason` to keep deal in stage (warning chip on card)
-- Sample Sent > 5 days no `sampleOutcome` → auto-task "Log sample outcome"
-- Discovery Scheduled with meeting > 24h ago and no Fireflies URL → auto-task "Reconcile meeting"
+### Fix 4 — Normalize remaining legacy literals in 4 critical files
+- `dealHealthUtils.ts`: wrap all stage comparisons in `normalizeStage()`; add Sample Sent to ACTIVE_STAGES set
+- `DashboardForecast.tsx`: rebuild STAGE_WEIGHTS using the 9 v2 stages with weights from `dealPredictions.ts`; include Sample Sent at 0.50
+- `Pipeline.tsx` `ClickableProgressBar` (line 33): use `TERMINAL_STAGES` instead of hardcoded `["Closed Won","Lost","Went Dark"]`
+- `seed leadData.ts`: stage `"New Lead"` → `"Unassigned"` (only matters for fresh dev DBs, low priority)
 
-**2.4 — Replace `src/lib/playbooks.ts`** with v2 keyed to new stage names:
-- `unassigned` (replaces new-lead-no-response)
-- `discovery-scheduled` (replaces meeting-set)
-- `discovery-completed` (replaces meeting-held)
-- `sample-sent` (NEW — d+2 check-in, d+5 outcome reminder, d+10 nudge if no response)
-- `proposal-sent` (kept, retuned)
-- `negotiating` (replaces both negotiation and contract-sent)
-- `nurture-90day` (NEW — d0 insight email, d30 market update, d45 manual call task, d90 explicit re-open ask)
-
-Mapping uses normalized stage names so legacy "Meeting Set" still triggers the playbook via `STAGE_LABEL_MAP`.
+### Fix 5 — Delete the obsolete migration UI
+- Remove `src/components/migration/` (5 files), `PipelineMigrationPage` import in `Index.tsx`, the conditional nav entry
+- Result: cleaner codebase; the v2 transition is permanently complete
 
 ---
 
-## Phase 3 — UI rename + new Sample Sent stage everywhere
+## Suggested shipping order (single session)
 
-Everything that hardcodes stage names must read from `leadUtils`.
+1. **Fix 1** (nurture activation) — 1 SQL migration + 1 cron invoke. Highest user value: 264 dead deals re-enter Action Center as nurture tasks.
+2. **Fix 2** (playbook auto-fire on stage change) — single LeadContext edit. Critical for ongoing operations.
+3. **Fix 3** (unified gate guard) — kills the close-won bypass.
+4. **Fix 4** (legacy literal cleanup) — fixes deal health + forecast accuracy.
+5. **Fix 5** (delete migration UI) — housekeeping.
 
-**3.1 — Single-source-of-truth refactor** — kill these duplicate arrays in 17 files:
-- `src/contexts/LeadContext.tsx` (line 43)
-- `src/components/Pipeline.tsx` (line 35)
-- `src/components/Dashboard.tsx` (line 34)
-- `src/components/DashboardForecast.tsx`, `DashboardOperations.tsx`, `DashboardPersonaMetrics.tsx`, `DashboardCompetitiveRadar.tsx`, `DashboardSignalIntelligence.tsx`
-- `src/components/IntelligenceCenter.tsx`, `LeadsTable.tsx`, `PipelineFilters.tsx`, `PipelineSnapshots.tsx`, `ActionQueue.tsx`
-- `src/components/command-center/{DealPulseTab,FollowUpsTab,ScheduleTab,PrepIntelTab}.tsx`
-- `src/components/lead-panel/{LeadPanelLeftRail,LeadPanelHeader}.tsx` + `cards/ForecastCard.tsx` + `shared.tsx`
-- `src/lib/{dealHealthUtils,dealPredictions,meetingCoach}.ts`
-- `supabase/functions/{daily-standup,bulk-process-stale-meetings,bulk-enrich-sourceco,process-meeting,enrich-lead}/index.ts`
-
-All read from `ACTIVE_STAGES`/`TERMINAL_STAGES` exports. Probability/cycle-day weight maps update to include `"Sample Sent": 0.50` (between Discovery 0.40 and Proposal 0.55).
-
-**3.2 — Update `dealPredictions.ts` weights** for the new 9-stage funnel:
-```
-Unassigned 5 · In Contact 12 · Discovery Scheduled 22 · Discovery Completed 35 ·
-Sample Sent 50 · Proposal Sent 62 · Negotiating 78 · Closed Won 100 · Closed Lost 0
-```
-
-**3.3 — `meetingCoach.ts` rename keys** so "Discovery Scheduled" + "Discovery Completed" use the existing checklists previously keyed to "Meeting Set" + "Meeting Held".
-
----
-
-## Phase 4 — Migration UI (the 264-deal triage tool)
-
-**4.1 — New page `src/components/PipelineMigration.tsx`** — accessed from System Switcher → Settings (one-time tool, hidden after R/R count = 0):
-- **Tab 1 — Bulk renames** (10 min): one-click button per rename pair (auto-runs `UPDATE leads SET stage='Unassigned' WHERE stage='New Lead'` etc.). Migration runs as a single transaction with rollback on error.
-- **Tab 2 — Dead stage cleanup** (5 min): the 1 Qualified deal moves to In Contact, the 1 Went Dark moves to Closed Lost with lost_reason="Went Dark / No response". Contracted Sent (0) and Contacted (0) just disappear.
-- **Tab 3 — Discovery Completed worklist** (44 deals): triage table sorted by deal value. For each: "Sample sent already?" YES → moves to Sample Sent + opens Sample Outcome inline. NO → keeps in Discovery Completed + auto-creates "Send sample" task. COLD → fills `stallReason` then routes to Closed Lost.
-- **Tab 4 — R/R triage** (264 deals, 2-3 hours, sorted by Last Engaged): batch picker with three buckets per the screenshot logic:
-  - (A) Last contact <12mo + value >$1.5K → Move to In Contact + create "Re-engage" task
-  - (B) Has Fireflies + any engagement → Closed Lost with re_engage_date 90d out, enroll in nurture
-  - (C) >2yo, no Fireflies → bulk Closed Lost, no re-engage, archive
-- **Progress tracker**: shows R/R count dropping live as triage runs (264 → 0 target).
-
-**4.2 — `nurture-engine` edge function (cron daily)** — drives the 90-day sequence:
-- Day 0: send insight email (queued via lead_drafts, manual approve)
-- Day 30: send market update template
-- Day 45: create call task for Malik
-- Day 90: create "Re-open ask" task. If response → flip `nurture_sequence_status = "re_engaged"` + move back to In Contact. If no response → `nurture_sequence_status = "completed"` and archive.
-
----
-
-## Phase 5 — Cleanup + telemetry
-
-**5.1 — Delete legacy stage names from `LeadStage` union.** Any deal still on legacy stage at this point fails type check — forces final cleanup.
-
-**5.2 — Update memory file** `mem://features/pipeline-workflow.md` — replace 11-stage spec with 9-stage spec + gate definitions.
-
-**5.3 — New dashboard widget** "Pipeline health v2" showing:
-- Stage drop-off % between each stage (the 91% leak should drop)
-- # deals stuck past SLA per stage
-- Nurture sequence performance (% re-engaged / completed / archived)
-
-**5.4 — Backfill all auto-tasks** for deals currently in stages without their v2 playbook tasks (one-time edge function `backfill-stage-v2-tasks`).
-
----
-
-## What ships per session (recommended)
-
-| Session | Phases | Outcome |
-|---|---|---|
-| 1 (next) | Phase 1 + Phase 2.1 + 2.2 | Types, DB schema, gate definitions, gate-guard modal — invisible UI change but enforcement live |
-| 2 | Phase 2.3 + 2.4 + Phase 3 | All UI shows new stage names, Sample Sent stage visible, SLA cron + new playbooks live |
-| 3 | Phase 4 (migration UI) | The 264-deal R/R triage tool — Malik + you do the 2-3 hour session against it |
-| 4 | Phase 5 | Cleanup, delete legacy types, dashboard, memory updates |
-
-## Risks + mitigations
-
-- **Risk**: Stage rename breaks existing automation that hardcodes "Meeting Held" → mitigated by `STAGE_LABEL_MAP` + `normalizeStage()` so legacy code keeps working until phase 5.
-- **Risk**: Gate enforcement frustrates Malik mid-deal → mitigated by "Override gate" button (logged for review).
-- **Risk**: Nurture sequence sends bad emails → mitigated by `lead_drafts` queue (manual approve, not auto-send).
-- **Risk**: Migration UI moves wrong deals → all moves logged to `lead_activity_log` with old/new value, full undo available.
-
-## What's NOT in scope here (to keep this manageable)
-
-- Email connection deep work (you mentioned that's the next effort after this).
-- Renewal Due / Paused stages on Valeria's CS pipeline (already exists).
-- Renaming UI strings inside reports that say "Meeting Held" historically — those are factual references and stay.
-
+After this, the pipeline rebuild is genuinely complete and the email connection effort can begin.
