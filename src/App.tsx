@@ -7,6 +7,8 @@ import { ReactNode } from "react";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/Auth";
+import ProfilePage from "./pages/Profile";
+import TeamPage from "./pages/Team";
 import { LeadProvider } from "@/contexts/LeadContext";
 import { ProcessingProvider } from "@/contexts/ProcessingContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -74,6 +76,22 @@ const App = () => (
                       <LeadDetailRoute />
                     </ProcessingProvider>
                   </LeadProvider>
+                </SessionGuard>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <SessionGuard>
+                  <ProfilePage />
+                </SessionGuard>
+              }
+            />
+            <Route
+              path="/settings/team"
+              element={
+                <SessionGuard>
+                  <TeamPage />
                 </SessionGuard>
               }
             />
