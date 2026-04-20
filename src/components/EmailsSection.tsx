@@ -125,6 +125,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   const [responseDialog, setResponseDialog] = useState<{ email: LeadEmail; objections: DetectedObjection[] } | null>(null);
   const [showMarketing, setShowMarketing] = useState(false);
   const [expandAllSignal, setExpandAllSignal] = useState<"expand" | "collapse" | null>(null);
+  const [flatten, setFlatten] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
