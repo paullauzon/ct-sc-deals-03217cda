@@ -456,6 +456,36 @@ async function syncOneConnection(
         msg.internalDate ? new Date(parseInt(msg.internalDate)).toISOString() :
         new Date().toISOString();
 
+      // Bounce detection — DSN messages from mailer-daemon. When detected, mark the
+      // most recent outbound row to that recipient as bounced and auto-quarantine
+      // the lead after 2 hard bounces.
+      const bounce = detectBounce(msg, from.address, subject, text || preview);
+      if (bounce) {
+        const { data: outboundMatch } = await supabase
+          .from("lead_emails")
+          .select("id, lead_id")
+          .eq("direction", "outbound")
+          .contains("to_addresses", [bounce.recipient])
+          .order("email_date", { ascending: false })
+          .limit(1);
+        const target = outboundMatch?.[0] as { id: string; lead_id: string } | undefined;
+        if (target) {
+          await supabase.from("lead_emails")
+            .update({ bounce_reason: bounce.reason, send_status: "failed" })
+            .eq("id", target.id);
+          const { count: bounceCount } = await supabase
+            .from("lead_emails")
+            .select("id", { count: "exact", head: true })
+            .eq("direction", "outbound")
+            .contains("to_addresses", [bounce.recipient])
+            .neq("bounce_reason", "");
+          if (target.lead_id && target.lead_id !== "unmatched" && (bounceCount ?? 0) >= 2) {
+            await supabase.from("lead_email_metrics")
+              .upsert({ lead_id: target.lead_id, email_quarantined: true, updated_at: new Date().toISOString() }, { onConflict: "lead_id" });
+          }
+        }
+      }
+
       const insertRow = {
         lead_id: leadId ?? "unmatched",
         provider_message_id: mid,
@@ -474,14 +504,54 @@ async function syncOneConnection(
         email_date: emailDate,
         source: "gmail",
         is_read: !(msg.labelIds || []).includes("UNREAD"),
+        send_status: bounce ? "failed" : "sent",
+        bounce_reason: bounce?.reason ?? "",
         raw_payload: { gmail_label_ids: msg.labelIds ?? [] },
       };
 
-      const { error: insertErr } = await supabase.from("lead_emails").insert(insertRow);
+      const { data: insertedRow, error: insertErr } = await supabase
+        .from("lead_emails")
+        .insert(insertRow)
+        .select("id")
+        .single();
       if (insertErr) {
         stats.errors.push(`insert ${mid}: ${insertErr.message.slice(0, 120)}`);
       } else {
         stats.inserted += 1;
+
+        // Reply detection — when an inbound matched to a lead lands in a thread that
+        // already has an outbound, stamp replied_at on that outbound row.
+        if (direction === "inbound" && leadId && msg.threadId && insertedRow) {
+          const { data: prevOutbound } = await supabase
+            .from("lead_emails")
+            .select("id")
+            .eq("lead_id", leadId)
+            .eq("thread_id", msg.threadId)
+            .eq("direction", "outbound")
+            .is("replied_at", null)
+            .order("email_date", { ascending: false })
+            .limit(1);
+          const replyTarget = prevOutbound?.[0] as { id: string } | undefined;
+          if (replyTarget) {
+            await supabase.from("lead_emails")
+              .update({ replied_at: emailDate })
+              .eq("id", replyTarget.id);
+          }
+        }
+
+        // Activity log + last_contact bump for matched inbound emails — feeds the
+        // unanswered-emails action chip and keeps the deal-room timeline current.
+        if (direction === "inbound" && leadId) {
+          await supabase.from("lead_activity_log").insert({
+            lead_id: leadId,
+            event_type: "email_received",
+            description: `Email received: ${(subject || "(no subject)").slice(0, 200)}`,
+            new_value: from.address,
+          });
+          await supabase.from("leads")
+            .update({ last_contact_date: emailDate.split("T")[0] })
+            .eq("id", leadId);
+        }
       }
     } catch (e) {
       stats.errors.push(`msg ${mid}: ${(e as Error).message.slice(0, 120)}`);
