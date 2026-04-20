@@ -1,93 +1,76 @@
 
 
-# Outlook integration — end-to-end verification + what's left
+# Email tab — mockup vs. implementation audit
 
-## What's already built and wired (verified in code)
+I checked the live `EmailsSection.tsx` (the component rendered under the "Emails" sub-tab in the Deal Room) against your mockup. Here's the gap analysis.
 
-| Layer | Status | File |
+## What's already implemented ✅
+
+| Mockup requirement | Status | Where |
 |---|---|---|
-| OAuth start (Microsoft authorize URL) | ✅ Deployed | `outlook-oauth-start/index.ts` — scopes correct, state encoded, return_to safe-listed |
-| OAuth callback (code → tokens → store) | ✅ Deployed | `outlook-oauth-callback/index.ts` — fetches `/me`, upserts row with `provider='outlook'`, handles refresh-token rotation |
-| Token refresh (single + bulk) | ✅ Deployed | `refresh-outlook-token/index.ts` — same pattern as Gmail |
-| Sync (per-connection inbox+sentitems) | ✅ Deployed | `sync-outlook-emails/index.ts` — Graph API, dedup on `provider_message_id` + `internetMessageId`, lead matching, loop protection via `X-CRM-Source` header + `<crm-…>` Message-ID, logs to `email_sync_runs` + `cron_run_log` |
-| Send (Graph `/me/sendMail`) | ✅ Deployed | `send-outlook-email/index.ts` — pre-inserts `lead_emails`, injects open-pixel, rewrites links, stamps `ai_drafted` + `source_draft_id`, marks source draft `sent` |
-| `MailboxSettings.tsx` provider-aware UI | ✅ | "Connect mailbox" dropdown → Gmail / Outlook; sync, backfill, refresh all route by `c.provider` |
-| `EmailComposeDrawer.tsx` provider-aware send | ✅ | Line 287 routes to `send-outlook-email` vs `send-gmail-email` based on selected mailbox provider |
-| `supabase/config.toml` `verify_jwt = false` for all 5 new functions | ✅ | Lines 108–121 |
-| `OutlookSetupChecklist.tsx` legacy stub | ✅ Deleted |
+| Email sub-tab exists per lead | ✅ | `LeadDetailPanel.tsx` line 375 — `Emails (count)` tab |
+| One row per conversation thread | ✅ | `groupByThread()` collapses by `thread_id` |
+| Thread shows: subject, latest activity date, total opens, total clicks | ✅ | `ThreadCard` + header aggregate stats |
+| "Replied" indicator | ✅ | `replied_at` badge with `Reply` icon |
+| Inbound/outbound direction icons | ✅ | `ArrowUpRight` / `ArrowDownLeft` colored chips |
+| Latest reply preview snippet under thread | ✅ | "Last reply · {date} · {snippet}" line |
+| Open count + click count per thread | ✅ | Aggregated badges with `Eye` / `MousePointerClick` icons |
+| Compose new email button | ✅ | Header `Compose` button |
+| Reply directly from a message | ✅ | `Reply` button per inbound row, prefills `EmailComposeDrawer` |
+| AI-drafted badge | ✅ | Shown in `UnifiedTimeline` (Activities tab) but **NOT in the Email sub-tab** — see Gap #2 |
+| `email_type` filter (1-to-1 vs marketing) | ✅ | "1-to-1 only" / "Show all" toggle, defaults to one_to_one+sequence |
+| Marketing emails hidden by default | ✅ | Query filters `email_type IN ('one_to_one','sequence')` unless toggled |
+| Scheduled emails strip | ✅ | `ScheduledStrip` component shows pending sends with cancel |
+| Realtime updates (new emails appear live) | ✅ | Postgres realtime subscription on inserts/updates |
+| Database has `email_type`, `sequence_step`, `ai_drafted` columns | ✅ | Verified in DB schema |
 
-## Gap #1 — Secrets (you'll add these when you have Azure)
+## Gaps vs. the mockup ❌
 
-| Secret | Source |
-|---|---|
-| `MICROSOFT_CLIENT_ID` | Azure → App registrations → Overview → Application (client) ID |
-| `MICROSOFT_CLIENT_SECRET` | Azure → App registrations → Certificates & secrets → New client secret (value, not ID) |
+### Gap 1 — No "Thread email replies" toggle (collapsed vs. individual rows)
+The mockup has a toggle that flips between *one row per thread* (default) and *one row per email*. Currently threads are always collapsed and can only be expanded individually. The "Expand all / Collapse all" button is close but not the same — it expands the bodies, not the row structure. **Add a global thread-grouping toggle**.
 
-**Until both are set**, every Outlook function will throw `MICROSOFT_CLIENT_ID missing` or `Microsoft OAuth credentials missing`. Code is already defensive — it returns a clean 500 with the exact missing-secret message, no silent failures.
+### Gap 2 — AI-drafted badge missing from the Email sub-tab
+`UnifiedTimeline` (Activities tab) shows an "AI" badge when `ai_drafted=true`, but `EmailsSection` does NOT. The mockup explicitly shows `[AI-drafted]` and `[AI-personalized]` chips on rows. **Add `ai_drafted` badge rendering to `EmailRow` and `ThreadCard`**.
 
-## Gap #2 — Azure App Registration steps you'll do once
+### Gap 3 — Sequence step labels not surfaced in the Email sub-tab
+`UnifiedTimeline` renders `sequence_step` as a mono-font pill (e.g. "S1-A", "S5-B") but `EmailsSection` ignores `sequence_step` entirely. The mockup leans heavily on these labels for orientation. **Render `sequence_step` as a pill on each row** (and as the lead pill on collapsed thread headers when present).
 
-1. Azure Portal → App registrations → New registration
-2. Name: "Lovable CRM — Outlook Sync"
-3. Supported account types: **Accounts in any organizational directory + personal Microsoft accounts** (multi-tenant) — needed so SourceCo `@sourcecodeals.com` and any future tenant can connect
-4. Redirect URI (Web): `https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/outlook-oauth-callback`
-5. API permissions → Microsoft Graph → Delegated:
-   - `Mail.Read`
-   - `Mail.Send`
-   - `User.Read`
-   - `offline_access`
-6. Certificates & secrets → New client secret → copy the **Value** (not the Secret ID)
-7. Paste both into Lovable secrets
+### Gap 4 — Thread-no-reply / Auto-triggered status pills missing
+The mockup has explicit thread-state pills:
+- "Thread — no reply yet" (outbound thread with no inbound reply)
+- "James replied" / "replied" (thread has inbound replies)
+- "Auto-triggered" (system-sent confirmations like Calendly bookings)
+- "AI from Fireflies" (recap drafts generated post-meeting)
 
-## Gap #3 — pg_cron job for Outlook (the only remaining build task)
+Currently only an aggregate "Replied" badge exists per email. **Compute thread state and render a status pill on the thread header**.
 
-Gmail has a `sync-gmail-emails-10min` cron (set up via direct SQL when first Gmail mailbox connected, lives only in pg_cron — not in migrations). Outlook needs the same:
+### Gap 5 — Header counts wording mismatch
+Mockup header: `ALL EMAIL THREADS — JAMES MITCHELL (6 THREADS, 14 EMAILS TOTAL)`. Current header: `Emails with James (14)`. **Update header to show both thread count and email count**.
 
-```sql
-SELECT cron.schedule(
-  'sync-outlook-emails-10min',
-  '*/10 * * * *',
-  $$
-  SELECT net.http_post(
-    url := 'https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/sync-outlook-emails',
-    headers := '{"Content-Type": "application/json", "Authorization": "Bearer <SERVICE_ROLE_KEY>"}'::jsonb,
-    body := '{}'::jsonb
-  );
-  $$
-);
-```
+### Gap 6 — No "what does NOT appear here" affordance
+Mockup has explanatory cards explaining the inbox-style filtering rules. Optional but useful first-time-use. **Add a one-time dismissable info banner** explaining the 1-to-1 filter and the `m.hayes@captarget.com` mailbox scoping.
 
-This will be added the moment your first Outlook mailbox connects successfully (so we don't schedule a job that runs 144x/day and just no-ops).
+### Gap 7 — Mailbox scoping not enforced
+Mockup says "Sequence emails are shown here only if sent from m.hayes@captarget.com". Currently we show all `lead_emails` regardless of which connected mailbox sent them. With Outlook coming online (per-user mailboxes), this matters: an email sent from a different rep's mailbox to the same lead should still surface, but the *currently-viewing rep's* sent items should be visually distinguished. **Add a "from mailbox" badge or filter pill** when more than one connected mailbox has emailed this lead.
 
-## Gap #4 — Reply-trigger hook for Outlook inbound (parity with Gmail)
+## Recommended build (in priority order)
 
-Gmail's `sync-gmail-emails` calls `generate-follow-up-action` for every new inbound reply matched to a `Proposal Sent` / `Negotiating` / `Sample Sent` lead — auto-queues an AI reply draft in the Actions tab.
+1. **Sequence step pills** on each row (Gap 3) — high signal, 5 lines of code, parity with Activities
+2. **AI-drafted badge** on each row (Gap 2) — same pattern, 5 lines
+3. **Thread status pills** (Gap 4) — "Thread — no reply yet" / "{Lead} replied" / "Auto-triggered"
+4. **Header rewrite** to "ALL EMAIL THREADS — {NAME} ({n} threads, {m} emails total)" (Gap 5)
+5. **"Thread email replies" toggle** — collapse-all vs. flatten to individual rows (Gap 1)
+6. **Mailbox scoping badge** (Gap 7) — only render when >1 mailbox has touched the lead
+7. **One-time info banner** (Gap 6) — lowest priority
 
-`sync-outlook-emails` currently inserts to `lead_emails` but does **not** call this hook. Should add the identical post-insert block (8 lines) so SourceCo gets the same auto-draft behavior as Captarget.
-
-## Gap #5 — Sent-folder polling lag note
-
-Outlook Graph `sendMail` returns `202 Accepted` with **no message body** — meaning we can't capture `provider_message_id` at send time (Gmail returns it inline). The next 10-minute sync run picks up the sent message and the dedup logic on `internetMessageId` correctly stitches it to the row we pre-inserted at send time. **No bug — just slower than Gmail by up to 10 min for the row to get its `provider_message_id` populated.** Worth knowing for debugging.
-
-## How you'll test once Azure is wired
-
-1. **Add secrets** → Lovable Cloud → Secrets → add `MICROSOFT_CLIENT_ID` + `MICROSOFT_CLIENT_SECRET`
-2. **Smoke test OAuth start** — visit `https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/outlook-oauth-start?user_label=Test` — should return `{ url: "https://login.microsoftonline.com/..." }`
-3. **Real connect** — Settings → Mailboxes → "Connect mailbox" → Outlook → enter "Adam — SourceCo" → authorize with Adam's Microsoft account → expect to land back on Settings with toast "Mailbox connected" and a new row showing `adam@sourcecodeals.com` / provider Outlook
-4. **First sync** — click the sync icon on the row → expect toast `Synced X — Y new, Z matched`
-5. **Backfill** — click "Backfill 90d" → confirms → expect toast with retro-matched lead count
-6. **Open a SourceCo lead** in Deal Room → Activities tab → expect to see Adam's actual sent + received Outlook emails interleaved with Calendly/Fireflies events
-7. **Reply test** — click Reply on an inbound email → drawer's "From" picker shows Adam's mailbox → send → check Adam's actual Outlook Sent folder for the message → verify `X-CRM-Source: lovable-crm` header is present (View Source in Outlook)
-8. **Loop test** — wait 10 min, run sync manually → confirm sent message is **not** re-ingested as a duplicate (header skip works)
-9. **AI-draft attribution** — generate an AI follow-up from Actions tab → click "Send" → message lands in Sent folder → in Activities tab the row shows "AI-drafted" badge
-
-## Files I'll touch when you're ready
+## Files to touch
 
 | File | Change |
 |---|---|
-| `supabase/functions/sync-outlook-emails/index.ts` | Add reply-trigger post-insert block (Gap #4) |
-| pg_cron via SQL | Schedule `sync-outlook-emails-10min` after first connect (Gap #3) |
-| `mem://integrations/email-sync-status` | Update status to "live" once tested |
+| `src/components/EmailsSection.tsx` | All 7 gaps land here — header, ThreadCard pills, EmailRow badges, new toggle |
+| (no DB changes needed) | `email_type`, `sequence_step`, `ai_drafted` columns already exist and populated |
 
-That's literally it — everything else is built and waiting for `MICROSOFT_CLIENT_ID` + `MICROSOFT_CLIENT_SECRET`.
+## What the user gets
+
+The Email sub-tab will visually match the mockup: scannable thread list with sequence step labels, AI-drafted markers, thread reply state, an accurate "(N threads, M emails)" header, and an optional flatten-to-individual-rows view for power users. No backend work — everything is rendered from columns that already exist on `lead_emails`.
 
