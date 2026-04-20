@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { Loader2, Play, RefreshCw, AlertTriangle, ExternalLink } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -39,6 +39,7 @@ export function AutomationHealthPanel() {
   const [latestByJob, setLatestByJob] = useState<Record<string, RunRow | null>>({});
   const [loading, setLoading] = useState(true);
   const [runningJob, setRunningJob] = useState<string | null>(null);
+  const [firecrawlBroken, setFirecrawlBroken] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -50,10 +51,16 @@ export function AutomationHealthPanel() {
 
     const map: Record<string, RunRow | null> = {};
     JOBS.forEach(j => { map[j.jobName] = null; });
+    let firecrawl403 = false;
     (data ?? []).forEach((r: any) => {
       if (!map[r.job_name]) map[r.job_name] = r as RunRow;
+      // Detect Firecrawl 403 either in the details flag or error message text
+      const detailsFlag = r?.details && typeof r.details === "object" && (r.details as any).firecrawl403 === true;
+      const errorHasFirecrawl = String(r?.error_message || "").toLowerCase().includes("firecrawl");
+      if (detailsFlag || errorHasFirecrawl) firecrawl403 = true;
     });
     setLatestByJob(map);
+    setFirecrawlBroken(firecrawl403);
     setLoading(false);
   };
 
@@ -87,6 +94,26 @@ export function AutomationHealthPanel() {
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
       </div>
+
+      {firecrawlBroken && (
+        <div className="border border-foreground/20 bg-secondary/40 rounded-lg p-3 flex items-start gap-2.5">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          <div className="flex-1 text-xs">
+            <div className="font-semibold text-foreground">Firecrawl scraping is failing (403)</div>
+            <p className="text-muted-foreground mt-0.5">
+              AI-tier enrichment cannot scrape company websites until the Firecrawl connector is re-authenticated. Every enrichment run will produce zero results until this is fixed.
+            </p>
+            <a
+              href="https://lovable.dev/projects/242959cb-c9bf-4eb5-a0bd-aea2e79cc31a/connectors"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 mt-1.5 text-foreground hover:underline font-medium"
+            >
+              Reconnect Firecrawl <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
+      )}
 
       <div className="border border-border rounded-lg overflow-hidden">
         <table className="w-full text-sm">
