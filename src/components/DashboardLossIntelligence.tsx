@@ -91,6 +91,30 @@ export function DashboardLossIntelligence({ leads, onDrillDown }: Props) {
   const lostLeads = useMemo(() => leads.filter(l => l.stage === "Lost" || l.stage === "Went Dark" || l.stage === "Closed Lost"), [leads]);
   const darkLeads = useMemo(() => leads.filter(l => l.stage === "Went Dark"), [leads]);
 
+  // Block 0: Structured (v2) Loss Reasons — from locked dropdown `lostReasonV2`
+  // This is the "rep-stated" truth now that the gate forces a locked value on Close Lost.
+  const structuredReasons = useMemo(() => {
+    const categories: Record<string, { count: number; leads: Lead[] }> = {};
+    let withReason = 0;
+    for (const l of lostLeads) {
+      const v2 = (l.lostReasonV2 || "").trim();
+      if (!v2) continue;
+      withReason++;
+      if (!categories[v2]) categories[v2] = { count: 0, leads: [] };
+      categories[v2].count++;
+      categories[v2].leads.push(l);
+    }
+    const ordered = Object.entries(categories)
+      .sort(([, a], [, b]) => b.count - a.count)
+      .map(([reason, data]) => ({
+        reason,
+        count: data.count,
+        leads: data.leads,
+        pct: withReason > 0 ? Math.round((data.count / withReason) * 100) : 0,
+      }));
+    return { rows: ordered, withReason, missing: lostLeads.length - withReason };
+  }, [lostLeads]);
+
   // Block 1: Synthesized Loss Reasons
   const synthesizedReasons = useMemo(() => {
     const categories: Record<string, { count: number; leads: Lead[] }> = {};
