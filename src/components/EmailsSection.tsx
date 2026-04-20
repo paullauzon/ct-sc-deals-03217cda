@@ -411,7 +411,8 @@ function EmailRow({ email, compact, expandAllSignal, onSuggestResponses, onReply
     : "text-emerald-600 bg-emerald-500/10";
   const dirLabel = isOutbound ? "Sent" : "Received";
   const hasAttachments = (email.attachments?.length || 0) > 0;
-  const hasFullBody = !!(email.body_html || email.body_text);
+  // hasFullBody already defined above
+
   const opensCount = Array.isArray(email.opens) ? email.opens.length : (typeof email.opens === "number" ? email.opens : 0);
   const clicksCount = Array.isArray(email.clicks) ? email.clicks.length : (typeof email.clicks === "number" ? email.clicks : 0);
 
