@@ -164,7 +164,7 @@ export function CampaignDetail({ sequenceId, onBack }: Props) {
 
         <TabsContent value="enrolled" className="mt-4">
           <div className="flex items-center gap-2 mb-3">
-            {(["", "active", "re_engaged", "completed", "exited_referral"] as const).map((s) => (
+            {(["", "active", "re_engaged", "paused", "completed", "exited_referral"] as const).map((s) => (
               <button
                 key={s || "all"}
                 onClick={() => setStatusFilter(s)}
