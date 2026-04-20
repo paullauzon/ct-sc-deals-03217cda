@@ -76,6 +76,7 @@ export function BackfillProgressPanel({ connectionId, emailAddress, provider }: 
       .from("email_backfill_jobs")
       .select("*")
       .eq("connection_id", connectionId)
+      .neq("status", "superseded")
       .order("started_at", { ascending: false })
       .limit(1);
     setJob(((data || [])[0] as Job) || null);
