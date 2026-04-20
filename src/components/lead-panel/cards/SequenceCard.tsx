@@ -61,8 +61,8 @@ export function SequenceCard({ lead }: { lead: Lead }) {
     <CollapsibleCard
       title="Sequence"
       icon={<Workflow className="h-3.5 w-3.5" />}
-      headerRight={
-        <button onClick={openCampaign} className="text-muted-foreground hover:text-foreground" title="Open campaign">
+      rightSlot={
+        <button onClick={(e) => { e.stopPropagation(); openCampaign(); }} className="text-muted-foreground hover:text-foreground" title="Open campaign">
           <ExternalLink className="h-3 w-3" />
         </button>
       }
