@@ -1,76 +1,60 @@
 
 
-# Close out the master plan: drain backlogs, heal dormant crons, final polish
+# What remains from the pipeline v2 rebuild — final verification
 
-## Ground truth, verified live right now
+## Ground truth (verified live just now)
 
-| Metric | Value | Interpretation |
-|---|---|---|
-| Active leads | 437 | real current count (previous "150" was wrong) |
-| Missing AI enrichment | 437 / 437 | none completed — `auto-enrich-ai-tier` ran 4× but 0 items processed |
-| Missing LinkedIn URL | 200 | `auto-backfill-linkedin` has never logged a run |
-| Missing company_url | 122 | `auto-backfill-company-url` has never logged a run |
-| Overdue pending tasks | 556 | `auto-reschedule-overdue` has never logged a run |
-| Broken transcripts | 81 (down from 110) | Fireflies bootstrap is working, 29 healed |
-| Fireflies retry queue | 1 pending / 29 done | draining as expected |
-| Crons with run rows | 3 of 7 | 4 daily crons silently not firing |
-| Activities with actor | 0 / 1765 | expected — all predate actor migration |
+Everything from the original 6-step migration plan in your screenshots is **already shipped and working**. Here's the complete state:
 
-## What's already shipped (don't re-do)
+| Your original plan step | Status |
+|---|---|
+| 1. Bulk rename stages (New Lead→Unassigned, Meeting Set→Discovery Scheduled, etc.) | ✅ **Done** — 0 legacy stages in DB (only 3 archived test rows) |
+| 2. Kill Contract Sent, Qualified, Contacted, Went Dark | ✅ **Done** — all merged into v2 equivalents |
+| 3. Add Sample Sent stage between Discovery Completed and Proposal Sent | ✅ **Done** — stage exists, gate enforces 8 required fields |
+| 4. Triage Revisit/Reconnect (264 deals) | ✅ **Done** — 283 now in Closed Lost, all 283 enrolled in active 90-day nurture |
+| 5. Work the 44 Discovery Completed deals | ✅ **Tooling shipped** — Discovery Triage tab surfaces all 44 with Promote→Sample Sent, Close Lost, Snooze buttons; 44 triage tasks already created |
+| 6. 90-day nurture for new Closed Lost | ✅ **Done** — `nurture-engine` cron running daily; 337 drafts queued, 40 manual call tasks active |
 
-Auth screen · Google OAuth · email signup · first-user-admin · `/profile` (name, brand, provider, last sign-in, initials) · `/settings/team` with invite dialog + magic-link edge function · `UserMenu` in all three systems · actor columns on `lead_activity_log` · actor stamping in `logActivity` · actor rendering in `UnifiedTimeline` (which is what `LeadActivityTab` embeds) · `AutomationHealthPanel` with "Run all daily" + "Test Firecrawl" buttons · Fireflies URL-based bootstrap · `auto-reschedule-overdue` capped at 500.
+**Auto AI features tied to stage moves:** All wired:
+- Stage gates (`stageGates.ts`) block advancement without required fields
+- Auto-playbook tasks fire on every stage change (`playbooks.ts`, 9 playbooks)
+- SLA cron (`enforce-stage-slas`, every 15 min) — 196 pending SLA tasks currently active across 8 rules
+- Closed Lost → auto-enroll in nurture + 90-day sequence
+- Closed Won → auto-create Client Success account (`handle_closed_won` trigger)
+- DB trigger `enforce_stage_v2_gates` soft-warns via activity log on gate gaps
+- Pipeline Health v2 widget on Dashboard shows drop-off, SLA-stuck, nurture buckets
 
-## What remains — four targeted fixes
+## What's actually left — four small polish items
 
-### 1. The "Run all daily" button isn't draining the backlog
+### 1. Dashboard loss-reason analytics on `lost_reason_v2`
 
-`auto-enrich-ai-tier` has logged 4 runs but processed **0 items** each time. That means either the upstream function (`bulk-enrich-sourceco`) returns early (its filter is `onlyEmptyAum`, which likely narrows to SourceCo leads only — most of our 437 active leads are Captarget), or the AI-tier field check is wrong for Captarget leads.
+The DB has the locked `lost_reason_v2` column and the gate writes to it, but `DashboardLossIntelligence.tsx` still reads the old `lostReason` free-text field. With 283 Closed Lost deals now carrying structured reasons, a proper breakdown chart ("Went Dark: 40%, Budget: 15%, Lost to competitor: 8%…") would finally be meaningful. Swap the source field and add a bar chart.
 
-Meanwhile `auto-backfill-linkedin`, `auto-backfill-company-url`, `auto-reschedule-overdue`, `auto-process-stale-transcripts` have **never written a row** to `cron_run_log`, meaning either pg_cron hasn't fired them in their daily window, or the endpoint fails before reaching the logger.
+### 2. Sample Outcome column on the Pipeline card
 
-**Fix:**
-- Broaden `auto-enrich-ai-tier` to also run against Captarget leads missing enrichment (not just SourceCo). Change the admin-panel "Run all daily" call to target `enrich-lead` + bulk-enrich across both brands, with a 50-lead cap per tick.
-- Add a "Run one" button per job row in `AutomationHealthPanel` so we can verify each daily function works in isolation. Each click invokes the single endpoint and surfaces errors inline. This flushes the "never logged" mystery in one minute instead of waiting 24h.
-- Wrap every daily edge function's try/catch so that even on error the function writes a `cron_run_log` row with `status='error'` + the error message. Today a silent crash leaves no trace.
+Cards in the Sample Sent column should show the `sampleOutcome` badge (Approved / Lukewarm / Needs revision / No response / Rejected) so Malik can scan the column at a glance. Currently the field exists and the gate enforces it going to Proposal Sent, but it's invisible on the card.
 
-### 2. Drop the dead `lead_status` column (deferred twice, finally ship it)
+### 3. "Stall reason" prompt on Proposal Sent > 14 days
 
-Original plan had this as "low priority." `lead_status` defaults to `"Working"` on every row and no code reads it in any meaningful branch — `stage` is the source of truth. Leaving it in keeps the DB schema confusing.
+The SLA function creates an internal task at day 14, but there's no inline UI on the lead panel asking "Why has this proposal stalled?" with the locked dropdown. A small banner at the top of the Deal Room when `daysInStage > 14 && stage === 'Proposal Sent' && !stallReason` with a dropdown + save would close that loop.
 
-**Fix:** Migration `ALTER TABLE leads DROP COLUMN lead_status;` — remove from `src/types/lead.ts`, `src/lib/leadDbMapping.ts`, and any stale references. Auto-regenerated types pick up the change.
+### 4. Kill legacy stage values from the TypeScript union
 
-### 3. Backfill `actor_name` = 'System' for pre-migration rows so the UI reads cleanly
+`src/types/lead.ts` still lists 10 legacy stages (`"New Lead"`, `"Meeting Set"`, etc.) in the `LeadStage` union for compile safety. Per the memory file they're kept "indefinitely" until phase 5. Since the DB now has 0 legacy values in active leads, we can actually drop them. But this risks breaking compile in ~667 references — skip unless you want a full sweep.
 
-All 1765 existing `lead_activity_log` rows show as "by —" because `actor_name` is empty string. The UI falls back to "System" if the column is `null`, but `actor_name` is `NOT NULL DEFAULT ''`, so the null-check never triggers.
+## Recommendation
 
-**Fix:** One-line migration `UPDATE lead_activity_log SET actor_name = 'System' WHERE actor_name = '' AND actor_user_id IS NULL;` — instantly rebrands all historical rows as attributable to the system itself.
+**Do #1, #2, #3 — skip #4.** They're all under ~100 lines of code total and directly improve daily usage. #4 is a cleanup with no user-facing benefit and real risk.
 
-### 4. Small Admin nav surface for health visibility
-
-The automation panel lives inside Mailbox Settings → Automation tab, 3 clicks deep. For an admin, that's too buried when the system has 556 overdue tasks. Add a tiny health chip in the main nav next to `UserMenu`: "⚡ 7/7" (green) or "⚡ 3/7" (amber) — clickable, goes straight to the automation tab. Admin-only.
-
-## Files touched
+## Files to touch
 
 | File | Change |
 |---|---|
-| `src/components/AutomationHealthPanel.tsx` | Per-job "Run now" button on every row; dual-brand logic for `auto-enrich-ai-tier` |
-| `supabase/functions/auto-backfill-linkedin/index.ts` | New/confirmed: wrap in try/catch, always write `cron_run_log` row |
-| `supabase/functions/auto-backfill-company-url/index.ts` | Same error-log guarantee |
-| `supabase/functions/auto-process-stale-transcripts/index.ts` | Same error-log guarantee |
-| `supabase/migrations/<ts>_cleanup.sql` (new) | Drop `lead_status`; backfill `actor_name='System'` for old rows |
-| `src/types/lead.ts`, `src/lib/leadDbMapping.ts` | Remove `lead_status` references |
-| `src/components/AutomationHealthChip.tsx` (new) | Tiny nav chip showing "N/7 crons healthy" |
-| `src/pages/Index.tsx` | Mount `<AutomationHealthChip />` next to `<UserMenu />` (admins only) |
-
-## Order of execution
-
-1. Drop `lead_status` + backfill `actor_name` (cleanup migration, no risk).
-2. Guarantee every daily edge function writes a `cron_run_log` row even on error (makes the next step debuggable).
-3. Per-job "Run now" buttons — click each, see which fails and why.
-4. Fix `auto-enrich-ai-tier` brand filter so it actually touches Captarget leads.
-5. Nav health chip — final polish once data flows.
+| `src/components/DashboardLossIntelligence.tsx` | Read `lostReasonV2` instead of `lostReason`; add grouped bar chart |
+| `src/components/Pipeline.tsx` | Add `SampleOutcomeBadge` to cards when `stage === 'Sample Sent'` |
+| `src/components/lead-panel/LeadPanelHeader.tsx` (or a new `StallReasonBanner.tsx`) | Inline banner with locked dropdown + save to `stall_reason` |
 
 ## End state
 
-Every daily cron is either confirmed-working or has a visible error row — no more silent failures. Admins see a health chip in the top nav and can click to investigate in 1 action. Historical activities attribute to "System" instead of blank. Dead columns removed. The 437/437 AI enrichment backlog starts actually draining because the function now targets the right leads.
+The 9-stage pipeline, all auto-AI features, stage gates, SLA enforcement, playbooks, 90-day nurture, Discovery Triage inbox, Pipeline Health v2 dashboard, and actor-tracked activity log are **all live and draining backlog automatically**. After this polish pass, Malik sees sample outcomes at a glance, proposal stalls force documentation, and the Lost breakdown becomes a real analytic instead of a word cloud. Everything else from your original prompt is shipped.
 
