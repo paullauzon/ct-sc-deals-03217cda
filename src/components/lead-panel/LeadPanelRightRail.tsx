@@ -10,6 +10,7 @@ import { SignalsCard } from "@/components/lead-panel/cards/SignalsCard";
 import { StakeholderCard } from "@/components/lead-panel/cards/StakeholderCard";
 import { FirefliesRecordingsCard } from "@/components/lead-panel/cards/FirefliesRecordingsCard";
 import { AttachmentsCard } from "@/components/lead-panel/cards/AttachmentsCard";
+import { SequenceCard } from "@/components/lead-panel/cards/SequenceCard";
 
 interface LeadPanelRightRailProps {
   lead: Lead;
@@ -31,6 +32,7 @@ export function LeadPanelRightRail({ lead, allLeads, daysInStage, save, onTask }
       {/* Mid: collapsed-by-default health/signals/tasks */}
       <RightRailCards lead={lead} allLeads={allLeads} />
       <SignalsCard lead={lead} />
+      <SequenceCard lead={lead} />
       <OpenTasksCard lead={lead} onAddTask={onTask} />
 
       {/* Lower: company + people + artifacts */}

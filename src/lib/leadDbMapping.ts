@@ -98,6 +98,8 @@ export function leadToRow(lead: Lead): Record<string, any> {
     nurture_sequence_status: lead.nurtureSequenceStatus ?? null,
     nurture_started_at: lead.nurtureStartedAt ?? null,
     nurture_re_engage_date: lead.nurtureReEngageDate ?? null,
+    nurture_step_log: lead.nurtureStepLog ?? [],
+    nurture_exit_reason: lead.nurtureExitReason ?? "",
     stage_gate_overrides: lead.stageGateOverrides ?? [],
     discovery_call_completed_at: lead.discoveryCallCompletedAt ?? null,
   };
@@ -202,6 +204,8 @@ export function rowToLead(row: Record<string, any>): Lead {
     nurtureSequenceStatus: row.nurture_sequence_status ?? null,
     nurtureStartedAt: row.nurture_started_at ?? null,
     nurtureReEngageDate: row.nurture_re_engage_date ?? null,
+    nurtureStepLog: Array.isArray(row.nurture_step_log) ? row.nurture_step_log : [],
+    nurtureExitReason: row.nurture_exit_reason || "",
     stageGateOverrides: Array.isArray(row.stage_gate_overrides) ? row.stage_gate_overrides : [],
     discoveryCallCompletedAt: row.discovery_call_completed_at ?? null,
   };
@@ -271,6 +275,8 @@ export function leadUpdatesToRow(updates: Partial<Lead>): Record<string, any> {
     nurtureSequenceStatus: "nurture_sequence_status",
     nurtureStartedAt: "nurture_started_at",
     nurtureReEngageDate: "nurture_re_engage_date",
+    nurtureStepLog: "nurture_step_log",
+    nurtureExitReason: "nurture_exit_reason",
     stageGateOverrides: "stage_gate_overrides",
     discoveryCallCompletedAt: "discovery_call_completed_at",
   };
