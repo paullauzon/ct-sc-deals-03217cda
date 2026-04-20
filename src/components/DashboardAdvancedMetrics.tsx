@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Lead, LeadSource, LeadStage } from "@/types/lead";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { normalizeStage, isClosedStage, ACTIVE_STAGES } from "@/lib/leadUtils";
 
 const SOURCE_LABELS: Record<LeadSource, string> = {
   "CT Contact Form": "CT Contact",
@@ -9,12 +10,16 @@ const SOURCE_LABELS: Record<LeadSource, string> = {
   "SC Free Targets Form": "SC Targets",
 };
 
+// v2 stage weights — normalizeStage ensures legacy DB rows resolve correctly.
 const STAGE_WEIGHTS: Record<string, number> = {
-  "New Lead": 0.05, "Qualified": 0.15, "Contacted": 0.20, "Meeting Set": 0.30,
-  "Meeting Held": 0.40, "Proposal Sent": 0.50, "Negotiation": 0.70, "Contract Sent": 0.90,
+  "Unassigned": 0.05, "In Contact": 0.15, "Discovery Scheduled": 0.30,
+  "Discovery Completed": 0.40, "Sample Sent": 0.50, "Proposal Sent": 0.65, "Negotiating": 0.85,
 };
 
-const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
+const isWonStage = (s: string) => normalizeStage(s) === "Closed Won";
+const isLostStage = (s: string) => normalizeStage(s) === "Closed Lost";
+// Shim for legacy `.has(stage)` callsites that still use CLOSED_STAGES.
+const CLOSED_STAGES = { has: (s: string) => isClosedStage(s as any) };
 
 interface Props {
   leads: Lead[];

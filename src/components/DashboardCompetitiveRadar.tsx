@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { Crosshair, TrendingUp, Mic } from "lucide-react";
+import { normalizeStage, isClosedStage } from "@/lib/leadUtils";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
+const isLostStage = (s: string) => normalizeStage(s) === "Closed Lost";
+const isWonStage = (s: string) => normalizeStage(s) === "Closed Won";
 
 const SENTIMENT_COLORS: Record<string, string> = {
   "Very Positive": "bg-emerald-500",
@@ -26,8 +28,8 @@ interface Props {
 }
 
 export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: Props) {
-  const activeLeads = useMemo(() => leads.filter(l => !CLOSED_STAGES.has(l.stage)), [leads]);
-  const lostLeads = useMemo(() => leads.filter(l => l.stage === "Lost"), [leads]);
+  const activeLeads = useMemo(() => leads.filter(l => !isClosedStage(l.stage)), [leads]);
+  const lostLeads = useMemo(() => leads.filter(l => isLostStage(l.stage)), [leads]);
 
   // ─── Block 1: Competitor Mentions ───
   const competitorData = useMemo(() => {
@@ -60,9 +62,9 @@ export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: 
       for (const c of competitors) {
         if (!compMap.has(c)) compMap.set(c, { active: [], lost: [], won: [], topStrength: "", topWeakness: "" });
         const entry = compMap.get(c)!;
-        if (l.stage === "Closed Won") entry.won.push(l);
-        else if (l.stage === "Lost") entry.lost.push(l);
-        else if (!CLOSED_STAGES.has(l.stage)) entry.active.push(l);
+        if (isWonStage(l.stage)) entry.won.push(l);
+        else if (isLostStage(l.stage)) entry.lost.push(l);
+        else if (!isClosedStage(l.stage)) entry.active.push(l);
 
         // Aggregate top strength/weakness from details
         const details = detailsMap.get(c);
@@ -120,9 +122,9 @@ export function DashboardCompetitiveRadar({ leads, onDrillDown, onSelectLead }: 
       if (ratios.length === 0) continue;
       const avg = Math.round(ratios.reduce((s, r) => s + r, 0) / ratios.length);
 
-      if (l.stage === "Closed Won") wonRatios.push(avg);
-      else if (l.stage === "Lost") lostRatios.push(avg);
-      else if (!CLOSED_STAGES.has(l.stage)) activeRatios.push(avg);
+      if (isWonStage(l.stage)) wonRatios.push(avg);
+      else if (isLostStage(l.stage)) lostRatios.push(avg);
+      else if (!isClosedStage(l.stage)) activeRatios.push(avg);
     }
 
     const average = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length) : null;
