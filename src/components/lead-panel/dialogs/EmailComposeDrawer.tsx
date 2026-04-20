@@ -9,6 +9,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { logActivity, bumpStakeholderContact } from "@/lib/activityLog";
 import { toast } from "sonner";
 
+interface ReplyContext {
+  to?: string;
+  subject?: string;
+  thread_id?: string;
+  in_reply_to?: string;
+  quote?: string;
+}
+
 interface Props {
   lead: Lead;
   open: boolean;
@@ -16,6 +24,8 @@ interface Props {
   save: (updates: Partial<Lead>) => void;
   /** Optional preset action passed when launched from "Draft follow-up" chip */
   presetAction?: "follow-up" | "default";
+  /** Optional reply prefill from an inbound email */
+  replyContext?: ReplyContext | null;
 }
 
 interface Mailbox {
