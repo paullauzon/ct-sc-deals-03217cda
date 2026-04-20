@@ -536,6 +536,7 @@ export type Database = {
           deal_value: number
           deals_planned: string
           decision_blocker: string
+          discovery_call_completed_at: string | null
           duplicate_of: string
           ebitda_max: string
           ebitda_min: string
@@ -567,6 +568,7 @@ export type Database = {
           linkedin_title: string | null
           linkedin_url: string | null
           lost_reason: string
+          lost_reason_v2: string
           meeting_date: string
           meeting_outcome: string
           meeting_set_date: string
@@ -577,6 +579,9 @@ export type Database = {
           next_mutual_step: string
           next_mutual_step_date: string
           notes: string
+          nurture_re_engage_date: string | null
+          nurture_sequence_status: string | null
+          nurture_started_at: string | null
           pe_backed: boolean | null
           pe_backed_stage2: boolean | null
           pe_sponsor_name: string | null
@@ -594,6 +599,7 @@ export type Database = {
           source: string
           stage: string
           stage_entered_date: string
+          stage_gate_overrides: Json
           stage1_score: number | null
           stage2_score: number | null
           stall_reason: string
@@ -645,6 +651,7 @@ export type Database = {
           deal_value?: number
           deals_planned?: string
           decision_blocker?: string
+          discovery_call_completed_at?: string | null
           duplicate_of?: string
           ebitda_max?: string
           ebitda_min?: string
@@ -676,6 +683,7 @@ export type Database = {
           linkedin_title?: string | null
           linkedin_url?: string | null
           lost_reason?: string
+          lost_reason_v2?: string
           meeting_date?: string
           meeting_outcome?: string
           meeting_set_date?: string
@@ -686,6 +694,9 @@ export type Database = {
           next_mutual_step?: string
           next_mutual_step_date?: string
           notes?: string
+          nurture_re_engage_date?: string | null
+          nurture_sequence_status?: string | null
+          nurture_started_at?: string | null
           pe_backed?: boolean | null
           pe_backed_stage2?: boolean | null
           pe_sponsor_name?: string | null
@@ -703,6 +714,7 @@ export type Database = {
           source?: string
           stage?: string
           stage_entered_date?: string
+          stage_gate_overrides?: Json
           stage1_score?: number | null
           stage2_score?: number | null
           stall_reason?: string
@@ -754,6 +766,7 @@ export type Database = {
           deal_value?: number
           deals_planned?: string
           decision_blocker?: string
+          discovery_call_completed_at?: string | null
           duplicate_of?: string
           ebitda_max?: string
           ebitda_min?: string
@@ -785,6 +798,7 @@ export type Database = {
           linkedin_title?: string | null
           linkedin_url?: string | null
           lost_reason?: string
+          lost_reason_v2?: string
           meeting_date?: string
           meeting_outcome?: string
           meeting_set_date?: string
@@ -795,6 +809,9 @@ export type Database = {
           next_mutual_step?: string
           next_mutual_step_date?: string
           notes?: string
+          nurture_re_engage_date?: string | null
+          nurture_sequence_status?: string | null
+          nurture_started_at?: string | null
           pe_backed?: boolean | null
           pe_backed_stage2?: boolean | null
           pe_sponsor_name?: string | null
@@ -812,6 +829,7 @@ export type Database = {
           source?: string
           stage?: string
           stage_entered_date?: string
+          stage_gate_overrides?: Json
           stage1_score?: number | null
           stage2_score?: number | null
           stall_reason?: string
