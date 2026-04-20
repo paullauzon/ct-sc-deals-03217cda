@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Mail, Plus, Loader2, Trash2, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
+import { Mail, Plus, Loader2, Trash2, RefreshCw, CheckCircle2, AlertCircle, DownloadCloud } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
@@ -21,6 +21,7 @@ export function MailboxSettings() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -97,6 +98,29 @@ export function MailboxSettings() {
     }
   };
 
+  const syncNow = async (id: string) => {
+    setSyncingId(id);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-gmail-emails", {
+        body: { connection_id: id },
+      });
+      if (error) throw error;
+      const r = data?.results?.[0];
+      if (r) {
+        toast.success(
+          `Synced ${r.fetched} message${r.fetched === 1 ? "" : "s"} — ${r.inserted} new, ${r.matched} matched, ${r.skipped_dup} duplicate`,
+        );
+      } else {
+        toast.success("Sync complete");
+      }
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Sync failed");
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
       <div className="flex items-center justify-between">
@@ -166,18 +190,32 @@ export function MailboxSettings() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       {c.is_active && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2"
-                          onClick={() => refreshToken(c.id)}
-                          disabled={refreshingId === c.id}
-                          title="Refresh access token"
-                        >
-                          {refreshingId === c.id
-                            ? <Loader2 className="h-3 w-3 animate-spin" />
-                            : <RefreshCw className="h-3 w-3" />}
-                        </Button>
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={() => syncNow(c.id)}
+                            disabled={syncingId === c.id}
+                            title="Sync new emails now"
+                          >
+                            {syncingId === c.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <DownloadCloud className="h-3 w-3" />}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2"
+                            onClick={() => refreshToken(c.id)}
+                            disabled={refreshingId === c.id}
+                            title="Refresh access token"
+                          >
+                            {refreshingId === c.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <RefreshCw className="h-3 w-3" />}
+                          </Button>
+                        </>
                       )}
                       <Button
                         variant="ghost"
