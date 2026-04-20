@@ -256,7 +256,16 @@ export function EnrichmentSection({ enrichment, onEnrich, enriching, lead, onAcc
   );
 }
 
-export type DealSignal = { message: string; severity: "warning" | "critical" };
+export type DealSignal = {
+  /** Backwards-compat alias of `title` for legacy alert renderers. */
+  message: string;
+  title: string;
+  description?: string;
+  severity: "warning" | "critical" | "positive";
+};
+
+const sig = (severity: DealSignal["severity"], title: string, description?: string): DealSignal =>
+  ({ severity, title, description, message: title });
 
 /** Computes the same deal alerts surfaced at the top of the Activity tab.
  *  Extracted so the right-rail Signals card can show a count + the same list. */
@@ -269,41 +278,60 @@ export function getDealSignals(lead: Lead): DealSignal[] {
     const latestMeetingDate = meetings.map(m => m.date).filter(Boolean).sort().pop();
     if (latestMeetingDate) {
       const daysSince = Math.floor((today.getTime() - new Date(latestMeetingDate).getTime()) / 86400000);
-      if (daysSince >= 21) alerts.push({ message: `Deal stalling: ${daysSince} days since last meeting`, severity: "critical" });
-      else if (daysSince >= 14) alerts.push({ message: `${daysSince} days since last meeting`, severity: "warning" });
+      if (daysSince >= 21)
+        alerts.push(sig("critical", `Deal stalling — ${daysSince}d since last meeting`,
+          `No meeting logged in ${daysSince} days. Re-engage or move to Went Dark.`));
+      else if (daysSince >= 14)
+        alerts.push(sig("warning", `${daysSince} days since last meeting`,
+          "Tempo slipping. Schedule a check-in to keep momentum."));
     }
   }
 
   if (lead.dealIntelligence?.actionItemTracker) {
     const overdue = lead.dealIntelligence.actionItemTracker.filter(a => a.status === "Overdue").length;
-    if (overdue > 0) alerts.push({ message: `${overdue} pending action item${overdue !== 1 ? "s" : ""}`, severity: "critical" });
+    if (overdue > 0)
+      alerts.push(sig("critical", `${overdue} pending action item${overdue !== 1 ? "s" : ""}`,
+        "Commitments past their deadline. Close the loop before the next call."));
     const open = lead.dealIntelligence.actionItemTracker.filter(a => a.status === "Open").length;
-    if (open >= 5) alerts.push({ message: `${open} open action items`, severity: "warning" });
+    if (open >= 5)
+      alerts.push(sig("warning", `${open} open action items`,
+        "Backlog building up. Prioritize and clear before they slip overdue."));
   }
 
   if (lead.dealIntelligence?.riskRegister?.length) {
     const unmitigated = lead.dealIntelligence.riskRegister.filter(r => r.mitigationStatus === "Unmitigated" && (r.severity === "Critical" || r.severity === "High"));
-    if (unmitigated.length) alerts.push({ message: `${unmitigated.length} unmitigated high/critical risk${unmitigated.length !== 1 ? "s" : ""}`, severity: "critical" });
+    if (unmitigated.length)
+      alerts.push(sig("critical", `${unmitigated.length} unmitigated risk${unmitigated.length !== 1 ? "s" : ""}`,
+        unmitigated[0].risk));
   }
 
   if (!["Closed Won", "Lost", "Went Dark"].includes(lead.stage)) {
-    if (!lead.nextFollowUp) alerts.push({ message: "No follow-up scheduled", severity: "warning" });
+    if (!lead.nextFollowUp)
+      alerts.push(sig("warning", "No follow-up scheduled",
+        "Add a next step so this deal stays on the calendar."));
     else if (new Date(lead.nextFollowUp) < today) {
       const daysOverdue = Math.floor((today.getTime() - new Date(lead.nextFollowUp).getTime()) / 86400000);
-      alerts.push({ message: `Follow-up pending ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""}`, severity: "critical" });
+      alerts.push(sig("critical", `Follow-up pending ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""}`,
+        "Auto-task was created but not completed. Snooze, draft, or mark contacted."));
     }
   }
 
   if (lead.dealIntelligence?.momentumSignals) {
     const ms = lead.dealIntelligence.momentumSignals;
-    if (ms.momentum === "Stalled") alerts.push({ message: "Deal momentum: Stalled", severity: "critical" });
-    else if (ms.momentum === "Stalling") alerts.push({ message: "Deal momentum: Stalling", severity: "warning" });
+    if (ms.momentum === "Stalled")
+      alerts.push(sig("critical", "Deal momentum: Stalled", "Activity has flatlined. Surface a new hook or escalate."));
+    else if (ms.momentum === "Stalling")
+      alerts.push(sig("warning", "Deal momentum: Stalling", "Cadence is slipping. Re-establish a clear next step."));
+    else if (ms.momentum === "Accelerating")
+      alerts.push(sig("positive", "Deal momentum: Accelerating", "Engagement is rising. Press for the next milestone."));
   }
 
   if (lead.contractEnd) {
     const daysToExpiry = Math.floor((new Date(lead.contractEnd).getTime() - today.getTime()) / 86400000);
     if (daysToExpiry >= 0 && daysToExpiry <= 30) {
-      alerts.push({ message: `Contract expiring in ${daysToExpiry} day${daysToExpiry !== 1 ? "s" : ""}`, severity: daysToExpiry <= 7 ? "critical" : "warning" });
+      alerts.push(sig(daysToExpiry <= 7 ? "critical" : "warning",
+        `Contract expiring in ${daysToExpiry} day${daysToExpiry !== 1 ? "s" : ""}`,
+        "Confirm renewal terms with the buyer to avoid lapse."));
     }
   }
 
