@@ -223,7 +223,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
       fetchActivityLog(lead.id),
       supabase
         .from("lead_emails")
-        .select("id,direction,from_address,from_name,to_addresses,subject,body_preview,body_text,email_date,thread_id,message_id,opens,clicks,replied_at,ai_drafted,sequence_step,attachments")
+        .select("id,direction,from_address,from_name,to_addresses,subject,body_preview,body_text,email_date,thread_id,message_id,opens,clicks,replied_at,ai_drafted,sequence_step,attachments,source")
         .eq("lead_id", lead.id)
         .order("email_date", { ascending: false })
         .limit(200),
@@ -336,15 +336,21 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
     // Emails
     emails.forEach(e => {
       const isOut = e.direction === "outbound";
+      const baseMeta = isOut
+        ? `To ${(e.to_addresses || []).slice(0, 2).join(", ")}`
+        : `From ${e.from_name || e.from_address}`;
+      // Provenance suffix — disambiguates Gmail / Outlook deep sync vs. Zapier ingest
+      const provenance = provenanceLabel(e.source, isOut);
+      // Auto-task suffix — outbound carrying a sequence_step came from a playbook task
+      const autoTask = isOut && e.sequence_step ? `auto-task from sequence ${e.sequence_step}` : "";
+      const suffixes = [provenance, autoTask].filter(Boolean).join(" · ");
       out.push({
         id: `email-${e.id}`,
         type: isOut ? "email_out" : "email_in",
         date: e.email_date,
         title: e.subject || "(No subject)",
         detail: e.body_preview || undefined,
-        meta: isOut
-          ? `To ${(e.to_addresses || []).slice(0, 2).join(", ")}`
-          : `From ${e.from_name || e.from_address}`,
+        meta: suffixes ? `${baseMeta} · ${suffixes}` : baseMeta,
         email: e,
       });
     });
