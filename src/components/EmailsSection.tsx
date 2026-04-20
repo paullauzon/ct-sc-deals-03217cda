@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check, Clock, X } from "lucide-react";
 import { Lead } from "@/types/lead";
 import { detectEmailObjections, DetectedObjection } from "@/lib/meetingCoach";
 import { toast } from "sonner";
+import { format, formatDistanceToNow } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface LeadEmail {
   id: string;
@@ -32,6 +34,9 @@ interface LeadEmail {
   email_date: string;
   source: string;
   created_at: string;
+  is_read?: boolean | null;
+  scheduled_for?: string | null;
+  send_status?: string;
 }
 
 function formatDate(dateStr: string): string {
@@ -117,7 +122,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
 
     fetchEmails();
 
-    // Realtime subscription
+    // Realtime subscription — listen for inserts AND updates (e.g. is_read flip, scheduled cancel)
     const channel = supabase
       .channel(`lead-emails-${leadId}`)
       .on(
@@ -128,6 +133,22 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
           setEmails((prev) => [newEmail, ...prev]);
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "lead_emails", filter: `lead_id=eq.${leadId}` },
+        (payload) => {
+          const updated = payload.new as unknown as LeadEmail;
+          setEmails((prev) => prev.map((e) => e.id === updated.id ? updated : e));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "lead_emails", filter: `lead_id=eq.${leadId}` },
+        (payload) => {
+          const deletedId = (payload.old as { id: string }).id;
+          setEmails((prev) => prev.filter((e) => e.id !== deletedId));
+        }
+      )
       .subscribe();
 
     return () => {
@@ -135,6 +156,18 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
       supabase.removeChannel(channel);
     };
   }, [leadId]);
+
+  const markRead = async (emailId: string) => {
+    setEmails((prev) => prev.map(e => e.id === emailId ? { ...e, is_read: true } : e));
+    await supabase.from("lead_emails").update({ is_read: true } as any).eq("id", emailId);
+  };
+
+  const cancelScheduled = async (emailId: string) => {
+    if (!window.confirm("Cancel this scheduled email?")) return;
+    const { error } = await supabase.from("lead_emails").delete().eq("id", emailId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Scheduled email cancelled");
+  };
 
   const header = onCompose ? (
     <div className="flex items-center justify-between border-b border-border pb-2 mb-3">
