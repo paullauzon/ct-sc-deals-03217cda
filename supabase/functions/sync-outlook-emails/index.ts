@@ -106,13 +106,24 @@ async function syncOneConnection(
   connection: { id: string; email_address: string; last_synced_at: string | null },
   forceFull: boolean,
 ): Promise<SyncStats> {
+  const isFirstRun = !connection.last_synced_at;
   const stats: SyncStats = {
     connection_id: connection.id,
     email: connection.email_address,
-    mode: forceFull || !connection.last_synced_at ? "full" : "incremental",
+    mode: forceFull ? "full" : isFirstRun ? "first_run_skipped" : "incremental",
     fetched: 0, inserted: 0, matched: 0, skipped_dup: 0, skipped_internal: 0,
     errors: [], started_at: new Date().toISOString(),
   };
+
+  // First-run with no forceFull: do NOT pull 90d here. The backfill orchestrator owns first-run.
+  // Just stamp last_synced_at so next incremental works normally.
+  if (isFirstRun && !forceFull) {
+    await supabase.from("user_email_connections").update({
+      last_synced_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq("id", connection.id);
+    return stats;
+  }
 
   let token: string;
   try { token = await getValidOutlookToken(connection.id); } catch (e) {
@@ -378,7 +389,21 @@ Deno.serve(async (req) => {
     }
 
     const results: SyncStats[] = [];
+    const skipped: Array<{ connection_id: string; email: string; reason: string }> = [];
     for (const conn of connections) {
+      // Defer to the backfill orchestrator if a backfill job is active for this connection.
+      if (!forceFull) {
+        const { data: activeJobs } = await supabase
+          .from("email_backfill_jobs")
+          .select("id, status")
+          .eq("connection_id", conn.id)
+          .in("status", ["queued", "discovering", "running", "paused"])
+          .limit(1);
+        if (activeJobs && activeJobs.length > 0) {
+          skipped.push({ connection_id: conn.id, email: conn.email_address, reason: "backfill_in_progress" });
+          continue;
+        }
+      }
       results.push(await syncOneConnection(supabase, conn, forceFull));
     }
 
@@ -389,12 +414,14 @@ Deno.serve(async (req) => {
       job_name: "sync-outlook-emails",
       status: totalErrors > 0 ? "partial" : "success",
       items_processed: totalInserted,
-      details: { connections: results.length, results: results.map(r => ({ email: r.email, fetched: r.fetched, inserted: r.inserted, matched: r.matched })) },
+      details: { connections: results.length, skipped, results: results.map(r => ({ email: r.email, fetched: r.fetched, inserted: r.inserted, matched: r.matched })) },
     });
 
-    return new Response(JSON.stringify({ ok: true, results }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const allSkipped = results.length === 0 && skipped.length > 0;
+    return new Response(
+      JSON.stringify({ ok: true, results, skipped: allSkipped, deferred: skipped, reason: allSkipped ? "backfill_in_progress" : undefined }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (e) {
     console.error("sync-outlook-emails error:", e);
     return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {

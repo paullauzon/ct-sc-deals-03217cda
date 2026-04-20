@@ -13,6 +13,7 @@ import { Search, BarChart3, Kanban, Users, CalendarCheck, Settings, Workflow } f
 import { MailboxSettings } from "@/components/MailboxSettings";
 import { UserMenu } from "@/components/UserMenu";
 import { AutomationHealthChip } from "@/components/AutomationHealthChip";
+import { BackfillStatusChip } from "@/components/BackfillStatusChip";
 import { SequencesView } from "@/components/sequences/SequencesView";
 
 type View = "dashboard" | "pipeline" | "leads" | "today" | "sequences" | "settings";
@@ -130,6 +131,7 @@ function AppContent() {
                   <span className="flex-1 text-left">Search…</span>
                   <kbd className="text-[10px] font-mono bg-background border border-border rounded px-1.5 py-0.5">⌘K</kbd>
                 </button>
+                <BackfillStatusChip />
                 <AutomationHealthChip onClick={() => {
                   const params = new URLSearchParams(window.location.hash.replace("#",""));
                   params.set("view", "settings"); params.set("sys", "crm"); params.set("tab", "automation");
@@ -154,6 +156,7 @@ function AppContent() {
           {system === "business" && (
             <div className="flex items-center gap-3 ml-auto">
               <span className="text-sm text-muted-foreground">Business Operations</span>
+              <BackfillStatusChip />
               <AutomationHealthChip onClick={() => {
                 const params = new URLSearchParams();
                 params.set("view", "settings"); params.set("sys", "crm"); params.set("tab", "automation");
@@ -165,6 +168,7 @@ function AppContent() {
           {system === "client-success" && (
             <div className="flex items-center gap-3 ml-auto">
               <span className="text-sm text-muted-foreground">Client Success · Account Management</span>
+              <BackfillStatusChip />
               <AutomationHealthChip onClick={() => {
                 const params = new URLSearchParams();
                 params.set("view", "settings"); params.set("sys", "crm"); params.set("tab", "automation");

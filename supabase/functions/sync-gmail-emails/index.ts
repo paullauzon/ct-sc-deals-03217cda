@@ -365,9 +365,12 @@ async function syncOneConnection(
 
   try {
     if (!connection.history_id) {
-      stats.mode = "full";
-      messageIds = await listMessageIdsFull(token);
+      // First-run: do NOT do the legacy 1500-message synchronous fetch.
+      // The backfill orchestrator (start-email-backfill → discover → hydrate) owns first-run.
+      // Just stamp the current historyId so subsequent incremental syncs work normally.
+      stats.mode = "first_run_skipped";
       latestHistoryId = await getMailboxProfileHistoryId(token);
+      messageIds = [];
     } else {
       const result = await listMessageIdsIncremental(token, connection.history_id);
       if (result.reset) {
@@ -686,8 +689,25 @@ Deno.serve(async (req) => {
     if (error) throw error;
 
     const results: SyncStats[] = [];
+    const skipped: Array<{ connection_id: string; email: string; reason: string }> = [];
     for (const c of conns ?? []) {
       const conn = c as { id: string; email_address: string; history_id: string | null };
+
+      // Defer to the backfill orchestrator if a backfill job is active for this connection.
+      // Avoids racing the orchestrator + chewing Gmail quota.
+      if (!forceFull) {
+        const { data: activeJobs } = await supabase
+          .from("email_backfill_jobs")
+          .select("id, status")
+          .eq("connection_id", conn.id)
+          .in("status", ["queued", "discovering", "running", "paused"])
+          .limit(1);
+        if (activeJobs && activeJobs.length > 0) {
+          skipped.push({ connection_id: conn.id, email: conn.email_address, reason: "backfill_in_progress" });
+          continue;
+        }
+      }
+
       // Null out history_id locally to force the full 90-day backfill path.
       // The sync will set latest history_id at the end so next incremental runs work normally.
       const effective = forceFull ? { ...conn, history_id: null } : conn;
@@ -706,10 +726,11 @@ Deno.serve(async (req) => {
       { fetched: 0, inserted: 0, matched: 0, skipped_dup: 0, skipped_internal: 0 },
     );
 
-    return new Response(JSON.stringify({ ok: true, summary, results }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const allSkipped = results.length === 0 && skipped.length > 0;
+    return new Response(
+      JSON.stringify({ ok: true, summary, results, skipped: allSkipped, deferred: skipped, reason: allSkipped ? "backfill_in_progress" : undefined }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (e) {
     console.error("sync-gmail-emails error:", e);
     return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {

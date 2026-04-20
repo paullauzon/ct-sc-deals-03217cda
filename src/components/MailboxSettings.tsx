@@ -170,6 +170,13 @@ export function MailboxSettings() {
       const fn = c.provider === "outlook" ? "sync-outlook-emails" : "sync-gmail-emails";
       const { data, error } = await supabase.functions.invoke(fn, { body: { connection_id: c.id } });
       if (error) throw error;
+      if (data?.skipped && data?.reason === "backfill_in_progress") {
+        toast("Sync paused while backfill is running", {
+          description: "It will auto-resume the moment the backfill completes.",
+        });
+        load();
+        return;
+      }
       const r = data?.results?.[0];
       if (r) {
         toast.success(
