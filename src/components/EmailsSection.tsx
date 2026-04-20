@@ -486,7 +486,7 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
   );
 }
 
-function EmailRow({ email, compact, expandAllSignal, onSuggestResponses, onReply, onMarkRead }: { email: LeadEmail; compact?: boolean; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void }) {
+function EmailRow({ email, compact, expandAllSignal, onSuggestResponses, onReply, onMarkRead, showMailbox }: { email: LeadEmail; compact?: boolean; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; showMailbox?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const hasFullBody = !!(email.body_html || email.body_text);
   useEffect(() => {
