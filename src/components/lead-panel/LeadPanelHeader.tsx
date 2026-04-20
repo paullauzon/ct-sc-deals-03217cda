@@ -19,7 +19,7 @@ import { computeDealHealthScore, getStakeholderCoverage } from "@/lib/dealHealth
 import { computeWinProbability, computeSlipRisk } from "@/lib/dealPredictions";
 import { computeDossierCompleteness } from "@/lib/dealDossier";
 import { ACTIVE_STAGES } from "@/lib/leadUtils";
-import { isBackwardsMove } from "@/lib/stageGates";
+import { isBackwardsMove, getGateForStage } from "@/lib/stageGates";
 import { StageGateGuard } from "@/components/lead-panel/dialogs/StageGateGuard";
 import { useLeads } from "@/contexts/LeadContext";
 import { cn } from "@/lib/utils";
