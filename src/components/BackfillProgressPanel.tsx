@@ -129,7 +129,7 @@ export function BackfillProgressPanel({ connectionId, emailAddress, provider }: 
     if (!job) return;
     setActioning(true);
     try {
-      const updates: Record<string, unknown> = { status };
+      const updates: { status: string; finished_at?: string } = { status };
       if (status === "cancelled") updates.finished_at = new Date().toISOString();
       const { error } = await supabase.from("email_backfill_jobs").update(updates).eq("id", job.id);
       if (error) throw error;
