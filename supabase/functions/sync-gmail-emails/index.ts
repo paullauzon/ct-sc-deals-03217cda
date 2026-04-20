@@ -365,9 +365,13 @@ async function syncOneConnection(
 
   try {
     if (!connection.history_id) {
-      stats.mode = "full";
-      messageIds = await listMessageIdsFull(token);
+      // First sync ever for this connection: don't run the legacy 90-day full scan.
+      // The backfill orchestrator (start-email-backfill / backfill-discover / backfill-hydrate)
+      // owns historical imports. Here we just capture the current Gmail historyId so the
+      // next incremental run picks up everything new from this point forward.
+      stats.mode = "first_run_seed";
       latestHistoryId = await getMailboxProfileHistoryId(token);
+      messageIds = [];
     } else {
       const result = await listMessageIdsIncremental(token, connection.history_id);
       if (result.reset) {
