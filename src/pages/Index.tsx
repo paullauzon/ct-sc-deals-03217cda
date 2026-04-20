@@ -9,12 +9,13 @@ import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";
 import { SystemSwitcher } from "@/components/SystemSwitcher";
 import { BusinessSystem } from "@/components/BusinessSystem";
 import { ClientSuccessSystem } from "@/components/ClientSuccessSystem";
-import { Search, BarChart3, Kanban, Users, CalendarCheck } from "lucide-react";
+import { Search, BarChart3, Kanban, Users, CalendarCheck, Settings } from "lucide-react";
+import { MailboxSettings } from "@/components/MailboxSettings";
 
-type View = "dashboard" | "pipeline" | "leads" | "today";
+type View = "dashboard" | "pipeline" | "leads" | "today" | "settings";
 type System = "crm" | "business" | "client-success";
 
-const VALID_VIEWS = new Set<View>(["dashboard", "pipeline", "leads", "today"]);
+const VALID_VIEWS = new Set<View>(["dashboard", "pipeline", "leads", "today", "settings"]);
 
 function parseHashState(): { view: View; system: System } {
   const hash = window.location.hash.replace("#", "");
