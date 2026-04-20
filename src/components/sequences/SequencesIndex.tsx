@@ -1,9 +1,12 @@
 // Top-level Sequences index. Lists all configured sequences as cards.
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useLeads } from "@/contexts/LeadContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 import { SEQUENCES, leadEnrolledIn, SequenceDef } from "./sequenceConfig";
-import { Workflow, Users, Clock, ArrowRight } from "lucide-react";
+import { Workflow, Users, Clock, ArrowRight, Play, Loader2 } from "lucide-react";
 
 interface Props {
   onOpen: (sequenceId: string) => void;
