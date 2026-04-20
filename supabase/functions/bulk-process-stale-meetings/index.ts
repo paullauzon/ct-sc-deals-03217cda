@@ -17,7 +17,9 @@
  *   - leadIds: optional explicit list, overrides the auto-discovery query.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logCronRun } from "../_shared/cron-log.ts";
 
+const JOB_NAME = "auto-process-stale-transcripts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -446,13 +448,12 @@ Deno.serve(async (req) => {
       console.log(`[bulk-process-stale] ${lead.id}: meetings=${r.processed} intel=${r.intelOk} fields=${r.fieldsWritten}`);
     }
 
-    try {
-      await supabase.from("cron_run_log").insert({
-        job_name: "auto-process-stale-transcripts", status: "success",
-        items_processed: intelGenerated,
-        details: { candidates: candidates.length, meetings_processed: totalProcessed, fields_written: totalFields },
-      });
-    } catch {/* swallow */}
+    const status = (candidates.length === 0) ? "noop" : "success";
+    await logCronRun(JOB_NAME, status, intelGenerated, {
+      candidates: candidates.length,
+      meetings_processed: totalProcessed,
+      fields_written: totalFields,
+    });
 
     return new Response(
       JSON.stringify({
@@ -467,13 +468,7 @@ Deno.serve(async (req) => {
     );
   } catch (err) {
     console.error("[bulk-process-stale-meetings]", err);
-    try {
-      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-      await sb.from("cron_run_log").insert({
-        job_name: "auto-process-stale-transcripts", status: "error", items_processed: 0,
-        error_message: (err as Error).message.slice(0, 200),
-      });
-    } catch {/* swallow */}
+    await logCronRun(JOB_NAME, "error", 0, {}, (err as Error).message);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

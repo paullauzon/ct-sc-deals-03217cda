@@ -12,7 +12,9 @@
  * POST body: { limit?: number }  // default 20, max 120
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logCronRun } from "../_shared/cron-log.ts";
 
+const JOB_NAME = "auto-enrich-ai-tier";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -159,6 +161,7 @@ Deno.serve(async (req) => {
 
     if (error) throw error;
     if (!leads || leads.length === 0) {
+      await logCronRun(JOB_NAME, "noop", 0, { note: "No leads matched enrichment criteria" });
       return new Response(JSON.stringify({ status: "ok", scanned: 0, enriched: 0, promoted: 0, errors: [] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -168,29 +171,33 @@ Deno.serve(async (req) => {
     if (background && typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
       console.log(`[bulk-enrich] Starting background run for ${leads.length} leads`);
       EdgeRuntime.waitUntil(runEnrichment(supabase, url, key, leads));
+      await logCronRun(JOB_NAME, "success", leads.length, { mode: "background", scanned: leads.length });
       return new Response(JSON.stringify({ status: "started", scanned: leads.length, mode: "background" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const result = await runEnrichment(supabase, url, key, leads);
-    await supabase.from("cron_run_log").insert({
-      job_name: "auto-enrich-ai-tier", status: "success",
-      items_processed: (result as any)?.enriched ?? leads.length,
-      details: result as any,
-    }).then(() => {}, () => {});
+    // Detect Firecrawl-403 pattern in error samples so the health panel can surface it.
+    const firecrawl403 = (result.errors || []).some((e: any) =>
+      String(e?.error || "").includes("403") && /firecrawl/i.test(String(e?.error || ""))
+    );
+    const allFailed = result.enriched === 0 && (result.errors?.length ?? 0) > 0;
+    const status = allFailed ? "error" : (result.enriched === 0 ? "noop" : "success");
+    const errMsg = firecrawl403
+      ? "Firecrawl 403 — connector auth expired/revoked"
+      : (allFailed ? `All ${result.errors.length} enrich calls failed` : "");
+    await logCronRun(
+      JOB_NAME, status, result.enriched ?? 0,
+      { ...result, firecrawl403, errorSamples: (result.errors || []).slice(0, 3) },
+      errMsg
+    );
     return new Response(JSON.stringify({ status: "ok", ...result }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
     console.error("[bulk-enrich-sourceco]", err);
-    try {
-      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-      await sb.from("cron_run_log").insert({
-        job_name: "auto-enrich-ai-tier", status: "error", items_processed: 0,
-        error_message: (err as Error).message.slice(0, 200),
-      });
-    } catch {/* swallow */}
+    await logCronRun(JOB_NAME, "error", 0, {}, (err as Error).message);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
