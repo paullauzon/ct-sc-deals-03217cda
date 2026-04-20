@@ -343,6 +343,19 @@ export function MailboxSettings() {
                     );
                   })}
                   {connections.map((c) => (
+                    c.is_active ? (
+                      <tr key={`backfill-${c.id}`} className="bg-secondary/5">
+                        <td colSpan={5} className="px-4 py-2.5">
+                          <BackfillProgressPanel
+                            connectionId={c.id}
+                            emailAddress={c.email_address}
+                            provider={c.provider}
+                          />
+                        </td>
+                      </tr>
+                    ) : null
+                  ))}
+                  {connections.map((c) => (
                     historyOpenId === c.id && (recentRuns[c.id] || []).length > 0 ? (
                       <tr key={`history-${c.id}`} className="bg-secondary/10">
                         <td colSpan={5} className="px-4 py-3">
