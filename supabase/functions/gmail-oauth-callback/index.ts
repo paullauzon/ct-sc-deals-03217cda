@@ -164,6 +164,7 @@ Deno.serve(async (req) => {
       );
     }
 
+    let connectionId: string | null = null;
     if (existing) {
       const { error: updErr } = await supabase
         .from("user_email_connections")
@@ -178,8 +179,9 @@ Deno.serve(async (req) => {
         })
         .eq("id", existing.id);
       if (updErr) throw updErr;
+      connectionId = existing.id;
     } else {
-      const { error: insErr } = await supabase.from("user_email_connections").insert({
+      const { data: inserted, error: insErr } = await supabase.from("user_email_connections").insert({
         provider: "gmail",
         email_address: emailLower,
         user_label: userLabel,
@@ -187,8 +189,22 @@ Deno.serve(async (req) => {
         refresh_token: effectiveRefreshToken,
         token_expires_at: expiresAt,
         is_active: true,
-      });
+      }).select("id").single();
       if (insErr) throw insErr;
+      connectionId = (inserted as { id: string } | null)?.id ?? null;
+    }
+
+    // Auto-trigger a 90d backfill on connect — fire-and-forget.
+    // Malik can widen to 1y / 3y / All time later from the Mailbox Settings panel.
+    if (connectionId) {
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/start-email-backfill`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({ connection_id: connectionId, target_window: "90d" }),
+      }).catch((e) => console.error("auto-backfill dispatch failed:", e));
     }
 
     // If returnTo is missing or unsafe, just render the success card with no auto-redirect.
