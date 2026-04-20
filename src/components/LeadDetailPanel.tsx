@@ -386,7 +386,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
                 <MeetingsSection lead={lead} />
               </TabsContent>
               <TabsContent value="emails" className="p-6 mt-0 max-w-4xl mx-auto">
-                <EmailsSection leadId={lead.id} lead={lead} onCompose={onEmail} />
+                <EmailsSection leadId={lead.id} lead={lead} onCompose={onEmail} onReply={onReply} />
               </TabsContent>
               <TabsContent value="intelligence" className="p-6 mt-0 max-w-5xl mx-auto space-y-6">
                 <AIResearchSection lead={lead} enriching={enriching} onEnrich={handleEnrich} save={save} />
@@ -441,7 +441,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
       <NoteDialog lead={lead} open={noteOpen} onOpenChange={setNoteOpen} save={save} />
       <TaskDialog lead={lead} open={taskOpen} onOpenChange={setTaskOpen} />
       <LogCallDialog lead={lead} open={callOpen} onOpenChange={setCallOpen} save={save} />
-      <EmailComposeDrawer lead={lead} open={emailDrawerOpen} onOpenChange={setEmailDrawerOpen} save={save} presetAction={emailDrawerPreset} />
+      <EmailComposeDrawer lead={lead} open={emailDrawerOpen} onOpenChange={setEmailDrawerOpen} save={save} presetAction={emailDrawerPreset} replyContext={emailReplyContext} />
       <KeyboardCheatsheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <AskDealDrawer lead={lead} open={askOpen} onOpenChange={setAskOpen} />
     </div>
