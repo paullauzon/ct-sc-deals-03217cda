@@ -18,10 +18,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { computeDealHealthScore, getStakeholderCoverage } from "@/lib/dealHealthUtils";
 import { computeWinProbability, computeSlipRisk } from "@/lib/dealPredictions";
 import { computeDossierCompleteness } from "@/lib/dealDossier";
-import { ACTIVE_STAGES, isBackwardsMove } from "@/lib/leadUtils";
-import { evaluateGate, getGateForStage } from "@/lib/stageGates";
+import { ACTIVE_STAGES } from "@/lib/leadUtils";
+import { isBackwardsMove } from "@/lib/stageGates";
 import { StageGateGuard } from "@/components/lead-panel/dialogs/StageGateGuard";
-import { useLeadContext } from "@/contexts/LeadContext";
+import { useLeads } from "@/contexts/LeadContext";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
