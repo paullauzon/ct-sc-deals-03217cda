@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import { Lead } from "@/types/lead";
 import { Radar, Target, Shield, Users } from "lucide-react";
+import { normalizeStage, isClosedStage } from "@/lib/leadUtils";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
+const isLostStage = (s: string) => normalizeStage(s) === "Closed Lost";
+const isWonStage = (s: string) => normalizeStage(s) === "Closed Won";
 
 interface Props {
   leads: Lead[];
@@ -19,8 +21,8 @@ const INTENT_COLORS: Record<string, string> = {
 const STANCE_ORDER = ["Champion", "Supporter", "Neutral", "Skeptic", "Blocker", "Unknown"] as const;
 
 export function DashboardSignalIntelligence({ leads, onDrillDown }: Props) {
-  const activeLeads = useMemo(() => leads.filter(l => !CLOSED_STAGES.has(l.stage)), [leads]);
-  const wonLeads = useMemo(() => leads.filter(l => l.stage === "Closed Won"), [leads]);
+  const activeLeads = useMemo(() => leads.filter(l => !isClosedStage(l.stage)), [leads]);
+  const wonLeads = useMemo(() => leads.filter(l => isWonStage(l.stage)), [leads]);
 
   // ─── Block 1: Buying Intent Radar ───
   const intentData = useMemo(() => {
@@ -53,7 +55,7 @@ export function DashboardSignalIntelligence({ leads, onDrillDown }: Props) {
     const painMap = new Map<string, { count: number; wonCount: number; totalValue: number; leads: Lead[] }>();
 
     for (const l of leads) {
-      const isWon = l.stage === "Closed Won";
+      const isWon = isWonStage(l.stage);
       const painPoints = new Set<string>();
       for (const m of l.meetings || []) {
         for (const p of m.intelligence?.painPoints || []) {
@@ -89,8 +91,8 @@ export function DashboardSignalIntelligence({ leads, onDrillDown }: Props) {
 
     for (const l of leads) {
       const tracker = l.dealIntelligence?.objectionTracker || [];
-      const isWon = l.stage === "Closed Won";
-      const isLost = l.stage === "Lost";
+      const isWon = isWonStage(l.stage);
+      const isLost = isLostStage(l.stage);
       for (const obj of tracker) {
         if (!objMap.has(obj.objection)) objMap.set(obj.objection, { total: 0, addressed: 0, wonWith: 0, lostWith: 0 });
         const entry = objMap.get(obj.objection)!;
