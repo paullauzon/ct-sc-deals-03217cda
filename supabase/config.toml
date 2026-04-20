@@ -104,3 +104,18 @@ verify_jwt = false
 
 [functions.auto-reschedule-overdue]
 verify_jwt = false
+
+[functions.outlook-oauth-start]
+verify_jwt = false
+
+[functions.outlook-oauth-callback]
+verify_jwt = false
+
+[functions.refresh-outlook-token]
+verify_jwt = false
+
+[functions.send-outlook-email]
+verify_jwt = false
+
+[functions.sync-outlook-emails]
+verify_jwt = false

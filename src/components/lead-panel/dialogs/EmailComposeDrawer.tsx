@@ -44,6 +44,7 @@ interface Mailbox {
   id: string;
   email_address: string;
   user_label: string;
+  provider: string;
 }
 
 interface TemplateLite {
@@ -144,8 +145,7 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
       (async () => {
         const { data } = await supabase
           .from("user_email_connections")
-          .select("id, email_address, user_label")
-          .eq("provider", "gmail")
+          .select("id, email_address, user_label, provider")
           .eq("is_active", true)
           .order("created_at", { ascending: false });
         const list = (data || []) as Mailbox[];
@@ -280,13 +280,15 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
       return;
     }
     if (!fromConnectionId) {
-      toast.error("Connect a Gmail mailbox in Settings first");
+      toast.error("Connect a mailbox in Settings first");
       return;
     }
+    const selectedMailbox = mailboxes.find(m => m.id === fromConnectionId);
+    const sendFn = selectedMailbox?.provider === "outlook" ? "send-outlook-email" : "send-gmail-email";
     setSending(true);
     try {
       const recipients = to.split(/[,;]\s*/).map(s => s.trim()).filter(Boolean);
-      const { data, error } = await supabase.functions.invoke("send-gmail-email", {
+      const { data, error } = await supabase.functions.invoke(sendFn, {
         body: {
           connection_id: fromConnectionId,
           lead_id: lead.id,
@@ -318,7 +320,7 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
       return;
     }
     if (!fromConnectionId) {
-      toast.error("Connect a Gmail mailbox in Settings first");
+      toast.error("Connect a mailbox in Settings first");
       return;
     }
     if (when.getTime() <= Date.now() + 30_000) {
