@@ -343,7 +343,7 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
           email_date: when.toISOString(),
           scheduled_for: when.toISOString(),
           send_status: "scheduled",
-          source: selectedMailbox2?.provider || "gmail",
+          source: mailboxes.find(m => m.id === fromConnectionId)?.provider || "gmail",
           thread_id: threadId || null,
           raw_payload: {
             connection_id: fromConnectionId,
