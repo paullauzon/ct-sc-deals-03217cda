@@ -75,6 +75,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
   const [callOpen, setCallOpen] = useState(false);
   const [emailDrawerOpen, setEmailDrawerOpen] = useState(false);
   const [emailDrawerPreset, setEmailDrawerPreset] = useState<"follow-up" | "default" | undefined>(undefined);
+  const [emailReplyContext, setEmailReplyContext] = useState<import("./EmailsSection").ReplyPrefill | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
 
@@ -243,7 +244,12 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
     return s === "Closed Won" || s === "Closed Lost" || s === "Lost" || s === "Went Dark";
   })();
 
-  const onEmail = () => { setEmailDrawerPreset(undefined); setEmailDrawerOpen(true); };
+  const onEmail = () => { setEmailDrawerPreset(undefined); setEmailReplyContext(null); setEmailDrawerOpen(true); };
+  const onReply = (prefill: import("./EmailsSection").ReplyPrefill) => {
+    setEmailDrawerPreset(undefined);
+    setEmailReplyContext(prefill);
+    setEmailDrawerOpen(true);
+  };
   const onSchedule = () => {
     if (lead.calendlyBookedAt) {
       toast(lead.calendlyEventName || "Calendly meeting", {
@@ -260,7 +266,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
   const onArchive = () => setArchiveTarget({ id: lead.id, name: lead.name });
   const onChangeStage = (stage: LeadStage) =>
     save({ stage, stageEnteredDate: new Date().toISOString().split("T")[0] });
-  const onDraftFollowUp = () => { setEmailDrawerPreset("follow-up"); setEmailDrawerOpen(true); };
+  const onDraftFollowUp = () => { setEmailDrawerPreset("follow-up"); setEmailReplyContext(null); setEmailDrawerOpen(true); };
 
   const notesCount = lead.notes ? lead.notes.split(/\n--- /).filter(Boolean).length : 0;
   const filesCount =
