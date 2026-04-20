@@ -1,5 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logCronRun } from "../_shared/cron-log.ts";
 
+const JOB_NAME = "auto-backfill-linkedin";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -1664,13 +1666,10 @@ Deno.serve(async (req) => {
     const avgTurns = totalProcessed > 0 ? (totalTurns / totalProcessed).toFixed(1) : "0";
     console.log(`\nAll chains complete: ${totalFound}/${totalProcessed} matched across ${chainsRun} chains, cache had ${companyCache.size} companies`);
 
-    try {
-      await supabase.from("cron_run_log").insert({
-        job_name: "auto-backfill-linkedin", status: "success",
-        items_processed: totalFound,
-        details: { processed: totalProcessed, gaveUp: totalGaveUp, chainsRun },
-      });
-    } catch {/* swallow */}
+    const status = totalProcessed === 0 ? "noop" : "success";
+    await logCronRun(JOB_NAME, status, totalFound, {
+      processed: totalProcessed, gaveUp: totalGaveUp, chainsRun,
+    });
 
     return new Response(
       JSON.stringify({
@@ -1688,13 +1687,7 @@ Deno.serve(async (req) => {
     );
   } catch (err) {
     console.error("backfill-linkedin error:", err);
-    try {
-      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-      await sb.from("cron_run_log").insert({
-        job_name: "auto-backfill-linkedin", status: "error", items_processed: 0,
-        error_message: (err as Error).message.slice(0, 200),
-      });
-    } catch {/* swallow */}
+    await logCronRun(JOB_NAME, "error", 0, {}, (err as Error).message);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

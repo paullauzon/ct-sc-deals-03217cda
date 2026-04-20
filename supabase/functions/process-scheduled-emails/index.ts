@@ -9,7 +9,9 @@
 // the real one — this keeps a single canonical row per sent message.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logCronRun } from "../_shared/cron-log.ts";
 
+const JOB_NAME = "process-scheduled-emails";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -109,10 +111,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    await supabase.from("cron_run_log").insert({
-      job_name: "process-scheduled-emails", status: "success",
-      items_processed: results.length,
-      details: { ok: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length },
+    const status = results.length === 0 ? "noop" : "success";
+    await logCronRun(JOB_NAME, status, results.length, {
+      ok: results.filter(r => r.ok).length,
+      failed: results.filter(r => !r.ok).length,
     });
     return new Response(JSON.stringify({ ok: true, processed: results.length, results }), {
       status: 200,
@@ -120,12 +122,7 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error("process-scheduled-emails error:", e);
-    try {
-      await supabase.from("cron_run_log").insert({
-        job_name: "process-scheduled-emails", status: "error", items_processed: results.length,
-        error_message: (e as Error).message.slice(0, 200),
-      });
-    } catch {/* swallow */}
+    await logCronRun(JOB_NAME, "error", results.length, {}, (e as Error).message);
     return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

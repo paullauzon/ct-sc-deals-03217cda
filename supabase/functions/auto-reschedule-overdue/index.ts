@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logCronRun } from "../_shared/cron-log.ts";
 
+const JOB_NAME = "auto-reschedule-overdue";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -29,6 +31,7 @@ serve(async (req) => {
 
     const ids = (activeLeads || []).map((l: any) => l.id);
     if (ids.length === 0) {
+      await logCronRun(JOB_NAME, "noop", 0, { note: "No active leads" });
       return new Response(JSON.stringify({ rescheduled: 0, note: "No active leads" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -45,23 +48,15 @@ serve(async (req) => {
 
     const count = data?.length ?? 0;
     console.log(`[auto-reschedule-overdue] rescheduled ${count} task(s) to ${todayStr}`);
-    await supabase.from("cron_run_log").insert({
-      job_name: "auto-reschedule-overdue", status: "success", items_processed: count,
-      details: { due_date: todayStr },
-    });
+    const status = count === 0 ? "noop" : "success";
+    await logCronRun(JOB_NAME, status, count, { due_date: todayStr });
     return new Response(
       JSON.stringify({ rescheduled: count, due_date: todayStr }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     console.error("auto-reschedule-overdue error:", err);
-    try {
-      const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-      await supabase.from("cron_run_log").insert({
-        job_name: "auto-reschedule-overdue", status: "error", items_processed: 0,
-        error_message: (err as Error).message.slice(0, 200),
-      });
-    } catch {/* swallow */}
+    await logCronRun(JOB_NAME, "error", 0, {}, (err as Error).message);
     return new Response(
       JSON.stringify({ error: (err as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
