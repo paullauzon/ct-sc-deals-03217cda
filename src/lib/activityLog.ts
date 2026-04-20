@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export type ActivityEventType = "stage_change" | "field_update" | "meeting_added" | "note_added" | "note_edited" | "note_deleted" | "enrichment_run" | "bulk_update";
+export type ActivityEventType = "stage_change" | "field_update" | "meeting_added" | "note_added" | "note_edited" | "note_deleted" | "enrichment_run" | "bulk_update" | "call_logged" | "sequence_paused";
 
 export interface ActivityLogEntry {
   id: string;
