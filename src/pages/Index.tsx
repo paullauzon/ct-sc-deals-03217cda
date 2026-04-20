@@ -144,6 +144,7 @@ function AppContent() {
           {view === "dashboard" && <Dashboard />}
           {view === "leads" && <LeadsTable />}
           {view === "pipeline" && <Pipeline />}
+          {view === "settings" && <MailboxSettings />}
         </>
       )}
 
