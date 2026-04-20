@@ -370,6 +370,13 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
     setExpandAllNonce(n => n + 1);
   };
 
+  // Default-expand the most recent 10 events (mockup spec: "expanded for recent 10, collapsed for older")
+  // Build a position map across pinned + chronological so the top 10 (in render order) are open by default.
+  const defaultOpenIds = useMemo(() => {
+    const ordered: string[] = [...pinned.map(e => e.id), ...unpinned.map(e => e.id)];
+    return new Set(ordered.slice(0, 10));
+  }, [pinned, unpinned]);
+
   return (
     <div className="space-y-3">
       {/* Controls bar */}
