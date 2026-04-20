@@ -170,17 +170,35 @@ export function MailboxSettings() {
                   </td>
                   <td className="px-4 py-3 capitalize">{c.provider}</td>
                   <td className="px-4 py-3">
-                    {c.is_active ? (
-                      <span className="inline-flex items-center gap-1 text-xs">
-                        <CheckCircle2 className="h-3 w-3 text-foreground" />
-                        Active
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <AlertCircle className="h-3 w-3" />
-                        Disconnected
-                      </span>
-                    )}
+                    {(() => {
+                      // Token expired more than 7 days ago + no successful sync = likely needs reconnect
+                      const tokenExpired = c.token_expires_at && new Date(c.token_expires_at) < new Date();
+                      const staleSync = !c.last_synced_at || (new Date().getTime() - new Date(c.last_synced_at).getTime()) > 7 * 24 * 60 * 60 * 1000;
+                      const needsReconnect = c.is_active && tokenExpired && staleSync;
+
+                      if (!c.is_active) {
+                        return (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <AlertCircle className="h-3 w-3" />
+                            Disconnected
+                          </span>
+                        );
+                      }
+                      if (needsReconnect) {
+                        return (
+                          <span className="inline-flex items-center gap-1 text-xs text-foreground">
+                            <AlertCircle className="h-3 w-3" />
+                            Reconnect required
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="inline-flex items-center gap-1 text-xs">
+                          <CheckCircle2 className="h-3 w-3 text-foreground" />
+                          Active
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {c.last_synced_at
