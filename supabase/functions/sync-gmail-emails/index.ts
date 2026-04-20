@@ -606,6 +606,11 @@ Deno.serve(async (req) => {
   try {
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const onlyConnId = body.connection_id as string | undefined;
+    // force_full=true ignores stored history_id so the sync runs the 90-day
+    // first-run backfill even on mailboxes that already have a history_id.
+    // Used by the "Backfill 90 days" button in Settings to drain historical
+    // thread activity onto existing leads that were created after first-sync.
+    const forceFull = body.force_full === true;
 
     const query = supabase
       .from("user_email_connections")
@@ -619,7 +624,11 @@ Deno.serve(async (req) => {
 
     const results: SyncStats[] = [];
     for (const c of conns ?? []) {
-      const stats = await syncOneConnection(supabase, c as { id: string; email_address: string; history_id: string | null });
+      const conn = c as { id: string; email_address: string; history_id: string | null };
+      // Null out history_id locally to force the full 90-day backfill path.
+      // The sync will set latest history_id at the end so next incremental runs work normally.
+      const effective = forceFull ? { ...conn, history_id: null } : conn;
+      const stats = await syncOneConnection(supabase, effective);
       results.push(stats);
     }
 
