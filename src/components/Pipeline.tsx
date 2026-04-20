@@ -7,7 +7,7 @@ import { useLeads } from "@/contexts/LeadContext";
 import { useProcessing } from "@/contexts/ProcessingContext";
 import { LeadStage, Lead } from "@/types/lead";
 import { LeadDetail } from "@/components/LeadsTable";
-import { computeDaysInStage, getCompanyAssociates } from "@/lib/leadUtils";
+import { computeDaysInStage, getCompanyAssociates, ALL_STAGES as V2_ALL_STAGES, TERMINAL_STAGES, normalizeStage } from "@/lib/leadUtils";
 import { PipelineFilterBar, PipelineFilters, matchesFilters } from "@/components/PipelineFilters";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,12 +32,12 @@ import { useLeadTasks } from "@/hooks/useLeadTasks";
 import { useUnansweredEmails } from "@/hooks/useUnansweredEmails";
 import { supabase } from "@/integrations/supabase/client";
 
-const ALL_STAGES: LeadStage[] = [
-  "New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent",
-  "Revisit/Reconnect", "Lost", "Went Dark", "Closed Won",
-];
+// v2 columns shown in the Kanban (9 stages). Legacy stage values still in
+// the DB are normalized to their v2 equivalents at render time, so a deal
+// stored as "Meeting Held" lands in the "Discovery Completed" column.
+const ALL_STAGES: LeadStage[] = V2_ALL_STAGES;
 
-const CLOSED_STAGES: LeadStage[] = ["Revisit/Reconnect", "Lost", "Went Dark", "Closed Won"];
+const CLOSED_STAGES: LeadStage[] = TERMINAL_STAGES;
 
 const OWNER_COLORS: Record<string, string> = {
   Malik: "bg-foreground text-background",
