@@ -94,6 +94,13 @@ export function leadToRow(lead: Lead): Record<string, any> {
     sample_outcome: lead.sampleOutcome || "",
     proof_notes: lead.proofNotes || "",
     stall_reason: lead.stallReason || "",
+    // v2 pipeline fields
+    lost_reason_v2: lead.lostReasonV2 || "",
+    nurture_sequence_status: lead.nurtureSequenceStatus ?? null,
+    nurture_started_at: lead.nurtureStartedAt ?? null,
+    nurture_re_engage_date: lead.nurtureReEngageDate ?? null,
+    stage_gate_overrides: lead.stageGateOverrides ?? [],
+    discovery_call_completed_at: lead.discoveryCallCompletedAt ?? null,
   };
 }
 
@@ -192,6 +199,13 @@ export function rowToLead(row: Record<string, any>): Lead {
     sampleOutcome: row.sample_outcome || "",
     proofNotes: row.proof_notes || "",
     stallReason: row.stall_reason || "",
+    // v2 pipeline fields
+    lostReasonV2: row.lost_reason_v2 || "",
+    nurtureSequenceStatus: row.nurture_sequence_status ?? null,
+    nurtureStartedAt: row.nurture_started_at ?? null,
+    nurtureReEngageDate: row.nurture_re_engage_date ?? null,
+    stageGateOverrides: Array.isArray(row.stage_gate_overrides) ? row.stage_gate_overrides : [],
+    discoveryCallCompletedAt: row.discovery_call_completed_at ?? null,
   };
 }
 
@@ -255,6 +269,13 @@ export function leadUpdatesToRow(updates: Partial<Lead>): Record<string, any> {
     sampleOutcome: "sample_outcome",
     proofNotes: "proof_notes",
     stallReason: "stall_reason",
+    // v2 pipeline fields
+    lostReasonV2: "lost_reason_v2",
+    nurtureSequenceStatus: "nurture_sequence_status",
+    nurtureStartedAt: "nurture_started_at",
+    nurtureReEngageDate: "nurture_re_engage_date",
+    stageGateOverrides: "stage_gate_overrides",
+    discoveryCallCompletedAt: "discovery_call_completed_at",
   };
 
   const row: Record<string, any> = {};
