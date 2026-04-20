@@ -76,7 +76,6 @@ export function BackfillProgressPanel({ connectionId, emailAddress, provider }: 
       .from("email_backfill_jobs")
       .select("*")
       .eq("connection_id", connectionId)
-      .neq("status", "superseded")
       .order("started_at", { ascending: false })
       .limit(1);
     setJob(((data || [])[0] as Job) || null);
@@ -161,7 +160,6 @@ export function BackfillProgressPanel({ connectionId, emailAddress, provider }: 
       case "done": return "Complete";
       case "failed": return "Failed";
       case "cancelled": return "Cancelled";
-      case "superseded": return "Replaced by newer backfill";
       default: return job.status;
     }
   };

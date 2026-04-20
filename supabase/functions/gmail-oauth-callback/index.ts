@@ -194,27 +194,17 @@ Deno.serve(async (req) => {
       connectionId = (inserted as { id: string } | null)?.id ?? null;
     }
 
-    // Auto-trigger a 90d backfill ONLY on first connect — fire-and-forget.
-    // Skip when reconnecting (any prior backfill job exists for this connection),
-    // otherwise we'd supersede in-flight work and re-walk 90 days for nothing.
-    // Malik can manually re-trigger from the Mailbox Settings panel if needed.
+    // Auto-trigger a 90d backfill on connect — fire-and-forget.
+    // Malik can widen to 1y / 3y / All time later from the Mailbox Settings panel.
     if (connectionId) {
-      const { data: priorJobs } = await supabase
-        .from("email_backfill_jobs")
-        .select("id")
-        .eq("connection_id", connectionId)
-        .limit(1);
-      const isFirstConnect = !priorJobs || priorJobs.length === 0;
-      if (isFirstConnect) {
-        fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/start-email-backfill`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          },
-          body: JSON.stringify({ connection_id: connectionId, target_window: "90d" }),
-        }).catch((e) => console.error("auto-backfill dispatch failed:", e));
-      }
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/start-email-backfill`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({ connection_id: connectionId, target_window: "90d" }),
+      }).catch((e) => console.error("auto-backfill dispatch failed:", e));
     }
 
     // If returnTo is missing or unsafe, just render the success card with no auto-redirect.

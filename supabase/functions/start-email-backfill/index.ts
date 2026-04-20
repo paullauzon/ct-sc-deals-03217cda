@@ -63,6 +63,7 @@ Deno.serve(async (req) => {
       .in("status", ["queued", "discovering", "running", "paused"]);
     if (existing && existing.length > 0) {
       const ids = (existing as Array<{ id: string }>).map((e) => e.id);
+      // Mark old jobs superseded so workers ignore them.
       await supabase
         .from("email_backfill_jobs")
         .update({
@@ -71,15 +72,15 @@ Deno.serve(async (req) => {
           last_error: "superseded by new backfill request",
         })
         .in("id", ids);
-      // Also retire the old jobs' pending queue rows so they don't sit orphaned forever.
-      // The new (typically wider) job will re-discover and re-enqueue them under its own job_id;
-      // idempotent dedup on lead_emails(provider_message_id) prevents any duplicate inserts.
+      // CRITICAL: delete the old jobs' pending queue rows so the new (wider) job
+      // can re-discover those provider_message_ids under its own job_id. Without
+      // this, the queue's (connection_id, provider_message_id) unique constraint
+      // silently rejects the new job's inserts, leaving its progress bar stuck
+      // and most messages never hydrated. Already-hydrated rows in lead_emails
+      // remain protected by uq_lead_emails_provider_message — no dup risk.
       await supabase
         .from("email_backfill_queue")
-        .update({
-          status: "superseded",
-          processed_at: new Date().toISOString(),
-        })
+        .delete()
         .in("job_id", ids)
         .eq("status", "pending");
     }

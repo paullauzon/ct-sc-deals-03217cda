@@ -399,22 +399,53 @@ async function processBatchOutlook(
   return { inserted, matched, skipped, errors };
 }
 
+// Watchdog: if a job is stuck in 'discovering' with no recent chunk activity,
+// re-dispatch backfill-discover for it. Survives function-timeout / network blips
+// that would otherwise leave the job orphaned with discovery_complete=false and
+// zero queue rows (cron would see no pending rows and never restart it).
+const DISCOVER_STALL_MS = 3 * 60 * 1000;
+
+async function kickDiscover(jobId: string): Promise<void> {
+  // Fire-and-forget; do not block the hydrate batch on dispatch.
+  fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/backfill-discover`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+    },
+    body: JSON.stringify({ job_id: jobId }),
+  }).catch((e) => console.error("watchdog discover dispatch failed:", e));
+}
+
 async function pickJobs(supabase: ReturnType<typeof createClient>, jobIdHint?: string) {
   if (jobIdHint) {
     const { data } = await supabase
       .from("email_backfill_jobs")
-      .select("id, connection_id, provider, email_address, status")
+      .select("id, connection_id, provider, email_address, status, discovery_complete, last_chunked_at, started_at")
       .eq("id", jobIdHint)
       .single();
-    return data ? [data] : [];
+    if (!data) return [];
+    const j = data as { id: string; status: string; discovery_complete: boolean; last_chunked_at: string | null; started_at: string };
+    if (j.status === "discovering" && !j.discovery_complete) {
+      const lastTs = new Date(j.last_chunked_at || j.started_at).getTime();
+      if (Date.now() - lastTs > DISCOVER_STALL_MS) await kickDiscover(j.id);
+    }
+    return [data];
   }
   const { data } = await supabase
     .from("email_backfill_jobs")
-    .select("id, connection_id, provider, email_address, status")
+    .select("id, connection_id, provider, email_address, status, discovery_complete, last_chunked_at, started_at")
     .in("status", ["running", "discovering"])
     .order("started_at", { ascending: true })
     .limit(3);
-  return data || [];
+  const jobs = (data || []) as Array<{ id: string; status: string; discovery_complete: boolean; last_chunked_at: string | null; started_at: string }>;
+  for (const j of jobs) {
+    if (j.status === "discovering" && !j.discovery_complete) {
+      const lastTs = new Date(j.last_chunked_at || j.started_at).getTime();
+      if (Date.now() - lastTs > DISCOVER_STALL_MS) await kickDiscover(j.id);
+    }
+  }
+  return jobs;
 }
 
 Deno.serve(async (req) => {

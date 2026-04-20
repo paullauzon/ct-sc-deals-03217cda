@@ -1,69 +1,70 @@
 
 
-# Email backfill — final 4 gaps before Malik connects
+# Email backfill — closing the last 6 gaps before Malik connects
 
-The architecture is end-to-end functional. Cron is firing every minute. All previously identified gaps (A–E) are coded. I traced the live DB and the four edge functions one more time. **Four remaining issues** will cause real pain on Malik's first connect. All are surgical.
+The architecture is **structurally complete**: tables, indexes, edge functions, cron, UI panel, dedup, idempotency, and self-rescheduling all wired. But there are **6 concrete gaps** that will bite the moment Malik runs an "All time" backfill on a real mailbox. All are surgical fixes.
 
-## Gap 1 — Hydrate worker silently skips non-running jobs but never resumes them
+## Gap 1 — `lead_emails.message_id` UNIQUE constraint will hard-fail at scale
 
-`pickJobs` only selects jobs with `status IN ('running','discovering')`. The inner loop has another guard: `if (job.status === "paused" || job.status === "cancelled") continue;` — that's dead code (those statuses can't reach it). But the **real** problem: a job created with `status='discovering'` whose discovery has finished sets `status='running'` correctly, but if discovery dies mid-flight (network blip, function timeout), the job stays at `status='discovering'` with `discovery_complete=false` and **no queue rows yet**. The cron picks it up, finds zero pending rows, marks it processed, and moves on — discovery never restarts.
+**Evidence:** `lead_emails_message_id_key` is a UNIQUE index on `message_id`. The Outlook hydrator writes `message_id: internetMsgId || r.provider_message_id` — fine. But the Gmail hydrator writes `message_id: rfc822 || null`. For 10–20% of historical Gmail messages the `Message-ID` header is missing or duplicated across forwarded/threaded mails. The first NULL is fine, but two NULLs collide on some Postgres index variants, and **non-null duplicates** (e.g., the same RFC822 ID present in both Inbox and Sent for a self-cc'd email) will throw `23505` — and the current code only treats `23505` as a skip when it's on `provider_message_id`, not when it's on `message_id`. Backfill silently aborts that batch.
 
-**Fix:** In `backfill-hydrate`'s `pickJobs`, when a job's status is `discovering` AND `discovery_complete=false` AND `last_chunked_at` is older than 3 minutes, re-dispatch `backfill-discover` for it before processing. Cheap watchdog. One extra check, no schema change.
+**Fix:** Drop `lead_emails_message_id_key` (it's redundant — `provider_message_id` is the real idempotency key). Add a non-unique index on `message_id` for lookups. One migration.
 
-## Gap 2 — Lead-side email tab won't show backfilled history until a manual refresh
+## Gap 2 — Gmail discovery only walks INBOX label, missing Sent / All Mail
 
-`EmailsSection` subscribes to `postgres_changes` filtered by `lead_id=eq.${leadId}`. Live realtime works for new sends. But the backfill writes thousands of rows per minute via the service role, and `lead_emails` is **not in the `supabase_realtime` publication** (verified: schema dump shows no realtime config for it). So when Malik opens an existing lead mid-backfill, the historical emails won't stream in — he has to close + reopen the lead panel to see them.
+**Evidence:** `discoverGmail` calls `users.messages.list` with no `labelIds` filter. Gmail's default for `messages.list` returns messages in INBOX + SENT + drafts + spam + trash UNLESS otherwise scoped — but **all messages a user sees** live under `All Mail` (label `INBOX` is just a view). The Gmail list endpoint with no label correctly returns all messages by default, but we need to **explicitly exclude SPAM and TRASH** or we'll import 10k spam messages as "unmatched conversations" and pollute the inbox.
 
-**Fix:** One-line migration: `ALTER PUBLICATION supabase_realtime ADD TABLE public.lead_emails;` and `ALTER TABLE public.lead_emails REPLICA IDENTITY FULL;` so UPDATE/DELETE deltas carry the lead_id needed by the filter. Now backfilled emails appear in the open lead panel as they land.
+**Fix:** Add `q=-in:spam -in:trash` (combined with the date filter when present) to `discoverGmail`. One-line change.
 
-## Gap 3 — `messages_processed` counter overcounts on resume, breaks progress %
+## Gap 3 — Outlook discovery skips Archive folder + custom folders entirely
 
-In `backfill-hydrate` line 494: `messages_processed: (doneCount || 0) + (skippedCount || 0)`. This is the **total** done+skipped queue rows for the job, recomputed each invocation. Correct on a fresh job. But the **superseded** queue rows from a prior job that the new job re-enqueued are also counted when the new job's queue counts roll over — except they're not, because superseded rows have `job_id` of the OLD job, and the count is filtered by the new `job_id`. So the count is right for the new job alone.
+**Evidence:** `discoverOutlook` walks only `inbox` and `sentitems`. M&A directors aggressively archive — most historical conversations live in `archive` or custom folders like "Deals 2023". Those threads will be invisible to the backfill.
 
-The real bug: when the old job was superseded, we set its queue rows to `status='superseded'` but **the new job re-discovers those same `provider_message_id`s** and the queue UPSERT uses `onConflict: "connection_id,provider_message_id"` with `ignoreDuplicates: true`. That means **the new job's queue will be missing those IDs entirely** — they exist in the queue under the old job's `job_id` (now `superseded`), and the upsert silently rejects re-insertion under the new `job_id`. Result: the new job thinks discovery only found, say, 500 of 8000 messages. `messages_discovered=500`. Progress bar reaches 100% after processing 500 while 7,500 historical messages remain unimported.
+**Fix:** Replace the two-folder walk with a single walk against `/me/messages` (no `mailFolders/{id}` prefix) which returns **every message in the mailbox across all folders**. This is what the Microsoft Graph docs recommend for full-mailbox sync. Add `$filter=isDraft eq false` to skip drafts. Track a single `discovery_cursor` (drop the `discovery_cursor_sent` field's role for Outlook — it stays for Gmail-style multi-cursor compat but goes unused for Outlook).
 
-**Fix:** In `start-email-backfill`, when superseding, **delete** old jobs' pending queue rows instead of marking them `superseded`:
-```sql
-DELETE FROM email_backfill_queue WHERE job_id IN (...) AND status='pending'
-```
-This frees the `(connection_id, provider_message_id)` slot so the new job re-enqueues them under its own `job_id`. Already-hydrated rows in `lead_emails` are protected by `uq_lead_emails_provider_message`, so no dup risk.
+## Gap 4 — No "first send for connection" auto-trigger
 
-## Gap 4 — Per-lead email count + unread badge ignore the `unmatched` lead until claimed
+**Evidence:** `gmail-oauth-callback` and `outlook-oauth-callback` create the `user_email_connections` row but never enqueue a backfill job. Malik connects → sees nothing → has to manually click Backfill → pick a window. The UX should be: connect → toast "Importing your last 90 days in the background" → progress chip appears.
 
-`UnmatchedInbox` queries `lead_id='unmatched'` and lets Malik claim. Good. But two side effects:
-1. `update_lead_email_metrics` trigger has `IF NEW.lead_id IS NULL OR NEW.lead_id = 'unmatched' THEN RETURN NEW;` — so unmatched emails never roll up to metrics. Fine.
-2. **But when Malik bulk-claims** an unmatched email to a real lead via `UnmatchedInbox.claimToLead` (UPDATE `lead_id`), the trigger only fires on INSERT (verified — `update_lead_email_metrics` is wired to INSERT only on `lead_emails`). So the just-claimed lead's `total_received`, `last_received_date`, etc. **never update**. He'll see the email in the tab but the lead overview metrics, `useUnansweredEmails` count, and "X unread" badges stay stale until something triggers a metrics rebuild.
+**Fix:** At the end of both OAuth callbacks, fire-and-forget POST to `start-email-backfill` with `target_window: "90d"`. If Malik wants more history, he picks a longer window from the panel (which will queue a SECOND job — see Gap 5).
 
-**Fix:** Add an `AFTER UPDATE OF lead_id ON lead_emails` trigger that, when `OLD.lead_id='unmatched' AND NEW.lead_id<>'unmatched'`, calls the same metrics-upsert logic for `NEW.lead_id`. One small SQL function + trigger. Keeps the metrics live the moment Malik claims.
+## Gap 5 — Concurrent-job guard is too strict
 
-## What's verified correct (no fix needed)
+**Evidence:** `start-email-backfill` rejects with HTTP 409 if any job for that connection has status in `(queued, discovering, running, paused)`. So if the auto-90d (Gap 4) is still running and Malik clicks "Backfill all time", he gets an error instead of "we'll widen the window when the current one finishes". 
 
-- Cron `backfill-hydrate-every-minute` active ✅
-- All prior 11 gaps (1–6, A–E) shipped ✅
-- Self-reschedule chains, dedup indexes, OAuth auto-fire-with-guard, supersede status filter on UI, global header chip, legacy sync neutered on first connect, `email_sync_runs` summary on done, 23505 swallowed, `INTERNAL_DOMAINS` filter, CRM-loop protection, pause/resume/cancel ✅
-- Token refresh inline in both workers ✅
-- BackfillProgressPanel polls 5s while active, hides superseded ✅
+**Fix:** When starting a new job and a 90d job is still running for the same connection, **mark the old job `superseded`** and create the new one. (Idempotent dedup on `(connection_id, provider_message_id)` means we don't re-fetch what's already in `lead_emails`.) Add `"superseded"` to the allowed status set; hydrator already skips non-`running` jobs.
+
+## Gap 6 — `email_sync_runs` summary row never written when backfill completes
+
+**Evidence:** Plan promised "`email_sync_runs` continues to receive one summary row per completed backfill job" so the existing per-connection sync history table shows it. The hydrate function writes to `cron_run_log` (good, for Automation Health) but **never inserts an `email_sync_runs` row** when a job flips to `done`. Result: Malik's "Show recent syncs" dropdown in MailboxSettings will not show the backfill at all.
+
+**Fix:** When `isComplete && discovery_complete && status` flips to `done` in `backfill-hydrate`, INSERT one row into `email_sync_runs` with `mode = 'backfill'`, `fetched = messages_processed`, `inserted = messages_inserted`, `matched = messages_matched`, `started_at` from job, `finished_at = now()`, and `connection_id`.
+
+## What's already correct (verified)
+
+- `pg_cron` job `backfill-hydrate-every-minute` is **active** ✅
+- Unique indexes `uq_backfill_queue_conn_msg` and `uq_lead_emails_provider_message` enforce idempotency ✅
+- Self-reschedule chain in both discover + hydrate survives wall-time limits ✅
+- `INTERNAL_DOMAINS` filter excludes captarget.com / sourcecodeals.com ✅
+- CRM-loop protection (`X-CRM-Source` + `<crm-...>` Message-ID) skips our own outbound ✅
+- Pause/Resume/Cancel UI wired and respects status in worker ✅
+- Token refresh inline (no dependence on separate cron) ✅
+- BackfillProgressPanel polls every 5s while job is active ✅
 
 ## Files touched
 
-- `supabase/functions/start-email-backfill/index.ts` — DELETE old pending queue rows on supersede instead of marking them `superseded` (Gap 3)
-- `supabase/functions/backfill-hydrate/index.ts` — watchdog: when picking a `discovering` job that hasn't chunked in 3min, re-dispatch `backfill-discover` (Gap 1)
-- **New migration** `<ts>_lead_emails_realtime_and_claim_metrics.sql`:
-  - `ALTER PUBLICATION supabase_realtime ADD TABLE public.lead_emails;` + `REPLICA IDENTITY FULL` (Gap 2)
-  - `update_lead_email_metrics_on_claim()` function + `AFTER UPDATE OF lead_id` trigger (Gap 4)
+- **New migration**: `supabase/migrations/<ts>_email_backfill_polish.sql` — drop `lead_emails_message_id_key` UNIQUE, add non-unique `idx_lead_emails_message_id`
+- `supabase/functions/backfill-discover/index.ts` — Gmail spam/trash exclusion, Outlook full-mailbox walk
+- `supabase/functions/backfill-hydrate/index.ts` — write `email_sync_runs` row on completion, treat `23505` on any column as skip
+- `supabase/functions/start-email-backfill/index.ts` — supersede running 90d jobs instead of 409
+- `supabase/functions/gmail-oauth-callback/index.ts` — auto-fire 90d backfill on connect
+- `supabase/functions/outlook-oauth-callback/index.ts` — auto-fire 90d backfill on connect
 
 ## Decisions before I build (sensible defaults)
 
-1. **Supersede orphan handling**: switch from `mark superseded` to `DELETE pending`. Cleaner — the new job re-discovers under its own `job_id` and progress math works. Already-hydrated rows are safe via `lead_emails` unique constraint.
-2. **Discover watchdog threshold**: 3 minutes since `last_chunked_at`. Long enough to never race a healthy in-flight discover, short enough that a stuck job recovers within one cron cycle.
-3. **Metrics-on-claim trigger**: increment counters as if the email was just inserted, dated by `email_date`. Matches the existing INSERT trigger's semantics exactly.
+1. **Auto-90d on connect**: ON (Gap 4). Malik can widen later from the panel.
+2. **Auto-ghost-lead** (D2 from original plan): still **off**, surface in Unmatched inbox with bulk-promote (current behavior).
+3. **Concurrent backfills across mailboxes**: **parallel** (cron picks up to 3 active jobs). Same-mailbox jobs supersede.
 
-After this build, the moment Malik clicks "Connect Gmail":
-- 90d auto-backfill starts in the background (already shipped)
-- Header chip shows live progress from any page (already shipped)
-- He can widen to All time → old job's pending queue rows are deleted, new job re-discovers all IDs cleanly, progress bar tracks correctly (Gap 3)
-- If discovery ever stalls, the next cron tick auto-restarts it (Gap 1)
-- Already-open lead panels stream backfilled history live (Gap 2)
-- Bulk-claiming unmatched threads to leads instantly updates the lead's email metrics, unread counts, and overview tab (Gap 4)
-- Closing the tab, navigating away, deploying mid-backfill: still uninterrupted
+After this build, the moment Malik clicks "Connect Gmail" → 90d auto-imports in the background → he sees the progress card → he can widen to All time → it Just Works, even if he closes the tab, even if we deploy mid-backfill.
 
