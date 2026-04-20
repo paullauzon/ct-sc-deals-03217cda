@@ -45,6 +45,7 @@ export type LostReasonV2 =
   | "Champion left"
   | "Internal decision delayed"
   | "Pricing"
+  | "Scope Mismatch"
   | "Other";
 
 /** Locked dropdown for sample outcomes (Sample Sent stage). */
@@ -580,6 +581,10 @@ export interface Lead {
   nurtureSequenceStatus?: NurtureSequenceStatus;
   nurtureStartedAt?: string | null;
   nurtureReEngageDate?: string | null;
+  /** Append-only step log emitted by nurture-engine. */
+  nurtureStepLog?: NurtureStepLogEntry[];
+  /** Why the lead exited nurture early (e.g. "Scope Mismatch"). */
+  nurtureExitReason?: string;
   /** Audit log of stage gate overrides — { stage, missing, overriddenBy, at }[]. */
   stageGateOverrides?: Array<{ stage: string; missing: string[]; overriddenBy: string; at: string }>;
   discoveryCallCompletedAt?: string | null;
