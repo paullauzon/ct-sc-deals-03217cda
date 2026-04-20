@@ -40,7 +40,7 @@ export function SequenceCard({ lead }: { lead: Lead }) {
 
   async function pause() {
     setBusy(true);
-    await updateLead(lead.id, { nurtureSequenceStatus: "archived", nurtureExitReason: "Manually paused" });
+    await updateLead(lead.id, { nurtureSequenceStatus: "paused", nurtureExitReason: "Manually paused" });
     setBusy(false);
     toast({ title: "Sequence paused", description: "No further nurture touches will fire." });
   }
