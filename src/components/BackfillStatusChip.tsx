@@ -32,9 +32,24 @@ export function BackfillStatusChip() {
       setJob((data as ActiveJob | null) ?? null);
     };
 
+    // Initial cold-start load
     load();
-    const id = setInterval(load, 15_000);
-    return () => { cancelled = true; clearInterval(id); };
+
+    // Realtime: re-query on any change to email_backfill_jobs (insert/update/delete).
+    // Cheap, event-driven, replaces 15s polling across all open tabs.
+    const channel = supabase
+      .channel("backfill-status-chip")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "email_backfill_jobs" },
+        () => { if (!cancelled) load(); }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   if (!job) return null;
