@@ -43,7 +43,7 @@ export function LogCallDialog({ lead, open, onOpenChange, save }: Props) {
       const parts: string[] = [outcome];
       if (duration) parts.push(`${duration}m`);
       if (s) parts.push(s);
-      await logActivity(lead.id, "field_update", `Call logged: ${parts.join(" · ")}`);
+      await logActivity(lead.id, "call_logged", `Call logged: ${parts.join(" · ")}`);
       // Connected calls bump last contact + stakeholder timestamp where applicable
       if (outcome === "Connected") {
         save({ lastContactDate: new Date().toISOString().split("T")[0] });
