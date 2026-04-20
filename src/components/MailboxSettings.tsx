@@ -18,6 +18,7 @@ import { formatDistanceToNow } from "date-fns";
 import { UnmatchedInbox } from "./UnmatchedInbox";
 import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
 import { OutlookSetupChecklist } from "./OutlookSetupChecklist";
+import { AutomationHealthPanel } from "./AutomationHealthPanel";
 
 interface Connection {
   id: string;
@@ -197,6 +198,7 @@ export function MailboxSettings() {
             <TabsTrigger value="mailboxes">Mailboxes</TabsTrigger>
             <TabsTrigger value="unmatched">Unmatched inbox</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
+            <TabsTrigger value="automation">Automation</TabsTrigger>
           </TabsList>
           <Button onClick={() => { setLabelDraft(""); setConnectOpen(true); }} size="sm">
             <Plus className="h-3.5 w-3.5 mr-1.5" />
@@ -386,6 +388,10 @@ export function MailboxSettings() {
 
         <TabsContent value="templates">
           <EmailTemplatesPanel />
+        </TabsContent>
+
+        <TabsContent value="automation">
+          <AutomationHealthPanel />
         </TabsContent>
       </Tabs>
 
