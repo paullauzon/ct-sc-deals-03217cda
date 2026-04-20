@@ -365,9 +365,12 @@ async function syncOneConnection(
 
   try {
     if (!connection.history_id) {
-      stats.mode = "full";
-      messageIds = await listMessageIdsFull(token);
+      // First-run: do NOT do the legacy 1500-message synchronous fetch.
+      // The backfill orchestrator (start-email-backfill → discover → hydrate) owns first-run.
+      // Just stamp the current historyId so subsequent incremental syncs work normally.
+      stats.mode = "first_run_skipped";
       latestHistoryId = await getMailboxProfileHistoryId(token);
+      messageIds = [];
     } else {
       const result = await listMessageIdsIncremental(token, connection.history_id);
       if (result.reset) {
