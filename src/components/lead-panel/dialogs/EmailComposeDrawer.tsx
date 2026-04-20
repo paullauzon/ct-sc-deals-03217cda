@@ -343,7 +343,7 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
           email_date: when.toISOString(),
           scheduled_for: when.toISOString(),
           send_status: "scheduled",
-          source: "gmail",
+          source: selectedMailbox2?.provider || "gmail",
           thread_id: threadId || null,
           raw_payload: {
             connection_id: fromConnectionId,
@@ -428,14 +428,14 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
               >
                 {mailboxes.map(m => (
                   <option key={m.id} value={m.id}>
-                    {m.email_address}{m.user_label ? ` — ${m.user_label}` : ""}
+                    {m.email_address}{m.user_label ? ` — ${m.user_label}` : ""} ({m.provider})
                   </option>
                 ))}
               </select>
             ) : (
               <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground bg-secondary/40 rounded-md px-2.5 py-2">
                 <Mail className="h-3.5 w-3.5" />
-                No mailbox connected. Open Settings to connect Gmail, or use "Copy & mark sent" below.
+                No mailbox connected. Open Settings to connect Gmail or Outlook, or use "Copy & mark sent" below.
               </div>
             )}
           </div>
