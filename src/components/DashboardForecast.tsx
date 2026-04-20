@@ -31,7 +31,8 @@ const DEFAULT_DAYS_TO_CLOSE: Record<string, number> = {
   "Negotiating": 7,
 };
 
-const TERMINAL = ["Closed Won", "Closed Lost", "Lost", "Went Dark", "Duplicate", "Disqualified"];
+import { isClosedStage } from "@/lib/leadUtils";
+const isTerminal = (s: string) => isClosedStage(normalizeStage(s)) || ["Duplicate", "Disqualified"].includes(s);
 const MONTHLY_TARGET = 15000;
 
 interface Props {
@@ -40,8 +41,8 @@ interface Props {
 }
 
 export function DashboardForecast({ leads, onDrillDown }: Props) {
-  const activeLeads = useMemo(() => leads.filter(l => !TERMINAL.includes(normalizeStage(l.stage))), [leads]);
-  const wonLeads = useMemo(() => leads.filter(l => l.stage === "Closed Won"), [leads]);
+  const activeLeads = useMemo(() => leads.filter(l => !isTerminal(l.stage)), [leads]);
+  const wonLeads = useMemo(() => leads.filter(l => normalizeStage(l.stage) === "Closed Won"), [leads]);
 
   // 1. 3-Month Revenue Projection
   const projectionData = useMemo(() => {
@@ -679,8 +680,8 @@ function DecisionProcessComplexity({ leads }: { leads: Lead[] }) {
         else if (dp.includes("committee") || dp.includes("board") || dp.includes("team") || dp.includes("internal review") || dp.includes("leadership")) cat = "committee";
 
         categories[cat].count++;
-        if (lead.stage === "Closed Won") categories[cat].won++;
-        if (["Lost", "Went Dark"].includes(lead.stage)) categories[cat].lost++;
+        if (normalizeStage(lead.stage) === "Closed Won") categories[cat].won++;
+        if (normalizeStage(lead.stage) === "Closed Lost") categories[cat].lost++;
 
         if (lead.dateSubmitted && lead.closedDate) {
           const days = differenceInDays(parseISO(lead.closedDate), parseISO(lead.dateSubmitted));

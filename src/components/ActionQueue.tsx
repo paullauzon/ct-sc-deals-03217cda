@@ -80,9 +80,9 @@ export function ActionQueue() {
       if (!l.nextFollowUp || !isBefore(parseISO(l.nextFollowUp), now)) return false;
       return differenceInDays(now, parseISO(l.nextFollowUp)) <= 7;
     }).length;
-    const untouched = active.filter(l => l.stage === "New Lead" && !l.lastContactDate && !l.assignedTo).length;
+    const untouched = active.filter(l => normalizeStage(l.stage) === "Unassigned" && !l.lastContactDate && !l.assignedTo).length;
     const goingDark = active.filter(l => {
-      if (l.stage === "New Lead") return false;
+      if (normalizeStage(l.stage) === "Unassigned") return false;
       const lastDate = l.lastContactDate || l.meetingDate || l.stageEnteredDate || l.dateSubmitted;
       if (!lastDate) return false;
       return differenceInDays(now, parseISO(lastDate)) > 21;

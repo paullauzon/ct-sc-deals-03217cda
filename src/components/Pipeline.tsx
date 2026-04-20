@@ -175,11 +175,11 @@ export function Pipeline() {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [gateGuard, setGateGuard] = useState<{ leadId: string; targetStage: LeadStage } | null>(null);
   const sourceCoCount = useMemo(
-    () => leads.filter(l => l.brand === "SourceCo" && !["Lost", "Went Dark", "Closed Won"].includes(l.stage)).length,
+    () => leads.filter(l => l.brand === "SourceCo" && !TERMINAL_STAGES.includes(normalizeStage(l.stage))).length,
     [leads]
   );
 
-  const newLeadCount = useMemo(() => leads.filter(l => l.stage === "New Lead" && (!l.meetings || l.meetings.length === 0)).length, [leads]);
+  const newLeadCount = useMemo(() => leads.filter(l => normalizeStage(l.stage) === "Unassigned" && (!l.meetings || l.meetings.length === 0)).length, [leads]);
 
   // Persistent enrichment nudge: count active leads with no enrichment JSON
   useEffect(() => {

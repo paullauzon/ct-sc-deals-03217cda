@@ -90,17 +90,17 @@ export function buildActionItems(leads: Lead[], ownerFilter: string, meetingHori
 
     const effectiveDate = getEffectiveContactDate(lead);
     const daysSinceContact = effectiveDate ? Math.floor((now.getTime() - new Date(effectiveDate).getTime()) / 86400000) : null;
-    if (daysSinceContact !== null && daysSinceContact > 21 && !["New Lead"].includes(lead.stage)) {
+    if (daysSinceContact !== null && daysSinceContact > 21 && normalizeStage(lead.stage) !== "Unassigned") {
       actions.push({ lead, type: "dark", label: `Silent ${daysSinceContact}d`, detail: lead.stage, urgency: 50 + daysSinceContact });
     }
 
-    if (lead.stage === "New Lead" && !lead.lastContactDate && !lead.assignedTo) {
+    if (normalizeStage(lead.stage) === "Unassigned" && !lead.lastContactDate && !lead.assignedTo) {
       const daysOld = Math.floor((now.getTime() - new Date(lead.dateSubmitted).getTime()) / 86400000);
       actions.push({ lead, type: "untouched", label: `${daysOld}d untouched`, detail: lead.source, urgency: 80 + daysOld });
     }
 
     const daysInStage = computeDaysInStage(lead.stageEnteredDate);
-    if (daysInStage > 14 && !["New Lead"].includes(lead.stage)) {
+    if (daysInStage > 14 && normalizeStage(lead.stage) !== "Unassigned") {
       actions.push({ lead, type: "stale", label: `${daysInStage}d in stage`, detail: lead.stage, urgency: 30 + daysInStage });
     }
   }

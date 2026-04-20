@@ -20,8 +20,10 @@ import { toast } from "@/hooks/use-toast";
 import { useLeadTasks, LeadTask } from "@/hooks/useLeadTasks";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
-const STAGE_OPTIONS = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"] as const;
+import { isClosedStage, normalizeStage, ACTIVE_STAGES as V2_ACTIVE_STAGES } from "@/lib/leadUtils";
+
+const CLOSED_STAGES = { has: (s: string) => isClosedStage(normalizeStage(s)) };
+const STAGE_OPTIONS = V2_ACTIVE_STAGES;
 
 type SortField = "default" | "dealValue" | "lastContact" | "stage" | "name";
 type SortDir = "asc" | "desc";
@@ -30,17 +32,19 @@ type ActionType = "post-meeting" | "initial-outreach" | "meeting-nudge" | "propo
 // ─── Action type determination ───
 function getActionType(lead: Lead, isUnanswered: boolean): { type: ActionType; label: string; icon: typeof Mail } {
   if (isUnanswered) return { type: "reply-inbound", label: "Reply", icon: Reply };
-  if (lead.stage === "New Lead" && !lead.lastContactDate) return { type: "initial-outreach", label: "Draft Outreach", icon: Send };
-  if (lead.stage === "Contacted" && !lead.calendlyBookedAt) return { type: "meeting-nudge", label: "Nudge Meeting", icon: Phone };
-  if (lead.stage === "Meeting Set") return { type: "initial-outreach", label: "Pre-Meeting Email", icon: Send };
-  if (lead.stage === "Meeting Held") {
+  const norm = normalizeStage(lead.stage);
+  if (norm === "Unassigned" && !lead.lastContactDate) return { type: "initial-outreach", label: "Draft Outreach", icon: Send };
+  if (norm === "In Contact" && !lead.calendlyBookedAt) return { type: "meeting-nudge", label: "Nudge Meeting", icon: Phone };
+  if (norm === "Discovery Scheduled") return { type: "initial-outreach", label: "Pre-Meeting Email", icon: Send };
+  if (norm === "Discovery Completed") {
     const tracker = lead.dealIntelligence?.actionItemTracker;
     const openItems = tracker && typeof tracker === 'object' && 'openItems' in tracker ? (tracker as any).openItems : null;
     if (openItems && Array.isArray(openItems) && openItems.length > 0) return { type: "post-meeting", label: "Complete Actions", icon: Zap };
-    if (lead.dealValue > 0) return { type: "post-meeting", label: "Send Proposal", icon: FileText };
+    if (lead.dealValue > 0) return { type: "post-meeting", label: "Send Sample", icon: FileText };
     return { type: "post-meeting", label: "Follow Up", icon: Send };
   }
-  if (lead.stage === "Proposal Sent") return { type: "proposal-followup", label: "Check In", icon: Mail };
+  if (norm === "Sample Sent") return { type: "proposal-followup", label: "Check Sample", icon: Mail };
+  if (norm === "Proposal Sent") return { type: "proposal-followup", label: "Check In", icon: Mail };
   const lastDate = lead.lastContactDate || lead.meetingDate || lead.stageEnteredDate || lead.dateSubmitted;
   if (lastDate && differenceInDays(new Date(), parseISO(lastDate)) > 21) return { type: "re-engagement", label: "Re-engage", icon: RotateCcw };
   return { type: "schedule-call", label: "Schedule Call", icon: Phone };
@@ -118,7 +122,7 @@ function getRecommendation(lead: Lead): string | null {
   }
   const su = lead.enrichment?.suggestedUpdates;
   if (su?.nextFollowUp) return `AI: follow up by ${su.nextFollowUp.value}`;
-  if (lead.meetings.length > 0 && lead.stage === "Meeting Held") return "Consider advancing stage →";
+  if (lead.meetings.length > 0 && normalizeStage(lead.stage) === "Discovery Completed") return "Consider advancing stage →";
   return null;
 }
 
@@ -721,7 +725,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
 
   const untouched = useMemo(() => {
     const items = active
-      .filter(l => l.stage === "New Lead" && !l.lastContactDate && !l.assignedTo)
+      .filter(l => normalizeStage(l.stage) === "Unassigned" && !l.lastContactDate && !l.assignedTo)
       .map(l => ({ lead: l, daysOld: differenceInDays(now, parseISO(l.dateSubmitted)) }))
       .sort((a, b) => b.daysOld - a.daysOld);
     return applySortToLeads(items, sortField, sortDir, (a, b) => b.daysOld - a.daysOld);
@@ -731,7 +735,7 @@ export function FollowUpsTab({ leads, ownerFilter, onSelectLead }: { leads: Lead
     const items = active
       .filter(l => {
         if (overdueSet.has(l.id)) return false;
-        if (l.stage === "New Lead") return false;
+        if (normalizeStage(l.stage) === "Unassigned") return false;
         const lastDate = l.lastContactDate || l.meetingDate || l.stageEnteredDate || l.dateSubmitted;
         if (!lastDate) return false;
         return differenceInDays(now, parseISO(lastDate)) > 21;

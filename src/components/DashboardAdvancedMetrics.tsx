@@ -170,12 +170,11 @@ export function DashboardAdvancedMetrics({ leads, onSelectLead, section, onDrill
     });
 
     // ─── Rep Pipeline Distribution ───
-    const ACTIVE_STAGES = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent"];
     const repPipelineDist = owners.filter(o => o !== "").map(owner => {
       const ownerActive = leads.filter(l => l.assignedTo === owner && !CLOSED_STAGES.has(l.stage));
       const stageCounts = ACTIVE_STAGES.map(s => ({
         stage: s,
-        count: ownerActive.filter(l => l.stage === s).length,
+        count: ownerActive.filter(l => normalizeStage(l.stage) === s).length,
       }));
       return { owner: owner as string, total: ownerActive.length, stages: stageCounts };
     });

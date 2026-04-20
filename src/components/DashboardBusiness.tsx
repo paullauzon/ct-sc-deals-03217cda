@@ -125,10 +125,10 @@ function computeMonthlySnapshots(leads: Lead[], brand: Brand) {
   return months.map(month => {
     const brandLeads = leads.filter(l => l.brand === brand);
     const leadsThisMonth = brandLeads.filter(l => l.dateSubmitted?.startsWith(month));
-    const wonThisMonth = brandLeads.filter(l => l.stage === "Closed Won" && l.closedDate?.startsWith(month));
-    const lostThisMonth = brandLeads.filter(l => l.stage === "Lost" && l.closedDate?.startsWith(month));
+    const wonThisMonth = brandLeads.filter(l => normalizeStage(l.stage) === "Closed Won" && l.closedDate?.startsWith(month));
+    const lostThisMonth = brandLeads.filter(l => normalizeStage(l.stage) === "Closed Lost" && l.closedDate?.startsWith(month));
     const totalClosed = wonThisMonth.length + lostThisMonth.length;
-    const pipelineLeads = brandLeads.filter(l => l.dateSubmitted && l.dateSubmitted <= `${month}-31` && !["Closed Won", "Lost", "Went Dark", "Duplicate", "Disqualified"].includes(l.stage));
+    const pipelineLeads = brandLeads.filter(l => l.dateSubmitted && l.dateSubmitted <= `${month}-31` && !isClosed(l.stage));
 
     const mrr = wonThisMonth.reduce((s, l) => {
       if (!l.subscriptionValue) return s;
@@ -363,14 +363,14 @@ export function DashboardBusiness({ leads, onDrillDown }: Props) {
             const insights: { label: string; value: string; sub?: string }[] = [];
 
             // SourceCo lead utilization
-            const scNew = leads.filter(l => l.brand === "SourceCo" && l.stage === "New Lead").length;
+            const scNew = leads.filter(l => l.brand === "SourceCo" && normalizeStage(l.stage) === "Unassigned").length;
             const scTotal = leads.filter(l => l.brand === "SourceCo").length;
             if (scTotal > 0) {
               const pct = Math.round((scNew / scTotal) * 100);
               insights.push({
                 label: "SC Untouched",
                 value: `${pct}%`,
-                sub: `${scNew} of ${scTotal} at New Lead`,
+                sub: `${scNew} of ${scTotal} at Unassigned`,
               });
             }
 
@@ -405,7 +405,7 @@ export function DashboardBusiness({ leads, onDrillDown }: Props) {
                 className="border border-border rounded-lg px-4 py-3 cursor-pointer hover:bg-secondary/20 transition-colors"
                 onClick={() => {
                   if (ins.label === "Stale Pipeline") onDrillDown("Stale Pipeline (30+ days)", staleActive);
-                  if (ins.label === "SC Untouched") onDrillDown("SourceCo New Leads", leads.filter(l => l.brand === "SourceCo" && l.stage === "New Lead"));
+                  if (ins.label === "SC Untouched") onDrillDown("SourceCo Unassigned Leads", leads.filter(l => l.brand === "SourceCo" && normalizeStage(l.stage) === "Unassigned"));
                 }}
               >
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{ins.label}</p>
@@ -526,8 +526,8 @@ function SignalToCloseMatrix({ leads, onDrillDown }: { leads: Lead[]; onDrillDow
     const intentRows = intentLevels.map(level => {
       const matching = meetingLeadPairs.filter(p => p.intel.dealSignals?.buyingIntent === level);
       const uniqueLeadIds = new Set(matching.map(p => p.lead.id));
-      const wonIds = new Set(matching.filter(p => p.lead.stage === "Closed Won").map(p => p.lead.id));
-      const lostIds = new Set(matching.filter(p => ["Lost", "Went Dark"].includes(p.lead.stage)).map(p => p.lead.id));
+      const wonIds = new Set(matching.filter(p => normalizeStage(p.lead.stage) === "Closed Won").map(p => p.lead.id));
+      const lostIds = new Set(matching.filter(p => normalizeStage(p.lead.stage) === "Closed Lost").map(p => p.lead.id));
       const uniqueLeads = Array.from(uniqueLeadIds).map(id => leads.find(l => l.id === id)!).filter(Boolean);
       return {
         signal: level,
@@ -545,8 +545,8 @@ function SignalToCloseMatrix({ leads, onDrillDown }: { leads: Lead[]; onDrillDow
     const engRows = engLevels.map(level => {
       const matching = meetingLeadPairs.filter(p => p.intel.engagementLevel === level);
       const uniqueLeadIds = new Set(matching.map(p => p.lead.id));
-      const wonIds = new Set(matching.filter(p => p.lead.stage === "Closed Won").map(p => p.lead.id));
-      const lostIds = new Set(matching.filter(p => ["Lost", "Went Dark"].includes(p.lead.stage)).map(p => p.lead.id));
+      const wonIds = new Set(matching.filter(p => normalizeStage(p.lead.stage) === "Closed Won").map(p => p.lead.id));
+      const lostIds = new Set(matching.filter(p => normalizeStage(p.lead.stage) === "Closed Lost").map(p => p.lead.id));
       const uniqueLeads = Array.from(uniqueLeadIds).map(id => leads.find(l => l.id === id)!).filter(Boolean);
       return {
         signal: level,
@@ -716,8 +716,8 @@ function UrgencyDriverTaxonomy({ leads }: { leads: Lead[] }) {
 
           categories[cat].count++;
           categories[cat].drivers.push(driver.length > 80 ? driver.slice(0, 80) + "…" : driver);
-          if (lead.stage === "Closed Won") categories[cat].wonCount++;
-          if (["Lost", "Went Dark"].includes(lead.stage)) categories[cat].lostCount++;
+          if (normalizeStage(lead.stage) === "Closed Won") categories[cat].wonCount++;
+          if (normalizeStage(lead.stage) === "Closed Lost") categories[cat].lostCount++;
         }
       }
     }
@@ -782,8 +782,8 @@ function ValuePropEffectiveness({ leads }: { leads: Lead[] }) {
         if (!propMap[normalized]) propMap[normalized] = { prop: normalized, won: 0, lost: 0, active: 0, total: 0 };
         propMap[normalized].total++;
 
-        if (lead.stage === "Closed Won") propMap[normalized].won++;
-        else if (["Lost", "Went Dark"].includes(lead.stage)) propMap[normalized].lost++;
+        if (normalizeStage(lead.stage) === "Closed Won") propMap[normalized].won++;
+        else if (normalizeStage(lead.stage) === "Closed Lost") propMap[normalized].lost++;
         else propMap[normalized].active++;
       }
     }
@@ -864,8 +864,8 @@ function CompetitiveDisplacementPlaybook({ leads }: { leads: Lead[] }) {
           for (const s of cd.strengthsMentioned || []) { if (s && !competitors[cd.name].strengths.includes(s)) competitors[cd.name].strengths.push(s); }
           for (const w of cd.weaknessesMentioned || []) { if (w && !competitors[cd.name].weaknesses.includes(w)) competitors[cd.name].weaknesses.push(w); }
 
-          if (lead.stage === "Closed Won") competitors[cd.name].wonAgainst++;
-          if (["Lost", "Went Dark"].includes(lead.stage)) competitors[cd.name].lostTo++;
+          if (normalizeStage(lead.stage) === "Closed Won") competitors[cd.name].wonAgainst++;
+          if (normalizeStage(lead.stage) === "Closed Lost") competitors[cd.name].lostTo++;
         }
 
         // Process current solution mentions
