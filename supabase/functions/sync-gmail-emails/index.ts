@@ -181,7 +181,28 @@ async function findLeadIdByEmail(
     .limit(1);
   if (exact && exact.length > 0) return (exact[0] as { id: string }).id;
 
-  // 2) Domain-fallback: extract external domains and match against leads where the
+  // 2) Secondary contacts (JSONB array on leads): CFO/attorney attached to a deal
+  for (const addr of lowered) {
+    if (!addr) continue;
+    const { data: sec } = await supabase
+      .from("leads")
+      .select("id")
+      .filter("secondary_contacts", "cs", JSON.stringify([{ email: addr }]))
+      .is("archived_at", null)
+      .eq("is_duplicate", false)
+      .limit(1);
+    if (sec && sec.length > 0) return (sec[0] as { id: string }).id;
+  }
+
+  // 3) Stakeholders table (no-op until populated, then live)
+  const { data: stake } = await supabase
+    .from("lead_stakeholders")
+    .select("lead_id")
+    .in("email", lowered)
+    .limit(1);
+  if (stake && stake.length > 0) return (stake[0] as { lead_id: string }).lead_id;
+
+  // 4) Domain-fallback: extract external domains and match against leads where the
   // primary contact email or company_url shares the same domain. Internal domains
   // are already filtered out by the caller. We bound the search to non-archived,
   // non-duplicate leads to avoid linking to stale records.

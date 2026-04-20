@@ -146,8 +146,33 @@ function parseFromAddress(raw: string): { name: string; address: string } {
 async function findLeadIdByEmail(supabase: ReturnType<typeof createClient>, candidates: string[]): Promise<string | null> {
   if (candidates.length === 0) return null;
   const lowered = candidates.map((c) => c.toLowerCase());
+
+  // 1) Exact match against leads.email
   const { data: exact } = await supabase.from("leads").select("id, email").in("email", lowered).limit(1);
   if (exact && exact.length > 0) return (exact[0] as { id: string }).id;
+
+  // 2) Secondary contacts (CFO/attorney/etc. attached to existing deals)
+  for (const addr of lowered) {
+    if (!addr) continue;
+    const { data: sec } = await supabase
+      .from("leads")
+      .select("id")
+      .filter("secondary_contacts", "cs", JSON.stringify([{ email: addr }]))
+      .is("archived_at", null)
+      .eq("is_duplicate", false)
+      .limit(1);
+    if (sec && sec.length > 0) return (sec[0] as { id: string }).id;
+  }
+
+  // 3) Stakeholders table (free even when empty; activates the moment data exists)
+  const { data: stake } = await supabase
+    .from("lead_stakeholders")
+    .select("lead_id")
+    .in("email", lowered)
+    .limit(1);
+  if (stake && stake.length > 0) return (stake[0] as { lead_id: string }).lead_id;
+
+  // 4) Domain-fuzzy fallback against leads.email / leads.company_url
   const domains = Array.from(new Set(lowered.map(domainOf).filter((d) => d && !INTERNAL_DOMAINS.has(d))));
   if (domains.length === 0) return null;
   const orParts: string[] = [];
@@ -518,11 +543,22 @@ Deno.serve(async (req) => {
         .eq("id", job.id).single();
       const jr = jobRow as { messages_inserted: number; messages_matched: number; messages_skipped: number; messages_processed: number; discovery_complete: boolean; status: string };
 
+      // Clamp processed to the known denominator so the chip/panel never shows >100%
+      // during the brief window where discovery hasn't fully written estimated_total.
+      const rawProcessed = (doneCount || 0) + (skippedCount || 0);
+      const { data: jobBoundsRow } = await supabase
+        .from("email_backfill_jobs")
+        .select("estimated_total, messages_discovered")
+        .eq("id", job.id).single();
+      const jb = jobBoundsRow as { estimated_total: number; messages_discovered: number } | null;
+      const denom = Math.max(jb?.estimated_total || 0, jb?.messages_discovered || 0, rawProcessed);
+      const clampedProcessed = Math.min(rawProcessed, denom);
+
       const updates: Record<string, unknown> = {
         messages_inserted: jr.messages_inserted + insThisJob,
         messages_matched: jr.messages_matched + matThisJob,
         messages_skipped: jr.messages_skipped + skThisJob,
-        messages_processed: (doneCount || 0) + (skippedCount || 0),
+        messages_processed: clampedProcessed,
         last_chunked_at: new Date().toISOString(),
       };
       const willComplete = isComplete && jr.discovery_complete && jr.status !== "paused" && jr.status !== "cancelled" && jr.status !== "done";

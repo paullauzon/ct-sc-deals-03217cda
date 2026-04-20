@@ -73,9 +73,33 @@ const SELECT_FIELDS = "id,internetMessageId,conversationId,subject,bodyPreview,b
 async function findLeadIdByEmail(supabase: ReturnType<typeof createClient>, candidates: string[]): Promise<string | null> {
   if (candidates.length === 0) return null;
   const lowered = candidates.map((c) => c.toLowerCase());
+
+  // 1) Exact match
   const { data: exact } = await supabase.from("leads").select("id, email").in("email", lowered).limit(1);
   if (exact && exact.length > 0) return (exact[0] as { id: string }).id;
 
+  // 2) Secondary contacts (CFO/attorney/etc.)
+  for (const addr of lowered) {
+    if (!addr) continue;
+    const { data: sec } = await supabase
+      .from("leads")
+      .select("id")
+      .filter("secondary_contacts", "cs", JSON.stringify([{ email: addr }]))
+      .is("archived_at", null)
+      .eq("is_duplicate", false)
+      .limit(1);
+    if (sec && sec.length > 0) return (sec[0] as { id: string }).id;
+  }
+
+  // 3) Stakeholders table
+  const { data: stake } = await supabase
+    .from("lead_stakeholders")
+    .select("lead_id")
+    .in("email", lowered)
+    .limit(1);
+  if (stake && stake.length > 0) return (stake[0] as { lead_id: string }).lead_id;
+
+  // 4) Domain-fuzzy fallback
   const domains = Array.from(new Set(lowered.map(domainOf).filter((d) => d && !INTERNAL_DOMAINS.has(d))));
   if (domains.length === 0) return null;
   const orParts: string[] = [];
