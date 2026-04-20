@@ -1,74 +1,93 @@
 
 
-# End-to-end audit — what's actually working vs. still broken
+# What's actually still broken
 
-I checked the DB, edge functions, cron schedules, and all UI wiring. Here's the honest state.
+After verification: **most of the previous "broken" claims were stale.** The real outstanding work is small but high-impact.
 
-## ✅ What works (verified)
+## Verified DB state
+- 283 active nurture / 40 with d45+ tasks ✅ (the rest are correctly <d30, no task needed)
+- 44 discovery-stuck → 44 triage tasks ✅
+- 151 SLA tasks live ✅
+- 0 legacy stages in DB ✅
 
-| Area | Evidence |
-|---|---|
-| **Zero legacy stages in DB** | `legacy_in_db = 0` — all 437 active leads on v2 stages |
-| **All 3 cron jobs active** | enforce-stage-slas (15min), nurture-engine (daily 13:00 UTC), sync-fireflies (15min) |
-| **SLA tasks firing** | 14 live: 7 discovery-no-fireflies, 4 proposal-3day, 3 proposal-stall |
-| **Playbook auto-fire wired** | `LeadContext.tsx:338` calls `getPlaybookForStage()` + `generateTasksFromPlaybook()` on stage change |
-| **StageGateGuard wired into Pipeline drag-drop** | `Pipeline.tsx:1122` |
-| **Nurture day-0 fired** | 283 `nurture-d0` drafts created |
-| **Nurture day-30 fired** | 54 `nurture-d30` drafts created |
-| **Nurture day-45 tasks** | 40 created |
+## What's actually still wrong
 
-## ❌ What's still broken or unfinished
+### 1. The 91% drop-off — structurally unsolved
+Pipeline distribution today:
+```
+Unassigned          90
+In Contact           1   ← bottleneck
+Discovery Scheduled 11
+Discovery Completed 44   ← graveyard (now has triage tasks, but stage still empty downstream)
+Sample Sent          0   ← the entire reason for the rebuild
+Proposal Sent        4
+Closed Won           4 / Closed Lost 283
+```
+No deal has ever passed through Sample Sent. The rebuild was supposed to make Sample Sent the make-or-break gate, but no automation pushes deals into it. The triage task is there but it's a passive todo.
 
-### 1. **243 of 283 active nurture leads have ZERO nurture tasks** (CRITICAL)
-Only 40 of 283 enrolled leads have a nurture task. The drafts went into `lead_drafts` (337 total) but the d45/d90 task generation is incomplete — likely the loop only inserted the `>=45` bucket and skipped `>=90` for the 200+ deals already past 90 days. **Means the Action Center is missing ~240 nurture follow-ups.**
+### 2. Eight files still use legacy literals — silently miscount 283 closed-lost deals
+- `src/components/Dashboard.tsx` (lines 35, 266, 800–801) — `ACTIVE_STAGES` is the legacy 8 stages; `qualifiedStages` set excludes "Sample Sent"; drill-down filter uses `["Closed Won","Lost","Went Dark"]`
+- `src/components/DashboardBusiness.tsx` (lines 128–131, 366, 408, 530, 549, 720, 786, 868) — every win/loss aggregation uses `=== "Lost"` literals
+- `src/components/DashboardForecast.tsx` (lines 34, 683)
+- `src/components/DashboardOperations.tsx` (line 27 `TERMINAL_STAGES`, line 22 `ACTIVE_STAGES`)
+- `src/components/DashboardAdvancedMetrics.tsx` (line 173 ACTIVE_STAGES)
+- `src/components/IntelligenceCenter.tsx` (line 921 stage order)
+- `src/components/dealroom/IdentityCard.tsx` (line 69)
+- `src/components/command-center/FollowUpsTab.tsx` (lines 23–24, 31–36, 121, 724, 734)
+- `src/components/command-center/ScheduleTab.tsx` (line 97)
+- `src/components/Pipeline.tsx` (line 178, 182) — `sourceCoCount` uses `["Lost","Went Dark","Closed Won"]`; `newLeadCount` filters `=== "New Lead"`
+- `src/components/PipelineFilters.tsx` (line 106 `forecastGap` lateStage list)
+- `src/components/ActionQueue.tsx` (lines 83–85)
+- `src/lib/newLeadUtils.ts` — entire helper checks `=== "New Lead"`
 
-### 2. **44 Discovery Completed deals never triaged into Sample Sent** (the original 91% leak)
-The whole point of the rebuild — and it's untouched. `discovery_needs_triage = 44` deals have empty `sample_sent_date` AND empty `sample_outcome`. The DiscoveryWorklistTab UI was deleted as part of "cleanup" before this got resolved. **Need a one-shot SQL or replacement triage UI.**
+Net effect: every analytics card understates closed-lost performance by 283 leads, "stuck New Lead" badges show 0 instead of the 90 Unassigned, and SourceCo dossier counts ignore Sample Sent deals.
 
-### 3. **Hardcoded legacy stages still in 18 files** (analytics drift)
-- `src/components/lead-panel/LeadPanelLeftRail.tsx:26` — stage dropdown lists 12 legacy stages, missing Sample Sent, In Contact, Discovery Scheduled/Completed, Negotiating, Closed Lost. **Users can pick "Meeting Held" from the dropdown right now.**
-- `src/components/DashboardBusiness.tsx:14` — `ACTIVE_STAGES` is the old 8-stage list, ignores Sample Sent
-- `src/contexts/LeadContext.tsx:452`, `src/components/Dashboard.tsx` (4 places), `LeadDetailPanel.tsx:241`, `DashboardEconomics.tsx` (3 places), `DashboardBusiness.tsx` (8 places) — all use `["Closed Won", "Lost", "Went Dark"]` literals instead of `TERMINAL_STAGES` / `isClosedStage()`. Since DB only has "Closed Lost" now, these checks **silently skip the 283 closed-lost deals** in pipeline-value, conversion-rate, and stale-lead calcs.
-- `src/data/sourceCoLeads.ts:53` — sets `stage: "New Lead"` for fresh seeds
-
-### 4. **85 Unassigned leads stuck >5 days have no SLA rule**
-Cron handles Discovery/Sample/Proposal/Negotiating but not Unassigned. 85 inbound leads with no playbook task wake-up. Add `sla-unassigned-stale` rule (>3d unanswered → "Send first touch").
-
-### 5. **Closed Won handler triggers off old `Closed Won` only — fine, but no v2 gate enforcement on it**
-`handle_closed_won()` DB trigger creates the Valeria account on stage change, BUT the `enforce_stage_v2_gates()` trigger is a **soft warn only** (writes to activity log). Hard enforcement only happens in the React `StageGateGuard`. If anyone moves a deal via SQL or a future API, gates are bypassed.
-
----
-
-## Plan: 4 fixes to truly close out the rebuild
-
-### Fix A — Backfill missing nurture tasks (1 min)
-Re-invoke `nurture-engine` with a flag to upsert all milestones for active leads, idempotently. Or one SQL: insert d45 + d90 tasks for the 243 missing leads based on `nurture_started_at + interval`. Verify all 283 active nurture leads have at least one pending task.
-
-### Fix B — Triage the 44 Discovery Completed graveyard (5 min)
-Single SQL migration:
-- For each: if `meeting_date` is within 14 days AND has fireflies transcript → move to `Sample Sent`, set `sample_sent_date = today`, queue sample-sent playbook
-- Otherwise → keep in Discovery Completed but auto-create one task: "Decide: send sample or close-lost"
-
-### Fix C — Kill all legacy stage literals (the real cleanup) (~15 file edits)
-Mechanical sweep:
-1. `LeadPanelLeftRail.tsx:26` — replace STAGES with `ALL_STAGES` from leadUtils
-2. Replace every `["Closed Won", "Lost", "Went Dark"]` and `["Lost", "Went Dark"]` with `isClosedStage(stage)` / `TERMINAL_STAGES.includes(...)` in 18 files
-3. `DashboardBusiness.tsx:14` — use `ACTIVE_STAGES` from leadUtils
-4. `sourceCoLeads.ts:53` — `"New Lead"` → `"Unassigned"`
-5. Wrap any remaining `lead.stage === "Lost"` with `normalizeStage(lead.stage) === "Closed Lost"` (or just delete — DB has no Lost rows)
-
-### Fix D — Add SLA rule for stuck Unassigned leads (1 file)
-Add rule to `enforce-stage-slas/index.ts`: `Unassigned > 3d` → "Send first outreach". Then invoke once to seed against the 85 stuck leads.
+### 3. No auto-promotion from Discovery → Sample Sent / In Contact
+There's no playbook task for "Unassigned → In Contact" (90 leads need first-touch beyond just the SLA email task), and no nudge at "Discovery Completed" to remind to actually send a sample.
 
 ---
 
-## What's NOT broken (intentionally left)
+## Plan: 3 fixes
 
-- `LEGACY_STAGES` array in `leadUtils.ts` — kept as a reference list for `STAGE_LABEL_MAP`. Safe to keep.
-- The `enforce_stage_v2_gates` DB trigger soft-warning behavior — by design (UI does hard enforcement, DB just audits).
-- `LEAD_STATUSES`, owner colors, etc. — unrelated to v2.
+### Fix 1 — Mechanical legacy-literal cleanup (12 files)
+Replace every hardcoded stage list with the v2 helpers:
+- `["Closed Won","Lost","Went Dark"]` → `isClosedStage(normalizeStage(s))`
+- `=== "Lost"` / `=== "Went Dark"` → `normalizeStage(s) === "Closed Lost"`
+- `=== "New Lead"` → `=== "Unassigned"` (DB only has Unassigned now)
+- `=== "Meeting Held"` → `=== "Discovery Completed"`
+- `ACTIVE_STAGES` literals → import `ACTIVE_STAGES` from `@/lib/leadUtils`
+- Stage-order arrays for sorting → use `ALL_STAGES`
+- `lateStage` lists in `PipelineFilters.forecastGap` → `["Discovery Completed","Sample Sent","Proposal Sent","Negotiating"]`
 
-**Order to ship: A → B → D → C** (A unblocks the Action Center immediately; B fixes the original drop-off problem; D plugs the inbound leak; C is mechanical cleanup last so we can verify nothing regresses).
+Files touched: `Dashboard.tsx`, `DashboardBusiness.tsx`, `DashboardForecast.tsx`, `DashboardOperations.tsx`, `DashboardAdvancedMetrics.tsx`, `IntelligenceCenter.tsx`, `IdentityCard.tsx`, `FollowUpsTab.tsx`, `ScheduleTab.tsx`, `Pipeline.tsx`, `PipelineFilters.tsx`, `ActionQueue.tsx`, `newLeadUtils.ts`.
 
-After this batch, the pipeline rebuild is genuinely 100% done and email-sync work can begin.
+### Fix 2 — `discovery-completed-no-sample` SLA rule
+Add to `enforce-stage-slas/index.ts`:
+- Stage `Discovery Completed`, threshold 5 days, taskType `email`
+- Title: "Send sample or push to Closed Lost — no more graveyard"
+- Result: the 44 stuck deals get a hard SLA task on top of the soft triage task; refusing to act becomes visible operationally.
+
+Also add `in-contact-stale` rule:
+- Stage `In Contact`, threshold 4 days, taskType `call`
+- Title: "Book the discovery — In Contact deal cooling"
+- Forces the In Contact bottleneck to clear.
+
+Then invoke once to seed against current state.
+
+### Fix 3 — Update `getPlaybookForStage` so `Unassigned` and `In Contact` have playbooks
+Right now `LeadContext.updateLead` calls `getPlaybookForStage` on stage change but `playbooks.ts` has no entry for `Unassigned` or `In Contact`. Add:
+- **Unassigned**: 1 task — "Personalize first outreach + send within 24h" (due tomorrow)
+- **In Contact**: 2 tasks — "Send Calendly link" (today), "Follow up if no booking" (day +3)
+
+---
+
+## Out of scope (intentionally)
+- The mass `LEGACY_STAGES` array in `leadUtils.ts` and `STAGE_LABEL_MAP` — both kept for migration safety
+- `dealPredictions.ts` and `meetingCoach.ts` legacy aliases — they intentionally fall back to legacy labels for old data
+- Email sync work — comes after this batch
+
+## Ship order
+**Fix 1 (literals) → Fix 2 (SLA rules) → Fix 3 (playbooks for Unassigned/In Contact)**
+
+After this, the rebuild is structurally + analytically + operationally complete. Then we move to email sync.
 
