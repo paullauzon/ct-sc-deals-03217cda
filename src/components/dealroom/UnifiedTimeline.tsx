@@ -91,6 +91,16 @@ interface EmailRow {
   ai_drafted: boolean | null;
   sequence_step: string | null;
   attachments: unknown;
+  source: string | null;
+}
+
+/** Maps lead_emails.source to a human-readable provenance suffix shown in the row meta line. */
+function provenanceLabel(source: string | null | undefined, isOutbound: boolean): string {
+  const s = (source || "").toLowerCase();
+  if (s === "gmail") return isOutbound ? "sent via Gmail" : "auto-logged from Gmail inbox";
+  if (s === "outlook") return isOutbound ? "sent via Outlook" : "auto-logged from Outlook inbox";
+  if (s === "zapier") return "auto-logged via Zapier";
+  return "";
 }
 
 interface TaskRow {
@@ -213,7 +223,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
       fetchActivityLog(lead.id),
       supabase
         .from("lead_emails")
-        .select("id,direction,from_address,from_name,to_addresses,subject,body_preview,body_text,email_date,thread_id,message_id,opens,clicks,replied_at,ai_drafted,sequence_step,attachments")
+        .select("id,direction,from_address,from_name,to_addresses,subject,body_preview,body_text,email_date,thread_id,message_id,opens,clicks,replied_at,ai_drafted,sequence_step,attachments,source")
         .eq("lead_id", lead.id)
         .order("email_date", { ascending: false })
         .limit(200),
@@ -326,15 +336,21 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
     // Emails
     emails.forEach(e => {
       const isOut = e.direction === "outbound";
+      const baseMeta = isOut
+        ? `To ${(e.to_addresses || []).slice(0, 2).join(", ")}`
+        : `From ${e.from_name || e.from_address}`;
+      // Provenance suffix — disambiguates Gmail / Outlook deep sync vs. Zapier ingest
+      const provenance = provenanceLabel(e.source, isOut);
+      // Auto-task suffix — outbound carrying a sequence_step came from a playbook task
+      const autoTask = isOut && e.sequence_step ? `auto-task from sequence ${e.sequence_step}` : "";
+      const suffixes = [provenance, autoTask].filter(Boolean).join(" · ");
       out.push({
         id: `email-${e.id}`,
         type: isOut ? "email_out" : "email_in",
         date: e.email_date,
         title: e.subject || "(No subject)",
         detail: e.body_preview || undefined,
-        meta: isOut
-          ? `To ${(e.to_addresses || []).slice(0, 2).join(", ")}`
-          : `From ${e.from_name || e.from_address}`,
+        meta: suffixes ? `${baseMeta} · ${suffixes}` : baseMeta,
         email: e,
       });
     });
@@ -423,6 +439,21 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
     const ordered: string[] = [...pinned.map(e => e.id), ...unpinned.map(e => e.id)];
     return new Set(ordered.slice(0, 10));
   }, [pinned, unpinned]);
+
+  // Map of inbound email id → sequence step that was paused (so we can render an inline
+  // "Sx paused" chip directly on the inbound row, in addition to the sibling pause row).
+  const pausedByInboundEmailId = useMemo(() => {
+    const map = new Map<string, string>();
+    activity.forEach(a => {
+      if (a.event_type !== "sequence_paused") return;
+      const meta = (a as any).metadata as Record<string, unknown> | undefined;
+      const inboundId = meta && typeof meta === "object" ? (meta as any).inbound_email_id : undefined;
+      if (typeof inboundId === "string" && inboundId) {
+        map.set(inboundId, a.new_value || "");
+      }
+    });
+    return map;
+  }, [activity]);
 
   return (
     <div className="space-y-3">
@@ -522,6 +553,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       defaultExpanded={defaultOpenIds.has(ev.id)}
                       stallReason={lead.stallReason}
                       onOpenTranscript={setTranscriptMeeting}
+                      pausedStep={ev.email ? pausedByInboundEmailId.get(ev.email.id) : undefined}
                     />
                   ))}
                 </div>
@@ -549,6 +581,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       defaultExpanded={defaultOpenIds.has(ev.id)}
                       stallReason={lead.stallReason}
                       onOpenTranscript={setTranscriptMeeting}
+                      pausedStep={ev.email ? pausedByInboundEmailId.get(ev.email.id) : undefined}
                     />
                   ))}
                 </div>
@@ -582,6 +615,7 @@ function TimelineRow({
   defaultExpanded = false,
   stallReason = "",
   onOpenTranscript,
+  pausedStep,
 }: {
   event: TimelineEvent;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
@@ -591,6 +625,7 @@ function TimelineRow({
   defaultExpanded?: boolean;
   stallReason?: string;
   onOpenTranscript?: (m: Meeting) => void;
+  pausedStep?: string;
 }) {
   const isMeeting = event.type === "meeting";
   const isCall = event.type === "call";
@@ -786,7 +821,7 @@ function TimelineRow({
           </div>
         )}
         {/* Email enrichment pill row — only for email events */}
-        {isEmail && email && (opens > 0 || clicks > 0 || replied || aiDrafted || sequence || attachments > 0) && (
+        {isEmail && email && (opens > 0 || clicks > 0 || replied || aiDrafted || sequence || attachments > 0 || pausedStep) && (
           <div className="flex flex-wrap items-center gap-1 mt-1">
             {aiDrafted && (
               <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5 font-medium">
@@ -811,6 +846,11 @@ function TimelineRow({
             {replied && (
               <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5">
                 <Reply className="h-2.5 w-2.5" /> Replied
+              </Badge>
+            )}
+            {pausedStep && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5 font-medium">
+                <PauseCircle className="h-2.5 w-2.5" /> {pausedStep} paused
               </Badge>
             )}
             {attachments > 0 && (
