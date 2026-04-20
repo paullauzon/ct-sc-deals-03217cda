@@ -24,6 +24,7 @@ import { formatDistanceToNow } from "date-fns";
 import { UnmatchedInbox } from "./UnmatchedInbox";
 import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
 import { AutomationHealthPanel } from "./AutomationHealthPanel";
+import { BackfillProgressPanel } from "./BackfillProgressPanel";
 
 interface Connection {
   id: string;
@@ -56,7 +57,7 @@ export function MailboxSettings() {
   const [connecting, setConnecting] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
-  const [backfillingId, setBackfillingId] = useState<string | null>(null);
+  
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
 
   // Connect dialog state
@@ -185,33 +186,6 @@ export function MailboxSettings() {
     }
   };
 
-  const backfill90d = async (c: Connection) => {
-    if (!window.confirm(
-      `Backfill the last 90 days of ${c.provider === "outlook" ? "Outlook" : "Gmail"} history for ${c.email_address}?\n\nThis scans up to 1,500 messages. Safe to run multiple times — duplicates are skipped.`
-    )) return;
-    setBackfillingId(c.id);
-    try {
-      const fn = c.provider === "outlook" ? "sync-outlook-emails" : "sync-gmail-emails";
-      const { data, error } = await supabase.functions.invoke(fn, {
-        body: { connection_id: c.id, force_full: true },
-      });
-      if (error) throw error;
-      const r = data?.results?.[0];
-      if (r) {
-        toast.success(
-          `Backfilled ${r.fetched} message${r.fetched === 1 ? "" : "s"} — ${r.inserted} new rows, ${r.matched} matched to leads`,
-          { duration: 6000 }
-        );
-      } else {
-        toast.success("Backfill complete");
-      }
-      load();
-    } catch (e: any) {
-      toast.error(e.message || "Backfill failed");
-    } finally {
-      setBackfillingId(null);
-    }
-  };
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
@@ -345,14 +319,6 @@ export function MailboxSettings() {
                                   title="Sync new emails now"
                                 >
                                   {syncingId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <DownloadCloud className="h-3 w-3" />}
-                                </Button>
-                                <Button
-                                  variant="ghost" size="sm" className="h-7 text-[10px] px-2 gap-1"
-                                  onClick={() => backfill90d(c)}
-                                  disabled={backfillingId === c.id}
-                                  title="Scan the last 90 days and match to existing leads"
-                                >
-                                  {backfillingId === c.id ? <><Loader2 className="h-3 w-3 animate-spin" /> Backfilling…</> : <>Backfill 90d</>}
                                 </Button>
                                 <Button
                                   variant="ghost" size="sm" className="h-7 px-2"
