@@ -15,11 +15,13 @@ import { ArchiveDialog } from "@/components/ArchiveDialog";
 import {
   Activity as ActivityIcon, Calendar, Mail, Brain, FolderOpen, MessageSquare,
   Zap, Trophy, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen,
+  LayoutDashboard,
 } from "lucide-react";
 import { LeadPanelHeader } from "./lead-panel/LeadPanelHeader";
 import { LeadPanelLeftRail } from "./lead-panel/LeadPanelLeftRail";
 import { LeadPanelRightRail } from "./lead-panel/LeadPanelRightRail";
 import { LeadActivityTab } from "./lead-panel/LeadActivityTab";
+import { LeadOverviewTab } from "./lead-panel/LeadOverviewTab";
 import { LeadFilesTab } from "./lead-panel/LeadFilesTab";
 import { LeadActionsTab } from "./lead-panel/LeadActionsTab";
 import { LeadDebriefTab } from "./lead-panel/LeadDebriefTab";
@@ -96,7 +98,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
   const onNext = () => { if (hasNext) goTo(order[idx + 1]); };
 
   useEffect(() => {
-    if (open) setActiveTab("activity");
+    if (open) setActiveTab("overview");
   }, [activeLeadId, open]);
 
   // Fetch email count for tab label
@@ -143,6 +145,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
       if (e.key === "[") { e.preventDefault(); setLeftOpen(v => !v); return; }
       if (e.key === "]") { e.preventDefault(); setRightOpen(v => !v); return; }
       switch (e.key.toLowerCase()) {
+        case "o": setActiveTab("overview"); break;
         case "a": setActiveTab("activity"); break;
         case "c": setActiveTab("actions"); break;
         case "m": setActiveTab("meetings"); break;
