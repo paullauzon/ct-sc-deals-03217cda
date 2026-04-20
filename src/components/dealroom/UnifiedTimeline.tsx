@@ -133,7 +133,7 @@ function formatTime(iso: string): string {
   }
 }
 
-export function UnifiedTimeline({ lead }: { lead: Lead }) {
+export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (prefill: ReplyPrefill) => void }) {
   const [activity, setActivity] = useState<ActivityLogEntry[]>([]);
   const [emails, setEmails] = useState<EmailRow[]>([]);
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -156,7 +156,7 @@ export function UnifiedTimeline({ lead }: { lead: Lead }) {
       fetchActivityLog(lead.id),
       supabase
         .from("lead_emails")
-        .select("id,direction,from_address,from_name,to_addresses,subject,body_preview,email_date")
+        .select("id,direction,from_address,from_name,to_addresses,subject,body_preview,body_text,email_date,thread_id,message_id,opens,clicks,replied_at,ai_drafted,sequence_step,attachments")
         .eq("lead_id", lead.id)
         .order("email_date", { ascending: false })
         .limit(200),
