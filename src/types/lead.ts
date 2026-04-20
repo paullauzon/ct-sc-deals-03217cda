@@ -8,19 +8,62 @@ export type LeadSource =
   | "SC Intro Call Form"
   | "SC Free Targets Form";
 
+// Pipeline v2 — 9 active stages. Legacy stages kept until phase 5 cleanup so
+// existing data still renders. Use leadUtils.normalizeStage() to translate
+// any value to its canonical v2 label for display + logic.
 export type LeadStage =
+  // ── Active v2 stages ──
+  | "Unassigned"            // was "New Lead"
+  | "In Contact"            // was "Qualified" + "Contacted" (merged)
+  | "Discovery Scheduled"   // was "Meeting Set"
+  | "Discovery Completed"   // was "Meeting Held"
+  | "Sample Sent"           // NEW — fixes the 91% Discovery → Proposal leak
+  | "Proposal Sent"
+  | "Negotiating"           // was "Negotiation" + "Contract Sent" (merged)
+  | "Closed Won"
+  | "Closed Lost"           // was "Lost" + "Went Dark" (merged; "Went Dark" → lost reason)
+  // ── Legacy (still in DB; aliased via STAGE_LABEL_MAP) ──
   | "New Lead"
   | "Qualified"
   | "Contacted"
   | "Meeting Set"
   | "Meeting Held"
-  | "Proposal Sent"
   | "Negotiation"
   | "Contract Sent"
   | "Revisit/Reconnect"
   | "Lost"
-  | "Went Dark"
-  | "Closed Won";
+  | "Went Dark";
+
+/** Locked dropdown for Closed Lost reasons (v2). */
+export type LostReasonV2 =
+  | ""
+  | "Went Dark / No response"
+  | "Budget"
+  | "Timing"
+  | "Lost to competitor"
+  | "No fit / Not qualified"
+  | "Champion left"
+  | "Internal decision delayed"
+  | "Pricing"
+  | "Other";
+
+/** Locked dropdown for sample outcomes (Sample Sent stage). */
+export type SampleOutcome =
+  | ""
+  | "Approved"
+  | "Lukewarm"
+  | "Needs revision"
+  | "No response"
+  | "Rejected";
+
+/** 90-day nurture sequence states. */
+export type NurtureSequenceStatus =
+  | null
+  | "needs_triage"   // backfilled on legacy R/R deals
+  | "active"
+  | "re_engaged"
+  | "completed"
+  | "archived";
 
 export type ServiceInterest =
   | "Off-Market Email Origination"
