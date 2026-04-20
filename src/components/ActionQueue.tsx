@@ -21,7 +21,7 @@ function parseTabFromHash(): CommandTab {
   const hash = window.location.hash.replace("#", "");
   const params = new URLSearchParams(hash);
   const t = params.get("ctab");
-  if (t && ["schedule", "followups", "pulse", "intel"].includes(t)) return t as CommandTab;
+  if (t && ["schedule", "followups", "pulse", "intel", "triage"].includes(t)) return t as CommandTab;
   return "schedule";
 }
 
@@ -102,11 +102,19 @@ export function ActionQueue() {
       return d >= 0 && d <= 7;
     }).length;
 
+    // Triage: Discovery Completed deals with no sample decision
+    const triage = filtered.filter(l =>
+      normalizeStage(l.stage) === "Discovery Completed" &&
+      !l.sampleSentDate?.trim() &&
+      !l.sampleOutcome?.trim()
+    ).length;
+
     return {
       schedule: meetingsToday,
       followups: overdue,
       pulse: stalled,
       intel: prepMeetings,
+      triage,
     };
   }, [leads, ownerFilter]);
 
@@ -153,6 +161,7 @@ export function ActionQueue() {
         <TabsList className="w-full justify-start">
           <TabsTrigger value="schedule" className="flex items-center">Schedule<Badge count={badges.schedule} /></TabsTrigger>
           <TabsTrigger value="followups" className="flex items-center">Follow-Ups<Badge count={badges.followups} /></TabsTrigger>
+          <TabsTrigger value="triage" className="flex items-center">Triage<Badge count={badges.triage} /></TabsTrigger>
           <TabsTrigger value="pulse" className="flex items-center">Deal Pulse<Badge count={badges.pulse} /></TabsTrigger>
           <TabsTrigger value="intel" className="flex items-center">Prep Intel<Badge count={badges.intel} /></TabsTrigger>
         </TabsList>
@@ -162,6 +171,9 @@ export function ActionQueue() {
         </TabsContent>
         <TabsContent value="followups">
           <FollowUpsTab leads={leads} ownerFilter={ownerFilter} onSelectLead={setSelectedLeadId} />
+        </TabsContent>
+        <TabsContent value="triage">
+          <DiscoveryTriageTab leads={leads} ownerFilter={ownerFilter} onSelectLead={setSelectedLeadId} />
         </TabsContent>
         <TabsContent value="pulse">
           <DealPulseTab leads={leads} ownerFilter={ownerFilter} onSelectLead={setSelectedLeadId} />
