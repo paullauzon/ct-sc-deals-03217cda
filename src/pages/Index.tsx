@@ -128,6 +128,12 @@ function AppContent() {
                   <span className="flex-1 text-left">Search…</span>
                   <kbd className="text-[10px] font-mono bg-background border border-border rounded px-1.5 py-0.5">⌘K</kbd>
                 </button>
+                <AutomationHealthChip onClick={() => {
+                  const params = new URLSearchParams(window.location.hash.replace("#",""));
+                  params.set("view", "settings"); params.set("sys", "crm"); params.set("tab", "automation");
+                  window.location.hash = params.toString();
+                  setViewState("settings");
+                }} />
                 <button
                   onClick={() => setView("settings")}
                   className={`h-8 w-8 flex items-center justify-center rounded-md border border-border transition-colors ${
@@ -146,12 +152,22 @@ function AppContent() {
           {system === "business" && (
             <div className="flex items-center gap-3 ml-auto">
               <span className="text-sm text-muted-foreground">Business Operations</span>
+              <AutomationHealthChip onClick={() => {
+                const params = new URLSearchParams();
+                params.set("view", "settings"); params.set("sys", "crm"); params.set("tab", "automation");
+                window.location.hash = params.toString();
+              }} />
               <UserMenu />
             </div>
           )}
           {system === "client-success" && (
             <div className="flex items-center gap-3 ml-auto">
               <span className="text-sm text-muted-foreground">Client Success · Account Management</span>
+              <AutomationHealthChip onClick={() => {
+                const params = new URLSearchParams();
+                params.set("view", "settings"); params.set("sys", "crm"); params.set("tab", "automation");
+                window.location.hash = params.toString();
+              }} />
               <UserMenu />
             </div>
           )}
