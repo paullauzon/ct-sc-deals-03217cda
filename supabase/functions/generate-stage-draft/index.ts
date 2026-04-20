@@ -123,6 +123,23 @@ ${P1_RULES}
 CONTEXT:
 ${ctx}`;
 
+// Inbound reply trigger — they responded, draft a contextual reply.
+const REPLY_PROMPT = (ctx: string) => `You are drafting a REPLY to an inbound message from the prospect. They wrote back, you respond. Acknowledge what they said specifically, then move the deal forward with a concrete next step.
+
+FORMAT:
+Subject: Re: [original subject — keep it]
+
+[One sentence acknowledging the specific thing they raised. Quote a phrase or reference a fact from their email — do not summarize generically.]
+
+[One sentence proposing the next step with a specific date or time, e.g. "Friday at 2pm ET works for a 20-min walkthrough."]
+
+[first name]
+
+${P1_RULES}
+
+CONTEXT:
+${ctx}`;
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -133,10 +150,11 @@ Deno.serve(async (req) => {
     );
 
     const body = await req.json();
-    const { lead_id, new_stage, trigger } = body as {
+    const { lead_id, new_stage, trigger, inbound_email_id } = body as {
       lead_id: string;
       new_stage: string;
-      trigger?: "stage_change" | "stall";
+      trigger?: "stage_change" | "stall" | "reply";
+      inbound_email_id?: string;
     };
 
     if (!lead_id || !new_stage) {
@@ -147,7 +165,12 @@ Deno.serve(async (req) => {
 
     // Pick prompt
     const isStall = trigger === "stall";
-    const promptBuilder = isStall ? STALL_PROMPT : STAGE_PROMPTS[new_stage];
+    const isReply = trigger === "reply";
+    const promptBuilder = isReply
+      ? REPLY_PROMPT
+      : isStall
+        ? STALL_PROMPT
+        : STAGE_PROMPTS[new_stage];
     if (!promptBuilder) {
       return new Response(JSON.stringify({ ok: true, skipped: true, reason: `no draft template for stage ${new_stage}` }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -162,6 +185,25 @@ Deno.serve(async (req) => {
       .single();
     if (leadErr || !lead) throw new Error(`Lead ${lead_id} not found`);
 
+    // For reply trigger, fetch the inbound email so the prompt can reference it.
+    let inboundContext = "";
+    if (isReply) {
+      const inboundQuery = (supabase as any)
+        .from("lead_emails")
+        .select("subject, body_preview, body_text, from_name, from_address, email_date")
+        .eq("lead_id", lead_id)
+        .eq("direction", "inbound")
+        .order("email_date", { ascending: false })
+        .limit(1);
+      if (inbound_email_id) inboundQuery.eq("id", inbound_email_id);
+      const { data: inboundRows } = await inboundQuery;
+      const inbound = inboundRows?.[0];
+      if (inbound) {
+        const snippet = (inbound.body_text || inbound.body_preview || "").slice(0, 800).replace(/\s+/g, " ").trim();
+        inboundContext = `Their reply (subject: "${inbound.subject || "(no subject)"}", from ${inbound.from_name || inbound.from_address}):\n${snippet}`;
+      }
+    }
+
     const ctx = [
       `Prospect: ${lead.name} (${lead.role || "role unknown"}) at ${lead.company}`,
       `Brand: ${lead.brand}`,
@@ -175,6 +217,7 @@ Deno.serve(async (req) => {
       isStall && lead.stall_reason && `Stall reason: ${lead.stall_reason}`,
       lead.deal_narrative && `Deal narrative: ${lead.deal_narrative}`,
       `Our rep: ${lead.assigned_to || "Malik"}`,
+      inboundContext,
     ].filter(Boolean).join("\n");
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -190,7 +233,7 @@ Deno.serve(async (req) => {
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: promptBuilder(ctx) },
-          { role: "user", content: `Draft the email now for stage: ${new_stage}${isStall ? " (stalled 7+ days)" : ""}` },
+          { role: "user", content: `Draft the email now for stage: ${new_stage}${isStall ? " (stalled 7+ days)" : ""}${isReply ? " (reply to their inbound message)" : ""}` },
         ],
         stream: false,
       }),
@@ -205,10 +248,16 @@ Deno.serve(async (req) => {
     const content = aiData.choices?.[0]?.message?.content?.trim() || "";
     if (!content) throw new Error("AI returned empty content");
 
-    const actionKey = isStall ? `stage-stall-${new_stage}` : `stage-entry-${new_stage}`;
-    const contextLabel = isStall
-      ? `Stalled at ${new_stage} — soft nudge draft`
-      : `Entered ${new_stage} — cover draft`;
+    const actionKey = isReply
+      ? `reply-${inbound_email_id || crypto.randomUUID()}`
+      : isStall
+        ? `stage-stall-${new_stage}`
+        : `stage-entry-${new_stage}`;
+    const contextLabel = isReply
+      ? `Reply draft — they responded`
+      : isStall
+        ? `Stalled at ${new_stage} — soft nudge draft`
+        : `Entered ${new_stage} — cover draft`;
 
     await (supabase as any).from("lead_drafts").upsert({
       lead_id,

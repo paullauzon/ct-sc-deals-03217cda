@@ -67,14 +67,19 @@ interface LeadActionsTabProps {
   save: (updates: Partial<Lead>) => void;
   /** External trigger from QuickActionBar "Draft AI" — same key used to bind to NBA card */
   draftSignal?: number;
+  /** Opens the compose drawer prefilled from a saved AI draft. Stamps ai_drafted=true on send + flips draft to status='sent'. */
+  onSendAiDraft?: (draftId: string, content: string) => void;
 }
 
-export function LeadActionsTab({ lead, allLeads, save, draftSignal }: LeadActionsTabProps) {
+export function LeadActionsTab({ lead, allLeads, save, draftSignal, onSendAiDraft }: LeadActionsTabProps) {
   const [showPrepDialog, setShowPrepDialog] = useState(false);
   const [prepBrief, setPrepBrief] = useState<MeetingPrepBrief | null>(null);
   const [generatingPrep, setGeneratingPrep] = useState(false);
   const [draftingPriority, setDraftingPriority] = useState<string | null>(null);
   const [draftedPriorityEmails, setDraftedPriorityEmails] = useState<Record<string, string>>({});
+  /** Auto-generated drafts (stage entry, stall nudge, inbound reply) keyed by action_key.
+   *  Each row carries its DB id so we can pass it to send-gmail-email and stamp ai_drafted=true. */
+  const [autoDrafts, setAutoDrafts] = useState<Array<{ id: string; action_key: string; content: string; context_label: string; updated_at: string }>>([]);
 
   const leadIdArray = lead?.id ? [lead.id] : [];
   const { unansweredIds } = useUnansweredEmails(leadIdArray);
@@ -87,8 +92,16 @@ export function LeadActionsTab({ lead, allLeads, save, draftSignal }: LeadAction
       const { data } = await supabase.from("lead_drafts").select("*").eq("lead_id", lead.id).eq("status", "draft");
       if (data && data.length > 0) {
         const loaded: Record<string, string> = {};
-        (data as any[]).forEach(d => { loaded[d.action_key] = d.content; });
+        const auto: Array<{ id: string; action_key: string; content: string; context_label: string; updated_at: string }> = [];
+        (data as any[]).forEach(d => {
+          loaded[d.action_key] = d.content;
+          // Auto-generated drafts: stage entries, stall nudges, inbound-reply triggers.
+          if (d.action_key.startsWith("stage-entry-") || d.action_key.startsWith("stage-stall-") || d.action_key.startsWith("reply-")) {
+            auto.push({ id: d.id, action_key: d.action_key, content: d.content, context_label: d.context_label || "", updated_at: d.updated_at });
+          }
+        });
         setDraftedPriorityEmails(loaded);
+        setAutoDrafts(auto.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
       }
     })();
   }, [lead?.id]);
@@ -108,6 +121,7 @@ export function LeadActionsTab({ lead, allLeads, save, draftSignal }: LeadAction
       delete next[actionKey];
       return next;
     });
+    setAutoDrafts(prev => prev.filter(d => d.action_key !== actionKey));
     await supabase.from("lead_drafts").update({ status: "discarded" } as any).eq("lead_id", lead.id).eq("action_key", actionKey);
     toast("Draft discarded");
   }, [lead?.id]);
@@ -282,6 +296,41 @@ export function LeadActionsTab({ lead, allLeads, save, draftSignal }: LeadAction
 
   return (
     <div className="p-6 mt-0 space-y-5 max-w-3xl mx-auto">
+      {/* Auto-generated AI drafts (stage entry / stall nudge / inbound reply) */}
+      {autoDrafts.length > 0 && (
+        <div>
+          <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2.5 flex items-center gap-1.5">
+            <Zap className="h-3.5 w-3.5" /> AI-Generated Drafts ({autoDrafts.length})
+          </h3>
+          <div className="space-y-2">
+            {autoDrafts.map((d) => (
+              <div key={d.id} className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-foreground">{d.context_label || d.action_key}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Auto-drafted · ready to review and send</p>
+                  </div>
+                  {onSendAiDraft && (
+                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1 shrink-0" onClick={() => onSendAiDraft(d.id, d.content)}>
+                      <Mail className="h-3 w-3" /> Send via Gmail
+                    </Button>
+                  )}
+                </div>
+                <DraftCard
+                  content={d.content}
+                  onSave={(text) => {
+                    setAutoDrafts(prev => prev.map(x => x.id === d.id ? { ...x, content: text } : x));
+                    saveDraftToDb(d.action_key, text, "auto", d.context_label.slice(0, 100));
+                  }}
+                  onRegenerate={() => toast("Regenerate not available for auto-drafts — discard and let the trigger re-fire.")}
+                  onDiscard={() => discardDraft(d.action_key)}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Open Commitments — what we owe */}
       {droppedPromises.length > 0 && (
         <div>

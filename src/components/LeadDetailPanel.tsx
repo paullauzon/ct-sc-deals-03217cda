@@ -78,6 +78,8 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
   const [emailDrawerOpen, setEmailDrawerOpen] = useState(false);
   const [emailDrawerPreset, setEmailDrawerPreset] = useState<"follow-up" | "default" | undefined>(undefined);
   const [emailReplyContext, setEmailReplyContext] = useState<import("./EmailsSection").ReplyPrefill | null>(null);
+  const [emailSourceDraftId, setEmailSourceDraftId] = useState<string | null>(null);
+  const [emailPrefill, setEmailPrefill] = useState<{ subject?: string; body?: string } | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
 
@@ -247,10 +249,26 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
     return s === "Closed Won" || s === "Closed Lost" || s === "Lost" || s === "Went Dark";
   })();
 
-  const onEmail = () => { setEmailDrawerPreset(undefined); setEmailReplyContext(null); setEmailDrawerOpen(true); };
+  const onEmail = () => { setEmailDrawerPreset(undefined); setEmailReplyContext(null); setEmailSourceDraftId(null); setEmailPrefill(null); setEmailDrawerOpen(true); };
   const onReply = (prefill: import("./EmailsSection").ReplyPrefill) => {
     setEmailDrawerPreset(undefined);
     setEmailReplyContext(prefill);
+    setEmailSourceDraftId(null);
+    setEmailPrefill(null);
+    setEmailDrawerOpen(true);
+  };
+  /** Opens compose drawer prefilled from an AI-generated draft row. Stamps ai_drafted=true on send. */
+  const onSendAiDraft = (draftId: string, content: string) => {
+    // Content stored as "Subject: ...\n\n<body>" — split it.
+    const lines = content.split("\n");
+    const first = lines[0] || "";
+    const subjMatch = first.match(/^subject:\s*(.+)$/i);
+    const subject = subjMatch ? subjMatch[1].trim() : "";
+    const body = subjMatch ? lines.slice(1).join("\n").replace(/^\s+/, "") : content;
+    setEmailDrawerPreset(undefined);
+    setEmailReplyContext(null);
+    setEmailSourceDraftId(draftId);
+    setEmailPrefill({ subject, body });
     setEmailDrawerOpen(true);
   };
   const onSchedule = () => {
@@ -388,7 +406,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
               </TabsContent>
               {!isClosed && (
                 <TabsContent value="actions" className="mt-0">
-                  <LeadActionsTab lead={lead} allLeads={leads} save={save} draftSignal={draftSignal} />
+                  <LeadActionsTab lead={lead} allLeads={leads} save={save} draftSignal={draftSignal} onSendAiDraft={onSendAiDraft} />
                 </TabsContent>
               )}
               <TabsContent value="meetings" className="p-6 mt-0 max-w-5xl mx-auto">
@@ -450,7 +468,7 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
       <NoteDialog lead={lead} open={noteOpen} onOpenChange={setNoteOpen} save={save} />
       <TaskDialog lead={lead} open={taskOpen} onOpenChange={setTaskOpen} />
       <LogCallDialog lead={lead} open={callOpen} onOpenChange={setCallOpen} save={save} />
-      <EmailComposeDrawer lead={lead} open={emailDrawerOpen} onOpenChange={setEmailDrawerOpen} save={save} presetAction={emailDrawerPreset} replyContext={emailReplyContext} />
+      <EmailComposeDrawer lead={lead} open={emailDrawerOpen} onOpenChange={setEmailDrawerOpen} save={save} presetAction={emailDrawerPreset} replyContext={emailReplyContext} sourceDraftId={emailSourceDraftId} prefill={emailPrefill} />
       <KeyboardCheatsheet open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <AskDealDrawer lead={lead} open={askOpen} onOpenChange={setAskOpen} />
     </div>
