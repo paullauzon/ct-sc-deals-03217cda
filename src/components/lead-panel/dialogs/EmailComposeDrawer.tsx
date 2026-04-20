@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Loader2, Save, Copy, Check, Plus } from "lucide-react";
+import { Sparkles, Loader2, Save, Copy, Check, Plus, Send, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { logActivity, bumpStakeholderContact } from "@/lib/activityLog";
 import { toast } from "sonner";
@@ -16,6 +16,12 @@ interface Props {
   save: (updates: Partial<Lead>) => void;
   /** Optional preset action passed when launched from "Draft follow-up" chip */
   presetAction?: "follow-up" | "default";
+}
+
+interface Mailbox {
+  id: string;
+  email_address: string;
+  user_label: string;
 }
 
 async function tryCopy(text: string): Promise<boolean> {
@@ -37,8 +43,11 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
   const [body, setBody] = useState("");
   const [generating, setGenerating] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [sending, setSending] = useState(false);
   const [copied, setCopied] = useState(false);
   const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
+  const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
+  const [fromConnectionId, setFromConnectionId] = useState<string>("");
 
   useEffect(() => {
     if (open) {
@@ -52,6 +61,18 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
           .select("*")
           .eq("lead_id", lead.id);
         setStakeholders((data || []) as Stakeholder[]);
+      })();
+      // Load active mailboxes for sender picker
+      (async () => {
+        const { data } = await supabase
+          .from("user_email_connections")
+          .select("id, email_address, user_label")
+          .eq("provider", "gmail")
+          .eq("is_active", true)
+          .order("created_at", { ascending: false });
+        const list = (data || []) as Mailbox[];
+        setMailboxes(list);
+        if (list.length > 0 && !fromConnectionId) setFromConnectionId(list[0].id);
       })();
       if (presetAction === "follow-up") {
         setTimeout(() => generate("default"), 100);
@@ -122,6 +143,41 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
     }
   };
 
+  const sendNow = async () => {
+    if (!body.trim() || !subject.trim() || !to.trim()) {
+      toast.error("Subject, recipient, and body required");
+      return;
+    }
+    if (!fromConnectionId) {
+      toast.error("Connect a Gmail mailbox in Settings first");
+      return;
+    }
+    setSending(true);
+    try {
+      const recipients = to.split(/[,;]\s*/).map(s => s.trim()).filter(Boolean);
+      const { data, error } = await supabase.functions.invoke("send-gmail-email", {
+        body: {
+          connection_id: fromConnectionId,
+          lead_id: lead.id,
+          to: recipients,
+          subject,
+          body_text: body,
+        },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Send failed");
+      save({ lastContactDate: new Date().toISOString().split("T")[0] });
+      await logActivity(lead.id, "field_update", `Email sent: ${subject}`);
+      if (recipients.length > 0) await bumpStakeholderContact(lead.id, recipients);
+      toast.success("Email sent");
+      onOpenChange(false);
+    } catch (e: any) {
+      toast.error(e.message || "Send failed");
+    } finally {
+      setSending(false);
+    }
+  };
+
   const copyAndMark = async () => {
     const content = `Subject: ${subject}\n\n${body}`;
     const ok = await tryCopy(content);
@@ -139,6 +195,7 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
   };
 
   const stakeholderOptions = stakeholders.filter(s => s.email && s.email.trim());
+  const hasMailbox = mailboxes.length > 0;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -147,6 +204,27 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
           <SheetTitle className="text-sm font-semibold">Compose email · {lead.name}</SheetTitle>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground">From</label>
+            {hasMailbox ? (
+              <select
+                value={fromConnectionId}
+                onChange={(e) => setFromConnectionId(e.target.value)}
+                className="w-full h-9 mt-1 text-sm bg-background border border-input rounded-md px-2"
+              >
+                {mailboxes.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.email_address}{m.user_label ? ` — ${m.user_label}` : ""}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground bg-secondary/40 rounded-md px-2.5 py-2">
+                <Mail className="h-3.5 w-3.5" />
+                No mailbox connected. Open Settings to connect Gmail, or use "Copy & mark sent" below.
+              </div>
+            )}
+          </div>
           <div>
             <label className="text-[10px] uppercase tracking-wider text-muted-foreground">To</label>
             <Input value={to} onChange={(e) => setTo(e.target.value)} className="h-9 text-sm mt-1" />
@@ -187,12 +265,16 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
         <div className="border-t border-border px-5 py-3 flex items-center justify-between gap-2 shrink-0 bg-background">
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={saveDraft} disabled={!body.trim() || savingDraft}>
+            <Button variant="ghost" size="sm" onClick={saveDraft} disabled={!body.trim() || savingDraft}>
               <Save className="h-3.5 w-3.5 mr-1.5" /> {savingDraft ? "Saving…" : "Save draft"}
             </Button>
-            <Button size="sm" onClick={copyAndMark} disabled={!body.trim()}>
+            <Button variant="outline" size="sm" onClick={copyAndMark} disabled={!body.trim()}>
               {copied ? <Check className="h-3.5 w-3.5 mr-1.5" /> : <Copy className="h-3.5 w-3.5 mr-1.5" />}
               Copy & mark sent
+            </Button>
+            <Button size="sm" onClick={sendNow} disabled={!body.trim() || !subject.trim() || !to.trim() || sending || !hasMailbox}>
+              {sending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
+              {sending ? "Sending…" : "Send"}
             </Button>
           </div>
         </div>
