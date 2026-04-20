@@ -22,6 +22,9 @@ import {
   Reply,
   Sparkles,
   Paperclip,
+  Phone,
+  CheckSquare,
+  AlertTriangle,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -30,12 +33,22 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { ReplyPrefill } from "@/components/EmailsSection";
 
-type FilterKey = "all" | "emails" | "meetings" | "stage" | "notes" | "system" | "pinned";
+type FilterKey = "all" | "emails" | "calls" | "notes" | "meetings" | "tasks" | "stage" | "system" | "pinned";
 type DateRange = "all" | "7d" | "30d" | "90d";
 
 interface TimelineEvent {
   id: string;
-  type: "stage_change" | "meeting" | "email_in" | "email_out" | "calendly" | "submission" | "note" | "system";
+  type:
+    | "stage_change"
+    | "meeting"
+    | "email_in"
+    | "email_out"
+    | "calendly"
+    | "submission"
+    | "note"
+    | "system"
+    | "call"
+    | "task";
   date: string;
   title: string;
   detail?: string;
@@ -46,6 +59,8 @@ interface TimelineEvent {
   pinnedAt?: string | null;
   /** email-specific enrichment (only set for email_in / email_out rows) */
   email?: EmailRow;
+  /** task-specific enrichment (only set for task rows) */
+  task?: TaskRow;
 }
 
 interface EmailRow {
@@ -68,13 +83,27 @@ interface EmailRow {
   attachments: unknown;
 }
 
+interface TaskRow {
+  id: string;
+  title: string;
+  description: string | null;
+  due_date: string;
+  status: string;
+  task_type: string | null;
+  playbook: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "All" },
   { key: "emails", label: "Emails" },
-  { key: "meetings", label: "Meetings" },
-  { key: "stage", label: "Stage" },
+  { key: "calls", label: "Calls" },
   { key: "notes", label: "Notes" },
-  { key: "system", label: "System" },
+  { key: "meetings", label: "Meetings" },
+  { key: "tasks", label: "Tasks" },
+  { key: "stage", label: "Stage" },
+  { key: "system", label: "Logged" },
   { key: "pinned", label: "Pinned" },
 ];
 
@@ -89,7 +118,9 @@ function eventMatchesFilter(e: TimelineEvent, f: FilterKey): boolean {
   if (f === "all") return true;
   if (f === "pinned") return !!e.pinnedAt;
   if (f === "emails") return e.type === "email_in" || e.type === "email_out";
+  if (f === "calls") return e.type === "call";
   if (f === "meetings") return e.type === "meeting" || e.type === "calendly";
+  if (f === "tasks") return e.type === "task";
   if (f === "stage") return e.type === "stage_change";
   if (f === "notes") return e.type === "note";
   if (f === "system") return e.type === "submission" || e.type === "system";
@@ -105,6 +136,8 @@ function iconFor(type: TimelineEvent["type"]) {
     case "email_out": return <ArrowUpRight className="h-3.5 w-3.5" />;
     case "note": return <MessageSquare className="h-3.5 w-3.5" />;
     case "submission": return <FileInput className="h-3.5 w-3.5" />;
+    case "call": return <Phone className="h-3.5 w-3.5" />;
+    case "task": return <CheckSquare className="h-3.5 w-3.5" />;
     default: return <Clock className="h-3.5 w-3.5" />;
   }
 }
@@ -136,6 +169,7 @@ function formatTime(iso: string): string {
 export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (prefill: ReplyPrefill) => void }) {
   const [activity, setActivity] = useState<ActivityLogEntry[]>([]);
   const [emails, setEmails] = useState<EmailRow[]>([]);
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState("");
   const [range, setRange] = useState<DateRange>("all");
@@ -160,10 +194,17 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
         .eq("lead_id", lead.id)
         .order("email_date", { ascending: false })
         .limit(200),
-    ]).then(([log, emailRes]) => {
+      supabase
+        .from("lead_tasks")
+        .select("id,title,description,due_date,status,task_type,playbook,created_at,completed_at")
+        .eq("lead_id", lead.id)
+        .order("due_date", { ascending: false })
+        .limit(200),
+    ]).then(([log, emailRes, taskRes]) => {
       if (cancelled) return;
       setActivity(log);
       setEmails((emailRes.data as unknown as EmailRow[]) || []);
+      setTasks((taskRes.data as unknown as TaskRow[]) || []);
       setLoading(false);
     });
     return () => { cancelled = true; };
@@ -182,20 +223,42 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
   const events = useMemo<TimelineEvent[]>(() => {
     const out: TimelineEvent[] = [];
 
-    // Activity log (stage changes, field updates, notes) — these can be pinned
+    // Activity log (stage changes, field updates, notes, calls) — these can be pinned
     activity.forEach(a => {
       const actor = (a as any).actor_name as string | undefined;
+      const evType: TimelineEvent["type"] =
+        a.event_type === "stage_change" ? "stage_change"
+        : a.event_type === "note_added" ? "note"
+        : a.event_type === "meeting_added" ? "meeting"
+        : a.event_type === "call_logged" ? "call"
+        : "system";
       out.push({
         id: `act-${a.id}`,
         activityId: a.id,
         pinnedAt: (a as any).pinned_at || null,
-        type: a.event_type === "stage_change" ? "stage_change"
-          : a.event_type === "note_added" ? "note"
-          : a.event_type === "meeting_added" ? "meeting"
-          : "system",
+        type: evType,
         date: a.created_at,
         title: a.description,
         meta: actor && actor.trim() ? `by ${actor}` : "by System",
+      });
+    });
+
+    // Tasks — surface every task as a timeline row anchored to its due date
+    tasks.forEach(t => {
+      const isDone = t.status === "done" || !!t.completed_at;
+      const isOverdue = !isDone && new Date(t.due_date) < new Date();
+      const statusLabel = isDone ? "Task done" : isOverdue ? "Task overdue" : "Task upcoming";
+      const dueStr = (() => {
+        try { return new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }); } catch { return t.due_date; }
+      })();
+      out.push({
+        id: `task-${t.id}`,
+        type: "task",
+        date: (isDone && t.completed_at) ? t.completed_at : t.due_date,
+        title: t.title,
+        detail: t.description || undefined,
+        meta: `${statusLabel} · due ${dueStr}`,
+        task: t,
       });
     });
 
@@ -255,7 +318,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
     return out
       .filter(e => e.date)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [activity, emails, lead]);
+  }, [activity, emails, tasks, lead]);
 
   // Apply filter + search + date range
   const filtered = useMemo(() => {
@@ -293,7 +356,9 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
   const counts = useMemo(() => ({
     all: events.length,
     emails: events.filter(e => e.type === "email_in" || e.type === "email_out").length,
+    calls: events.filter(e => e.type === "call").length,
     meetings: events.filter(e => e.type === "meeting" || e.type === "calendly").length,
+    tasks: events.filter(e => e.type === "task").length,
     stage: events.filter(e => e.type === "stage_change").length,
     notes: events.filter(e => e.type === "note").length,
     system: events.filter(e => e.type === "submission" || e.type === "system").length,
@@ -304,6 +369,13 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
     setForcedOpen(open);
     setExpandAllNonce(n => n + 1);
   };
+
+  // Default-expand the most recent 10 events (mockup spec: "expanded for recent 10, collapsed for older")
+  // Build a position map across pinned + chronological so the top 10 (in render order) are open by default.
+  const defaultOpenIds = useMemo(() => {
+    const ordered: string[] = [...pinned.map(e => e.id), ...unpinned.map(e => e.id)];
+    return new Set(ordered.slice(0, 10));
+  }, [pinned, unpinned]);
 
   return (
     <div className="space-y-3">
@@ -400,6 +472,8 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       forcedOpen={forcedOpen}
                       forceNonce={expandAllNonce}
                       onReply={onReply}
+                      defaultExpanded={defaultOpenIds.has(ev.id)}
+                      stallReason={lead.stallReason}
                     />
                   ))}
                 </div>
@@ -424,6 +498,8 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       forcedOpen={forcedOpen}
                       forceNonce={expandAllNonce}
                       onReply={onReply}
+                      defaultExpanded={defaultOpenIds.has(ev.id)}
+                      stallReason={lead.stallReason}
                     />
                   ))}
                 </div>
@@ -448,18 +524,24 @@ function TimelineRow({
   forcedOpen,
   forceNonce,
   onReply,
+  defaultExpanded = false,
+  stallReason = "",
 }: {
   event: TimelineEvent;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   forcedOpen: boolean | null;
   forceNonce: number;
   onReply?: (prefill: ReplyPrefill) => void;
+  defaultExpanded?: boolean;
+  stallReason?: string;
 }) {
-  const [open, setOpen] = useState(false);
   const expandable = !!event.detail;
+  const [open, setOpen] = useState(defaultExpanded && expandable);
   const isEmail = event.type === "email_in" || event.type === "email_out";
   const isInbound = event.type === "email_in";
   const email = event.email;
+  const task = event.task;
+  const isTask = event.type === "task";
 
   // React to expand-all / collapse-all toggle from parent
   useEffect(() => {
@@ -478,6 +560,17 @@ function TimelineRow({
   const replied = !!email?.replied_at;
   const aiDrafted = !!email?.ai_drafted;
   const sequence = email?.sequence_step || "";
+
+  // Task enrichments
+  const taskIsDone = !!task && (task.status === "done" || !!task.completed_at);
+  const taskIsOverdue = !!task && !taskIsDone && new Date(task.due_date) < new Date();
+  const taskSourceLabel = (() => {
+    if (!task) return "";
+    const pb = (task.playbook || "").toLowerCase();
+    if (pb.startsWith("sla-")) return "SLA auto-created";
+    if (pb === "manual" || !pb) return "Manual";
+    return "Auto-task";
+  })();
 
   const handleReply = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -539,6 +632,28 @@ function TimelineRow({
         </div>
         {event.meta && (
           <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{event.meta}</p>
+        )}
+        {/* Task pill row — status, source, optional stall reason */}
+        {isTask && task && (
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            <Badge
+              variant="outline"
+              className={cn(
+                "h-4 text-[9px] px-1.5 gap-0.5 font-medium",
+                taskIsOverdue && "border-destructive/40 text-destructive"
+              )}
+            >
+              {taskIsDone ? "Done" : taskIsOverdue ? <><AlertTriangle className="h-2.5 w-2.5" /> Overdue</> : "Upcoming"}
+            </Badge>
+            <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-medium">
+              {taskSourceLabel}
+            </Badge>
+            {!taskIsDone && stallReason && stallReason.trim() && (
+              <span className="text-[10px] text-muted-foreground italic">
+                Stall reason: {stallReason}
+              </span>
+            )}
+          </div>
         )}
         {/* Email enrichment pill row — only for email events */}
         {isEmail && email && (opens > 0 || clicks > 0 || replied || aiDrafted || sequence || attachments > 0) && (
