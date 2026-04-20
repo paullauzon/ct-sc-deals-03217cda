@@ -371,7 +371,7 @@ export function getUnifiedActionCount(
 
   // 7. Going dark
   let goingDark = false;
-  if (ACTIVE_STAGES.has(lead.stage) && lead.lastContactDate) {
+  if (ACTIVE_STAGES.has(normalizeStage(lead.stage)) && lead.lastContactDate) {
     try {
       const daysSilent = Math.floor((now.getTime() - new Date(lead.lastContactDate).getTime()) / 86400000);
       if (daysSilent >= 7) {
@@ -381,10 +381,10 @@ export function getUnifiedActionCount(
     } catch {}
   }
 
-  // 8. No champion past Meeting Held
+  // 8. No champion past Discovery Completed
   let noChampion = false;
   const stakeholders = di?.stakeholderMap || [];
-  if (POST_MEETING_STAGES.has(lead.stage) && stakeholders.length > 0) {
+  if (POST_MEETING_STAGES.has(normalizeStage(lead.stage)) && stakeholders.length > 0) {
     const hasChampion = stakeholders.some((s: any) => s.stance === "Champion");
     if (!hasChampion) {
       noChampion = true;
@@ -399,9 +399,10 @@ export function getUnifiedActionCount(
   }
   if (overdueFollowUp) tooltipLines.push("Follow-up overdue");
 
-  // 10. Stale new lead
+  // 10. Stale new lead — first-touch never made on Unassigned/In Contact
   let staleNewLead = false;
-  if ((lead.stage === "New Lead" || lead.stage === "Qualified") && !lead.lastContactDate) {
+  const normStage = normalizeStage(lead.stage);
+  if ((normStage === "Unassigned" || normStage === "In Contact") && !lead.lastContactDate) {
     const submitted = lead.dateSubmitted || lead.stageEnteredDate;
     if (submitted) {
       try {
@@ -426,9 +427,9 @@ export function getUnifiedActionCount(
     } catch {}
   }
 
-  // 12. Log meeting outcome (data hygiene)
+  // 12. Log meeting outcome (data hygiene) — Discovery Completed without an outcome
   let logMeetingOutcome = false;
-  if (lead.stage === "Meeting Held" && !lead.meetingOutcome) {
+  if (normalizeStage(lead.stage) === "Discovery Completed" && !lead.meetingOutcome) {
     logMeetingOutcome = true;
     tooltipLines.push("Log meeting outcome");
   }
@@ -446,10 +447,11 @@ export function getUnifiedActionCount(
     }
   }
 
-  // 14. High intent — multi-submission
+  // 14. High intent — multi-submission (Unassigned/In Contact only)
   let highIntent = false;
   const submissions = (lead as any).submissions;
-  if (Array.isArray(submissions) && submissions.length > 1 && (lead.stage === "New Lead" || lead.stage === "Qualified")) {
+  const normStage2 = normalizeStage(lead.stage);
+  if (Array.isArray(submissions) && submissions.length > 1 && (normStage2 === "Unassigned" || normStage2 === "In Contact")) {
     highIntent = true;
     tooltipLines.push(`High intent — submitted ${submissions.length} times, prioritize outreach`);
   }
@@ -546,8 +548,8 @@ export function getNextBestAction(lead: Lead): NextBestAction | null {
     };
   }
 
-  // Proposal sent with no response
-  if (lead.stage === "Proposal Sent" && daysSinceContact && daysSinceContact > 5) {
+  // Proposal sent with no response (v2 + legacy via normalize)
+  if (normalizeStage(lead.stage) === "Proposal Sent" && daysSinceContact && daysSinceContact > 5) {
     return {
       action: "Direct ask about timeline and decision",
       reason: `Proposal sent ${daysSinceContact}d ago — no response`,
@@ -579,9 +581,9 @@ export function getNextBestAction(lead: Lead): NextBestAction | null {
     };
   }
 
-  // Default: follow the stage
-  if (lead.stage === "Meeting Held" && lead.dealValue > 0) {
-    return { action: "Advance to Proposal Sent", reason: "Deal value set, meeting held", urgency: "medium" };
+  // Default: nudge to advance from Discovery Completed → Sample Sent
+  if (normalizeStage(lead.stage) === "Discovery Completed" && lead.dealValue > 0) {
+    return { action: "Send sample to keep momentum", reason: "Discovery done, sample is the next gate", urgency: "medium" };
   }
 
   return null;
