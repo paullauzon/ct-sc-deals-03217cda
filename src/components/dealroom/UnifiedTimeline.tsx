@@ -515,6 +515,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       onReply={onReply}
                       defaultExpanded={defaultOpenIds.has(ev.id)}
                       stallReason={lead.stallReason}
+                      onOpenTranscript={setTranscriptMeeting}
                     />
                   ))}
                 </div>
@@ -541,6 +542,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       onReply={onReply}
                       defaultExpanded={defaultOpenIds.has(ev.id)}
                       stallReason={lead.stallReason}
+                      onOpenTranscript={setTranscriptMeeting}
                     />
                   ))}
                 </div>
@@ -549,6 +551,12 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
           ))}
         </div>
       )}
+
+      <TranscriptDrawer
+        meeting={transcriptMeeting}
+        open={!!transcriptMeeting}
+        onOpenChange={(o) => { if (!o) setTranscriptMeeting(null); }}
+      />
     </div>
   );
 }
