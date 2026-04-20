@@ -193,7 +193,12 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     );
   }
 
-  if (emails.length === 0) {
+  const scheduled = emails.filter(e => e.send_status === "scheduled").sort(
+    (a, b) => new Date(a.scheduled_for || a.email_date).getTime() - new Date(b.scheduled_for || b.email_date).getTime()
+  );
+  const delivered = emails.filter(e => e.send_status !== "scheduled");
+
+  if (delivered.length === 0 && scheduled.length === 0) {
     return (
       <div>
         {header}
@@ -204,11 +209,14 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     );
   }
 
-  const threads = groupByThread(emails);
+  const threads = groupByThread(delivered);
 
   return (
     <div>
       {header}
+      {scheduled.length > 0 && (
+        <ScheduledStrip scheduled={scheduled} onCancel={cancelScheduled} />
+      )}
       <ScrollArea className="max-h-[480px]">
         <div className="space-y-1.5">
           {threads.map((thread) => (
@@ -217,6 +225,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
               thread={thread}
               onSuggestResponses={(email, objections) => setResponseDialog({ email, objections })}
               onReply={onReply}
+              onMarkRead={markRead}
             />
           ))}
         </div>
@@ -238,6 +247,51 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
             if (onCompose) onCompose();
           }}
         />
+      )}
+    </div>
+  );
+}
+
+function ScheduledStrip({ scheduled, onCancel }: { scheduled: LeadEmail[]; onCancel: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-border rounded-md mb-2 bg-secondary/30">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-secondary/50 transition-colors rounded-md"
+      >
+        <div className="flex items-center gap-2 text-xs">
+          <Clock className="h-3 w-3 text-muted-foreground" />
+          <span className="font-medium">{scheduled.length} scheduled email{scheduled.length === 1 ? "" : "s"}</span>
+        </div>
+        <ChevronDown className={cn("h-3 w-3 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="border-t border-border divide-y divide-border">
+          {scheduled.map((e) => (
+            <div key={e.id} className="flex items-start gap-2 px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium truncate">{e.subject || "(no subject)"}</div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  To: {(e.to_addresses || []).join(", ")}
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  {e.scheduled_for ? format(new Date(e.scheduled_for), "EEE, MMM d 'at' h:mm a") : ""}
+                  {" · "}
+                  {e.scheduled_for ? formatDistanceToNow(new Date(e.scheduled_for), { addSuffix: true }) : ""}
+                </div>
+              </div>
+              <Button
+                variant="ghost" size="sm"
+                className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+                onClick={() => onCancel(e.id)}
+              >
+                <X className="h-3 w-3" /> Cancel
+              </Button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
