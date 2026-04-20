@@ -333,10 +333,50 @@ export function DashboardLossIntelligence({ leads, onDrillDown }: Props) {
 
   const fmt$ = (v: number) => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`;
   const maxSynth = Math.max(...synthesizedReasons.map(p => p.count), 1);
+  const maxStructured = Math.max(...structuredReasons.rows.map(r => r.count), 1);
 
   return (
     <div className="space-y-4">
       <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Loss & Competitive Intelligence</h2>
+
+      {/* Block 0: Structured (v2) Loss Reasons — primary source of truth */}
+      <div className="border border-border rounded-lg px-5 py-4">
+        <div className="flex items-baseline justify-between mb-3">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">
+            Loss Reason Breakdown <span className="text-[10px] font-normal ml-1 normal-case">
+              ({structuredReasons.withReason} of {lostLeads.length} tagged
+              {structuredReasons.missing > 0 ? ` · ${structuredReasons.missing} missing` : ""})
+            </span>
+          </p>
+          <span className="text-[10px] text-muted-foreground">Rep-stated · locked dropdown</span>
+        </div>
+        {structuredReasons.rows.length > 0 ? (
+          <div className="space-y-1.5">
+            {structuredReasons.rows.map((p) => (
+              <div
+                key={p.reason}
+                className="cursor-pointer hover:bg-secondary/20 rounded px-1 -mx-1 transition-colors"
+                onClick={() => onDrillDown?.(`Lost — ${p.reason}`, p.leads)}
+              >
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium truncate max-w-[240px]">{p.reason}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="tabular-nums">{p.count}</span>
+                    <span className="text-muted-foreground tabular-nums w-8 text-right">{p.pct}%</span>
+                  </div>
+                </div>
+                <div className="h-1.5 bg-secondary/50 rounded mt-0.5">
+                  <div className="h-full bg-foreground/60 rounded" style={{ width: `${(p.count / maxStructured) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            No structured loss reasons recorded yet. As deals move to Closed Lost, the stage gate will force a value and this breakdown will populate.
+          </p>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-4">
         {/* Block 1: Synthesized Loss Reasons */}
