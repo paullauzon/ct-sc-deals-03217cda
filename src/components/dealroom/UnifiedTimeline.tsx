@@ -399,6 +399,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       onTogglePin={togglePin}
                       forcedOpen={forcedOpen}
                       forceNonce={expandAllNonce}
+                      onReply={onReply}
                     />
                   ))}
                 </div>
@@ -422,6 +423,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       onTogglePin={togglePin}
                       forcedOpen={forcedOpen}
                       forceNonce={expandAllNonce}
+                      onReply={onReply}
                     />
                   ))}
                 </div>
@@ -434,19 +436,30 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
   );
 }
 
+function countFrom(value: unknown): number {
+  if (Array.isArray(value)) return value.length;
+  if (typeof value === "number") return value;
+  return 0;
+}
+
 function TimelineRow({
   event,
   onTogglePin,
   forcedOpen,
   forceNonce,
+  onReply,
 }: {
   event: TimelineEvent;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   forcedOpen: boolean | null;
   forceNonce: number;
+  onReply?: (prefill: ReplyPrefill) => void;
 }) {
   const [open, setOpen] = useState(false);
   const expandable = !!event.detail;
+  const isEmail = event.type === "email_in" || event.type === "email_out";
+  const isInbound = event.type === "email_in";
+  const email = event.email;
 
   // React to expand-all / collapse-all toggle from parent
   useEffect(() => {
@@ -457,6 +470,33 @@ function TimelineRow({
 
   const canPin = !!event.activityId;
   const isPinned = !!event.pinnedAt;
+
+  // Email enrichments
+  const opens = countFrom(email?.opens);
+  const clicks = countFrom(email?.clicks);
+  const attachments = countFrom(email?.attachments);
+  const replied = !!email?.replied_at;
+  const aiDrafted = !!email?.ai_drafted;
+  const sequence = email?.sequence_step || "";
+
+  const handleReply = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onReply || !email) return;
+    const subj = email.subject || "";
+    const replySubj = /^re:/i.test(subj) ? subj : `Re: ${subj}`;
+    const dateStr = new Date(email.email_date).toLocaleString("en-US", {
+      month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
+    });
+    const sender = email.from_name ? `${email.from_name} <${email.from_address}>` : email.from_address;
+    const quoted = (email.body_text || email.body_preview || "").split("\n").map(l => `> ${l}`).join("\n");
+    onReply({
+      to: email.from_address,
+      subject: replySubj,
+      thread_id: email.thread_id || "",
+      in_reply_to: email.message_id || "",
+      quote: `On ${dateStr}, ${sender} wrote:\n${quoted}`,
+    });
+  };
 
   return (
     <div className="relative pl-9 group/row">
@@ -500,6 +540,41 @@ function TimelineRow({
         {event.meta && (
           <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{event.meta}</p>
         )}
+        {/* Email enrichment pill row — only for email events */}
+        {isEmail && email && (opens > 0 || clicks > 0 || replied || aiDrafted || sequence || attachments > 0) && (
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            {aiDrafted && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5 font-medium">
+                <Sparkles className="h-2.5 w-2.5" /> AI-drafted
+              </Badge>
+            )}
+            {sequence && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 font-mono">
+                {sequence}
+              </Badge>
+            )}
+            {opens > 0 && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5" title={`${opens} open${opens !== 1 ? "s" : ""}`}>
+                <Eye className="h-2.5 w-2.5" /> Opened {opens}×
+              </Badge>
+            )}
+            {clicks > 0 && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5" title={`${clicks} click${clicks !== 1 ? "s" : ""}`}>
+                <MousePointerClick className="h-2.5 w-2.5" /> Clicked {clicks}×
+              </Badge>
+            )}
+            {replied && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5">
+                <Reply className="h-2.5 w-2.5" /> Replied
+              </Badge>
+            )}
+            {attachments > 0 && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5">
+                <Paperclip className="h-2.5 w-2.5" /> {attachments}
+              </Badge>
+            )}
+          </div>
+        )}
         {event.detail && !open && (
           <p className="text-xs text-muted-foreground/80 mt-1 line-clamp-1">{event.detail}</p>
         )}
@@ -518,6 +593,14 @@ function TimelineRow({
           >
             Open recording →
           </a>
+        )}
+        {/* Inline Reply for inbound emails */}
+        {isEmail && isInbound && onReply && email && open && (
+          <div className="mt-2">
+            <Button variant="outline" size="sm" className="h-6 text-[11px] gap-1" onClick={handleReply}>
+              <Reply className="h-3 w-3" /> Reply
+            </Button>
+          </div>
         )}
       </button>
     </div>
