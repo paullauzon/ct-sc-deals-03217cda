@@ -250,6 +250,7 @@ Deno.serve(async (req) => {
       is_read: true,
       tracked: true,
       ai_drafted: isAiDrafted,
+      sequence_step: sequenceStep,
       raw_payload: {
         sent_via: "crm",
         x_crm_source: "lovable-crm",
