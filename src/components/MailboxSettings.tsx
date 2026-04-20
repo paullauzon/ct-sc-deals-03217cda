@@ -222,9 +222,16 @@ export function MailboxSettings() {
                     })()}
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {c.last_synced_at
-                      ? formatDistanceToNow(new Date(c.last_synced_at), { addSuffix: true })
-                      : "Not yet synced"}
+                    <div>
+                      {c.last_synced_at
+                        ? formatDistanceToNow(new Date(c.last_synced_at), { addSuffix: true })
+                        : "Not yet synced"}
+                    </div>
+                    {c.is_active && (
+                      <div className="mt-0.5 text-[11px]">
+                        <span className="text-foreground font-medium">{recentCounts[c.id] ?? 0}</span> in last 24h
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
