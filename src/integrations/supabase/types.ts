@@ -357,6 +357,8 @@ export type Database = {
       }
       lead_activity_log: {
         Row: {
+          actor_name: string
+          actor_user_id: string | null
           created_at: string
           description: string
           event_type: string
@@ -367,6 +369,8 @@ export type Database = {
           pinned_at: string | null
         }
         Insert: {
+          actor_name?: string
+          actor_user_id?: string | null
           created_at?: string
           description?: string
           event_type?: string
@@ -377,6 +381,8 @@ export type Database = {
           pinned_at?: string | null
         }
         Update: {
+          actor_name?: string
+          actor_user_id?: string | null
           created_at?: string
           description?: string
           event_type?: string
