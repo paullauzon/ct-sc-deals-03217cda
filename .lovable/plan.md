@@ -1,129 +1,119 @@
 
 
-# What truly remains across the whole system — full sweep
+# What's actually left — verified against the live DB right now
 
-Email/Gmail is done. Digging into the live DB and codebase, here's what's actually unfinished — sorted from "blocks production" to "polish."
+I dug in. Auth landed, RLS is tight, Gmail sync runs every 10 min, email infra (clicks/bounces/replies/scheduled/templates/read-state) is fully wired. **But the "5 automation crons" from the previous plan were never actually scheduled** — only the auth migration ran. The numbers prove it:
 
-## Verified state right now (live DB)
-
-| Check | Count | Status |
+| Check | Last session claim | Today's reality |
 |---|---|---|
-| Active leads | 150 | baseline |
-| AI-tier enrichment (`firm_aum`/`deal_type`/`transaction_type`) | **0 / 150** | banner exists, never clicked across 10+ sessions |
-| Active leads missing LinkedIn URL | **200** (was 55 in session 9) | button exists, never clicked |
-| Active leads missing `company_url` | 122 | button exists, never clicked |
-| Pending tasks already overdue | **556** | reschedule button exists, never clicked |
-| Late-stage leads missing forecast fields | 4 | UI nudge present, awaiting rep entry |
-| Stale Fireflies transcripts (`transcript_len = 0`) | 4 | needs Fireflies re-fetch path |
-| Auth / login | **none** | RLS is `true/true` on every table |
-| Outlook deep sync | dormant | needs `MICROSOFT_OUTLOOK_API_KEY` + admin consent |
+| Active leads | 150 | **437** |
+| Missing AI-tier (`firm_aum`/`deal_type`/`transaction_type`) | 0/150 | **0 / 437** (got worse, not better) |
+| Missing LinkedIn URL | 200 | **200** (unchanged) |
+| Missing `company_url` | 122 | **122** (unchanged) |
+| Overdue pending tasks | 556 | **556** (unchanged, oldest from 2025-11-01) |
+| Broken Fireflies transcripts | 4 | **110** (got worse — sync failures accumulating) |
+| Auth users / profiles | 0 | **1** (Adam — works) |
+| Mailboxes | 1 | 1 (Captarget) |
+| Email templates seeded | 6 | 6 |
 
-## Pattern: every "open" item is a button that nobody clicks
-
-10 sessions of audits show the same root cause — fixes ship as one-click buttons inside the app that depend on a human noticing a banner. The honest fix is **automate the buttons via cron**, so coverage rises whether or not anyone clicks anything.
+The only cron actually running is `sync-gmail-emails` every 10 min. The five automation crons that were supposed to land last session — `auto-enrich-ai-tier`, `auto-backfill-linkedin`, `auto-backfill-company-url`, `auto-reschedule-overdue`, `auto-process-stale-transcripts` — exist as edge functions but are **never invoked**. Same for `process-scheduled-emails`.
 
 ---
 
-## Work item 1 — Authentication (CRITICAL — biggest unaddressed gap)
+## Work item 1 — Actually schedule the automation crons (the real fix)
 
-The app has zero auth. `App.tsx` wraps routes with no `Session` provider. Every table's RLS is `using (true) with check (true)`. Anyone with the published URL has full read+write to leads, emails, tokens, refresh tokens — the entire CRM.
+Schedule six cron jobs against the live DB using `pg_cron` + `pg_net`. Per the `schedule-jobs` guide, these go through the database insert tool (not migrations), because the URLs and service-role key are project-specific.
 
-**Build:**
-- Add Supabase email/password + Google sign-in. New `src/pages/Auth.tsx` — sign-in + sign-up tabs.
-- Wrap `<Routes>` with a session guard — redirect to `/auth` when no session, show app when authenticated.
-- New `profiles` table (id = auth.uid, name, email, default_brand) auto-created via on-auth-insert trigger.
-- New `user_roles` table + `app_role` enum (`admin`, `rep`) + `has_role(uid, role)` SECURITY DEFINER function — per the project's role pattern.
-- Tighten RLS on every table to `authenticated` only (still permissive within the team — single-tenant, no per-user split yet).
-- Auth requirement does NOT apply to webhooks: `ingest-lead`, `ingest-email`, `ingest-calendly-booking`, `track-email-open`, `track-email-click` keep `verify_jwt = false`.
-- Edge functions invoked from the UI (`backfill-*`, `bulk-*`, `process-*`, `summarize-*`, `send-gmail-email`) get `verify_jwt = true` so only authenticated reps can trigger them.
-
-This is the single highest-value remaining change. Without it, "publish the URL" effectively means "make the CRM public."
-
----
-
-## Work item 2 — Cron-automate the buttons that nobody clicks
-
-All five gaps below already have working code paths invoked via UI buttons. Wire them to cron so coverage rises automatically.
-
-| Cron | Schedule | Calls | Cap per run |
+| Cron name | Schedule | Calls | Cap |
 |---|---|---|---|
-| `auto-enrich-ai-tier` | every 30 min, 09:00–18:00 weekdays | `bulk-enrich-sourceco` `{limit:10, onlyEmptyAum:true}` | 10 leads |
-| `auto-backfill-linkedin` | daily 02:00 UTC | `backfill-linkedin` `{}` | 25 leads |
-| `auto-backfill-company-url` | daily 02:30 UTC | new helper that derives URL from email domain | 50 leads |
-| `auto-reschedule-overdue` | daily 06:00 UTC | bulk update `lead_tasks.due_date = current_date` where overdue & status='pending' | unlimited |
-| `auto-process-stale-transcripts` | daily 03:00 UTC | `bulk-process-stale-meetings` `{limit:5}` | 5 leads (TPM-safe) |
+| `auto-enrich-ai-tier` | every 30 min, 13:00–22:00 UTC, weekdays | `bulk-enrich-sourceco` `{limit:10, onlyEmptyAum:true}` | 10/run → ~180/day |
+| `auto-backfill-linkedin` | daily 02:00 UTC | `backfill-linkedin` | 25/run |
+| `auto-backfill-company-url` | daily 02:30 UTC | `auto-backfill-company-url` | 50/run |
+| `auto-reschedule-overdue` | daily 06:00 UTC | `auto-reschedule-overdue` | unlimited (push to today) |
+| `auto-process-stale-transcripts` | daily 03:00 UTC | `bulk-process-stale-meetings` `{limit:5}` | 5/run |
+| `process-scheduled-emails-5min` | every 5 min | `process-scheduled-emails` | unlimited |
 
-All five use existing edge functions; only schedule + ~30 lines of `pg_cron.schedule()` in a migration. Banners in the UI stay (so reps still see real-time state) but progress no longer depends on clicks.
+**Cost ceiling:** AI-tier at 10 leads × 18 ticks × $0.02 ≈ $3.60/day max, only while queue is non-empty. Other crons are essentially free.
 
-**Cost ceiling:** caps prevent runaway spend. AI-tier cron at 10 leads × 18 ticks/day × $0.02 ≈ $3.60/day max, only running until the queue empties.
+**Effect after 7 days:**
+- AI-tier coverage: 0 → ~437 (queue drains in 3 days)
+- Missing LinkedIn: 200 → ~25 (drains in 8 days)
+- Missing company_url: 122 → 0 (drains in 3 days)
+- Overdue tasks: 556 → 0 (next morning)
+- Broken transcripts: 110 → ~75 (drains in 22 days at 5/day; consider raising cap if fine on TPM)
 
 ---
 
-## Work item 3 — Recover broken Fireflies transcripts (4 leads)
+## Work item 2 — Fix the broken transcript explosion (110, was 4 last week)
 
-Four leads have `firefliesId` populated but `transcript_len = 0` (transcript fetch failed at sync time). Currently dead-end — `bulk-process-stale-meetings` skips them because there's nothing to summarize.
+Root cause: every time a Fireflies meeting is synced, if the transcript fetch fails (rate-limit, timing, etc.), it persists with `transcript_len = 0`. Currently the sync-fireflies-post-meeting job has no retry path.
 
 **Build:**
-- Extend `fetch-fireflies` with a `mode='re-fetch'` that takes a list of `firefliesId`s and re-pulls transcript + sentences from the Fireflies API, then writes them back into the meeting JSON.
-- One-shot dropdown item in Pipeline header: "Re-fetch broken transcripts (4)".
-- After re-fetch, the existing stale-transcripts cron (Work item 2) picks them up next tick.
+- In `sync-fireflies-post-meeting/index.ts`: when transcript fetch returns empty, **don't write the meeting yet** — write a row to a small new `fireflies_retry_queue` table with `firefliesId`, `lead_id`, `attempts` (max 5), `next_attempt_at` (exponential backoff: 5min, 30min, 2h, 6h, 24h).
+- New cron `process-fireflies-retry-queue` every 15 min — picks up due rows, re-fetches the transcript, on success writes meeting + summarizes, on final failure flags the row `status='gave_up'` so it stops re-trying.
+- One-shot **"Repair 110 broken transcripts" dropdown item in Pipeline header** — enqueues all currently-broken leads into the retry queue at staggered times so we don't spike the Fireflies API.
+
+This permanently kills the regression instead of patching it.
 
 ---
 
-## Work item 4 — Outlook deep email sync (unblock SourceCo)
+## Work item 3 — `lead_status` is a dead column (cleanup)
 
-Code path is fully built (`sync-outlook-emails`, the OAuth equivalents, gateway integration). Two blockers:
-1. `MICROSOFT_OUTLOOK_API_KEY` secret not set.
-2. SourceCo M365 tenant admin consent not granted.
+All 437 active leads have `lead_status='Working'`. The column is never set to anything else, never filtered on, never displayed. It's vestigial.
 
-Both are external. **No code work possible until both are resolved** — but I'll add a one-time setup checklist component in Settings → Mailboxes that shows the exact admin-consent URL to request and the connector setup steps, so the moment those land, the rest of the wiring is one click. Otherwise SourceCo emails stay invisible.
+**Build:**
+- One small migration: drop `leads.lead_status` column.
+- Remove references from `src/types/lead.ts`, `src/lib/leadDbMapping.ts`, anywhere it's selected.
+- Trivial; reduces noise.
 
----
-
-## Work item 5 — Per-user mailbox ownership / RLS (Gap G, decision needed)
-
-Originally deferred pending product decision. With auth landing in Work item 1, the call is overdue. Two options:
-
-- **Option A — Single shared inbox view (simpler):** all authenticated team members see all connected mailboxes. RLS = `authenticated` only. Done in Work item 1.
-- **Option B — Per-rep ownership (adds friction):** each rep sees only their connected mailbox; admins see all. Requires `user_id` column on `user_email_connections` + RLS conditioning on `auth.uid()` or admin role.
-
-I'll **default to Option A** as part of Work item 1 (lower friction, matches how a 5-person team actually works) and leave a 1-line comment in the migration showing how to flip to Option B later.
+(Skip if you want — but worth flagging that "Working" everywhere is a tell that this field is dead weight.)
 
 ---
 
-## What I am explicitly NOT doing
+## Work item 4 — Cron health visibility
 
-- **A/B subject testing, smart-send-time, AI thread digests** — premature; let templates + clicks accumulate data first.
-- **Mobile responsive deal room redesign** — out of scope; current desktop-first is fine for an internal CRM.
-- **Multi-tenant org separation** — overkill for a 5-person team on one Lovable project.
-- **Stripe / billing for the CRM itself** — internal tool, not a SaaS product.
-- **Real-time presence indicators** — nice-to-have, no current pain.
+Without it, the same "schedule it and forget" failure mode that hit us this session can repeat silently. Build a small admin-only Settings → "Automation health" panel:
 
-## Order of execution (single focused pass)
+- Lists each of the 6 crons (name, last run time, last success/failure, items processed last run).
+- Backed by a new `cron_run_log` table that each automation function writes to on completion.
+- Red dot if last run > 1.5× the schedule interval ago.
+- Manual "Run now" button next to each cron.
 
-1. **Auth (Work item 1)** — can't ship anything else securely until this lands.
-2. **Five crons (Work item 2)** — single migration, eliminates 5+ persistent operational gaps in one shot.
-3. **Stale transcript re-fetch (Work item 3)** — one new function + one dropdown item.
-4. **Outlook setup checklist (Work item 4)** — small Settings component, no logic.
-5. **Per-user RLS decision baked into Work item 1** — Option A by default.
+If a cron stops firing or starts failing, it's visible in 5 seconds instead of taking a 10-session audit cycle to discover.
 
-After this pass, the system runs itself: data fills automatically, the URL is no longer publicly accessible, and the only manual rep work left is real selling.
+---
 
-## Files / migrations
+## What I'm explicitly NOT doing
+
+- **Outlook (still blocked)** — needs `MICROSOFT_OUTLOOK_API_KEY` + SourceCo M365 admin consent. The setup checklist already exists in Settings → Mailboxes; nothing more is buildable until those land externally.
+- **Per-user mailbox RLS (Gap G)** — Option A (shared) is live and working for a 5-person team; defer until you have >5 users or hear a complaint.
+- **Templates analytics, A/B subject testing, smart-send-time** — premature; need real data first.
+- **Mobile responsive deal room** — out of scope; internal CRM.
+
+---
+
+## Order of execution (single pass)
+
+1. **Schedule the 6 crons** (Work item 1) — biggest impact-per-byte; most of it is one INSERT statement per cron.
+2. **Fireflies retry queue + repair-110 button** (Work item 2) — kills the worst regression.
+3. **Cron health panel** (Work item 4) — last-mile visibility so this never happens silently again.
+4. **Drop `lead_status`** (Work item 3) — quick cleanup if you want it.
+
+---
+
+## Files / changes
 
 | File | Change |
 |---|---|
-| `src/pages/Auth.tsx` (new) | Sign-in / sign-up screen, Google OAuth + email/password |
-| `src/App.tsx` | Wrap routes in `SessionGuard`, add `/auth` route |
-| `src/contexts/AuthContext.tsx` (new) | `useAuth()` hook, session subscription |
-| `src/components/MailboxSettings.tsx` | "Outlook setup checklist" sub-section |
-| `supabase/migrations/<ts>_auth_and_rls.sql` (new) | `profiles`, `user_roles`, `app_role` enum, `has_role`, tighten RLS on all tables |
-| `supabase/migrations/<ts>_automation_crons.sql` (new) | 5 pg_cron jobs |
-| `supabase/functions/auto-backfill-company-url/index.ts` (new) | Derive URL from email domain for active leads |
-| `supabase/functions/auto-reschedule-overdue/index.ts` (new) | Bulk push overdue pending tasks to today |
-| `supabase/functions/fetch-fireflies/index.ts` | Add `mode='re-fetch'` for broken transcripts |
-| `src/components/Pipeline.tsx` | Dropdown item "Re-fetch broken transcripts (4)" |
-| `supabase/config.toml` | `verify_jwt = true` on rep-triggered functions; keep `false` on webhooks |
+| Direct DB inserts (no migration) | Schedule 6 `pg_cron` jobs via the `insert` path so the project-specific URL+key aren't committed to migrations |
+| `supabase/functions/sync-fireflies-post-meeting/index.ts` | Stop writing empty meetings; enqueue to retry queue |
+| `supabase/functions/process-fireflies-retry-queue/index.ts` (new) | Retry runner with exponential backoff + give-up |
+| `supabase/migrations/<ts>_fireflies_retry.sql` (new) | `fireflies_retry_queue` + `cron_run_log` tables |
+| `src/components/Pipeline.tsx` | Dropdown item "Repair 110 broken transcripts" |
+| `src/components/AutomationHealthPanel.tsx` (new) | Admin-only health dashboard for the 6 crons |
+| `src/components/MailboxSettings.tsx` | New "Automation" tab housing the panel |
+| All `auto-*` and `process-*` edge functions | Append a one-line `cron_run_log` insert at the end of each run |
+| (Optional) `supabase/migrations/<ts>_drop_lead_status.sql` | Drop the dead column |
 
-End state: the CRM is auth-protected, fills its own coverage gaps via cron, recovers broken transcripts, and SourceCo Outlook is one admin click away from working.
+End state: AI-tier coverage climbs from 0% to 100% over 3 days unattended; LinkedIn URL backfill drains the 200-lead queue in a week; 556 overdue tasks vanish overnight; broken transcripts self-heal via retry queue; cron failures become visible immediately; the system genuinely runs itself.
 
