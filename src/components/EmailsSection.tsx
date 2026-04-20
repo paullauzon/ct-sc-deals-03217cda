@@ -303,6 +303,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   if (loading) {
     return (
       <div>
+        <EmailTabIntro leadName={lead?.name} />
         {header}
         <div className="text-xs text-muted-foreground/60 text-center py-4">
           Loading emails...
