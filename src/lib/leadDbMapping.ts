@@ -275,6 +275,8 @@ export function leadUpdatesToRow(updates: Partial<Lead>): Record<string, any> {
     nurtureSequenceStatus: "nurture_sequence_status",
     nurtureStartedAt: "nurture_started_at",
     nurtureReEngageDate: "nurture_re_engage_date",
+    nurtureStepLog: "nurture_step_log",
+    nurtureExitReason: "nurture_exit_reason",
     stageGateOverrides: "stage_gate_overrides",
     discoveryCallCompletedAt: "discovery_call_completed_at",
   };
