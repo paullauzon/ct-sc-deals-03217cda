@@ -139,8 +139,9 @@ export function LeadPanelHeader({
   const [copied, setCopied] = useState(false);
   const [summaryCopied, setSummaryCopied] = useState(false);
   const [pendingStage, setPendingStage] = useState<LeadStage | null>(null);
-  const [closeWonGuard, setCloseWonGuard] = useState<{ missing: string[] } | null>(null);
+  const [gateStage, setGateStage] = useState<LeadStage | null>(null);
   const [fillingGaps, setFillingGaps] = useState(false);
+  const { updateLead } = useLeads();
   const dealHealth = computeDealHealthScore(lead);
   const coverage = getStakeholderCoverage(lead);
   const lastContact = lastContactLabel(lead);
