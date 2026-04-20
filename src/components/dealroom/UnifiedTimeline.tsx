@@ -223,20 +223,42 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
   const events = useMemo<TimelineEvent[]>(() => {
     const out: TimelineEvent[] = [];
 
-    // Activity log (stage changes, field updates, notes) — these can be pinned
+    // Activity log (stage changes, field updates, notes, calls) — these can be pinned
     activity.forEach(a => {
       const actor = (a as any).actor_name as string | undefined;
+      const evType: TimelineEvent["type"] =
+        a.event_type === "stage_change" ? "stage_change"
+        : a.event_type === "note_added" ? "note"
+        : a.event_type === "meeting_added" ? "meeting"
+        : a.event_type === "call_logged" ? "call"
+        : "system";
       out.push({
         id: `act-${a.id}`,
         activityId: a.id,
         pinnedAt: (a as any).pinned_at || null,
-        type: a.event_type === "stage_change" ? "stage_change"
-          : a.event_type === "note_added" ? "note"
-          : a.event_type === "meeting_added" ? "meeting"
-          : "system",
+        type: evType,
         date: a.created_at,
         title: a.description,
         meta: actor && actor.trim() ? `by ${actor}` : "by System",
+      });
+    });
+
+    // Tasks — surface every task as a timeline row anchored to its due date
+    tasks.forEach(t => {
+      const isDone = t.status === "done" || !!t.completed_at;
+      const isOverdue = !isDone && new Date(t.due_date) < new Date();
+      const statusLabel = isDone ? "Task done" : isOverdue ? "Task overdue" : "Task upcoming";
+      const dueStr = (() => {
+        try { return new Date(t.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }); } catch { return t.due_date; }
+      })();
+      out.push({
+        id: `task-${t.id}`,
+        type: "task",
+        date: (isDone && t.completed_at) ? t.completed_at : t.due_date,
+        title: t.title,
+        detail: t.description || undefined,
+        meta: `${statusLabel} · due ${dueStr}`,
+        task: t,
       });
     });
 
@@ -296,7 +318,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
     return out
       .filter(e => e.date)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [activity, emails, lead]);
+  }, [activity, emails, tasks, lead]);
 
   // Apply filter + search + date range
   const filtered = useMemo(() => {
