@@ -356,7 +356,9 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
   const counts = useMemo(() => ({
     all: events.length,
     emails: events.filter(e => e.type === "email_in" || e.type === "email_out").length,
+    calls: events.filter(e => e.type === "call").length,
     meetings: events.filter(e => e.type === "meeting" || e.type === "calendly").length,
+    tasks: events.filter(e => e.type === "task").length,
     stage: events.filter(e => e.type === "stage_change").length,
     notes: events.filter(e => e.type === "note").length,
     system: events.filter(e => e.type === "submission" || e.type === "system").length,
