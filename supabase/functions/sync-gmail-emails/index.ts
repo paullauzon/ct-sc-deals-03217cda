@@ -279,20 +279,60 @@ async function listMessageIdsIncremental(
   return { ids: Array.from(ids).slice(0, MAX_INCREMENTAL), latestHistoryId, reset: false };
 }
 
+async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3): Promise<Response> {
+  let attempt = 0;
+  let lastRes: Response | null = null;
+  while (attempt < maxAttempts) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 && res.status !== 503) return res;
+    lastRes = res;
+    const retryAfterHeader = res.headers.get("Retry-After");
+    const retryAfterMs = retryAfterHeader && /^\d+$/.test(retryAfterHeader)
+      ? parseInt(retryAfterHeader) * 1000
+      : Math.min(4000, 1000 * Math.pow(2, attempt));
+    await new Promise((r) => setTimeout(r, retryAfterMs));
+    attempt += 1;
+  }
+  return lastRes!;
+}
+
 async function fetchMessage(token: string, id: string): Promise<GmailMessage | null> {
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetchWithRetry(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) return null;
   return await res.json() as GmailMessage;
 }
 
 async function getMailboxProfileHistoryId(token: string): Promise<string | null> {
-  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
+  const res = await fetchWithRetry("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return null;
   const json = await res.json() as { historyId?: string };
   return json.historyId ?? null;
+}
+
+// Bounce detection — Gmail delivers DSNs from mailer-daemon@ with a Subject like
+// "Delivery Status Notification (Failure)". We extract the failed recipient from the
+// body or X-Failed-Recipients header. Returns null if it's not a bounce.
+function detectBounce(msg: GmailMessage, fromAddress: string, subject: string, bodyText: string): { recipient: string; reason: string } | null {
+  const isDaemon = /mailer-daemon|postmaster/i.test(fromAddress);
+  const isDsn = /delivery status notification|undeliverable|delivery has failed|address not found/i.test(subject)
+    || /delivery status notification|message not delivered|550 5\.|address not found|user unknown/i.test(bodyText);
+  if (!isDaemon && !isDsn) return null;
+  const xFailed = header(msg.payload, "X-Failed-Recipients");
+  let recipient = "";
+  if (xFailed) recipient = xFailed.trim().toLowerCase();
+  if (!recipient) {
+    const m = bodyText.match(/(?:to:|recipient:|<)\s*([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
+    if (m) recipient = m[1].toLowerCase();
+  }
+  if (!recipient) return null;
+  const reasonMatch = bodyText.match(/(550 5\.[\d.]+[^\n]{0,180})/i)
+    || bodyText.match(/(reason:[^\n]{0,180})/i)
+    || bodyText.match(/(diagnostic-code:[^\n]{0,180})/i);
+  const reason = (reasonMatch ? reasonMatch[1] : "delivery failed").trim().slice(0, 240);
+  return { recipient, reason };
 }
 
 async function syncOneConnection(
@@ -416,6 +456,36 @@ async function syncOneConnection(
         msg.internalDate ? new Date(parseInt(msg.internalDate)).toISOString() :
         new Date().toISOString();
 
+      // Bounce detection — DSN messages from mailer-daemon. When detected, mark the
+      // most recent outbound row to that recipient as bounced and auto-quarantine
+      // the lead after 2 hard bounces.
+      const bounce = detectBounce(msg, from.address, subject, text || preview);
+      if (bounce) {
+        const { data: outboundMatch } = await supabase
+          .from("lead_emails")
+          .select("id, lead_id")
+          .eq("direction", "outbound")
+          .contains("to_addresses", [bounce.recipient])
+          .order("email_date", { ascending: false })
+          .limit(1);
+        const target = outboundMatch?.[0] as { id: string; lead_id: string } | undefined;
+        if (target) {
+          await supabase.from("lead_emails")
+            .update({ bounce_reason: bounce.reason, send_status: "failed" })
+            .eq("id", target.id);
+          const { count: bounceCount } = await supabase
+            .from("lead_emails")
+            .select("id", { count: "exact", head: true })
+            .eq("direction", "outbound")
+            .contains("to_addresses", [bounce.recipient])
+            .neq("bounce_reason", "");
+          if (target.lead_id && target.lead_id !== "unmatched" && (bounceCount ?? 0) >= 2) {
+            await supabase.from("lead_email_metrics")
+              .upsert({ lead_id: target.lead_id, email_quarantined: true, updated_at: new Date().toISOString() }, { onConflict: "lead_id" });
+          }
+        }
+      }
+
       const insertRow = {
         lead_id: leadId ?? "unmatched",
         provider_message_id: mid,
@@ -434,14 +504,54 @@ async function syncOneConnection(
         email_date: emailDate,
         source: "gmail",
         is_read: !(msg.labelIds || []).includes("UNREAD"),
+        send_status: bounce ? "failed" : "sent",
+        bounce_reason: bounce?.reason ?? "",
         raw_payload: { gmail_label_ids: msg.labelIds ?? [] },
       };
 
-      const { error: insertErr } = await supabase.from("lead_emails").insert(insertRow);
+      const { data: insertedRow, error: insertErr } = await supabase
+        .from("lead_emails")
+        .insert(insertRow)
+        .select("id")
+        .single();
       if (insertErr) {
         stats.errors.push(`insert ${mid}: ${insertErr.message.slice(0, 120)}`);
       } else {
         stats.inserted += 1;
+
+        // Reply detection — when an inbound matched to a lead lands in a thread that
+        // already has an outbound, stamp replied_at on that outbound row.
+        if (direction === "inbound" && leadId && msg.threadId && insertedRow) {
+          const { data: prevOutbound } = await supabase
+            .from("lead_emails")
+            .select("id")
+            .eq("lead_id", leadId)
+            .eq("thread_id", msg.threadId)
+            .eq("direction", "outbound")
+            .is("replied_at", null)
+            .order("email_date", { ascending: false })
+            .limit(1);
+          const replyTarget = prevOutbound?.[0] as { id: string } | undefined;
+          if (replyTarget) {
+            await supabase.from("lead_emails")
+              .update({ replied_at: emailDate })
+              .eq("id", replyTarget.id);
+          }
+        }
+
+        // Activity log + last_contact bump for matched inbound emails — feeds the
+        // unanswered-emails action chip and keeps the deal-room timeline current.
+        if (direction === "inbound" && leadId) {
+          await supabase.from("lead_activity_log").insert({
+            lead_id: leadId,
+            event_type: "email_received",
+            description: `Email received: ${(subject || "(no subject)").slice(0, 200)}`,
+            new_value: from.address,
+          });
+          await supabase.from("leads")
+            .update({ last_contact_date: emailDate.split("T")[0] })
+            .eq("id", leadId);
+        }
       }
     } catch (e) {
       stats.errors.push(`msg ${mid}: ${(e as Error).message.slice(0, 120)}`);

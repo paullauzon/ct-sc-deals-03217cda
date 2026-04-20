@@ -105,6 +105,21 @@ function textToHtml(s: string): string {
   return `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.5;color:#0f172a;white-space:pre-wrap;">${escapeHtml(s)}</div>`;
 }
 
+// Rewrite all <a href="X"> links to route through track-email-click.
+// Skips mailto:, tel:, anchor-only, and our own pixel/click endpoints.
+function rewriteLinks(html: string, leadEmailId: string, baseUrl: string): string {
+  const trackBase = `${baseUrl}/functions/v1/track-email-click`;
+  return html.replace(/(<a\b[^>]*\bhref\s*=\s*)(["'])([^"']+)\2/gi, (m, pre, q, href) => {
+    const trimmed = href.trim();
+    if (!trimmed) return m;
+    if (/^(mailto:|tel:|#|javascript:)/i.test(trimmed)) return m;
+    if (trimmed.includes("/track-email-click") || trimmed.includes("/track-email-open")) return m;
+    if (!/^https?:\/\//i.test(trimmed)) return m;
+    const wrapped = `${trackBase}?eid=${encodeURIComponent(leadEmailId)}&url=${encodeURIComponent(trimmed)}`;
+    return `${pre}${q}${wrapped}${q}`;
+  });
+}
+
 function buildRfc822({
   fromAddress, fromName, to, cc, bcc, subject, text, html, inReplyTo, messageId,
 }: {
@@ -230,12 +245,14 @@ Deno.serve(async (req) => {
     }
     const leadEmailId = inserted.id as string;
 
-    // Inject open-pixel into the recipient HTML.
-    const trackUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/track-email-open?eid=${leadEmailId}`;
+    // Inject open-pixel + rewrite links into the recipient HTML.
+    const baseUrl = Deno.env.get("SUPABASE_URL")!;
+    const trackUrl = `${baseUrl}/functions/v1/track-email-open?eid=${leadEmailId}`;
     const pixelTag = `<img src="${trackUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />`;
-    const htmlWithPixel = html.replace(/<\/body>/i, `${pixelTag}</body>`) === html
-      ? `${html}${pixelTag}`
-      : html.replace(/<\/body>/i, `${pixelTag}</body>`);
+    const rewritten = rewriteLinks(html, leadEmailId, baseUrl);
+    const htmlWithPixel = rewritten.replace(/<\/body>/i, `${pixelTag}</body>`) === rewritten
+      ? `${rewritten}${pixelTag}`
+      : rewritten.replace(/<\/body>/i, `${pixelTag}</body>`);
 
     const raw = buildRfc822({
       fromAddress, fromName, to, cc, bcc,
