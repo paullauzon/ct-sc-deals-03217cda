@@ -105,6 +105,21 @@ function textToHtml(s: string): string {
   return `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.5;color:#0f172a;white-space:pre-wrap;">${escapeHtml(s)}</div>`;
 }
 
+// Rewrite all <a href="X"> links to route through track-email-click.
+// Skips mailto:, tel:, anchor-only, and our own pixel/click endpoints.
+function rewriteLinks(html: string, leadEmailId: string, baseUrl: string): string {
+  const trackBase = `${baseUrl}/functions/v1/track-email-click`;
+  return html.replace(/(<a\b[^>]*\bhref\s*=\s*)(["'])([^"']+)\2/gi, (m, pre, q, href) => {
+    const trimmed = href.trim();
+    if (!trimmed) return m;
+    if (/^(mailto:|tel:|#|javascript:)/i.test(trimmed)) return m;
+    if (trimmed.includes("/track-email-click") || trimmed.includes("/track-email-open")) return m;
+    if (!/^https?:\/\//i.test(trimmed)) return m;
+    const wrapped = `${trackBase}?eid=${encodeURIComponent(leadEmailId)}&url=${encodeURIComponent(trimmed)}`;
+    return `${pre}${q}${wrapped}${q}`;
+  });
+}
+
 function buildRfc822({
   fromAddress, fromName, to, cc, bcc, subject, text, html, inReplyTo, messageId,
 }: {

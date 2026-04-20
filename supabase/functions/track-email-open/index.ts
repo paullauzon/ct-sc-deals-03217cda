@@ -39,25 +39,37 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Fetch existing opens, append, write back. Cheap because rows are small.
+    // Fetch existing opens + email_date so we can filter Google's prefetch proxy.
     const { data: row } = await supabase
       .from("lead_emails")
-      .select("id, opens")
+      .select("id, opens, email_date")
       .eq("id", eid)
       .maybeSingle();
 
     if (row) {
       const ua = req.headers.get("user-agent") || "";
-      // Skip Gmail's image proxy preflight on send (it pre-fetches once before the recipient ever opens).
-      // Heuristic: ignore if request happens within 30s of insert AND UA contains GoogleImageProxy with no other signal.
-      // For simplicity we still log it — most inboxes show real opens within seconds anyway.
-      const opens = Array.isArray(row.opens) ? (row.opens as unknown[]) : [];
-      opens.push({ at: new Date().toISOString(), ua: ua.slice(0, 200) });
+      const isProxy = /GoogleImageProxy|YahooMailProxy|ProtonMail/i.test(ua);
+      // Suppress opens that fire within 30s of send AND come from a known proxy UA —
+      // those are inbox prefetches, not real human opens.
+      const sentAt = row.email_date ? new Date(row.email_date as string).getTime() : 0;
+      const ageMs = Date.now() - sentAt;
+      const isPrefetch = isProxy && ageMs >= 0 && ageMs < 30_000;
 
-      await supabase
-        .from("lead_emails")
-        .update({ opens })
-        .eq("id", eid);
+      const opens = Array.isArray(row.opens) ? (row.opens as unknown[]) : [];
+      opens.push({
+        at: new Date().toISOString(),
+        ua: ua.slice(0, 200),
+        proxy: isProxy,
+        prefetch: isPrefetch,
+      });
+
+      // Only write back if NOT a prefetch — otherwise the trigger would inflate total_opens.
+      if (!isPrefetch) {
+        await supabase
+          .from("lead_emails")
+          .update({ opens })
+          .eq("id", eid);
+      }
     }
   } catch (e) {
     console.error("track-email-open error:", e);
