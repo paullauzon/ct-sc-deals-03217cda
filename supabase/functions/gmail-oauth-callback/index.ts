@@ -134,8 +134,8 @@ Deno.serve(async (req) => {
       if (insErr) throw insErr;
     }
 
-    const redirect = returnTo || `${Deno.env.get("SUPABASE_URL")?.replace(".supabase.co", ".lovable.app") || "/"}/#sys=crm&view=settings&connected=1`;
-    return htmlResponse(`Connected ${profile.email}`, redirect);
+    // If returnTo is missing (state decode failed), just render the success card with no auto-redirect.
+    return htmlResponse(`Connected ${profile.email}`, returnTo || undefined);
   } catch (e) {
     console.error("gmail-oauth-callback error:", e);
     return htmlResponse(`Error: ${(e as Error).message}`);

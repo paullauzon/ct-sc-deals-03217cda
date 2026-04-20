@@ -51,11 +51,7 @@ export function MailboxSettings() {
       if (!label) { setConnecting(false); return; }
 
       const returnTo = `${window.location.origin}/#sys=crm&view=settings&connected=1`;
-      const { data, error } = await supabase.functions.invoke("gmail-oauth-start", {
-        body: null,
-      });
-      if (error) throw error;
-      // We need to call as GET with query params; invoke uses POST. Build URL manually:
+      // Call gmail-oauth-start as GET with query params (it returns the Google authorize URL).
       const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gmail-oauth-start`);
       url.searchParams.set("user_label", label);
       url.searchParams.set("return_to", returnTo);
@@ -107,8 +103,11 @@ export function MailboxSettings() {
       if (error) throw error;
       const r = data?.results?.[0];
       if (r) {
+        const matchedHint = r.inserted > 0 && r.matched === 0
+          ? " — unmatched emails will link automatically when leads are added"
+          : "";
         toast.success(
-          `Synced ${r.fetched} message${r.fetched === 1 ? "" : "s"} — ${r.inserted} new, ${r.matched} matched, ${r.skipped_dup} duplicate`,
+          `Synced ${r.fetched} message${r.fetched === 1 ? "" : "s"} — ${r.inserted} new, ${r.matched} matched, ${r.skipped_dup} duplicate${matchedHint}`,
         );
       } else {
         toast.success("Sync complete");
@@ -171,10 +170,12 @@ export function MailboxSettings() {
                   <td className="px-4 py-3 capitalize">{c.provider}</td>
                   <td className="px-4 py-3">
                     {(() => {
-                      // Token expired more than 7 days ago + no successful sync = likely needs reconnect
+                      // Only flag "Reconnect required" when token is expired AND no successful sync ever AND
+                      // the connection is older than 24h. Avoids false positives on brand-new connections.
                       const tokenExpired = c.token_expires_at && new Date(c.token_expires_at) < new Date();
-                      const staleSync = !c.last_synced_at || (new Date().getTime() - new Date(c.last_synced_at).getTime()) > 7 * 24 * 60 * 60 * 1000;
-                      const needsReconnect = c.is_active && tokenExpired && staleSync;
+                      const neverSynced = !c.last_synced_at;
+                      const olderThan24h = (new Date().getTime() - new Date(c.created_at).getTime()) > 24 * 60 * 60 * 1000;
+                      const needsReconnect = c.is_active && tokenExpired && neverSynced && olderThan24h;
 
                       if (!c.is_active) {
                         return (
