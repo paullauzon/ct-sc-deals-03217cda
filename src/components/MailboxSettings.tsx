@@ -11,13 +11,18 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Mail, Plus, Loader2, Trash2, RefreshCw, CheckCircle2, AlertCircle, DownloadCloud, History } from "lucide-react";
+import { Mail, Plus, Loader2, Trash2, RefreshCw, CheckCircle2, AlertCircle, DownloadCloud, History, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { UnmatchedInbox } from "./UnmatchedInbox";
 import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
-import { OutlookSetupChecklist } from "./OutlookSetupChecklist";
 import { AutomationHealthPanel } from "./AutomationHealthPanel";
 
 interface Connection {
@@ -54,8 +59,9 @@ export function MailboxSettings() {
   const [backfillingId, setBackfillingId] = useState<string | null>(null);
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
 
-  // Connect-Gmail dialog state (replaces window.prompt)
+  // Connect dialog state
   const [connectOpen, setConnectOpen] = useState(false);
+  const [connectProvider, setConnectProvider] = useState<"gmail" | "outlook">("gmail");
   const [labelDraft, setLabelDraft] = useState("");
 
   const load = async () => {
@@ -67,7 +73,6 @@ export function MailboxSettings() {
     const conns = (data || []) as Connection[];
     setConnections(conns);
 
-    // Per-mailbox: 24h insert count + last 5 sync runs (parallel)
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const counts: Record<string, number> = {};
     const runs: Record<string, SyncRun[]> = {};
@@ -78,7 +83,7 @@ export function MailboxSettings() {
           supabase
             .from("lead_emails")
             .select("id", { count: "exact", head: true })
-            .eq("source", "gmail")
+            .eq("source", c.provider)
             .gte("created_at", since)
             .or(`from_address.eq.${c.email_address},to_addresses.cs.{${c.email_address}}`),
           supabase
@@ -107,16 +112,20 @@ export function MailboxSettings() {
     }
   }, []);
 
+  const openConnectDialog = (provider: "gmail" | "outlook") => {
+    setConnectProvider(provider);
+    setLabelDraft("");
+    setConnectOpen(true);
+  };
+
   const startConnect = async () => {
     const label = labelDraft.trim();
-    if (!label) {
-      toast.error("Please enter a label first");
-      return;
-    }
+    if (!label) { toast.error("Please enter a label first"); return; }
     setConnecting(true);
     try {
       const returnTo = `${window.location.origin}/#sys=crm&view=settings&connected=1`;
-      const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gmail-oauth-start`);
+      const fnName = connectProvider === "outlook" ? "outlook-oauth-start" : "gmail-oauth-start";
+      const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fnName}`);
       url.searchParams.set("user_label", label);
       url.searchParams.set("return_to", returnTo);
       const res = await fetch(url.toString());
@@ -133,21 +142,17 @@ export function MailboxSettings() {
 
   const disconnect = async (id: string, email: string) => {
     if (!window.confirm(`Disconnect ${email}? Sync will stop for this mailbox.`)) return;
-    const { error } = await supabase
-      .from("user_email_connections")
-      .update({ is_active: false })
-      .eq("id", id);
+    const { error } = await supabase.from("user_email_connections").update({ is_active: false }).eq("id", id);
     if (error) { toast.error(error.message); return; }
     toast.success("Disconnected");
     load();
   };
 
-  const refreshToken = async (id: string) => {
-    setRefreshingId(id);
+  const refreshToken = async (c: Connection) => {
+    setRefreshingId(c.id);
     try {
-      const { error } = await supabase.functions.invoke("refresh-gmail-token", {
-        body: { connection_id: id },
-      });
+      const fn = c.provider === "outlook" ? "refresh-outlook-token" : "refresh-gmail-token";
+      const { error } = await supabase.functions.invoke(fn, { body: { connection_id: c.id } });
       if (error) throw error;
       toast.success("Token refreshed");
       load();
@@ -158,20 +163,16 @@ export function MailboxSettings() {
     }
   };
 
-  const syncNow = async (id: string) => {
-    setSyncingId(id);
+  const syncNow = async (c: Connection) => {
+    setSyncingId(c.id);
     try {
-      const { data, error } = await supabase.functions.invoke("sync-gmail-emails", {
-        body: { connection_id: id },
-      });
+      const fn = c.provider === "outlook" ? "sync-outlook-emails" : "sync-gmail-emails";
+      const { data, error } = await supabase.functions.invoke(fn, { body: { connection_id: c.id } });
       if (error) throw error;
       const r = data?.results?.[0];
       if (r) {
-        const matchedHint = r.inserted > 0 && r.matched === 0
-          ? " — unmatched emails will link automatically when leads are added"
-          : "";
         toast.success(
-          `Synced ${r.fetched} message${r.fetched === 1 ? "" : "s"} — ${r.inserted} new, ${r.matched} matched, ${r.skipped_dup} duplicate${matchedHint}`,
+          `Synced ${r.fetched} message${r.fetched === 1 ? "" : "s"} — ${r.inserted} new, ${r.matched} matched`,
         );
       } else {
         toast.success("Sync complete");
@@ -184,14 +185,15 @@ export function MailboxSettings() {
     }
   };
 
-  const backfill90d = async (id: string, email: string) => {
+  const backfill90d = async (c: Connection) => {
     if (!window.confirm(
-      `Backfill the last 90 days of Gmail history for ${email}?\n\nThis scans up to 1,500 messages and matches them against existing leads. Safe to run multiple times — duplicates are skipped. May take 1–3 minutes.`
+      `Backfill the last 90 days of ${c.provider === "outlook" ? "Outlook" : "Gmail"} history for ${c.email_address}?\n\nThis scans up to 1,500 messages. Safe to run multiple times — duplicates are skipped.`
     )) return;
-    setBackfillingId(id);
+    setBackfillingId(c.id);
     try {
-      const { data, error } = await supabase.functions.invoke("sync-gmail-emails", {
-        body: { connection_id: id, force_full: true },
+      const fn = c.provider === "outlook" ? "sync-outlook-emails" : "sync-gmail-emails";
+      const { data, error } = await supabase.functions.invoke(fn, {
+        body: { connection_id: c.id, force_full: true },
       });
       if (error) throw error;
       const r = data?.results?.[0];
@@ -216,7 +218,7 @@ export function MailboxSettings() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Mailbox connections</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Connect Gmail mailboxes to sync inbound and outbound emails into the CRM.
+          Connect Gmail or Outlook mailboxes to sync inbound and outbound emails into the CRM.
         </p>
       </div>
 
@@ -228,10 +230,25 @@ export function MailboxSettings() {
             <TabsTrigger value="templates">Templates</TabsTrigger>
             <TabsTrigger value="automation">Automation</TabsTrigger>
           </TabsList>
-          <Button onClick={() => { setLabelDraft(""); setConnectOpen(true); }} size="sm">
-            <Plus className="h-3.5 w-3.5 mr-1.5" />
-            Connect Gmail
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm">
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                Connect mailbox
+                <ChevronDown className="h-3.5 w-3.5 ml-1.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => openConnectDialog("gmail")}>
+                <Mail className="h-3.5 w-3.5 mr-2" />
+                Connect Gmail
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => openConnectDialog("outlook")}>
+                <Mail className="h-3.5 w-3.5 mr-2" />
+                Connect Outlook
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <TabsContent value="mailboxes" className="space-y-6">
@@ -246,7 +263,7 @@ export function MailboxSettings() {
                 <Mail className="h-8 w-8 mx-auto text-muted-foreground/50 mb-3" />
                 <p className="text-sm font-medium">No mailboxes connected</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Click "Connect Gmail" to authorize a mailbox via Google OAuth.
+                  Click "Connect mailbox" to authorize a Gmail or Outlook account.
                 </p>
               </div>
             ) : (
@@ -322,47 +339,33 @@ export function MailboxSettings() {
                             {c.is_active && (
                               <>
                                 <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2"
-                                  onClick={() => syncNow(c.id)}
+                                  variant="ghost" size="sm" className="h-7 px-2"
+                                  onClick={() => syncNow(c)}
                                   disabled={syncingId === c.id}
                                   title="Sync new emails now"
                                 >
-                                  {syncingId === c.id
-                                    ? <Loader2 className="h-3 w-3 animate-spin" />
-                                    : <DownloadCloud className="h-3 w-3" />}
+                                  {syncingId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <DownloadCloud className="h-3 w-3" />}
                                 </Button>
                                 <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 text-[10px] px-2 gap-1"
-                                  onClick={() => backfill90d(c.id, c.email_address)}
+                                  variant="ghost" size="sm" className="h-7 text-[10px] px-2 gap-1"
+                                  onClick={() => backfill90d(c)}
                                   disabled={backfillingId === c.id}
-                                  title="Scan the last 90 days of Gmail and match to existing leads"
+                                  title="Scan the last 90 days and match to existing leads"
                                 >
-                                  {backfillingId === c.id
-                                    ? <><Loader2 className="h-3 w-3 animate-spin" /> Backfilling…</>
-                                    : <>Backfill 90d</>}
+                                  {backfillingId === c.id ? <><Loader2 className="h-3 w-3 animate-spin" /> Backfilling…</> : <>Backfill 90d</>}
                                 </Button>
                                 <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2"
-                                  onClick={() => refreshToken(c.id)}
+                                  variant="ghost" size="sm" className="h-7 px-2"
+                                  onClick={() => refreshToken(c)}
                                   disabled={refreshingId === c.id}
                                   title="Refresh access token"
                                 >
-                                  {refreshingId === c.id
-                                    ? <Loader2 className="h-3 w-3 animate-spin" />
-                                    : <RefreshCw className="h-3 w-3" />}
+                                  {refreshingId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                                 </Button>
                               </>
                             )}
                             <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-muted-foreground hover:text-foreground"
+                              variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-foreground"
                               onClick={() => disconnect(c.id, c.email_address)}
                               title="Disconnect mailbox"
                             >
@@ -415,11 +418,8 @@ export function MailboxSettings() {
 
           <div className="text-xs text-muted-foreground space-y-1.5 pt-2">
             <p className="font-medium text-foreground">Testing-mode note</p>
-            <p>The Google OAuth app runs in Testing mode, so refresh tokens expire every 7 days. If a mailbox shows "Reconnect required", click "Connect Gmail" again with the same account to restore sync.</p>
+            <p>Gmail: The Google OAuth app runs in Testing mode, so refresh tokens expire every 7 days. If a mailbox shows "Reconnect required", click "Connect mailbox" again with the same account to restore sync.</p>
           </div>
-
-          {/* Outlook setup checklist — pending external admin consent + API key */}
-          <OutlookSetupChecklist />
         </TabsContent>
 
         <TabsContent value="unmatched">
@@ -438,7 +438,7 @@ export function MailboxSettings() {
       <Dialog open={connectOpen} onOpenChange={(v) => { if (!connecting) setConnectOpen(v); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Connect a Gmail mailbox</DialogTitle>
+            <DialogTitle>Connect {connectProvider === "outlook" ? "an Outlook" : "a Gmail"} mailbox</DialogTitle>
             <DialogDescription>
               Give this mailbox a label so you can recognize it in the CRM.
             </DialogDescription>
@@ -448,7 +448,7 @@ export function MailboxSettings() {
             <Input
               id="mailbox-label"
               autoFocus
-              placeholder="e.g. Adam — Captarget"
+              placeholder={connectProvider === "outlook" ? "e.g. Adam — SourceCo" : "e.g. Adam — Captarget"}
               value={labelDraft}
               onChange={(e) => setLabelDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") startConnect(); }}
@@ -464,7 +464,7 @@ export function MailboxSettings() {
             </Button>
             <Button size="sm" onClick={startConnect} disabled={connecting || !labelDraft.trim()}>
               {connecting ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Plus className="h-3.5 w-3.5 mr-1.5" />}
-              Continue to Google
+              Continue to {connectProvider === "outlook" ? "Microsoft" : "Google"}
             </Button>
           </DialogFooter>
         </DialogContent>

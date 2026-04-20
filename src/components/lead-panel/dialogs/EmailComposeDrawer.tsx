@@ -44,6 +44,7 @@ interface Mailbox {
   id: string;
   email_address: string;
   user_label: string;
+  provider: string;
 }
 
 interface TemplateLite {
@@ -144,8 +145,7 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
       (async () => {
         const { data } = await supabase
           .from("user_email_connections")
-          .select("id, email_address, user_label")
-          .eq("provider", "gmail")
+          .select("id, email_address, user_label, provider")
           .eq("is_active", true)
           .order("created_at", { ascending: false });
         const list = (data || []) as Mailbox[];
@@ -280,13 +280,15 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
       return;
     }
     if (!fromConnectionId) {
-      toast.error("Connect a Gmail mailbox in Settings first");
+      toast.error("Connect a mailbox in Settings first");
       return;
     }
+    const selectedMailbox = mailboxes.find(m => m.id === fromConnectionId);
+    const sendFn = selectedMailbox?.provider === "outlook" ? "send-outlook-email" : "send-gmail-email";
     setSending(true);
     try {
       const recipients = to.split(/[,;]\s*/).map(s => s.trim()).filter(Boolean);
-      const { data, error } = await supabase.functions.invoke("send-gmail-email", {
+      const { data, error } = await supabase.functions.invoke(sendFn, {
         body: {
           connection_id: fromConnectionId,
           lead_id: lead.id,
@@ -318,7 +320,7 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
       return;
     }
     if (!fromConnectionId) {
-      toast.error("Connect a Gmail mailbox in Settings first");
+      toast.error("Connect a mailbox in Settings first");
       return;
     }
     if (when.getTime() <= Date.now() + 30_000) {
@@ -341,7 +343,7 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
           email_date: when.toISOString(),
           scheduled_for: when.toISOString(),
           send_status: "scheduled",
-          source: "gmail",
+          source: mailboxes.find(m => m.id === fromConnectionId)?.provider || "gmail",
           thread_id: threadId || null,
           raw_payload: {
             connection_id: fromConnectionId,
@@ -426,14 +428,14 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
               >
                 {mailboxes.map(m => (
                   <option key={m.id} value={m.id}>
-                    {m.email_address}{m.user_label ? ` — ${m.user_label}` : ""}
+                    {m.email_address}{m.user_label ? ` — ${m.user_label}` : ""} ({m.provider})
                   </option>
                 ))}
               </select>
             ) : (
               <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground bg-secondary/40 rounded-md px-2.5 py-2">
                 <Mail className="h-3.5 w-3.5" />
-                No mailbox connected. Open Settings to connect Gmail, or use "Copy & mark sent" below.
+                No mailbox connected. Open Settings to connect Gmail or Outlook, or use "Copy & mark sent" below.
               </div>
             )}
           </div>
