@@ -498,6 +498,8 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       forcedOpen={forcedOpen}
                       forceNonce={expandAllNonce}
                       onReply={onReply}
+                      defaultExpanded={defaultOpenIds.has(ev.id)}
+                      stallReason={lead.stallReason}
                     />
                   ))}
                 </div>
