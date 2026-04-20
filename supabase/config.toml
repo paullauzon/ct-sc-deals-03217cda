@@ -86,3 +86,6 @@ verify_jwt = false
 
 [functions.sync-gmail-emails]
 verify_jwt = false
+
+[functions.send-gmail-email]
+verify_jwt = false
