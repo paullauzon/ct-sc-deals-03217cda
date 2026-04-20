@@ -524,18 +524,24 @@ function TimelineRow({
   forcedOpen,
   forceNonce,
   onReply,
+  defaultExpanded = false,
+  stallReason = "",
 }: {
   event: TimelineEvent;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
   forcedOpen: boolean | null;
   forceNonce: number;
   onReply?: (prefill: ReplyPrefill) => void;
+  defaultExpanded?: boolean;
+  stallReason?: string;
 }) {
-  const [open, setOpen] = useState(false);
   const expandable = !!event.detail;
+  const [open, setOpen] = useState(defaultExpanded && expandable);
   const isEmail = event.type === "email_in" || event.type === "email_out";
   const isInbound = event.type === "email_in";
   const email = event.email;
+  const task = event.task;
+  const isTask = event.type === "task";
 
   // React to expand-all / collapse-all toggle from parent
   useEffect(() => {
@@ -554,6 +560,17 @@ function TimelineRow({
   const replied = !!email?.replied_at;
   const aiDrafted = !!email?.ai_drafted;
   const sequence = email?.sequence_step || "";
+
+  // Task enrichments
+  const taskIsDone = !!task && (task.status === "done" || !!task.completed_at);
+  const taskIsOverdue = !!task && !taskIsDone && new Date(task.due_date) < new Date();
+  const taskSourceLabel = (() => {
+    if (!task) return "";
+    const pb = (task.playbook || "").toLowerCase();
+    if (pb.startsWith("sla-")) return "SLA auto-created";
+    if (pb === "manual" || !pb) return "Manual";
+    return "Auto-task";
+  })();
 
   const handleReply = (e: React.MouseEvent) => {
     e.stopPropagation();
