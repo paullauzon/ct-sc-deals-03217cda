@@ -140,9 +140,42 @@ export function AutomationHealthPanel() {
             Background jobs that fill data, send queued emails, and recover broken transcripts. A red dot means the job hasn't reported in 1.5× its interval.
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={load} className="h-7 px-2" title="Refresh">
-          <RefreshCw className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runAllDaily}
+            disabled={runningAllDaily}
+            className="h-7 px-2.5 text-xs gap-1.5"
+            title="Trigger all 5 daily automation jobs in parallel"
+          >
+            {runningAllDaily ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+            Run all daily
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={testFirecrawl}
+            disabled={firecrawlTesting}
+            className="h-7 px-2.5 text-xs gap-1.5"
+            title="Ping Firecrawl API to verify connectivity"
+          >
+            {firecrawlTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wifi className="h-3 w-3" />}
+            Test Firecrawl
+          </Button>
+          <Button variant="ghost" size="sm" onClick={load} className="h-7 px-2" title="Refresh">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      {firecrawlStatus && (
+        <div className={cn(
+          "border rounded-lg p-2.5 text-xs flex items-center gap-2",
+          firecrawlStatus.ok ? "border-foreground/10 bg-secondary/20" : "border-foreground/30 bg-secondary/40"
+        )}>
+          <span className={cn("w-1.5 h-1.5 rounded-full", firecrawlStatus.ok ? "bg-foreground/40" : "bg-foreground")} />
+          <span className="font-medium">{firecrawlStatus.msg}</span>
       </div>
 
       {firecrawlBroken && (
