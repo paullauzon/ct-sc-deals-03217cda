@@ -78,13 +78,45 @@ function Stat({ label, value, icon: Icon }: { label: string; value: number; icon
 }
 
 export function SequencesIndex({ onOpen }: Props) {
+  const { isAdmin } = useAuth();
+  const [running, setRunning] = useState(false);
+
+  async function runEngine() {
+    setRunning(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("nurture-engine", { body: {} });
+      if (error) throw error;
+      const s = (data ?? {}) as Record<string, number>;
+      toast({
+        title: "Nurture engine ran",
+        description: `Processed ${s.processed ?? 0} · Drafts ${s.drafts ?? 0} · Tasks ${s.tasks ?? 0} · Re-engaged ${s.reEngaged ?? 0} · Completed ${s.completed ?? 0} · Exited ${s.exited ?? 0}`,
+      });
+    } catch (e) {
+      toast({ title: "Engine failed", description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setRunning(false);
+    }
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-6">
-      <div className="mb-5">
-        <h1 className="text-2xl font-semibold text-foreground">Sequences</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Monitor every email sequence in one place. Drafts land in Action Center for review before sending.
-        </p>
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Sequences</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Monitor every email sequence in one place. Drafts land in Action Center for review before sending.
+          </p>
+        </div>
+        {isAdmin && (
+          <button
+            onClick={runEngine}
+            disabled={running}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-secondary text-foreground transition-colors disabled:opacity-50 shrink-0"
+          >
+            {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+            Run engine now
+          </button>
+        )}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {SEQUENCES.map((seq) => (
