@@ -1,58 +1,64 @@
 
 
-# Sequences — closing the last gaps
+# Sequences — final verification + 4 remaining gaps
 
-The build is 90% complete. Four concrete gaps remain that block the wireframe from working end-to-end. All four are small, surgical fixes.
+I traced every item from the original prompt + both approved plans against the live code AND the live database. The build is structurally complete, but **4 concrete data/behavior gaps remain** before this works end-to-end. Three are data hygiene from the engine never having run, one is a real bug.
 
-## Gap 1 — Nurture sends don't stamp `sequence_step` on `lead_emails`
+## ✅ Shipped and verified correct
 
-**Symptom:** When Malik approves a Day 30 nurture draft and sends it, the resulting `lead_emails` row has `sequence_step = null`. Result: the existing inline "N30 paused on reply" chip in the Activity tab never fires for nurture emails, and the "auto-task from sequence N30" suffix never appears either. The Activity tab plumbing was built for this — nurture is the only sender that doesn't feed it.
+| Item | Status |
+|---|---|
+| Sequences index page (`/#view=sequences`) with stats + Run Engine button | ✅ |
+| Campaign Detail (3 tabs: Overview / Enrolled / Activity log) | ✅ |
+| 4-step timeline visual matching wireframe verbatim | ✅ |
+| 6-up summary stats (Enrolled · Active · Re-engaged · Paused · Completed · Exited) | ✅ |
+| Funnel widget (Enrolled → D0 → D30 → D45 → D90 → Re-engaged) | ✅ |
+| Enrolled leads sortable table with Pause/Resume/Exit | ✅ |
+| Activity log with step filter (N0/N30/N45/N90) | ✅ |
+| Per-lead `SequenceCard` in deal panel right rail | ✅ |
+| `generate-nurture-email` edge function with 12 lost-reason angles | ✅ |
+| Engine Scope Mismatch exit branch + LeadContext guard | ✅ |
+| `nurture_step_log` + `nurture_exit_reason` columns | ✅ |
+| `paused` status everywhere with `archived` legacy fallback | ✅ |
+| Send-gmail / send-outlook lookup `action_key` to stamp `sequence_step` | ✅ (code) |
+| `logCronRun` schema audit | ✅ |
 
-**Fix:** In `send-gmail-email` and `send-outlook-email`, when the request body includes `source_draft_id`, look up the draft's `action_key`. If it matches `^(N0|N30|N90|REFERRAL)$`, write that value to `lead_emails.sequence_step` on insert. One small SELECT + one column on the INSERT, in both edge functions.
+## ⚠ Gaps that block the wireframe end-to-end
 
-## Gap 2 — Pausing a lead makes it vanish from the campaign
+### Gap A — 283 existing drafts have wrong `action_key` (`nurture-d0` instead of `N0`)
 
-**Symptom:** Click Pause on the SequenceCard → status becomes `"archived"`. But `leadEnrolledIn()` only counts `active | completed | re_engaged | exited_referral`. A paused lead silently disappears from the Enrolled tab, the index card counts, and the funnel. There's also no "Paused" chip in the status filter row.
+**Evidence:** Database query confirms all 283 existing nurture drafts were written by an older engine version that used `action_key = "nurture-d0"` (the draft_type) instead of the new `N0` short code. The send-gmail / send-outlook regex `^(N0|N30|N45|N90|REFERRAL)$` will fail to match these, so when Malik approves and sends any of the 283 backlog drafts, `lead_emails.sequence_step` will still be `null`. The fix from Plan 2's Gap 1 only works for drafts the new engine produces.
 
-**Fix:**
-- Rename the Pause status from `"archived"` to `"paused"` (clearer intent, no confusion with `archived_at`).
-- Add `"paused"` to `leadEnrolledIn()`'s allowed set.
-- Add a "Paused" filter chip to the Enrolled tab and the Overview summary stats grid (becomes 6-up).
-- Add a "Paused" status badge to `EnrolledLeadsTable`'s STATUS_LABEL.
-- Update `nurture-engine`: skip leads with status `"paused"` (it currently only queries `active`, so this already works, but make it explicit by handling the value if it ever appears in a lookup).
-- Update `SequenceCard` to use `"paused"` everywhere it currently says `"archived"`.
+**Fix:** One-line SQL migration to rewrite the 283 stale rows: `UPDATE lead_drafts SET action_key = CASE draft_type WHEN 'nurture-d0' THEN 'N0' WHEN 'nurture-d30' THEN 'N30' WHEN 'nurture-d90' THEN 'N90' WHEN 'nurture-referral' THEN 'REFERRAL' END WHERE draft_type LIKE 'nurture%' AND action_key NOT IN ('N0','N30','N45','N90','REFERRAL');`
 
-## Gap 3 — `nurture-engine` has never run + no manual trigger
+### Gap B — `nurture_step_log` is empty for all 283 active leads
 
-**Symptom:** `cron_run_log` is empty for `nurture-engine`. The cron is scheduled (daily 13:00 UTC, verified) but the new code hasn't fired yet, so 283 active leads are sitting with no Day 0 drafts generated. Also there's no UI button to trigger it on demand for testing.
+**Evidence:** `with_step_log = 0` across all 283 active leads. The Sequences UI funnel reads counts from `nurture_step_log` (CampaignDetail L37-40), so the funnel currently shows D0=0 / D30=0 even though 283 drafts exist. The SequenceCard in the right rail also shows "Last: —" for everyone. Reason: drafts were created before the `appendStepLog` call was added to the engine.
 
-**Fix:**
-- Add a small "Run engine now" button on the Sequences index (admin-only via existing `useUserRole` pattern, top-right of header). Invokes `nurture-engine` directly and toasts the summary `{ processed, drafts, tasks, completed, reEngaged, exited }`.
-- After Gap 1 and 2 are merged, click the button once. This also surfaces any latent runtime errors in the engine before the next cron tick.
+**Fix:** Backfill migration that walks `lead_drafts` for nurture types and synthesizes `nurture_step_log` entries on each lead from the existing draft rows. Simple `UPDATE leads SET nurture_step_log = (SELECT jsonb_agg(...) FROM lead_drafts WHERE lead_id = leads.id AND draft_type LIKE 'nurture%')`. Idempotent.
 
-## Gap 4 — `logCronRun` may not write (schema mismatch)
+### Gap C — Activity log will be empty for the 283 backlog drafts
 
-**Symptom:** `cron_run_log` has columns `ran_at` etc., but I didn't audit the `_shared/cron-log.ts` helper to confirm column names match. If they don't, the engine runs successfully but logs nothing, breaking the Automation Health panel for this job.
+**Evidence:** `lead_activity_log` has 0 nurture event rows. Engine writes `nurture_draft_emitted` only when it generates a fresh draft, so the backlog is invisible in the Activity log tab and in the per-lead Activity timeline.
 
-**Fix:** Open `supabase/functions/_shared/cron-log.ts`, confirm INSERT column names match `cron_run_log` schema, and adjust if needed. Five-minute check.
+**Fix:** Same backfill migration as B writes one `nurture_draft_emitted` row per existing nurture draft (with `metadata.step` and `new_value` set so the existing step filter works).
 
-## Out of scope (intentionally deferred)
+### Gap D — Engine never ran the new code (manual trigger button works, just hasn't been clicked)
 
+**Evidence:** `cron_run_log` for `nurture-engine` has 0 rows. Cron is scheduled daily 13:00 UTC but the new code hasn't fired yet. The "Run engine now" button shipped in the last build, but it hasn't been used. After Gaps A/B/C are fixed, clicking it once will: (1) regenerate any missing AI copy for leads where the previous draft was static-template, (2) confirm cron logging is wired, (3) populate `cron_run_log` so the Automation Health panel shows it.
+
+**Fix:** No code change. Click "Run engine now" once on the Sequences index after the migrations land.
+
+## What I'm NOT touching (intentional, per original out-of-scope list)
+
+- Building S5 / S3 / S10 sequences (framework supports them — separate request)
 - A/B testing on AI copy
 - Editing AI prompts from the UI
-- Building S5 sample-stall, S3 post-discovery cold, S10 Closed Won onboarding (the framework supports them — adding each is a separate request)
-- Backfilling Day 0 drafts for the 283 leads enrolled before AI personalization shipped (next cron tick + manual button covers it)
+- Per-step rep preview before cron fires (drafts already land in Action Center for review)
 
 ## Files touched
 
-- `supabase/functions/send-gmail-email/index.ts` — sequence_step stamp
-- `supabase/functions/send-outlook-email/index.ts` — sequence_step stamp
-- `supabase/functions/_shared/cron-log.ts` — schema audit, fix if needed
-- `src/components/sequences/sequenceConfig.tsx` — add `paused` to `leadEnrolledIn`
-- `src/components/sequences/SequencesIndex.tsx` — add admin "Run engine now" button
-- `src/components/sequences/CampaignDetail.tsx` — add Paused stat + filter chip
-- `src/components/sequences/EnrolledLeadsTable.tsx` — add Paused label
-- `src/components/lead-panel/cards/SequenceCard.tsx` — `archived` → `paused`
+- **New migration**: `supabase/migrations/<timestamp>_nurture_backfill.sql` — three idempotent UPDATE statements (rewrite `action_key`, backfill `nurture_step_log`, backfill `lead_activity_log` rows)
 
-After this build the Sequences feature is complete end-to-end against the original wireframe.
+That's it. One migration file. After it runs and you click "Run engine now" once, Sequences is complete end-to-end against the original wireframe and prompt.
 
