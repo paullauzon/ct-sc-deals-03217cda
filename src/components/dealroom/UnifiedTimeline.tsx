@@ -17,10 +17,18 @@ import {
   PinOff,
   ChevronsDown,
   ChevronsUp,
+  Eye,
+  MousePointerClick,
+  Reply,
+  Sparkles,
+  Paperclip,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import type { ReplyPrefill } from "@/components/EmailsSection";
 
 type FilterKey = "all" | "emails" | "meetings" | "stage" | "notes" | "system" | "pinned";
 type DateRange = "all" | "7d" | "30d" | "90d";
@@ -36,6 +44,8 @@ interface TimelineEvent {
   /** present when the event is backed by a row in lead_activity_log and can be pinned */
   activityId?: string;
   pinnedAt?: string | null;
+  /** email-specific enrichment (only set for email_in / email_out rows) */
+  email?: EmailRow;
 }
 
 interface EmailRow {
@@ -46,7 +56,16 @@ interface EmailRow {
   to_addresses: string[] | null;
   subject: string | null;
   body_preview: string | null;
+  body_text: string | null;
   email_date: string;
+  thread_id: string | null;
+  message_id: string | null;
+  opens: unknown;
+  clicks: unknown;
+  replied_at: string | null;
+  ai_drafted: boolean | null;
+  sequence_step: string | null;
+  attachments: unknown;
 }
 
 const FILTERS: { key: FilterKey; label: string }[] = [
