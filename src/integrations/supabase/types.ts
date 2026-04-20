@@ -247,6 +247,45 @@ export type Database = {
         }
         Relationships: []
       }
+      email_templates: {
+        Row: {
+          body_template: string
+          brand: string
+          category: string
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          subject_template: string
+          updated_at: string
+          usage_count: number
+        }
+        Insert: {
+          body_template?: string
+          brand?: string
+          category?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          name: string
+          subject_template?: string
+          updated_at?: string
+          usage_count?: number
+        }
+        Update: {
+          body_template?: string
+          brand?: string
+          category?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          subject_template?: string
+          updated_at?: string
+          usage_count?: number
+        }
+        Relationships: []
+      }
       lead_activity_log: {
         Row: {
           created_at: string
@@ -397,6 +436,8 @@ export type Database = {
           provider_message_id: string | null
           raw_payload: Json | null
           replied_at: string | null
+          scheduled_for: string | null
+          send_status: string
           source: string | null
           subject: string | null
           thread_id: string | null
@@ -426,6 +467,8 @@ export type Database = {
           provider_message_id?: string | null
           raw_payload?: Json | null
           replied_at?: string | null
+          scheduled_for?: string | null
+          send_status?: string
           source?: string | null
           subject?: string | null
           thread_id?: string | null
@@ -455,6 +498,8 @@ export type Database = {
           provider_message_id?: string | null
           raw_payload?: Json | null
           replied_at?: string | null
+          scheduled_for?: string | null
+          send_status?: string
           source?: string | null
           subject?: string | null
           thread_id?: string | null
