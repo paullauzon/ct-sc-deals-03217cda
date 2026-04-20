@@ -293,15 +293,6 @@ export function LeadPanelHeader({
                 <Mail className="h-2.5 w-2.5" /> {unreadCount} unread
               </span>
             )}
-            <span
-              className={cn(
-                "text-[10px] px-1.5 py-0.5 rounded font-medium",
-                LEAD_STATUS_TONE[lead.leadStatus || "Working"] || "bg-secondary text-foreground/80",
-              )}
-              title={`Lead status: ${lead.leadStatus || "Working"}`}
-            >
-              {lead.leadStatus || "Working"}
-            </span>
             {dealHealth && (
               <span className={cn(
                 "text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 font-medium",
