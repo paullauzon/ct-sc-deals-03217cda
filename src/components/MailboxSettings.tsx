@@ -24,6 +24,7 @@ import { formatDistanceToNow } from "date-fns";
 import { UnmatchedInbox } from "./UnmatchedInbox";
 import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
 import { AutomationHealthPanel } from "./AutomationHealthPanel";
+import { BackfillProgressPanel } from "./BackfillProgressPanel";
 
 interface Connection {
   id: string;
@@ -347,12 +348,12 @@ export function MailboxSettings() {
                                   {syncingId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <DownloadCloud className="h-3 w-3" />}
                                 </Button>
                                 <Button
-                                  variant="ghost" size="sm" className="h-7 text-[10px] px-2 gap-1"
-                                  onClick={() => backfill90d(c)}
-                                  disabled={backfillingId === c.id}
-                                  title="Scan the last 90 days and match to existing leads"
+                                  variant="ghost" size="sm" className="h-7 px-2"
+                                  onClick={() => refreshToken(c)}
+                                  disabled={refreshingId === c.id}
+                                  title="Refresh access token"
                                 >
-                                  {backfillingId === c.id ? <><Loader2 className="h-3 w-3 animate-spin" /> Backfilling…</> : <>Backfill 90d</>}
+                                  {refreshingId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                                 </Button>
                                 <Button
                                   variant="ghost" size="sm" className="h-7 px-2"
