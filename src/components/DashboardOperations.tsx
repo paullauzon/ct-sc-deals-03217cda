@@ -815,7 +815,7 @@ function DealTemperatureMomentum({ leads, onDrillDown }: { leads: Lead[]; onDril
     for (const t of temps) for (const m of moms) cells[`${t}|${m}`] = { leads: [], value: 0 };
 
     const activeWithDI = leads.filter(l => {
-      if (TERMINAL_STAGES.includes(l.stage)) return false;
+      if (isTerminalStage(l.stage)) return false;
       const di = l.dealIntelligence as any;
       return di?.winStrategy?.dealTemperature && di?.momentumSignals?.momentum;
     });
