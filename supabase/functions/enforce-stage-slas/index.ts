@@ -119,6 +119,15 @@ const SLA_RULES: SlaRule[] = [
     title: "Push the close — direct call",
     description: "Negotiation has been open for a week. Get on the phone and surface the real blocker.",
   },
+  {
+    id: "proposal-sent-7d-silent-draft",
+    stage: "Proposal Sent",
+    legacyStages: [],
+    thresholdDays: 7,
+    taskType: "email",
+    title: "Review AI stall-nudge draft",
+    description: "Proposal has been silent 7+ days with no inbound reply. An AI soft-nudge draft has been generated in the Actions tab — review, edit, and send.",
+  },
 ];
 
 function daysInStage(stageEnteredDate: string | null): number {
