@@ -1,45 +1,44 @@
 ---
 name: Email Sync Status
-description: Both brands waiting on admin approvals for native Outlook/Gmail sync — no interim Zapier path (abandoned as too fiddly)
+description: Phase 1 done — Gmail OAuth + Settings UI live. Outlook still paused pending tenant admin consent.
 type: feature
 ---
 
-## Current state
+## Phase 1 — DONE (this session)
 
-**No active email sync for either brand.** Zapier interim bridge was considered and abandoned — too much per-rep setup overhead and ongoing maintenance for a temporary solution. We wait for proper OAuth.
+**Gmail OAuth foundation shipped:**
+- `gmail-oauth-start` edge function — generates Google consent URL with offline access + scopes (gmail.readonly, gmail.send, gmail.modify, userinfo.email)
+- `gmail-oauth-callback` edge function — exchanges code for tokens, fetches user email, upserts into `user_email_connections`. Returns minimal HTML + redirect to settings page.
+- `refresh-gmail-token` edge function — exports `getValidAccessToken(connectionId)` helper for sync/send functions, plus standalone HTTP endpoint that refreshes one or all gmail connections.
+- `MailboxSettings.tsx` UI mounted at `#sys=crm&view=settings` — Connect Gmail button, table of connected mailboxes, refresh-token + disconnect actions. Settings cog in main nav.
+- Secrets: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` configured.
+- Redirect URI: `https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/gmail-oauth-callback`
 
-### Captarget (Gmail)
-- **Blocked on**: captarget.com Google Workspace admin (Adam is NOT admin) to set up Google Cloud OAuth project in **Internal** mode
-- Admin instructions delivered to user; awaiting credentials (Client ID + Secret)
-- When credentials arrive: build Gmail OAuth flow + per-user `user_email_connections` rows + `sync-gmail-emails` cron
+## Phase 2 — Inbound sync (next session)
 
-### SourceCo (Outlook)
-- **Blocked on**: sourcecodeals.com Microsoft tenant admin consent for Microsoft Graph scopes (`Mail.Read`, `Mail.Send`, ideally `Mail.Read.All` for tenant-wide)
-- `sync-outlook-emails` edge function already built and ready — needs `MICROSOFT_OUTLOOK_API_KEY` connector secret + cron schedule
-- When consent lands: enable cron, function pulls Inbox + Sent for connected mailbox(es)
+- `sync-gmail-emails` cron (every 10 min) — uses Gmail History API via `history_id`
+- Threading/dedup against existing `lead_emails` from Zapier (use `provider_message_id`)
+- Auto-match to lead by from/to address
+- Decommission Zapier `ingest-email` once parity confirmed
+
+## Phase 3 — Outbound + tracking
+
+- `send-gmail-email` edge function (Gmail `users.messages.send` with base64url RFC 2822)
+- Wire `EmailComposeDrawer` to actually send (currently just drafts)
+- Open pixel + click rewriter
+- "Sent from CRM" filtering to avoid sync-loops
+
+## Phase 4 — Polish
+
+- In-app reply
+- Snooze / templates / scheduled send
+- Mailbox health monitoring (quota, bounces, quarantine)
+
+## Outlook (still paused)
+
+- `sync-outlook-emails` edge function exists but blocked on sourcecodeals.com Microsoft tenant admin consent + `MICROSOFT_OUTLOOK_API_KEY`
+- Will mirror Gmail OAuth pattern when SourceCo IT admin completes consent
 
 ## Disabled function
 
-`supabase/functions/ingest-email/index.ts` is intentionally a no-op returning `410 Gone`. Don't reactivate unless Zapier path is explicitly revived.
-
-## When OAuth lands — switch-on checklist
-
-**Outlook (likely first):**
-1. Connect Microsoft Outlook via Connectors (provides `MICROSOFT_OUTLOOK_API_KEY`)
-2. Schedule `sync-outlook-emails` via pg_cron (every 5 min recommended)
-3. Verify emails landing in `lead_emails` with `source: "outlook"`
-4. For multi-rep: either tenant-wide app permission OR per-user OAuth flow writing to `user_email_connections`
-
-**Gmail (when Captarget admin delivers):**
-1. Store Client ID + Secret in secrets
-2. Build `gmail-oauth-callback` edge function + per-user OAuth flow
-3. Build `sync-gmail-emails` mirroring `sync-outlook-emails` shape
-4. Schedule via pg_cron
-
-## Why no Zapier
-
-- Per-rep Zap setup (~15 min × N reps) doesn't scale
-- Ongoing Zapier task quota cost (~$30-69/mo) for a temporary solution
-- Can't deliver opens/clicks tracking or in-app send anyway
-- Switch-over still requires the same OAuth work — Zapier just delays it
-- Cleaner to wait, ship the real thing once, and skip the throwaway integration
+`supabase/functions/ingest-email/index.ts` is intentionally a no-op returning `410 Gone`. Don't reactivate.

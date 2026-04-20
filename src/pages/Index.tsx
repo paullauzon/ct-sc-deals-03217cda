@@ -9,12 +9,13 @@ import { GlobalProcessingOverlay } from "@/components/GlobalProcessingOverlay";
 import { SystemSwitcher } from "@/components/SystemSwitcher";
 import { BusinessSystem } from "@/components/BusinessSystem";
 import { ClientSuccessSystem } from "@/components/ClientSuccessSystem";
-import { Search, BarChart3, Kanban, Users, CalendarCheck } from "lucide-react";
+import { Search, BarChart3, Kanban, Users, CalendarCheck, Settings } from "lucide-react";
+import { MailboxSettings } from "@/components/MailboxSettings";
 
-type View = "dashboard" | "pipeline" | "leads" | "today";
+type View = "dashboard" | "pipeline" | "leads" | "today" | "settings";
 type System = "crm" | "business" | "client-success";
 
-const VALID_VIEWS = new Set<View>(["dashboard", "pipeline", "leads", "today"]);
+const VALID_VIEWS = new Set<View>(["dashboard", "pipeline", "leads", "today", "settings"]);
 
 function parseHashState(): { view: View; system: System } {
   const hash = window.location.hash.replace("#", "");
@@ -116,7 +117,7 @@ function AppContent() {
                   </button>
                 ))}
               </div>
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-2">
                 <button
                   onClick={() => setCmdOpen(true)}
                   className="flex items-center gap-2 w-52 h-8 px-3 rounded-md border border-border bg-secondary/50 text-sm text-muted-foreground hover:bg-secondary transition-colors"
@@ -124,6 +125,17 @@ function AppContent() {
                   <Search className="h-3.5 w-3.5" />
                   <span className="flex-1 text-left">Search…</span>
                   <kbd className="text-[10px] font-mono bg-background border border-border rounded px-1.5 py-0.5">⌘K</kbd>
+                </button>
+                <button
+                  onClick={() => setView("settings")}
+                  className={`h-8 w-8 flex items-center justify-center rounded-md border border-border transition-colors ${
+                    view === "settings"
+                      ? "bg-foreground text-background"
+                      : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  }`}
+                  title="Mailbox settings"
+                >
+                  <Settings className="h-3.5 w-3.5" />
                 </button>
               </div>
             </>
@@ -143,6 +155,7 @@ function AppContent() {
           {view === "dashboard" && <Dashboard />}
           {view === "leads" && <LeadsTable />}
           {view === "pipeline" && <Pipeline />}
+          {view === "settings" && <MailboxSettings />}
         </>
       )}
 
