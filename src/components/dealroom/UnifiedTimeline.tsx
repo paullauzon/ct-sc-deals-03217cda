@@ -91,6 +91,16 @@ interface EmailRow {
   ai_drafted: boolean | null;
   sequence_step: string | null;
   attachments: unknown;
+  source: string | null;
+}
+
+/** Maps lead_emails.source to a human-readable provenance suffix shown in the row meta line. */
+function provenanceLabel(source: string | null | undefined, isOutbound: boolean): string {
+  const s = (source || "").toLowerCase();
+  if (s === "gmail") return isOutbound ? "sent via Gmail" : "auto-logged from Gmail inbox";
+  if (s === "outlook") return isOutbound ? "sent via Outlook" : "auto-logged from Outlook inbox";
+  if (s === "zapier") return "auto-logged via Zapier";
+  return "";
 }
 
 interface TaskRow {
