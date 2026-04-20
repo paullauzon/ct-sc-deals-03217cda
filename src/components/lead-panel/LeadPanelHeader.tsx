@@ -501,6 +501,9 @@ export function LeadPanelHeader({
         </div>
       </div>
 
+      {/* Stall reason prompt — only when a Proposal has been sitting > 14d with no reason */}
+      <StallReasonBanner lead={lead} daysInStage={daysInStage} />
+
       {/* Clickable stage progress */}
       <div className="px-5 pb-2">
         <ClickableProgressBar currentStage={lead.stage} onAdvance={handleStageClick} />
