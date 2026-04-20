@@ -348,8 +348,34 @@ function EmailRow({ email, compact, onSuggestResponses, onReply }: { email: Lead
               {email.body_text}
             </pre>
           )}
-          {hasObjections && onSuggestResponses && (
-            <div className="mt-2 flex justify-end">
+          <div className="mt-2 flex justify-end gap-1.5">
+            {!isOutbound && onReply && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1.5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const subj = email.subject || "";
+                  const replySubj = /^re:/i.test(subj) ? subj : `Re: ${subj}`;
+                  const dateStr = new Date(email.email_date).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+                  const sender = email.from_name ? `${email.from_name} <${email.from_address}>` : email.from_address;
+                  const quoted = (email.body_text || email.body_preview || "")
+                    .split("\n").map(l => `> ${l}`).join("\n");
+                  const quote = `On ${dateStr}, ${sender} wrote:\n${quoted}`;
+                  onReply({
+                    to: email.from_address,
+                    subject: replySubj,
+                    thread_id: email.thread_id || "",
+                    in_reply_to: email.message_id || "",
+                    quote,
+                  });
+                }}
+              >
+                <Reply className="h-3 w-3" /> Reply
+              </Button>
+            )}
+            {hasObjections && onSuggestResponses && (
               <Button
                 variant="outline"
                 size="sm"
@@ -358,8 +384,8 @@ function EmailRow({ email, compact, onSuggestResponses, onReply }: { email: Lead
               >
                 <Sparkles className="h-3 w-3" /> Suggest 3 responses
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>
