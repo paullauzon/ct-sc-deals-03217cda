@@ -430,7 +430,7 @@ export function Pipeline() {
                    await refreshLeads();
 
                    // 4. Fresh DB query for unprocessed leads
-                   const { data: freshLeads } = await supabase.from("leads").select("id, stage, meetings").eq("stage", "New Lead").is("archived_at", null);
+                   const { data: freshLeads } = await supabase.from("leads").select("id, stage, meetings").in("stage", ["Unassigned", "New Lead"]).is("archived_at", null);
                    const { data: doneJobs } = await supabase.from("processing_jobs").select("lead_id").in("status", ["done", "completed"]);
                    const doneIds = new Set((doneJobs || []).map((r: any) => r.lead_id));
                    const unprocessed = (freshLeads || []).filter((l: any) => {

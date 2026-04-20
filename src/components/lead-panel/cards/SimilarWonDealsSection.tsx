@@ -3,7 +3,7 @@ import { Trophy } from "lucide-react";
 import { findSimilarWonDeals } from "@/lib/dealHealthUtils";
 
 export function SimilarWonDealsSection({ lead, allLeads }: { lead: Lead; allLeads: Lead[] }) {
-  const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost";
+  const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost" || lead.stage === "Closed Lost";
   if (isClosed) return null;
   const similar = findSimilarWonDeals(lead, allLeads);
   if (similar.length === 0) return null;

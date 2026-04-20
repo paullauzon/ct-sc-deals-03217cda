@@ -2,19 +2,21 @@ import { Lead } from "@/types/lead";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { InlineTextField, InlineSelectField } from "../InlineEditFields";
 import { TrendingUp } from "lucide-react";
+import { normalizeStage } from "@/lib/leadUtils";
 
 const FORECAST_CATEGORIES = ["Commit", "Best Case", "Pipeline", "Omit"] as const;
 const CONFIDENCE_OPTIONS = ["1 — Long shot", "2 — Unlikely", "3 — Possible", "4 — Likely", "5 — Locked"] as const;
 
+// v2 late-stage funnel positions (Discovery Completed → Negotiating)
 const LATE_STAGES = new Set([
-  "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Qualified",
+  "Discovery Completed", "Sample Sent", "Proposal Sent", "Negotiating",
 ]);
 
 interface Props { lead: Lead; save: (updates: Partial<Lead>) => void; }
 
 export function ForecastCard({ lead, save }: Props) {
   // Only surface the forecasting forcing-function for late-stage deals
-  if (!LATE_STAGES.has(lead.stage)) return null;
+  if (!LATE_STAGES.has(normalizeStage(lead.stage))) return null;
 
   const fields = [
     !!lead.nextMutualStep?.trim(),

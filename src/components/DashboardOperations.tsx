@@ -639,7 +639,7 @@ function StuckPipelineAlert({ leads, onDrillDown }: { leads: Lead[]; onDrillDown
   const stuckDeals = useMemo(() => {
     const now = new Date();
     return leads.filter(lead => {
-      if (!["Meeting Held", "Proposal Sent"].includes(lead.stage)) return false;
+      if (!["Meeting Held", "Discovery Completed", "Sample Sent", "Proposal Sent"].includes(lead.stage)) return false;
       const daysInStage = lead.stageEnteredDate
         ? differenceInDays(now, parseISO(lead.stageEnteredDate))
         : 0;
