@@ -363,7 +363,13 @@ function EmailRow({ email, compact, onSuggestResponses, onReply, onMarkRead }: {
     <div className={`rounded-md hover:bg-secondary/30 transition-colors ${compact ? "py-1" : ""}`}>
       <button
         type="button"
-        onClick={() => hasFullBody && setExpanded((v) => !v)}
+        onClick={() => {
+          if (hasFullBody) {
+            const next = !expanded;
+            setExpanded(next);
+            if (next && isUnread && onMarkRead) onMarkRead(email.id);
+          }
+        }}
         className={`w-full text-left flex items-start gap-2 p-2 ${hasFullBody ? "cursor-pointer" : ""}`}
       >
         <div className={`rounded-full p-1 shrink-0 mt-0.5 ${dirColor}`}>
@@ -371,7 +377,10 @@ function EmailRow({ email, compact, onSuggestResponses, onReply, onMarkRead }: {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-medium truncate">
+            {isUnread && (
+              <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" title="Unread" />
+            )}
+            <span className={cn("text-xs truncate", isUnread ? "font-semibold" : "font-medium")}>
               {compact ? (email.from_name || email.from_address) : (email.subject || "(No subject)")}
             </span>
             {!compact && (
