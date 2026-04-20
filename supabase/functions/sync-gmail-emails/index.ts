@@ -227,8 +227,8 @@ async function listMessageIdsFull(token: string): Promise<string[]> {
   let pageToken: string | undefined;
   do {
     const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-    url.searchParams.set("q", "newer_than:7d");
-    url.searchParams.set("maxResults", "100");
+    url.searchParams.set("q", FIRST_RUN_WINDOW);
+    url.searchParams.set("maxResults", "500");
     if (pageToken) url.searchParams.set("pageToken", pageToken);
     const res = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${token}` },
@@ -237,9 +237,9 @@ async function listMessageIdsFull(token: string): Promise<string[]> {
     const json = await res.json() as { messages?: { id: string }[]; nextPageToken?: string };
     json.messages?.forEach((m) => ids.push(m.id));
     pageToken = json.nextPageToken;
-    if (ids.length >= MAX_MESSAGES_PER_RUN) break;
+    if (ids.length >= MAX_FIRST_RUN) break;
   } while (pageToken);
-  return ids.slice(0, MAX_MESSAGES_PER_RUN);
+  return ids.slice(0, MAX_FIRST_RUN);
 }
 
 async function listMessageIdsIncremental(
@@ -273,9 +273,9 @@ async function listMessageIdsIncremental(
     });
     if (json.historyId) latestHistoryId = json.historyId;
     pageToken = json.nextPageToken;
-    if (ids.size >= MAX_MESSAGES_PER_RUN) break;
+    if (ids.size >= MAX_INCREMENTAL) break;
   } while (pageToken);
-  return { ids: Array.from(ids).slice(0, MAX_MESSAGES_PER_RUN), latestHistoryId, reset: false };
+  return { ids: Array.from(ids).slice(0, MAX_INCREMENTAL), latestHistoryId, reset: false };
 }
 
 async function fetchMessage(token: string, id: string): Promise<GmailMessage | null> {
