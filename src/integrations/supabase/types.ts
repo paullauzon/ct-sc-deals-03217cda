@@ -196,6 +196,36 @@ export type Database = {
         }
         Relationships: []
       }
+      cron_run_log: {
+        Row: {
+          details: Json
+          error_message: string | null
+          id: string
+          items_processed: number
+          job_name: string
+          ran_at: string
+          status: string
+        }
+        Insert: {
+          details?: Json
+          error_message?: string | null
+          id?: string
+          items_processed?: number
+          job_name: string
+          ran_at?: string
+          status?: string
+        }
+        Update: {
+          details?: Json
+          error_message?: string | null
+          id?: string
+          items_processed?: number
+          job_name?: string
+          ran_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       email_sync_runs: {
         Row: {
           connection_id: string
@@ -283,6 +313,45 @@ export type Database = {
           subject_template?: string
           updated_at?: string
           usage_count?: number
+        }
+        Relationships: []
+      }
+      fireflies_retry_queue: {
+        Row: {
+          attempts: number
+          created_at: string
+          fireflies_id: string
+          id: string
+          last_error: string | null
+          lead_id: string
+          max_attempts: number
+          next_attempt_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          fireflies_id: string
+          id?: string
+          last_error?: string | null
+          lead_id: string
+          max_attempts?: number
+          next_attempt_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          fireflies_id?: string
+          id?: string
+          last_error?: string | null
+          lead_id?: string
+          max_attempts?: number
+          next_attempt_at?: string
+          status?: string
+          updated_at?: string
         }
         Relationships: []
       }
