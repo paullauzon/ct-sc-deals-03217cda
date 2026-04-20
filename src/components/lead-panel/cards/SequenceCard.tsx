@@ -15,7 +15,7 @@ const STATUS_LABEL: Record<string, string> = {
   re_engaged: "Re-engaged",
   completed: "Completed",
   exited_referral: "Exited (referral)",
-  archived: "Paused",
+  paused: "Paused",
 };
 
 export function SequenceCard({ lead }: { lead: Lead }) {
