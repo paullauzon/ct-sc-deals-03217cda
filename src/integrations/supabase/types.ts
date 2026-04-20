@@ -364,6 +364,7 @@ export type Database = {
           event_type: string
           id: string
           lead_id: string
+          metadata: Json
           new_value: string | null
           old_value: string | null
           pinned_at: string | null
@@ -376,6 +377,7 @@ export type Database = {
           event_type?: string
           id?: string
           lead_id: string
+          metadata?: Json
           new_value?: string | null
           old_value?: string | null
           pinned_at?: string | null
@@ -388,6 +390,7 @@ export type Database = {
           event_type?: string
           id?: string
           lead_id?: string
+          metadata?: Json
           new_value?: string | null
           old_value?: string | null
           pinned_at?: string | null
