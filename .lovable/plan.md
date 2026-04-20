@@ -1,64 +1,136 @@
 
 
-# Sequences — final verification + 4 remaining gaps
+# Email backfill — capturing ALL historical conversations, reliably
 
-I traced every item from the original prompt + both approved plans against the live code AND the live database. The build is structurally complete, but **4 concrete data/behavior gaps remain** before this works end-to-end. Three are data hygiene from the engine never having run, one is a real bug.
+## The honest picture of what we have today
 
-## ✅ Shipped and verified correct
+When Malik clicks **Backfill 90d**, `sync-gmail-emails` runs **synchronously inside one edge function call** with these hard caps:
 
-| Item | Status |
-|---|---|
-| Sequences index page (`/#view=sequences`) with stats + Run Engine button | ✅ |
-| Campaign Detail (3 tabs: Overview / Enrolled / Activity log) | ✅ |
-| 4-step timeline visual matching wireframe verbatim | ✅ |
-| 6-up summary stats (Enrolled · Active · Re-engaged · Paused · Completed · Exited) | ✅ |
-| Funnel widget (Enrolled → D0 → D30 → D45 → D90 → Re-engaged) | ✅ |
-| Enrolled leads sortable table with Pause/Resume/Exit | ✅ |
-| Activity log with step filter (N0/N30/N45/N90) | ✅ |
-| Per-lead `SequenceCard` in deal panel right rail | ✅ |
-| `generate-nurture-email` edge function with 12 lost-reason angles | ✅ |
-| Engine Scope Mismatch exit branch + LeadContext guard | ✅ |
-| `nurture_step_log` + `nurture_exit_reason` columns | ✅ |
-| `paused` status everywhere with `archived` legacy fallback | ✅ |
-| Send-gmail / send-outlook lookup `action_key` to stamp `sequence_step` | ✅ (code) |
-| `logCronRun` schema audit | ✅ |
+- `MAX_FIRST_RUN = 1500` messages
+- `FIRST_RUN_WINDOW = "newer_than:90d"` (Gmail query)
+- Outlook: same shape, `receivedDateTime ge now-90d`, 1,500 cap
+- No checkpoint / resume — if it crashes at message 1,200 you re-scan from scratch
+- Edge function has a CPU + wall-time budget (~150s soft, hard kill after a couple minutes). At ~400ms per `messages.get` call, 1,500 messages is already brushing the ceiling
+- The Gmail API gives us message IDs cheaply but **each full-message fetch is one HTTP round trip**. A mailbox with 50,000 historical messages = 50,000 calls
 
-## ⚠ Gaps that block the wireframe end-to-end
+For a Sales Director's mailbox with **years of M&A conversations** this is wrong. We'd capture roughly the last 2–3 months and silently lose everything before that.
 
-### Gap A — 283 existing drafts have wrong `action_key` (`nurture-d0` instead of `N0`)
+## What "ALL emails with ALL prospects" actually requires
 
-**Evidence:** Database query confirms all 283 existing nurture drafts were written by an older engine version that used `action_key = "nurture-d0"` (the draft_type) instead of the new `N0` short code. The send-gmail / send-outlook regex `^(N0|N30|N45|N90|REFERRAL)$` will fail to match these, so when Malik approves and sends any of the 283 backlog drafts, `lead_emails.sequence_step` will still be `null`. The fix from Plan 2's Gap 1 only works for drafts the new engine produces.
+Three independent problems, each needing its own answer:
 
-**Fix:** One-line SQL migration to rewrite the 283 stale rows: `UPDATE lead_drafts SET action_key = CASE draft_type WHEN 'nurture-d0' THEN 'N0' WHEN 'nurture-d30' THEN 'N30' WHEN 'nurture-d90' THEN 'N90' WHEN 'nurture-referral' THEN 'REFERRAL' END WHERE draft_type LIKE 'nurture%' AND action_key NOT IN ('N0','N30','N45','N90','REFERRAL');`
+### Problem 1 — Volume
 
-### Gap B — `nurture_step_log` is empty for all 283 active leads
+We can't do 50k messages in one edge function call. Period. We need **chunked, resumable backfill** that runs across many invocations and survives restarts.
 
-**Evidence:** `with_step_log = 0` across all 283 active leads. The Sequences UI funnel reads counts from `nurture_step_log` (CampaignDetail L37-40), so the funnel currently shows D0=0 / D30=0 even though 283 drafts exist. The SequenceCard in the right rail also shows "Last: —" for everyone. Reason: drafts were created before the `appendStepLog` call was added to the engine.
+### Problem 2 — Lead matching against history
 
-**Fix:** Backfill migration that walks `lead_drafts` for nurture types and synthesizes `nurture_step_log` entries on each lead from the existing draft rows. Simple `UPDATE leads SET nurture_step_log = (SELECT jsonb_agg(...) FROM lead_drafts WHERE lead_id = leads.id AND draft_type LIKE 'nurture%')`. Idempotent.
+Today's matcher only finds leads that **already exist** in the CRM. If Malik emailed a prospect 14 months ago who was never entered as a lead, that thread would land as `lead_id = 'unmatched'` forever. We need a smarter strategy for what to do with those.
 
-### Gap C — Activity log will be empty for the 283 backlog drafts
+### Problem 3 — Surviving close/restart
 
-**Evidence:** `lead_activity_log` has 0 nurture event rows. Engine writes `nurture_draft_emitted` only when it generates a fresh draft, so the backlog is invisible in the Activity log tab and in the per-lead Activity timeline.
+Edge function dies, browser closes, deploy happens mid-backfill — we cannot lose progress.
 
-**Fix:** Same backfill migration as B writes one `nurture_draft_emitted` row per existing nurture draft (with `metadata.step` and `new_value` set so the existing step filter works).
+## The architecture I recommend
 
-### Gap D — Engine never ran the new code (manual trigger button works, just hasn't been clicked)
+A new dedicated **backfill orchestrator** separate from the daily sync, with three parts:
 
-**Evidence:** `cron_run_log` for `nurture-engine` has 0 rows. Cron is scheduled daily 13:00 UTC but the new code hasn't fired yet. The "Run engine now" button shipped in the last build, but it hasn't been used. After Gaps A/B/C are fixed, clicking it once will: (1) regenerate any missing AI copy for leads where the previous draft was static-template, (2) confirm cron logging is wired, (3) populate `cron_run_log` so the Automation Health panel shows it.
+### Part A — `email_backfill_jobs` table (resumable state machine)
 
-**Fix:** No code change. Click "Run engine now" once on the Sequences index after the migrations land.
+One row per backfill request. Tracks: `connection_id`, `target_window` (90d / 1y / 5y / all), `status` (queued / running / paused / done / failed), `cursor` (Gmail `pageToken` or Outlook `@odata.nextLink`), `messages_discovered`, `messages_processed`, `messages_inserted`, `messages_matched`, `last_error`, `started_at`, `last_chunked_at`. This is the source of truth — even if every edge function dies, the next invocation reads this row and resumes exactly where it left off.
 
-## What I'm NOT touching (intentional, per original out-of-scope list)
+### Part B — Two-phase pipeline
 
-- Building S5 / S3 / S10 sequences (framework supports them — separate request)
-- A/B testing on AI copy
-- Editing AI prompts from the UI
-- Per-step rep preview before cron fires (drafts already land in Action Center for review)
+**Phase 1 — Discovery (fast, ID-only).** Walk `messages.list` (Gmail) or `messages` (Graph) page-by-page, store **just the message IDs** into a new `email_backfill_queue` table with `connection_id`, `provider_message_id`, `processed_at NULL`. This is cheap: one API call returns up to 500 IDs, no body fetch. A mailbox of 50k messages discovers in ~100 API calls = ~30 seconds.
 
-## Files touched
+**Phase 2 — Hydration (slow, parallel-safe).** A separate worker function pulls N unprocessed IDs from the queue, fetches full bodies, runs lead matching, inserts into `lead_emails`, marks `processed_at`. Runs in chunks of 200 messages per invocation (safely inside the wall-time budget). A pg_cron job invokes the worker every minute until the queue drains.
 
-- **New migration**: `supabase/migrations/<timestamp>_nurture_backfill.sql` — three idempotent UPDATE statements (rewrite `action_key`, backfill `nurture_step_log`, backfill `lead_activity_log` rows)
+This means: **clicking "Backfill all-time" enqueues the work in seconds and the system grinds through it on its own, even if Malik closes the browser, even if we deploy, even if the function crashes.** The cron pulls until done.
 
-That's it. One migration file. After it runs and you click "Run engine now" once, Sequences is complete end-to-end against the original wireframe and prompt.
+### Part C — UI feedback ("Backfill progress" panel)
+
+In Mailbox Settings, replace the silent "Backfill 90d" button with a window picker (`90d / 1y / 3y / All time`) and a live progress card showing:
+
+```text
+Backfill: malik@captarget.com — All time
+[████████░░░░░░░░░░] 12,400 / 47,830 (26%)
+12,180 inserted · 4,820 matched to leads · 7,360 unmatched
+Started 14m ago · ~38m remaining at current rate
+[Pause] [Cancel]
+```
+
+Driven by a `select` on `email_backfill_jobs` + queue counts, polled every 5s.
+
+### Part D — Smarter lead matching for the historical haystack
+
+For all-time backfill on a Director's mailbox, ~70% of conversations may be with people who were **never entered as leads** (old prospects, dead deals, internal-to-other-firm chats). Two options:
+
+**D1 (default, conservative):** Park them in `lead_emails` with `lead_id = 'unmatched'` and surface a new **"Unmatched conversations"** view that groups them by `(from_address domain, subject thread)`. Malik can bulk-promote a thread to a new lead with one click. This is the existing `UnmatchedInbox` component, just scaled up — we already have the plumbing.
+
+**D2 (optional, aggressive):** During backfill, if an external sender has **3+ messages exchanged with Malik**, auto-create a "ghost lead" in stage `Closed Lost` with `lost_reason_v2 = 'Stale - imported from email'` so the conversation has a home immediately. Malik can resurrect or archive in bulk later. I'd default this **off** and let you toggle per-backfill.
+
+### Part E — Loop protection at scale
+
+Current dedup uses `provider_message_id`. With 50k inserts that's 50k single-row SELECTs. Switch to **batched dedup**: pull 500 IDs from the queue, do one `select id from lead_emails where provider_message_id in (...)`, skip the dups, batch-insert the rest. ~50× faster.
+
+## What changes for the user
+
+1. Click **Backfill** → choose window (`90d` / `1y` / `3y` / `All time`)
+2. Confirmation dialog shows estimated message count + estimated time (Gmail returns `resultSizeEstimate` cheaply)
+3. Background job starts. Toast: "Backfill running in background — safe to close this tab"
+4. Progress card stays visible in Mailbox Settings + a small chip in the global header (`Backfilling 26%`) that links back to the panel
+5. When done, toast: "Backfill complete — 47,830 messages, 4,820 matched to existing leads, 43,010 in Unmatched inbox"
+6. Unmatched inbox surfaces the historical conversations, grouped, with bulk-create-lead actions
+
+## Technical details
+
+**New files:**
+
+- `supabase/migrations/<ts>_email_backfill.sql` — `email_backfill_jobs` + `email_backfill_queue` tables with indexes on `(connection_id, processed_at)` and `(status)`
+- `supabase/functions/start-email-backfill/index.ts` — UI-invoked. Validates connection, creates `email_backfill_jobs` row, returns job_id. Does NOT block on the actual work.
+- `supabase/functions/backfill-discover/index.ts` — Phase 1 worker. Walks message-IDs page by page, inserts into queue, updates `cursor` after each page. Self-reschedules via `pg_net.http_post` to itself if more pages remain (avoids hitting wall-time).
+- `supabase/functions/backfill-hydrate/index.ts` — Phase 2 worker. Pulls 200 unprocessed queue rows, batch-dedups, fetches bodies (with `fetchWithRetry` already in the codebase), runs `findLeadIdByEmail`, batch-inserts into `lead_emails`, marks queue rows processed. Updates job counters.
+- pg_cron job `backfill-hydrate-every-minute` invoking `backfill-hydrate` when any job has `status = 'running'` and unprocessed queue rows exist
+- `src/components/BackfillProgressPanel.tsx` — the live progress card + window picker
+- Update `src/components/MailboxSettings.tsx` — replace `backfill90d` button with `<BackfillProgressPanel connection={c} />`
+
+**Provider specifics:**
+
+- **Gmail**: discovery uses `users.messages.list?q=after:YYYY/MM/DD&maxResults=500&pageToken=...`. For "all time" omit the `q`. `resultSizeEstimate` gives a ballpark. Hydration uses the existing `fetchMessage` helper.
+- **Outlook/Graph**: discovery uses `/me/messages?$select=id&$top=1000&$orderby=receivedDateTime desc` then follow `@odata.nextLink`. For both folders (Inbox + SentItems) we run two parallel discovery walks. `$count=true` gives the total upfront.
+
+**Rate limiting:**
+
+- Gmail: 250 quota units/sec/user. `messages.get` = 5 units. Safe rate ≈ 50/sec → 200 messages per minute-cron invocation is well under
+- Graph: 10k requests per 10 min per app per tenant. 200/min is well under
+- The existing `fetchWithRetry` (3 attempts, exponential backoff on 429/503) already handles the burst case
+
+**Safety:**
+
+- Hard idempotency on `(connection_id, provider_message_id)` — re-running a backfill never duplicates
+- `email_backfill_jobs.status = 'paused'` halts the cron worker for that job; unpause to resume
+- Existing CRM-loop protection (`X-CRM-Source` header / `<crm-...>` Message-ID) already filters our own outbound from being double-counted
+- `INTERNAL_DOMAINS` filter still excludes captarget.com / sourcecodeals.com from lead matching
+
+**Observability:**
+
+- Each worker invocation writes to `cron_run_log` with `job_name = 'backfill-hydrate'` and `details = { job_id, processed_in_chunk, queue_remaining }` so the existing Automation Health panel surfaces it
+- `email_sync_runs` continues to receive one summary row per completed backfill job
+
+## What I deliberately do not propose
+
+- **Webhook / push subscriptions (Gmail watch, Graph subscriptions).** Useful for live ingestion but the daily cron already handles that. Webhooks don't help backfill.
+- **Storing raw RFC822 in object storage.** Not asked for; would balloon storage. We already keep `body_html` and `body_text`.
+- **Threading with conversation reconstruction across pre-CRM history.** `thread_id` is already captured per-message; views can group on it later.
+- **Backfilling attachments as files.** We capture `hasAttachments` flag; downloading bytes is a separate, much bigger feature.
+
+## Trade-offs to decide before I build
+
+These I'd ask you to pick before I write code:
+
+1. **Default backfill window** when Malik connects: `90d` (current), `1y`, `3y`, or `All time`?
+2. **Auto-ghost-lead** behavior (Part D2): off, on, or off-but-prompt-after-backfill-completes with a "Promote 1,240 unmatched threads to ghost leads?" confirmation
+3. **Concurrent backfills**: if Malik connects two mailboxes, do both backfills run in parallel, or queue serially? (Parallel is fine technically; serial is gentler on rate limits.)
+
+
 
