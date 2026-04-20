@@ -29,7 +29,7 @@ export function LeadDebriefTab({ lead }: { lead: Lead }) {
           </div>
         </div>
         {lead.stage === "Closed Won" && lead.wonReason && <p className="text-sm"><span className="text-muted-foreground">Won because: </span>{lead.wonReason}</p>}
-        {lead.stage === "Lost" && lead.lostReason && <p className="text-sm"><span className="text-muted-foreground">Lost because: </span>{lead.lostReason}</p>}
+        {(lead.stage === "Lost" || lead.stage === "Closed Lost") && (lead.lostReasonV2 || lead.lostReason) && <p className="text-sm"><span className="text-muted-foreground">Lost because: </span>{lead.lostReasonV2 || lead.lostReason}</p>}
       </div>
 
       {lead.dealIntelligence && (

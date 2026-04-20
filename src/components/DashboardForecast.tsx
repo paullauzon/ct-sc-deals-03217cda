@@ -442,7 +442,7 @@ function ObjectionCompetitorHeatmap({ leads }: { leads: Lead[] }) {
 function WinLossAnalysis({ leads }: { leads: Lead[] }) {
   const analysis = useMemo(() => {
     const won = leads.filter(l => l.stage === "Closed Won" && l.wonReason);
-    const lost = leads.filter(l => l.stage === "Lost" && l.lostReason);
+    const lost = leads.filter(l => (l.stage === "Lost" || l.stage === "Closed Lost") && (l.lostReason || l.lostReasonV2));
 
     const countReasons = (items: Lead[], field: "wonReason" | "lostReason") => {
       const map: Record<string, number> = {};
@@ -460,7 +460,7 @@ function WinLossAnalysis({ leads }: { leads: Lead[] }) {
       wonReasons: countReasons(won, "wonReason"),
       lostReasons: countReasons(lost, "lostReason"),
       wonCount: leads.filter(l => l.stage === "Closed Won").length,
-      lostCount: leads.filter(l => l.stage === "Lost").length,
+      lostCount: leads.filter(l => l.stage === "Lost" || l.stage === "Closed Lost").length,
     };
   }, [leads]);
 

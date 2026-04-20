@@ -55,7 +55,7 @@ export function DealEconomicsCard({ lead, save }: Props) {
   const tcv = (Number(mrr) || 0) * (Number(months) || 0);
   const weighted = tcv * (confidence / 100);
 
-  const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost" || lead.stage === "Went Dark";
+  const isClosed = lead.stage === "Closed Won" || lead.stage === "Closed Lost" || lead.stage === "Lost" || lead.stage === "Went Dark";
 
   return (
     <CollapsibleCard

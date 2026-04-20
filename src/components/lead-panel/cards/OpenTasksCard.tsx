@@ -9,7 +9,8 @@ interface Props { lead: Lead; onAddTask: () => void }
 
 function inferPriority(taskType: string, overdue: boolean, leadStage: string): "High" | "Normal" {
   if (overdue) return "High";
-  if (leadStage === "Contract Sent" || leadStage === "Negotiation") return "High";
+  // Late-stage v2 (+ legacy) deals are always high priority
+  if (["Negotiating", "Proposal Sent", "Sample Sent", "Contract Sent", "Negotiation"].includes(leadStage)) return "High";
   if (taskType === "follow_up" || taskType === "close_won_sla") return "High";
   return "Normal";
 }

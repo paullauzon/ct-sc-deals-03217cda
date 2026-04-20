@@ -214,7 +214,7 @@ export function LeadActionsTab({ lead, allLeads, save, draftSignal }: LeadAction
   // Computed signals
   const dealHealth = lead.dealIntelligence;
   const droppedPromises = getDroppedPromises(lead);
-  const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost";
+  const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost" || lead.stage === "Closed Lost";
   const nextBestAction = isClosed ? null : getNextBestAction(lead);
   const actionItems = lead.dealIntelligence?.actionItemTracker || [];
   const completedActions = actionItems.filter(a => a.status === "Completed");

@@ -579,7 +579,7 @@ function NewLeadDialog({ open, onClose, onSave }: { open: boolean; onClose: () =
       name: form.name, email: form.email, phone: form.phone, company: form.company,
       companyUrl: form.companyUrl, role: form.role, message: form.message, dealsPlanned: form.dealsPlanned,
       source: "CT Contact Form" as LeadSource, dateSubmitted: today,
-      stage: "New Lead" as LeadStage, serviceInterest: "TBD" as const, dealValue: 0, assignedTo: "",
+      stage: "Unassigned" as LeadStage, serviceInterest: "TBD" as const, dealValue: 0, assignedTo: "",
       meetingDate: "", meetingSetDate: "", closeReason: "" as const, closedDate: "", notes: "",
       lastContactDate: "", nextFollowUp: "", priority: "Medium" as const,
       meetingOutcome: "" as const, forecastCategory: "" as const, icpFit: "" as const, preScreenCompleted: false,
