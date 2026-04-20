@@ -15,7 +15,7 @@ const STATUS_LABEL: Record<string, string> = {
   re_engaged: "Re-engaged",
   completed: "Completed",
   exited_referral: "Exited (referral)",
-  archived: "Paused",
+  paused: "Paused",
 };
 
 export function SequenceCard({ lead }: { lead: Lead }) {
@@ -40,7 +40,7 @@ export function SequenceCard({ lead }: { lead: Lead }) {
 
   async function pause() {
     setBusy(true);
-    await updateLead(lead.id, { nurtureSequenceStatus: "archived", nurtureExitReason: "Manually paused" });
+    await updateLead(lead.id, { nurtureSequenceStatus: "paused", nurtureExitReason: "Manually paused" });
     setBusy(false);
     toast({ title: "Sequence paused", description: "No further nurture touches will fire." });
   }
@@ -101,7 +101,7 @@ export function SequenceCard({ lead }: { lead: Lead }) {
             >
               <Pause className="h-3 w-3" /> Pause
             </button>
-          ) : status === "archived" ? (
+          ) : (status === "paused" || status === "archived") ? (
             <button
               onClick={resume}
               disabled={busy}
@@ -110,7 +110,7 @@ export function SequenceCard({ lead }: { lead: Lead }) {
               <Play className="h-3 w-3" /> Resume
             </button>
           ) : null}
-          {(isActive || status === "archived") && (
+          {(isActive || status === "paused" || status === "archived") && (
             <button
               onClick={exitSeq}
               disabled={busy}

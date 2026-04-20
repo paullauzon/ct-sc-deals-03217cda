@@ -100,6 +100,18 @@ Deno.serve(async (req) => {
     const isAiDrafted = ai_drafted === true;
     const sourceDraftId = typeof source_draft_id === "string" && source_draft_id ? source_draft_id : null;
 
+    // Stamp sequence_step from source nurture draft (parity with Gmail send).
+    let sequenceStep: string | null = null;
+    if (sourceDraftId) {
+      const { data: draft } = await supabase
+        .from("lead_drafts")
+        .select("action_key")
+        .eq("id", sourceDraftId)
+        .maybeSingle();
+      const key = (draft as any)?.action_key as string | undefined;
+      if (key && /^(N0|N30|N45|N90|REFERRAL)$/.test(key)) sequenceStep = key;
+    }
+
     if (!connection_id || typeof connection_id !== "string") {
       return new Response(JSON.stringify({ ok: false, error: "connection_id required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -155,6 +167,7 @@ Deno.serve(async (req) => {
       is_read: true,
       tracked: true,
       ai_drafted: isAiDrafted,
+      sequence_step: sequenceStep,
       raw_payload: {
         sent_via: "crm",
         x_crm_source: "lovable-crm",

@@ -64,7 +64,8 @@ export type NurtureSequenceStatus =
   | "active"
   | "re_engaged"
   | "completed"
-  | "archived"
+  | "archived"          // legacy — superseded by 'paused'
+  | "paused"            // manually paused, can be resumed
   | "exited_referral";  // Scope Mismatch — single referral email, then exits
 
 /** Append-only log of nurture milestones emitted by the engine. */

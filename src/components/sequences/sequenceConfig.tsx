@@ -86,7 +86,7 @@ export function getSequence(id: string): SequenceDef | undefined {
 
 export function leadEnrolledIn(seq: SequenceDef, lead: Lead): boolean {
   if (seq.id !== "s8-90day-nurture") return false;
-  return ["active", "completed", "re_engaged", "exited_referral"].includes(
+  return ["active", "completed", "re_engaged", "exited_referral", "paused"].includes(
     lead.nurtureSequenceStatus ?? "",
   );
 }
