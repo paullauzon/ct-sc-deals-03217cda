@@ -1,71 +1,100 @@
 
 
-User wants to continue Gmail email sync. Phase 1 (OAuth foundation) is done. Next phases per the established plan:
+# Root cause: Google OAuth app is not configured to allow this user
 
-**Phase 2 — Inbound sync** (this session)
-**Phase 3 — Outbound + tracking** (after Phase 2)
-**Phase 4 — Polish** (later)
+The screenshot is Google's generic 403 page, which Google shows in **three completely different scenarios** that all look identical. The Google OAuth flow never reaches our `gmail-oauth-callback` function — it's blocked before the redirect.
 
-Phase 2 is the next logical step. Let me scope it tightly so it actually ships in one session.
+## What's actually happening
 
-# Phase 2 — Gmail inbound sync
+Our code is fine. The OAuth start function builds a valid Google auth URL and redirects the browser. Google then refuses to show the consent screen and serves the 403 instead. This happens for one of three reasons:
 
-## What gets built
+### Cause 1 — App is in "Testing" mode and the user isn't on the test users list (most likely)
 
-### 1. `sync-gmail-emails` edge function
-For each active Gmail connection in `user_email_connections`:
-- Get valid access token via existing `getValidAccessToken()` helper
-- **First run** (no `history_id`): pull last 7 days via `users.messages.list?q=newer_than:7d`, store latest `historyId` for next run
-- **Incremental run** (has `history_id`): call `users.history.list?startHistoryId=X` to get only new message IDs since last sync, then fetch each via `users.messages.get?format=metadata` + payload
-- Parse RFC2822 headers (From, To, Cc, Subject, Date, Message-ID, In-Reply-To)
-- Extract plain + HTML body parts (base64url decode)
-- Determine direction: `outbound` if From matches the connected mailbox's `email_address`, else `inbound`
-- Match to lead by external participants (skip captarget.com/sourcecodeals.com)
-- **Dedup against Zapier rows**: check `provider_message_id = msg.id OR message_id = rfc822_message_id` in `lead_emails` before inserting
-- Insert into `lead_emails` with `source = 'gmail'`
-- Update connection's `history_id` and `last_synced_at`
-- Return summary `{ processed, inserted, matched, skipped_dup }`
+Google Cloud OAuth apps default to **Testing** publishing status. In Testing mode:
+- Only emails explicitly added to the **Test Users** list can authorize the app
+- All others get exactly this 403 page
+- We're requesting **restricted scopes** (`gmail.readonly`, `gmail.modify`, `gmail.send`), which makes Testing mode even stricter — Google does not allow these scopes to be used with arbitrary users until the app is verified
 
-### 2. Schedule via pg_cron
-Every 10 minutes:
-```sql
-SELECT cron.schedule('sync-gmail-emails-10min', '*/10 * * * *', $$
-  SELECT net.http_post(
-    url := 'https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/sync-gmail-emails',
-    headers := '{"Content-Type":"application/json","Authorization":"Bearer <anon>"}'::jsonb,
-    body := '{}'::jsonb
-  );
-$$);
+### Cause 2 — Restricted Gmail scopes require Google verification before public use
+
+`gmail.readonly` and `gmail.modify` are classified as **restricted scopes**. To move the app from Testing → Production, Google requires:
+- A privacy policy URL
+- A homepage URL
+- App domain verification (proving you own the domain)
+- Security assessment (CASA) for production-grade Gmail apps reading mail
+
+Until this is done, the app stays in Testing and only test users can connect.
+
+### Cause 3 — Wrong Google account is signed in / Google Workspace blocked the app
+
+If the connecting user's Google Workspace admin (e.g. captarget.com or sourcecodeals.com) has restricted third-party app access, the same 403 appears. This is admin-controlled at the Workspace level.
+
+## Why the 403 is so confusing
+
+The page literally says *"you do not have access to this document"* — this is Google's generic permissions page that's reused across Drive, Docs, AND OAuth. There is no OAuth-specific error UI. Even Google's own engineers have complained about this.
+
+## Recommended fix (priority order)
+
+### Step 1 — Add test users (5 minutes, unblocks today)
+
+In the Google Cloud Console for the OAuth client whose credentials are stored in `GOOGLE_OAUTH_CLIENT_ID`:
+
+1. Go to **APIs & Services → OAuth consent screen**
+2. Confirm **Publishing status: Testing**
+3. Scroll to **Test users** → click **+ ADD USERS**
+4. Add every email that needs to connect: `adam@captarget.com`, `malik@…`, etc. (up to 100 test users allowed)
+5. Save
+
+The user being added must be the **same Google account** they sign in with on the consent screen. Adding `adam@captarget.com` does not authorize `adam.haile@gmail.com`.
+
+### Step 2 — Confirm the OAuth consent screen has the correct scopes registered
+
+Same console screen, **Scopes** tab. Make sure all five scopes from `gmail-oauth-start/index.ts` are listed:
+- `.../auth/gmail.readonly`
+- `.../auth/gmail.send`
+- `.../auth/gmail.modify`
+- `.../auth/userinfo.email`
+- `.../auth/userinfo.profile`
+
+If a requested scope is missing here, Google also blocks consent (sometimes with this same 403).
+
+### Step 3 — Confirm the redirect URI is exact
+
+**APIs & Services → Credentials → OAuth 2.0 Client IDs → [our client]**, under **Authorized redirect URIs** there must be an exact match (no trailing slash, no path differences):
+
+```
+https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/gmail-oauth-callback
 ```
 
-### 3. UI — Manual sync + status in `MailboxSettings.tsx`
-- Add "Sync now" button per connection row → calls `sync-gmail-emails` with `{ connection_id }`
-- Show last synced relative time (already in DB, just render it)
-- Toast result: "Synced 12 emails, 8 matched to leads"
+If this is wrong you usually get `redirect_uri_mismatch`, but it's worth confirming while you're in the console.
 
-### 4. Zapier deprecation note
-Don't touch Zapier yet — leave both pipes running for one week of parity. Gmail rows will be marked `source='gmail'`, Zapier rows stay `source='zapier'`. Dedup logic prevents doubles. After Malik confirms Gmail parity in 7 days, we flip Zapier off in a follow-up session.
+### Step 4 — Plan for production (later, when ready to roll out beyond the test users)
 
-## Files
+Two options:
 
-| File | Action |
-|---|---|
-| `supabase/functions/sync-gmail-emails/index.ts` | Create |
-| `supabase/config.toml` | Add `[functions.sync-gmail-emails] verify_jwt = false` |
-| `src/components/MailboxSettings.tsx` | Add "Sync now" button + last-synced display |
-| pg_cron schedule | Insert via SQL |
-| `mem://integrations/email-sync-status.md` | Update — Phase 2 done |
+**Option A — Stay in Testing forever.** Up to 100 test users. Refresh tokens expire after 7 days, forcing reconnection weekly. Fine for an internal team of 5–10 people IF we accept the weekly reconnect.
 
-## Out of scope (Phase 3)
-- Sending email from CRM (`send-gmail-email`)
-- Open pixels / click rewriter
-- Wiring `EmailComposeDrawer` to actually send
-- Retiring Zapier `ingest-email`
-- Outlook OAuth
+**Option B — Submit for Google verification.** Required for production use of `gmail.readonly` / `gmail.modify`. Process:
+1. Add Privacy Policy + Terms URLs
+2. Verify domain ownership in Google Search Console
+3. Record a YouTube demo of OAuth flow
+4. Submit for review (4–6 weeks for restricted scopes)
+5. May require third-party CASA security assessment (~$15K)
 
-## Risk + mitigation
-- **Gmail History API gaps**: history records can be pruned after ~7 days. If `historyId` is too old, Google returns 404 — function falls back to a 7-day full-scan and logs the reset.
-- **Token refresh**: already handled by `getValidAccessToken()` helper from Phase 1.
-- **Internal-only threads**: filtered out before lead-match attempt (avoids unmatched noise).
-- **Rate limits**: Gmail allows 1B quota units/day per project — well above our needs. Per-user we cap at 250 messages per sync run to avoid runaway cost.
+For an internal CRM with <100 users, **Option A is the right choice**. Document the weekly reconnect in `MailboxSettings`.
+
+## What I'll change in code (after Step 1 unblocks you)
+
+Two small UX improvements once OAuth works:
+
+1. **Better error surfacing in `gmail-oauth-callback`**: detect Google's `error=access_denied` query param and return a friendly HTML page that says "This Google account isn't on the test users list — ask Adam to add you in Google Cloud Console" instead of just `Authorization denied: access_denied`.
+
+2. **Token-refresh failure handling in `MailboxSettings`**: when a refresh token expires (the 7-day Testing-mode limit), surface a clear "Reconnect required" badge per mailbox instead of silently failing the next sync.
+
+## What this plan does NOT touch
+
+- No DB migrations
+- No new edge functions
+- No changes to `sync-gmail-emails`, `send-gmail-email`, or `track-email-open`
+- The code is correct — only the Google Cloud Console configuration needs to change
 
