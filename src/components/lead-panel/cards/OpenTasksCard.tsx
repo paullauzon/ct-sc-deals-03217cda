@@ -7,6 +7,13 @@ import { cn } from "@/lib/utils";
 
 interface Props { lead: Lead; onAddTask: () => void }
 
+function inferPriority(taskType: string, overdue: boolean, leadStage: string): "High" | "Normal" {
+  if (overdue) return "High";
+  if (leadStage === "Contract Sent" || leadStage === "Negotiation") return "High";
+  if (taskType === "follow_up" || taskType === "close_won_sla") return "High";
+  return "Normal";
+}
+
 export function OpenTasksCard({ lead, onAddTask }: Props) {
   const { tasks, completeTask } = useLeadTasks([lead.id]);
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -36,7 +43,7 @@ export function OpenTasksCard({ lead, onAddTask }: Props) {
           + Add first task
         </button>
       ) : (
-        <ul className="space-y-1">
+        <ul className="space-y-1.5">
           {tasks.slice(0, 4).map(t => {
             let dueLabel = "";
             let overdue = false;
@@ -45,8 +52,11 @@ export function OpenTasksCard({ lead, onAddTask }: Props) {
               dueLabel = format(d, "MMM d");
               overdue = d < today;
             } catch { /* noop */ }
+            const isAuto = !!(t.playbook && t.playbook.trim());
+            const priority = inferPriority(t.task_type, overdue, lead.stage);
+            const owner = lead.assignedTo || "Unassigned";
             return (
-              <li key={t.id} className="flex items-start gap-1.5 group">
+              <li key={t.id} className="flex items-start gap-2 group">
                 <button
                   type="button"
                   onClick={() => completeTask(t.id)}
@@ -56,15 +66,27 @@ export function OpenTasksCard({ lead, onAddTask }: Props) {
                   <Check className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100" />
                 </button>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium truncate">{t.title}</p>
-                  {dueLabel && (
-                    <p className={cn(
-                      "text-[10px]",
-                      overdue ? "text-amber-700 dark:text-amber-400 font-medium" : "text-muted-foreground"
-                    )}>
-                      Due {dueLabel}{overdue ? " · pending" : ""}
-                    </p>
-                  )}
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-[11px] font-medium leading-tight">{t.title}</p>
+                    {dueLabel && (
+                      <span className={cn(
+                        "text-[10px] tabular-nums shrink-0",
+                        overdue ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"
+                      )}>
+                        {dueLabel}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <span className="text-[10px] text-muted-foreground">
+                      Assigned to {owner} · <span className={priority === "High" ? "text-amber-600 dark:text-amber-400 font-medium" : ""}>{priority} priority</span>
+                    </span>
+                    {isAuto && (
+                      <span className="text-[9px] uppercase tracking-wider px-1 py-px rounded bg-secondary text-muted-foreground">
+                        auto-created
+                      </span>
+                    )}
+                  </div>
                 </div>
               </li>
             );

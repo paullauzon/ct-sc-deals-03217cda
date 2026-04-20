@@ -1,7 +1,8 @@
 import { Lead } from "@/types/lead";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
-import { AlertTriangle, Bell } from "lucide-react";
+import { Bell } from "lucide-react";
 import { getDealSignals } from "@/components/lead-panel/shared";
+import { cn } from "@/lib/utils";
 
 interface Props { lead: Lead }
 
@@ -18,26 +19,30 @@ export function SignalsCard({ lead }: Props) {
       count={signals.length}
       defaultOpen={criticals > 0}
     >
-      <ul className="space-y-1">
+      <ul className="space-y-2">
         {signals.map((s, i) => (
-          <li
-            key={i}
-            className={
-              s.severity === "critical"
-                ? "flex items-start gap-1.5 rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5"
-                : "flex items-start gap-1.5 rounded border border-amber-500/30 bg-amber-500/5 px-2 py-1.5"
-            }
-          >
-            <AlertTriangle className={
-              "h-3 w-3 shrink-0 mt-0.5 " + (s.severity === "critical" ? "text-destructive" : "text-amber-600")
-            } />
-            <span className={
-              "text-[11px] font-medium " + (s.severity === "critical"
-                ? "text-destructive"
-                : "text-amber-700 dark:text-amber-400")
-            }>
-              {s.message}
-            </span>
+          <li key={i} className="flex items-start gap-2">
+            <span
+              className={cn(
+                "mt-1.5 h-1.5 w-1.5 rounded-full shrink-0",
+                s.severity === "critical" && "bg-red-500",
+                s.severity === "warning" && "bg-amber-500",
+                s.severity === "positive" && "bg-emerald-500",
+              )}
+            />
+            <div className="min-w-0 flex-1">
+              <p className={cn(
+                "text-[11px] font-medium leading-tight",
+                s.severity === "critical" && "text-foreground",
+                s.severity === "warning" && "text-foreground",
+                s.severity === "positive" && "text-foreground",
+              )}>
+                {s.title}
+              </p>
+              {s.description && (
+                <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">{s.description}</p>
+              )}
+            </div>
           </li>
         ))}
       </ul>
