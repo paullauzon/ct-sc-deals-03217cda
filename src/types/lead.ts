@@ -573,6 +573,16 @@ export interface Lead {
   sampleOutcome?: string;
   proofNotes?: string;
   stallReason?: string;
+  // v2 pipeline fields
+  /** Locked dropdown — replaces free-text lostReason. */
+  lostReasonV2?: LostReasonV2;
+  /** 90-day nurture sequence state. */
+  nurtureSequenceStatus?: NurtureSequenceStatus;
+  nurtureStartedAt?: string | null;
+  nurtureReEngageDate?: string | null;
+  /** Audit log of stage gate overrides — { stage, missing, overriddenBy, at }[]. */
+  stageGateOverrides?: Array<{ stage: string; missing: string[]; overriddenBy: string; at: string }>;
+  discoveryCallCompletedAt?: string | null;
   // Legacy fields (kept for migration)
   firefliesUrl: string;
   firefliesTranscript: string;
