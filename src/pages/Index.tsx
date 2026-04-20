@@ -156,6 +156,7 @@ function AppContent() {
           {system === "business" && (
             <div className="flex items-center gap-3 ml-auto">
               <span className="text-sm text-muted-foreground">Business Operations</span>
+              <BackfillStatusChip />
               <AutomationHealthChip onClick={() => {
                 const params = new URLSearchParams();
                 params.set("view", "settings"); params.set("sys", "crm"); params.set("tab", "automation");
@@ -167,6 +168,7 @@ function AppContent() {
           {system === "client-success" && (
             <div className="flex items-center gap-3 ml-auto">
               <span className="text-sm text-muted-foreground">Client Success · Account Management</span>
+              <BackfillStatusChip />
               <AutomationHealthChip onClick={() => {
                 const params = new URLSearchParams();
                 params.set("view", "settings"); params.set("sys", "crm"); params.set("tab", "automation");
