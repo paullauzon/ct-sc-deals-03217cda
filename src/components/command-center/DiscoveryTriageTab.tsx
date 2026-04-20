@@ -142,9 +142,10 @@ export function DiscoveryTriageTab({ leads, ownerFilter, onSelectLead }: Props) 
                   className="flex items-center gap-2.5 min-w-0 flex-1 text-left group"
                 >
                   <CompanyAvatar
-                    domain={lead.companyUrl || lead.email}
-                    name={lead.company || lead.name}
-                    size={24}
+                    companyUrl={lead.companyUrl}
+                    email={lead.email}
+                    companyName={lead.company || lead.name}
+                    size="md"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">

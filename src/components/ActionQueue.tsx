@@ -7,12 +7,13 @@ import { ScheduleTab } from "@/components/command-center/ScheduleTab";
 import { FollowUpsTab } from "@/components/command-center/FollowUpsTab";
 import { DealPulseTab } from "@/components/command-center/DealPulseTab";
 import { PrepIntelTab } from "@/components/command-center/PrepIntelTab";
+import { DiscoveryTriageTab } from "@/components/command-center/DiscoveryTriageTab";
 import { isBefore, parseISO, differenceInDays } from "date-fns";
 import { ACTIVE_STAGES as V2_ACTIVE, isClosedStage, normalizeStage } from "@/lib/leadUtils";
 
 const OWNERS = ["All", "Malik", "Valeria", "Tomos", "Unassigned"] as const;
 const HORIZONS = [7, 14, 30] as const;
-type CommandTab = "schedule" | "followups" | "pulse" | "intel";
+type CommandTab = "schedule" | "followups" | "pulse" | "intel" | "triage";
 
 const CLOSED_STAGES = { has: (s: string) => isClosedStage(normalizeStage(s)) };
 const ACTIVE_STAGES = { has: (s: string) => V2_ACTIVE.includes(normalizeStage(s)) };
