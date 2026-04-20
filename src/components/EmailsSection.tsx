@@ -543,6 +543,21 @@ function EmailRow({ email, compact, expandAllSignal, onSuggestResponses, onReply
                 {dirLabel}
               </Badge>
             )}
+            {email.sequence_step && (
+              <Badge variant="secondary" className="text-[9px] shrink-0 font-mono px-1.5 py-0">
+                {email.sequence_step}
+              </Badge>
+            )}
+            {email.ai_drafted && (
+              <Badge variant="secondary" className="text-[9px] shrink-0 gap-0.5" title="AI-drafted">
+                <Sparkles className="h-2.5 w-2.5" />AI
+              </Badge>
+            )}
+            {showMailbox && isOutbound && email.from_address && (
+              <Badge variant="outline" className="text-[9px] shrink-0 text-muted-foreground" title={`Sent from ${email.from_address}`}>
+                {email.from_address.split("@")[0]}
+              </Badge>
+            )}
             {email.replied_at && (
               <Badge variant="outline" className="text-[9px] shrink-0 gap-0.5">
                 <Reply className="h-2.5 w-2.5" />Replied
