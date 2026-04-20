@@ -115,10 +115,11 @@ export function CampaignDetail({ sequenceId, onBack }: Props) {
           </div>
 
           {stats && (
-            <div className="grid grid-cols-5 gap-3">
+            <div className="grid grid-cols-6 gap-3">
               <SummaryStat label="Enrolled" value={stats.enrolled} onClick={() => setStatusFilter("")} />
               <SummaryStat label="Active" value={stats.active} onClick={() => setStatusFilter("active")} />
               <SummaryStat label="Re-engaged" value={stats.reEngaged} onClick={() => setStatusFilter("re_engaged")} />
+              <SummaryStat label="Paused" value={stats.paused} onClick={() => setStatusFilter("paused")} />
               <SummaryStat label="Completed" value={stats.completed} onClick={() => setStatusFilter("completed")} />
               <SummaryStat label="Exited" value={stats.exited} onClick={() => setStatusFilter("exited_referral")} />
             </div>
