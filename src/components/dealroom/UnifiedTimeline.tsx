@@ -553,6 +553,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       defaultExpanded={defaultOpenIds.has(ev.id)}
                       stallReason={lead.stallReason}
                       onOpenTranscript={setTranscriptMeeting}
+                      pausedStep={ev.email ? pausedByInboundEmailId.get(ev.email.id) : undefined}
                     />
                   ))}
                 </div>
@@ -580,6 +581,7 @@ export function UnifiedTimeline({ lead, onReply }: { lead: Lead; onReply?: (pref
                       defaultExpanded={defaultOpenIds.has(ev.id)}
                       stallReason={lead.stallReason}
                       onOpenTranscript={setTranscriptMeeting}
+                      pausedStep={ev.email ? pausedByInboundEmailId.get(ev.email.id) : undefined}
                     />
                   ))}
                 </div>
@@ -613,6 +615,7 @@ function TimelineRow({
   defaultExpanded = false,
   stallReason = "",
   onOpenTranscript,
+  pausedStep,
 }: {
   event: TimelineEvent;
   onTogglePin: (id: string, currentlyPinned: boolean) => void;
@@ -622,6 +625,7 @@ function TimelineRow({
   defaultExpanded?: boolean;
   stallReason?: string;
   onOpenTranscript?: (m: Meeting) => void;
+  pausedStep?: string;
 }) {
   const isMeeting = event.type === "meeting";
   const isCall = event.type === "call";
