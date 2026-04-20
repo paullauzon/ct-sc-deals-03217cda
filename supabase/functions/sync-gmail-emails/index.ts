@@ -171,17 +171,42 @@ async function findLeadIdByEmail(
   candidates: string[],
 ): Promise<string | null> {
   if (candidates.length === 0) return null;
-  // exact email match against leads.email (case insensitive)
   const lowered = candidates.map((c) => c.toLowerCase());
-  const { data } = await supabase
+
+  // 1) Exact email match against leads.email
+  const { data: exact } = await supabase
     .from("leads")
     .select("id, email")
     .in("email", lowered)
     .limit(1);
-  if (data && data.length > 0) return (data[0] as { id: string }).id;
+  if (exact && exact.length > 0) return (exact[0] as { id: string }).id;
 
-  // Fallback: match by domain → leads.company_url contains domain (rough)
-  // Skip for now to avoid false positives; rely on exact email.
+  // 2) Domain-fallback: extract external domains and match against leads where the
+  // primary contact email or company_url shares the same domain. Internal domains
+  // are already filtered out by the caller. We bound the search to non-archived,
+  // non-duplicate leads to avoid linking to stale records.
+  const domains = Array.from(new Set(
+    lowered.map(domainOf).filter((d) => d && !INTERNAL_DOMAINS.has(d)),
+  ));
+  if (domains.length === 0) return null;
+
+  // Build OR filter for company_url ILIKE %domain% across all candidate domains.
+  // PostgREST .or() syntax: comma-separated, parens-wrapped — domains are alphanumeric+dot,
+  // safe to embed without escaping.
+  const orParts: string[] = [];
+  for (const d of domains) {
+    orParts.push(`email.ilike.%@${d}`);
+    orParts.push(`company_url.ilike.%${d}%`);
+  }
+  const { data: fuzzy } = await supabase
+    .from("leads")
+    .select("id, email, company_url, archived_at, is_duplicate")
+    .or(orParts.join(","))
+    .is("archived_at", null)
+    .eq("is_duplicate", false)
+    .limit(1);
+  if (fuzzy && fuzzy.length > 0) return (fuzzy[0] as { id: string }).id;
+
   return null;
 }
 
