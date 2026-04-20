@@ -186,33 +186,6 @@ export function MailboxSettings() {
     }
   };
 
-  const backfill90d = async (c: Connection) => {
-    if (!window.confirm(
-      `Backfill the last 90 days of ${c.provider === "outlook" ? "Outlook" : "Gmail"} history for ${c.email_address}?\n\nThis scans up to 1,500 messages. Safe to run multiple times — duplicates are skipped.`
-    )) return;
-    setBackfillingId(c.id);
-    try {
-      const fn = c.provider === "outlook" ? "sync-outlook-emails" : "sync-gmail-emails";
-      const { data, error } = await supabase.functions.invoke(fn, {
-        body: { connection_id: c.id, force_full: true },
-      });
-      if (error) throw error;
-      const r = data?.results?.[0];
-      if (r) {
-        toast.success(
-          `Backfilled ${r.fetched} message${r.fetched === 1 ? "" : "s"} — ${r.inserted} new rows, ${r.matched} matched to leads`,
-          { duration: 6000 }
-        );
-      } else {
-        toast.success("Backfill complete");
-      }
-      load();
-    } catch (e: any) {
-      toast.error(e.message || "Backfill failed");
-    } finally {
-      setBackfillingId(null);
-    }
-  };
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
