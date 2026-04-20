@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Lead, LeadStage, ServiceInterest, ForecastCategory, IcpFit, DealOwner, BillingFrequency, CloseReason, LeadStatus } from "@/types/lead";
+import { ALL_STAGES, isClosedStage, normalizeStage } from "@/lib/leadUtils";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { IdentityCard } from "@/components/dealroom/IdentityCard";
 import { InlineTextField, InlineSelectField, InlineToggleField } from "./InlineEditFields";
@@ -23,7 +24,7 @@ const LEAD_STATUS_TONE: Record<string, string> = {
   "Not Now": "bg-secondary text-muted-foreground",
 };
 
-const STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Lost", "Went Dark", "Closed Won"];
+const STAGES: LeadStage[] = ALL_STAGES;
 const SERVICES: ServiceInterest[] = ["Off-Market Email Origination", "Direct Calling", "Banker/Broker Coverage", "Full Platform (All 3)", "SourceCo Retained Search", "Other", "TBD"];
 const PRIORITIES = ["High", "Medium", "Low"];
 const OWNERS: DealOwner[] = ["Malik", "Valeria", "Tomos"];
@@ -58,7 +59,7 @@ export function LeadPanelLeftRail({
   onArchive, onCopyLink, onCopySummary, onShowShortcuts, draftingAI, enriching,
 }: Props) {
   const isSourceCo = lead.brand === "SourceCo";
-  const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost" || lead.stage === "Went Dark";
+  const isClosed = isClosedStage(normalizeStage(lead.stage));
   const railRef = useRef<HTMLElement | null>(null);
 
   // Listen for the Dossier % chip click → scroll to first empty dossier row & flash it.

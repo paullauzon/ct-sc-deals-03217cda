@@ -238,7 +238,10 @@ export function LeadDetailPanel({ leadId, open, onClose, mode = "sheet", leadOrd
 
   const days = computeDaysInStage(lead.stageEnteredDate);
   const save = (updates: Partial<Lead>) => updateLead(lead.id, updates);
-  const isClosed = lead.stage === "Closed Won" || lead.stage === "Lost" || lead.stage === "Went Dark";
+  const isClosed = (() => {
+    const s = lead.stage;
+    return s === "Closed Won" || s === "Closed Lost" || s === "Lost" || s === "Went Dark";
+  })();
 
   const onEmail = () => { setEmailDrawerPreset(undefined); setEmailDrawerOpen(true); };
   const onSchedule = () => {

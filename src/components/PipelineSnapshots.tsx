@@ -3,11 +3,14 @@ import { Lead, LeadStage } from "@/types/lead";
 import { supabase } from "@/integrations/supabase/client";
 
 const STAGE_WEIGHTS: Record<string, number> = {
+  "Unassigned": 0.05, "In Contact": 0.15, "Discovery Scheduled": 0.30, "Discovery Completed": 0.40,
+  "Sample Sent": 0.50, "Proposal Sent": 0.60, "Negotiating": 0.75,
   "New Lead": 0.05, "Qualified": 0.15, "Contacted": 0.20, "Meeting Set": 0.30,
-  "Meeting Held": 0.40, "Proposal Sent": 0.50, "Negotiation": 0.70, "Contract Sent": 0.90,
+  "Meeting Held": 0.40, "Negotiation": 0.70, "Contract Sent": 0.90,
 };
 
-const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
+import { isClosedStage, normalizeStage } from "@/lib/leadUtils";
+const CLOSED_STAGES = { has: (s: string) => isClosedStage(normalizeStage(s)) };
 
 interface Snapshot {
   snapshot_date: string;

@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AlertTriangle, Clock, Users, Shield, TrendingUp, Zap } from "lucide-react";
 import { differenceInDays, parseISO } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { isClosedStage, normalizeStage } from "@/lib/leadUtils";
 
 const STAGE_WEIGHTS: Record<string, number> = {
   "New Lead": 0.05,
@@ -137,7 +138,7 @@ export function DashboardOperations({ leads, onDrillDown }: Props) {
 
     // Deals lost/closed this month
     const closedOut = leads.filter(l =>
-      ["Lost", "Went Dark", "Disqualified"].includes(l.stage) &&
+      (isClosedStage(normalizeStage(l.stage)) && normalizeStage(l.stage) !== "Closed Won") &&
       l.closedDate?.startsWith(thisMonth)
     );
     const lostValue = closedOut.reduce((s, l) => s + l.dealValue, 0);
@@ -911,8 +912,8 @@ function MeetingCountOutcome({ leads }: { leads: Lead[] }) {
       const count = l.meetings.length;
       const key = count >= 4 ? "4+" : String(count);
       buckets[key].total++;
-      if (l.stage === "Closed Won") buckets[key].won++;
-      else if (["Lost", "Went Dark"].includes(l.stage)) buckets[key].lost++;
+      if (normalizeStage(l.stage) === "Closed Won") buckets[key].won++;
+      else if (normalizeStage(l.stage) === "Closed Lost") buckets[key].lost++;
       else buckets[key].active++;
     }
 

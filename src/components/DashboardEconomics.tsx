@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Lead, Brand, ServiceInterest } from "@/types/lead";
 import { supabase } from "@/integrations/supabase/client";
+import { isClosedStage, normalizeStage } from "@/lib/leadUtils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -180,7 +181,7 @@ export function DashboardEconomics({ leads }: Props) {
 
     for (const brand of BRANDS) {
       const brandLeads = leads.filter(
-        (l) => l.brand === brand && !["Lost", "Went Dark"].includes(l.stage) && l.serviceInterest && l.serviceInterest !== "TBD"
+        (l) => l.brand === brand && normalizeStage(l.stage) !== "Closed Lost" && l.serviceInterest && l.serviceInterest !== "TBD"
       );
       const byService = new Map<string, Lead[]>();
       for (const l of brandLeads) {
@@ -547,8 +548,8 @@ function PricingIntelligence({ leads }: { leads: Lead[] }) {
           for (const p of priceMatches) {
             const val = parseInt(p.replace(/[$,]/g, ""), 10);
             if (val > 500 && val < 100000) {
-              if (lead.stage === "Closed Won" && brandPricing[brand]) brandPricing[brand].wonPrices.push(val);
-              if (["Lost", "Went Dark"].includes(lead.stage) && brandPricing[brand]) brandPricing[brand].lostPrices.push(val);
+              if (normalizeStage(lead.stage) === "Closed Won" && brandPricing[brand]) brandPricing[brand].wonPrices.push(val);
+              if (normalizeStage(lead.stage) === "Closed Lost" && brandPricing[brand]) brandPricing[brand].lostPrices.push(val);
             }
           }
         }
@@ -559,10 +560,10 @@ function PricingIntelligence({ leads }: { leads: Lead[] }) {
     }
 
     // Budget-to-close correlation
-    const budgetWon = budgetLeads.filter(l => l.stage === "Closed Won").length;
-    const budgetClosed = budgetLeads.filter(l => ["Closed Won", "Lost", "Went Dark"].includes(l.stage)).length;
-    const noBudgetWon = noBudgetLeads.filter(l => l.stage === "Closed Won").length;
-    const noBudgetClosed = noBudgetLeads.filter(l => ["Closed Won", "Lost", "Went Dark"].includes(l.stage)).length;
+    const budgetWon = budgetLeads.filter(l => normalizeStage(l.stage) === "Closed Won").length;
+    const budgetClosed = budgetLeads.filter(l => isClosedStage(normalizeStage(l.stage))).length;
+    const noBudgetWon = noBudgetLeads.filter(l => normalizeStage(l.stage) === "Closed Won").length;
+    const noBudgetClosed = noBudgetLeads.filter(l => isClosedStage(normalizeStage(l.stage))).length;
 
     return {
       brandPricing,

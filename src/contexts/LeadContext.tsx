@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { leadToRow, rowToLead, leadUpdatesToRow } from "@/lib/leadDbMapping";
 import { detectFieldChanges, logActivity } from "@/lib/activityLog";
 import { getPlaybookForStage, generateTasksFromPlaybook } from "@/lib/playbooks";
+import { isClosedStage } from "@/lib/leadUtils";
 import { toast } from "sonner";
 
 const SEEN_LEADS_KEY = "captarget_seen_leads";
@@ -449,7 +450,7 @@ export function LeadProvider({ children }: { children: ReactNode }) {
       };
     }
     const activePipeline = leads.filter(
-      (l) => !["Closed Won", "Lost", "Went Dark"].includes(l.stage)
+      (l) => !isClosedStage(normalizeStage(l.stage))
     );
     const meetingLeads = leads.filter((l) => l.hoursToMeetingSet !== null);
     const avgDaysToMeeting = meetingLeads.length

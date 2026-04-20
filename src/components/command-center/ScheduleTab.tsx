@@ -9,8 +9,9 @@ import { useLeadTasks, LeadTask } from "@/hooks/useLeadTasks";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { getDroppedPromises } from "@/lib/dealHealthUtils";
+import { isClosedStage, normalizeStage } from "@/lib/leadUtils";
 
-const CLOSED_STAGES = new Set(["Closed Won", "Lost", "Went Dark"]);
+const CLOSED_STAGES = { has: (s: string) => isClosedStage(normalizeStage(s)) };
 
 export interface ActionItem {
   lead: Lead;

@@ -543,7 +543,7 @@ function WinLossAnalysis({ leads }: { leads: Lead[] }) {
 // ── Stakeholder Risk Heatmap ──
 function StakeholderRiskHeatmap({ leads, onDrillDown }: { leads: Lead[]; onDrillDown: (title: string, leads: Lead[]) => void }) {
   const data = useMemo(() => {
-    const TERMINAL_SET = new Set(["Closed Won", "Lost", "Went Dark", "Duplicate", "Disqualified"]);
+    const TERMINAL_SET = { has: (s: string) => normalizeStage(s) === "Closed Won" || normalizeStage(s) === "Closed Lost" };
     const atRisk: { lead: Lead; issue: string; value: number }[] = [];
     let totalStakeholders = 0;
     const stanceCounts: Record<string, number> = {};
@@ -747,7 +747,7 @@ function DecisionProcessComplexity({ leads }: { leads: Lead[] }) {
 // ── Risk Portfolio View ──
 function RiskPortfolioView({ leads, onDrillDown }: { leads: Lead[]; onDrillDown: (title: string, leads: Lead[]) => void }) {
   const data = useMemo(() => {
-    const TERMINAL_SET = new Set(["Closed Won", "Lost", "Went Dark", "Duplicate", "Disqualified"]);
+    const TERMINAL_SET = { has: (s: string) => normalizeStage(s) === "Closed Won" || normalizeStage(s) === "Closed Lost" };
     const severityCounts: Record<string, number> = { Critical: 0, High: 0, Medium: 0, Low: 0 };
     const mitigationCounts: Record<string, number> = { Unmitigated: 0, "Partially Mitigated": 0, Mitigated: 0 };
     const riskPatterns: Record<string, number> = {};

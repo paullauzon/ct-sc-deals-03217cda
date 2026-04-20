@@ -32,7 +32,8 @@ export { LeadDetailPanel as LeadDetail } from "@/components/LeadDetailPanel";
 // Local alias for the JSX self-reference inside <LeadsTable />.
 import { LeadDetailPanel as LeadDetail } from "@/components/LeadDetailPanel";
 
-const STAGES: LeadStage[] = ["New Lead", "Qualified", "Contacted", "Meeting Set", "Meeting Held", "Proposal Sent", "Negotiation", "Contract Sent", "Revisit/Reconnect", "Lost", "Went Dark", "Closed Won"];
+import { ALL_STAGES } from "@/lib/leadUtils";
+const STAGES: LeadStage[] = ALL_STAGES;
 
 const SOURCE_LABELS: Record<LeadSource, string> = {
   "CT Contact Form": "CT Contact",
