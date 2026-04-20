@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Lead, Meeting } from "@/types/lead";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
-import { Mic, ExternalLink, Calendar } from "lucide-react";
+import { Mic, Calendar } from "lucide-react";
 import { TranscriptDrawer } from "@/components/lead-panel/dialogs/TranscriptDrawer";
 import { format, parseISO } from "date-fns";
 
@@ -27,7 +27,16 @@ export function FirefliesRecordingsCard({ lead }: Props) {
           {recordings.map((m) => {
             let dateLabel = "";
             try { dateLabel = m.date ? format(parseISO(m.date), "MMM d, yyyy") : ""; } catch { /* noop */ }
-            const attendeeCount = m.intelligence?.attendees?.length || 0;
+            const attendees = m.intelligence?.attendees || [];
+            const firstAttendee = attendees.find(a => {
+              const n = (a.name || "").toLowerCase();
+              return n && !n.includes("malik") && !n.includes("adam") && !n.includes("myall");
+            })?.name;
+            const attendeeLabel = firstAttendee
+              ? `Malik + ${firstAttendee}`
+              : attendees.length > 0
+                ? `${attendees.length} attendee${attendees.length !== 1 ? "s" : ""}`
+                : "";
             return (
               <li key={m.id}>
                 <button
@@ -37,12 +46,14 @@ export function FirefliesRecordingsCard({ lead }: Props) {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-medium truncate">{m.title || "Meeting"}</p>
-                      <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1 mt-0.5">
+                      <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1 mt-0.5 flex-wrap">
                         {dateLabel && <><Calendar className="h-2.5 w-2.5" /> {dateLabel}</>}
-                        {attendeeCount > 0 && <span>· {attendeeCount} attendee{attendeeCount !== 1 ? "s" : ""}</span>}
+                        {attendeeLabel && <span>· {attendeeLabel}</span>}
                       </p>
                     </div>
-                    <ExternalLink className="h-3 w-3 text-muted-foreground/60 group-hover:text-foreground shrink-0 mt-0.5" />
+                    <span className="shrink-0 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium group-hover:bg-emerald-500/20">
+                      Transcript ↗
+                    </span>
                   </div>
                 </button>
               </li>
