@@ -51,11 +51,7 @@ export function MailboxSettings() {
       if (!label) { setConnecting(false); return; }
 
       const returnTo = `${window.location.origin}/#sys=crm&view=settings&connected=1`;
-      const { data, error } = await supabase.functions.invoke("gmail-oauth-start", {
-        body: null,
-      });
-      if (error) throw error;
-      // We need to call as GET with query params; invoke uses POST. Build URL manually:
+      // Call gmail-oauth-start as GET with query params (it returns the Google authorize URL).
       const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gmail-oauth-start`);
       url.searchParams.set("user_label", label);
       url.searchParams.set("return_to", returnTo);
