@@ -297,11 +297,12 @@ function ScheduledStrip({ scheduled, onCancel }: { scheduled: LeadEmail[]; onCan
   );
 }
 
-function ThreadCard({ thread, onSuggestResponses, onReply }: { thread: ThreadGroup; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void }) {
+function ThreadCard({ thread, onSuggestResponses, onReply, onMarkRead }: { thread: ThreadGroup; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void }) {
   const isSingleEmail = thread.emails.length === 1;
+  const unreadCount = thread.emails.filter(e => e.direction === "inbound" && !e.is_read).length;
 
   if (isSingleEmail) {
-    return <EmailRow email={thread.emails[0]} onSuggestResponses={onSuggestResponses} onReply={onReply} />;
+    return <EmailRow email={thread.emails[0]} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} />;
   }
 
   return (
@@ -311,7 +312,10 @@ function ThreadCard({ thread, onSuggestResponses, onReply }: { thread: ThreadGro
           <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium truncate">{thread.subject}</span>
+              {unreadCount > 0 && (
+                <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" title={`${unreadCount} unread`} />
+              )}
+              <span className={cn("text-xs truncate", unreadCount > 0 ? "font-semibold" : "font-medium")}>{thread.subject}</span>
               <Badge variant="outline" className="text-[10px] shrink-0">
                 {thread.emails.length}
               </Badge>
@@ -326,7 +330,7 @@ function ThreadCard({ thread, onSuggestResponses, onReply }: { thread: ThreadGro
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 border-l-2 border-border ml-3 mt-1 mb-2">
           {thread.emails.map((email) => (
-            <EmailRow key={email.id} email={email} compact onSuggestResponses={onSuggestResponses} onReply={onReply} />
+            <EmailRow key={email.id} email={email} compact onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} />
           ))}
         </div>
       </CollapsibleContent>
@@ -334,9 +338,10 @@ function ThreadCard({ thread, onSuggestResponses, onReply }: { thread: ThreadGro
   );
 }
 
-function EmailRow({ email, compact, onSuggestResponses, onReply }: { email: LeadEmail; compact?: boolean; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void }) {
+function EmailRow({ email, compact, onSuggestResponses, onReply, onMarkRead }: { email: LeadEmail; compact?: boolean; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const isOutbound = email.direction === "outbound";
+  const isUnread = !isOutbound && email.is_read === false;
   const Icon = isOutbound ? ArrowUpRight : ArrowDownLeft;
   const dirColor = isOutbound
     ? "text-blue-600 bg-blue-500/10"
