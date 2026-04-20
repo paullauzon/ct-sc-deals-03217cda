@@ -91,6 +91,26 @@ export function StakeholderCard({ lead }: Props) {
 
   const champions = items.filter(i => i.sentiment === "champion").length;
   const blockers = items.filter(i => i.sentiment === "blocker").length;
+  const championName = items.find(i => i.sentiment === "champion")?.name;
+
+  let coachingText = "";
+  let coachingTone = "";
+  if (items.length === 0) {
+    coachingText = "No stakeholders mapped. Add the people involved in this deal to multi-thread.";
+    coachingTone = "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400";
+  } else if (items.length === 1) {
+    coachingText = "Single-threaded. Identify a second contact before the next milestone.";
+    coachingTone = "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400";
+  } else if (champions === 0) {
+    coachingText = `${items.length} stakeholders, no champion confirmed. Push for explicit advocacy.`;
+    coachingTone = "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400";
+  } else {
+    coachingText = `Stakeholder coverage confirmed: ${items.length}. ${championName} flagged as champion.`;
+    coachingTone = "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400";
+  }
+
+  const initials = (name: string) =>
+    name.trim().split(/\s+/).map(p => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
   return (
     <CollapsibleCard
@@ -110,6 +130,12 @@ export function StakeholderCard({ lead }: Props) {
       }
     >
       <div className="space-y-2">
+        {!loading && (
+          <p className={cn("text-[10px] leading-snug px-2 py-1.5 rounded border", coachingTone)}>
+            {coachingText}
+          </p>
+        )}
+
         {(champions > 0 || blockers > 0) && (
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
             {champions > 0 && <span className={cn("px-1.5 py-0.5 rounded", sentimentTone("champion"))}>{champions} champion{champions !== 1 ? "s" : ""}</span>}
@@ -130,13 +156,22 @@ export function StakeholderCard({ lead }: Props) {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className={cn(
+                    "h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-semibold shrink-0",
+                    s.sentiment === "champion" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                      : s.sentiment === "blocker" ? "bg-red-500/15 text-red-700 dark:text-red-400"
+                      : s.sentiment === "skeptic" ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                      : "bg-secondary text-muted-foreground"
+                  )}>
+                    {initials(s.name) || "?"}
+                  </span>
                   <span className="text-xs font-medium truncate">{s.name}</span>
                   <span className={cn("text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider font-medium", sentimentTone(s.sentiment))}>
                     {s.sentiment}
                   </span>
                 </div>
-                {s.role && <p className="text-[10px] text-muted-foreground truncate">{s.role}</p>}
-                <div className="flex items-center gap-2 mt-1">
+                {s.role && <p className="text-[10px] text-muted-foreground truncate ml-[26px]">{s.role}</p>}
+                <div className="flex items-center gap-2 mt-1 ml-[26px]">
                   {s.email && (
                     <a href={`mailto:${s.email}`} title={s.email} className="text-muted-foreground hover:text-foreground">
                       <MailIcon className="h-3 w-3" />
