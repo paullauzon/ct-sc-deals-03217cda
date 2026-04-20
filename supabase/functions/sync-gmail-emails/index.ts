@@ -295,6 +295,19 @@ async function syncOneConnection(
         continue;
       }
 
+      // Skip CRM-sent messages — they were already inserted by send-gmail-email.
+      // Recognize via X-CRM-Source header (added by our outbound builder) or
+      // RFC822 Message-ID prefix `<crm-...@...>`.
+      const xCrmSource = header(msg.payload, "X-CRM-Source");
+      if (xCrmSource || (rfc822Id && rfc822Id.includes("<crm-"))) {
+        stats.skipped_dup += 1;
+        continue;
+      }
+      if (existing && existing.length > 0) {
+        stats.skipped_dup += 1;
+        continue;
+      }
+
       const direction = from.address === ownAddress ? "outbound" : "inbound";
 
       // Determine external participants for lead matching.
