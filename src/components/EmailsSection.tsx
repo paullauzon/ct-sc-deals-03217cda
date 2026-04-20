@@ -395,8 +395,14 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
   );
 }
 
-function EmailRow({ email, compact, onSuggestResponses, onReply, onMarkRead }: { email: LeadEmail; compact?: boolean; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void }) {
+function EmailRow({ email, compact, expandAllSignal, onSuggestResponses, onReply, onMarkRead }: { email: LeadEmail; compact?: boolean; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses?: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
+  const hasFullBody = !!(email.body_html || email.body_text);
+  useEffect(() => {
+    if (!hasFullBody) return;
+    if (expandAllSignal === "expand") setExpanded(true);
+    else if (expandAllSignal === "collapse") setExpanded(false);
+  }, [expandAllSignal, hasFullBody]);
   const isOutbound = email.direction === "outbound";
   const isUnread = !isOutbound && email.is_read === false;
   const Icon = isOutbound ? ArrowUpRight : ArrowDownLeft;
