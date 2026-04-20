@@ -71,6 +71,17 @@ Deno.serve(async (req) => {
           last_error: "superseded by new backfill request",
         })
         .in("id", ids);
+      // Also retire the old jobs' pending queue rows so they don't sit orphaned forever.
+      // The new (typically wider) job will re-discover and re-enqueue them under its own job_id;
+      // idempotent dedup on lead_emails(provider_message_id) prevents any duplicate inserts.
+      await supabase
+        .from("email_backfill_queue")
+        .update({
+          status: "superseded",
+          processed_at: new Date().toISOString(),
+        })
+        .in("job_id", ids)
+        .eq("status", "pending");
     }
 
     const { data: job, error: jobErr } = await supabase
