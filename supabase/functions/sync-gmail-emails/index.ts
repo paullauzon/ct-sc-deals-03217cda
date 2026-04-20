@@ -83,7 +83,11 @@ const INTERNAL_DOMAINS = new Set([
   "sourcecodeals.com",
 ]);
 
-const MAX_MESSAGES_PER_RUN = 250;
+// Split caps: first-time backfill pulls a deeper window, incremental stays small.
+const MAX_FIRST_RUN = 1500;
+const MAX_INCREMENTAL = 250;
+// First-run backfill window. 90d gives meaningful deal history without hammering Gmail.
+const FIRST_RUN_WINDOW = "newer_than:90d";
 
 interface GmailMessage {
   id: string;
