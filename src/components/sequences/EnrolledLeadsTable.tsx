@@ -27,7 +27,11 @@ export function EnrolledLeadsTable({ seq, statusFilter }: { seq: SequenceDef; st
 
   const enrolled = leads.filter((l) => leadEnrolledIn(seq, l));
   const filtered = statusFilter
-    ? enrolled.filter((l) => (l.nurtureSequenceStatus ?? "") === statusFilter)
+    ? enrolled.filter((l) => {
+        const s = l.nurtureSequenceStatus ?? "";
+        if (statusFilter === "paused") return s === "paused" || s === "archived";
+        return s === statusFilter;
+      })
     : enrolled;
 
   const sorted = [...filtered].sort((a, b) => {
