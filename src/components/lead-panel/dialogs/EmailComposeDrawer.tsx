@@ -47,7 +47,7 @@ async function tryCopy(text: string): Promise<boolean> {
   }
 }
 
-export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetAction }: Props) {
+export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetAction, replyContext }: Props) {
   const [to, setTo] = useState(lead.email || "");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -58,12 +58,25 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
   const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
   const [fromConnectionId, setFromConnectionId] = useState<string>("");
+  const [threadId, setThreadId] = useState<string>("");
+  const [inReplyTo, setInReplyTo] = useState<string>("");
 
   useEffect(() => {
     if (open) {
-      setTo(lead.email || "");
-      setSubject("");
-      setBody("");
+      // Reply prefill takes precedence
+      if (replyContext) {
+        setTo(replyContext.to || lead.email || "");
+        setSubject(replyContext.subject || "");
+        setBody(replyContext.quote ? `\n\n${replyContext.quote}` : "");
+        setThreadId(replyContext.thread_id || "");
+        setInReplyTo(replyContext.in_reply_to || "");
+      } else {
+        setTo(lead.email || "");
+        setSubject("");
+        setBody("");
+        setThreadId("");
+        setInReplyTo("");
+      }
       // Load stakeholders for the chip strip
       (async () => {
         const { data } = await (supabase as any)
@@ -84,12 +97,12 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
         setMailboxes(list);
         if (list.length > 0 && !fromConnectionId) setFromConnectionId(list[0].id);
       })();
-      if (presetAction === "follow-up") {
+      if (presetAction === "follow-up" && !replyContext) {
         setTimeout(() => generate("default"), 100);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, lead.id]);
+  }, [open, lead.id, replyContext]);
 
   const addRecipient = (email: string) => {
     if (!email) return;
@@ -172,6 +185,8 @@ export function EmailComposeDrawer({ lead, open, onOpenChange, save, presetActio
           to: recipients,
           subject,
           body_text: body,
+          ...(threadId ? { thread_id: threadId } : {}),
+          ...(inReplyTo ? { in_reply_to: inReplyTo } : {}),
         },
       });
       if (error) throw error;
