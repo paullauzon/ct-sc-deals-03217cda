@@ -551,6 +551,51 @@ async function syncOneConnection(
           await supabase.from("leads")
             .update({ last_contact_date: emailDate.split("T")[0] })
             .eq("id", leadId);
+
+          // Inbound-reply intelligence:
+          //   1) Auto-discard any pending stall draft — the reply obviates the soft nudge.
+          //   2) For active selling stages, queue a contextual reply draft via generate-stage-draft.
+          // Idempotent: action_key = `reply-<inserted_email_id>` is unique to this inbound row.
+          try {
+            // 1) Discard pending stall drafts for this lead
+            await (supabase as any)
+              .from("lead_drafts")
+              .update({ status: "superseded", updated_at: new Date().toISOString() })
+              .eq("lead_id", leadId)
+              .like("action_key", "stage-stall-%")
+              .eq("status", "draft");
+
+            // 2) Trigger reply draft for active selling stages
+            const { data: leadRow } = await supabase
+              .from("leads")
+              .select("stage")
+              .eq("id", leadId)
+              .single();
+            const stage = (leadRow as { stage?: string } | null)?.stage || "";
+            const replyStages = new Set([
+              "Proposal Sent", "Negotiating", "Negotiation",
+              "Sample Sent", "Meeting Held", "Discovery Completed",
+            ]);
+            if (replyStages.has(stage)) {
+              const insertedId = (insertedRow as { id: string }).id;
+              // Fire-and-forget; never block the sync loop on AI gateway latency.
+              fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/generate-stage-draft`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                },
+                body: JSON.stringify({
+                  lead_id: leadId,
+                  new_stage: stage,
+                  trigger: "reply",
+                  inbound_email_id: insertedId,
+                }),
+              }).catch((err) => console.error("reply-draft trigger failed:", err));
+            }
+          } catch (replyErr) {
+            console.error("inbound-reply hook (non-fatal):", replyErr);
+          }
         }
       }
     } catch (e) {
