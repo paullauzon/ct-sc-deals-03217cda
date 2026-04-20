@@ -45,6 +45,7 @@ export function CampaignDetail({ sequenceId, onBack }: Props) {
       reEngaged: enrolled.filter((l) => l.nurtureSequenceStatus === "re_engaged").length,
       completed: enrolled.filter((l) => l.nurtureSequenceStatus === "completed").length,
       exited: enrolled.filter((l) => l.nurtureSequenceStatus === "exited_referral").length,
+      paused: enrolled.filter((l) => l.nurtureSequenceStatus === "paused" || l.nurtureSequenceStatus === "archived").length,
       counts,
     };
   }, [leads, seq]);
