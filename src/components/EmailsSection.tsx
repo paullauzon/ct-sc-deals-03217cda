@@ -332,6 +332,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
 
   return (
     <div>
+      <EmailTabIntro leadName={lead?.name} />
       {header}
       {scheduled.length > 0 && (
         <ScheduledStrip scheduled={scheduled} onCancel={cancelScheduled} />
