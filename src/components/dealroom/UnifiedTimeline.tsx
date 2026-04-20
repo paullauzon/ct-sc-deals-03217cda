@@ -848,6 +848,11 @@ function TimelineRow({
                 <Reply className="h-2.5 w-2.5" /> Replied
               </Badge>
             )}
+            {pausedStep && (
+              <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5 font-medium">
+                <PauseCircle className="h-2.5 w-2.5" /> {pausedStep} paused
+              </Badge>
+            )}
             {attachments > 0 && (
               <Badge variant="outline" className="h-4 text-[9px] px-1.5 gap-0.5">
                 <Paperclip className="h-2.5 w-2.5" /> {attachments}
