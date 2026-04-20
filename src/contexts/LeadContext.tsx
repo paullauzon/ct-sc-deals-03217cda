@@ -355,6 +355,15 @@ export function LeadProvider({ children }: { children: ReactNode }) {
               .eq("status", "pending")
               .then(() => {});
           }
+          // Fire stage-entry AI draft generation (non-blocking).
+          // The edge function only drafts for stages that have templates (Sample Sent,
+          // Proposal Sent, Negotiating, Closed Won); other stages are no-ops.
+          const draftStages = ["Sample Sent", "Proposal Sent", "Negotiating", "Closed Won"];
+          if (draftStages.includes(updates.stage)) {
+            supabase.functions.invoke("generate-stage-draft", {
+              body: { lead_id: id, new_stage: updates.stage, trigger: "stage_change" },
+            }).catch((err) => console.error("generate-stage-draft error:", err));
+          }
         }
         if (updates.meetingSetDate && !l.meetingSetDate) {
           const submitted = new Date(l.dateSubmitted).getTime();

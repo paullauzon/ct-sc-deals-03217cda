@@ -101,17 +101,24 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   const [emails, setEmails] = useState<LeadEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [responseDialog, setResponseDialog] = useState<{ email: LeadEmail; objections: DetectedObjection[] } | null>(null);
+  const [showMarketing, setShowMarketing] = useState(false);
+  const [expandAllSignal, setExpandAllSignal] = useState<"expand" | "collapse" | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     async function fetchEmails() {
-      const { data, error } = await supabase
+      // Fetch 1-to-1 by default; marketing/transactional hidden unless toggled
+      let query = supabase
         .from("lead_emails")
         .select("*")
         .eq("lead_id", leadId)
         .order("email_date", { ascending: false })
         .limit(100);
+      if (!showMarketing) {
+        query = query.in("email_type", ["one_to_one", "sequence"]);
+      }
+      const { data, error } = await query;
 
       if (!cancelled) {
         if (data) setEmails(data as unknown as LeadEmail[]);
@@ -122,7 +129,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
 
     fetchEmails();
 
-    // Realtime subscription — listen for inserts AND updates (e.g. is_read flip, scheduled cancel)
+    // Realtime subscription — listen for inserts AND updates
     const channel = supabase
       .channel(`lead-emails-${leadId}`)
       .on(
@@ -130,6 +137,8 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
         { event: "INSERT", schema: "public", table: "lead_emails", filter: `lead_id=eq.${leadId}` },
         (payload) => {
           const newEmail = payload.new as unknown as LeadEmail;
+          const type = (newEmail as any).email_type || "one_to_one";
+          if (!showMarketing && !["one_to_one", "sequence"].includes(type)) return;
           setEmails((prev) => [newEmail, ...prev]);
         }
       )
@@ -155,7 +164,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [leadId]);
+  }, [leadId, showMarketing]);
 
   const markRead = async (emailId: string) => {
     setEmails((prev) => prev.map(e => e.id === emailId ? { ...e, is_read: true } : e));
