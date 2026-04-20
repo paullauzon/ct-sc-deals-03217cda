@@ -5,13 +5,33 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Trimmed scopes — only what we actually use.
+// Removed gmail.modify (unused) and userinfo.profile (unused) to reduce consent friction.
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/userinfo.email",
-  "https://www.googleapis.com/auth/userinfo.profile",
 ].join(" ");
+
+// UTF-8-safe base64url encoder. btoa() throws on non-Latin1 chars (e.g. em dash),
+// which would break the OAuth start when the user_label contains unicode.
+function base64UrlEncode(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function isSafeReturnTo(value: string): boolean {
+  if (!value) return false;
+  try {
+    const u = new URL(value);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -21,13 +41,19 @@ Deno.serve(async (req) => {
     if (!CLIENT_ID) throw new Error("GOOGLE_OAUTH_CLIENT_ID missing");
 
     const url = new URL(req.url);
-    const userLabel = url.searchParams.get("user_label") || "Default";
-    const returnTo = url.searchParams.get("return_to") || "";
+    const rawLabel = url.searchParams.get("user_label") || "Default";
+    const rawReturnTo = url.searchParams.get("return_to") || "";
 
-    // State carries info we need at callback time. Base64url-encoded JSON.
+    // Sanitize label: trim, cap length, allow unicode (handled by UTF-8 encoder below).
+    const userLabel = rawLabel.trim().slice(0, 120) || "Default";
+
+    // Validate return_to — drop it if not a real http(s) URL so we never try to
+    // redirect the user to garbage on the way back.
+    const returnTo = isSafeReturnTo(rawReturnTo) ? rawReturnTo : "";
+
+    // State carries info we need at callback time. Base64url-encoded JSON, UTF-8 safe.
     const stateObj = { user_label: userLabel, return_to: returnTo, ts: Date.now() };
-    const state = btoa(JSON.stringify(stateObj))
-      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const state = base64UrlEncode(JSON.stringify(stateObj));
 
     const redirectUri = `${Deno.env.get("SUPABASE_URL")}/functions/v1/gmail-oauth-callback`;
 
