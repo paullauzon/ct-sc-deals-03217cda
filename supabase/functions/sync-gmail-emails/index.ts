@@ -335,14 +335,13 @@ async function syncOneConnection(
       const ccList = parseAddressList(ccRaw);
       const bccList = parseAddressList(bccRaw);
 
-      // Dedup against existing rows (Zapier or prior Gmail runs).
-      // Build OR with provider_message_id (Gmail msg id) and message_id (RFC822 id).
-      const orParts: string[] = [`provider_message_id.eq.${mid}`];
-      if (rfc822Id) orParts.push(`message_id.eq.${rfc822Id.replace(/,/g, "")}`);
+      // Dedup against existing rows using Gmail's own provider_message_id (alphanumeric, safe).
+      // We deliberately don't OR against RFC822 message_id — those contain `<>@.` chars that
+      // break PostgREST `.or()` filter syntax and would cause silent 400s.
       const { data: existing } = await supabase
         .from("lead_emails")
         .select("id")
-        .or(orParts.join(","))
+        .eq("provider_message_id", mid)
         .limit(1);
       if (existing && existing.length > 0) {
         stats.skipped_dup += 1;
@@ -350,14 +349,11 @@ async function syncOneConnection(
       }
 
       // Skip CRM-sent messages — they were already inserted by send-gmail-email.
-      // Recognize via X-CRM-Source header (added by our outbound builder) or
+      // Recognized via X-CRM-Source header (added by our outbound builder) or
       // RFC822 Message-ID prefix `<crm-...@...>`.
       const xCrmSource = header(msg.payload, "X-CRM-Source");
-      if (xCrmSource || (rfc822Id && rfc822Id.includes("<crm-"))) {
-        stats.skipped_dup += 1;
-        continue;
-      }
-      if (existing && existing.length > 0) {
+      const rfc822IdRaw = rfc822Id || "";
+      if (xCrmSource || rfc822IdRaw.includes("<crm-")) {
         stats.skipped_dup += 1;
         continue;
       }
