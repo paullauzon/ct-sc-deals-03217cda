@@ -51,15 +51,16 @@ export function MailboxSettings() {
       if (!label) { setConnecting(false); return; }
 
       const returnTo = `${window.location.origin}/#sys=crm&view=settings&connected=1`;
-      // Call gmail-oauth-start as GET with query params (it returns the Google authorize URL).
+      // Plain GET to the public edge function — no Authorization header needed
+      // (verify_jwt is off) and avoiding it removes a CORS preflight.
       const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gmail-oauth-start`);
       url.searchParams.set("user_label", label);
       url.searchParams.set("return_to", returnTo);
-      const res = await fetch(url.toString(), {
-        headers: { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-      });
-      const json = await res.json();
-      if (!json.url) throw new Error(json.error || "Could not start OAuth");
+      const res = await fetch(url.toString());
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.url) {
+        throw new Error(json.error || `Could not start OAuth (HTTP ${res.status})`);
+      }
       window.location.href = json.url;
     } catch (e: any) {
       toast.error(e.message || "Failed to start connection");
