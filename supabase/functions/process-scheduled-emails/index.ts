@@ -109,12 +109,23 @@ Deno.serve(async (req) => {
       }
     }
 
+    await supabase.from("cron_run_log").insert({
+      job_name: "process-scheduled-emails", status: "success",
+      items_processed: results.length,
+      details: { ok: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length },
+    });
     return new Response(JSON.stringify({ ok: true, processed: results.length, results }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("process-scheduled-emails error:", e);
+    try {
+      await supabase.from("cron_run_log").insert({
+        job_name: "process-scheduled-emails", status: "error", items_processed: results.length,
+        error_message: (e as Error).message.slice(0, 200),
+      });
+    } catch {/* swallow */}
     return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

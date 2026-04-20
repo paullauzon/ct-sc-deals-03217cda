@@ -174,11 +174,23 @@ Deno.serve(async (req) => {
     }
 
     const result = await runEnrichment(supabase, url, key, leads);
+    await supabase.from("cron_run_log").insert({
+      job_name: "auto-enrich-ai-tier", status: "success",
+      items_processed: (result as any)?.enriched ?? leads.length,
+      details: result as any,
+    }).then(() => {}, () => {});
     return new Response(JSON.stringify({ status: "ok", ...result }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
     console.error("[bulk-enrich-sourceco]", err);
+    try {
+      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await sb.from("cron_run_log").insert({
+        job_name: "auto-enrich-ai-tier", status: "error", items_processed: 0,
+        error_message: (err as Error).message.slice(0, 200),
+      });
+    } catch {/* swallow */}
     return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

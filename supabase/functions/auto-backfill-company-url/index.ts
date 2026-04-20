@@ -55,12 +55,23 @@ serve(async (req) => {
     }
 
     console.log(`[auto-backfill-company-url] scanned=${leads?.length ?? 0} updated=${updated} skipped=${skipped}`);
+    await supabase.from("cron_run_log").insert({
+      job_name: "auto-backfill-company-url", status: "success", items_processed: updated,
+      details: { scanned: leads?.length ?? 0, skipped },
+    });
     return new Response(
       JSON.stringify({ scanned: leads?.length ?? 0, updated, skipped }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     console.error("auto-backfill-company-url error:", err);
+    try {
+      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await sb.from("cron_run_log").insert({
+        job_name: "auto-backfill-company-url", status: "error", items_processed: 0,
+        error_message: (err as Error).message.slice(0, 200),
+      });
+    } catch {/* swallow */}
     return new Response(
       JSON.stringify({ error: (err as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
