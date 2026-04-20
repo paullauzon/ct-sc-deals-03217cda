@@ -398,7 +398,7 @@ function ScheduledStrip({ scheduled, onCancel }: { scheduled: LeadEmail[]; onCan
   );
 }
 
-function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMarkRead }: { thread: ThreadGroup; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void }) {
+function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMarkRead, leadName, showMailbox }: { thread: ThreadGroup; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; leadName?: string; showMailbox?: boolean }) {
   const isSingleEmail = thread.emails.length === 1;
   const unreadCount = thread.emails.filter(e => e.direction === "inbound" && !e.is_read).length;
   const [open, setOpen] = useState(false);
@@ -415,8 +415,14 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
   const replyPreview = latestInbound && thread.emails.length > 1 ? latestInbound.body_preview?.trim() : "";
   const truncatedPreview = replyPreview && replyPreview.length > 120 ? replyPreview.slice(0, 120) + "…" : replyPreview;
 
+  // Thread-level signals
+  const threadStatus = getThreadStatus(thread.emails, leadName);
+  const hasAi = thread.emails.some(e => e.ai_drafted);
+  // Pick the earliest sequence step touched in this thread (for display anchor)
+  const sequenceStep = thread.emails.find(e => e.sequence_step)?.sequence_step;
+
   if (isSingleEmail) {
-    return <EmailRow email={thread.emails[0]} expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} />;
+    return <EmailRow email={thread.emails[0]} expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} showMailbox={showMailbox} />;
   }
 
   return (
@@ -425,7 +431,7 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
         <div className="flex items-center gap-2 p-2 rounded-md hover:bg-secondary/40 transition-colors">
           <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {unreadCount > 0 && (
                 <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" title={`${unreadCount} unread`} />
               )}
@@ -433,6 +439,29 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
               <Badge variant="outline" className="text-[10px] shrink-0">
                 {thread.emails.length}
               </Badge>
+              {sequenceStep && (
+                <Badge variant="secondary" className="text-[9px] shrink-0 font-mono px-1.5 py-0">
+                  {sequenceStep}
+                </Badge>
+              )}
+              {hasAi && (
+                <Badge variant="secondary" className="text-[9px] shrink-0 gap-0.5">
+                  <Sparkles className="h-2.5 w-2.5" />AI
+                </Badge>
+              )}
+              {threadStatus && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "text-[9px] shrink-0",
+                    threadStatus.tone === "success" && "text-emerald-600 border-emerald-500/30 bg-emerald-500/5",
+                    threadStatus.tone === "muted" && "text-muted-foreground",
+                    threadStatus.tone === "auto" && "text-muted-foreground italic",
+                  )}
+                >
+                  {threadStatus.label}
+                </Badge>
+              )}
             </div>
             {truncatedPreview && (
               <div className="text-[10px] text-muted-foreground/80 truncate mt-0.5 italic">
@@ -449,7 +478,7 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
       <CollapsibleContent>
         <div className="pl-4 space-y-0.5 border-l-2 border-border ml-3 mt-1 mb-2">
           {thread.emails.map((email) => (
-            <EmailRow key={email.id} email={email} compact expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} />
+            <EmailRow key={email.id} email={email} compact expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} showMailbox={showMailbox} />
           ))}
         </div>
       </CollapsibleContent>
