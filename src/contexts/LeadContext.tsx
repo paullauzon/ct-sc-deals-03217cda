@@ -298,13 +298,14 @@ export function LeadProvider({ children }: { children: ReactNode }) {
           updated.daysInCurrentStage = 0;
           dbPayload.stageEnteredDate = today;
           dbPayload.daysInCurrentStage = 0;
-          // Auto-set last_contact_date on stage advancement beyond New Lead
-          if (updates.stage !== "New Lead" && !updated.lastContactDate) {
+          const normalizedNew = normalizeStage(updates.stage);
+          // Auto-set last_contact_date on stage advancement beyond Unassigned
+          if (normalizedNew !== "Unassigned" && !updated.lastContactDate) {
             updated.lastContactDate = today;
             dbPayload.lastContactDate = today;
           }
-          // Auto-calculate hoursToMeetingSet when manually moving to Meeting Set
-          if (updates.stage === "Meeting Set" && l.hoursToMeetingSet == null) {
+          // Auto-calculate hoursToMeetingSet when manually moving to Discovery Scheduled
+          if (normalizedNew === "Discovery Scheduled" && l.hoursToMeetingSet == null) {
             const createdAt = l.createdAt ? new Date(l.createdAt).getTime() : new Date(l.dateSubmitted).getTime();
             const hours = Math.max(0, Math.round(((now.getTime() - createdAt) / 3600000) * 10) / 10);
             updated.hoursToMeetingSet = hours;
@@ -314,14 +315,26 @@ export function LeadProvider({ children }: { children: ReactNode }) {
               dbPayload.meetingSetDate = today;
             }
           }
-          if (["Closed Won", "Lost", "Went Dark"].includes(updates.stage)) {
+          // Closed (won or lost) — stamp closedDate. TERMINAL_STAGES covers v2 + legacy via normalize.
+          if (TERMINAL_STAGES.includes(normalizedNew)) {
             updated.closedDate = today;
             dbPayload.closedDate = today;
           } else {
             updated.closedDate = "";
             dbPayload.closedDate = "";
-        }
-          // Archive stale playbook tasks then generate new ones
+          }
+          // Auto-enroll in 90-day nurture when entering Closed Lost (v2 or legacy)
+          if (normalizedNew === "Closed Lost" && !l.nurtureSequenceStatus) {
+            updated.nurtureSequenceStatus = "active";
+            updated.nurtureStartedAt = now.toISOString();
+            const reEngage = new Date(now);
+            reEngage.setDate(reEngage.getDate() + 90);
+            updated.nurtureReEngageDate = reEngage.toISOString().split("T")[0];
+            dbPayload.nurtureSequenceStatus = "active";
+            dbPayload.nurtureStartedAt = now.toISOString();
+            dbPayload.nurtureReEngageDate = reEngage.toISOString().split("T")[0];
+          }
+          // Archive stale playbook tasks then generate new ones (v2 playbook lookup uses normalized stage)
           const playbook = getPlaybookForStage(updates.stage);
           if (playbook) {
             supabase.from("lead_tasks")
