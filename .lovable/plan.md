@@ -1,46 +1,84 @@
 
 
-# Activities tab — final end-to-end verification
+# Sequences — monitoring + AI-personalized nurture campaign
 
-I traced every item from all four approved plans against the live code. **Everything is shipped and wired correctly.** Below is the verification matrix and the only remaining optional follow-up.
+## What exists today (audit)
 
-## ✅ Full implementation matrix
+- `nurture-engine` edge function runs daily at 13:00 UTC (verified in `cron.job`), enrolls Closed Lost leads automatically (LeadContext L325-329), 283 leads currently `active`, fires 4 milestones (d0/d30/d45/d90) into `lead_drafts` and `lead_tasks`, flips to `re_engaged` on inbound, completes after d97.
+- Activity tab already renders `sequence_paused` rows with inline pills (shipped last build).
+- **Zero monitoring UI.** No "Sequences" page, no campaign overview, no per-step funnel, no enrolled-leads list.
+- **Email copy is generic placeholder text** with no AI personalization. The mockup explicitly requires personalization by *Lost Reason + Mandate (Sector + EBITDA range + Acquisition Timeline + Firm Type)* and Malik's Day 45 manual touch references the Fireflies transcript.
+- The mockup also requires logic the engine doesn't have: **9 lost reasons, 8 enrolled in S8, 1 (Scope Mismatch) gets a referral email and exits** — today every Closed Lost lead enrolls regardless of reason.
 
-| Plan / Gap | Code location | Status |
-|---|---|---|
-| Tasks query + project to timeline + Tasks filter | `UnifiedTimeline.tsx` L230-235 (query), L302-319 (project), L153 (filter), L424 (count) | ✅ |
-| Calls as first-class events | `LogCallDialog` writes `call_logged` with `metadata.summary`; L267 maps to `call`, L151 filter, L169 `Phone` icon | ✅ |
-| Dismissable monochrome intro banner | `LeadActivityTab.tsx` `ActivityTabIntro` + localStorage key | ✅ |
-| Default-expand recent 10 | L438-441 `defaultOpenIds` Set, L581 prop | ✅ |
-| SLA / playbook + stall reason on tasks | L676-682 `taskSourceLabel`, L816-820 stall reason inline | ✅ |
-| Filter pill order matches mockup | L128-138 (All · Emails · Calls · Notes · Meetings · Tasks · Stage · Logged · Pinned) | ✅ |
-| Meeting AI rationalization (pills + extract block + AI chip) | L725-729 AI chip, L780-799 pill row, L872-879 `IntelExtractBlock` | ✅ |
-| Call AI rationalization (`extract-call-intel` + render) | Edge fn deployed; `LogCallDialog` invokes; L765-778 pill row, L881-892 extract block | ✅ |
-| Open transcript link → `TranscriptDrawer` | L594-598 drawer mounted, opens via `setTranscriptMeeting` | ✅ |
-| `lead_activity_log.metadata jsonb` column | Migration `20260420190950…` shipped, types regenerated | ✅ |
-| Sequence-paused on Gmail reply | `sync-gmail-emails` L540-558 inserts `sequence_paused` | ✅ |
-| Sequence-paused on Outlook reply + `replied_at` parity | `sync-outlook-emails` L240-272 | ✅ |
-| Sequence-paused -1ms sort bias under inbound | L284-286 | ✅ |
-| Sequence-paused render with amber pill | L757-763 | ✅ |
-| Email provenance suffix (Gmail / Outlook / Zapier) | L98-104 helper, L343 wired into meta | ✅ |
-| Auto-task suffix on outbound sequence emails | L345-346 | ✅ |
-| Inline `Sx paused` chip on inbound email row | L445-456 map, L851-855 badge render | ✅ |
-| Backfill edge function (`backfill-activity-intel`) | Deployed with `Deno.serve` + esm.sh client (timeout fixed) | ✅ |
+## What you'll get
 
-## What's left
+A new top-level **Sequences** view (in the CRM nav, next to Pipeline) that is the single place to monitor every email sequence. The 90-day post-loss nurture is the first campaign — built so additional sequences (re-engagement, sample-sent stall, post-discovery cold, Closed Won onboarding, etc.) plug into the same UI with no rework.
 
-**Nothing from any approved plan is outstanding.** Every gap, every polish item, every backfill utility is in the codebase and deployed.
+### 1. Sequences index page (`/#view=sequences`)
+List of all sequences as cards. For each: name, trigger condition, total enrolled (active / completed / re-engaged / exited), reply rate, conversion-to-meeting rate, last run timestamp, next run countdown. Click a card → campaign detail.
 
-The single optional follow-up is **operational, not code**:
+### 2. Campaign detail — "Sequence 8: Core 90-day post-loss nurture"
 
-- **Run the backfill once.** `backfill-activity-intel` is deployed but has not been invoked yet. Until it's run, historical inbound replies (pre-build) will not have `sequence_paused` rows, and historical `call_logged` rows will not have `metadata.intel`. One POST with `{ "mode": "all", "limit": 1000 }` populates both passes idempotently.
+Three tabs:
 
-## Recommendation
+**a. Overview**
+- Trigger rule shown in plain English ("Lead enters Closed Lost with `lost_reason_v2 ≠ Scope Mismatch`")
+- 4-step timeline (Day 0 / 30 / 45 / 90) matching your wireframe verbatim — each step shows: type pill (`AI-personalized` / `Auto` / `Malik manual`), subject template, body template with `[bracket]` merge fields, AI personalization inputs panel
+- Funnel widget: Enrolled → d0 sent → d30 sent → d45 done → d90 sent → Re-engaged
+- Summary stats: enrolled, active, completed, re-engaged %, replies, exited (Scope Mismatch referrals)
 
-Two paths from here:
+**b. Enrolled leads**
+Sortable table: Lead · Lost reason · Day in sequence · Last touch · Next touch · Status · Replied? · Pause/Resume/Exit actions. Click a row → opens deal panel.
 
-1. **Run the backfill** so historical data matches new data — single edge function call, returns counts of inserts/enrichments, fully idempotent.
-2. **Close the thread.** The Activities tab matches the mockup verbatim end-to-end. Nothing else from the plans needs building.
+**c. Activity log**
+Reverse-chrono feed of every send/skip/exit/re-engagement across all enrolled leads. Filterable by step (d0/d30/d45/d90) and outcome (sent/replied/exited).
 
-Tell me which.
+### 3. Per-lead "Sequence" card in the deal panel right rail
+On any Closed Lost lead: shows current step, day count, next touch date, replied status, and Pause/Exit buttons. Clickable header opens the campaign detail page filtered to this lead.
+
+### 4. AI personalization (the actual "feel like a human relationship" upgrade)
+
+Replace the static placeholder copy in `nurture-engine` with a new edge function `generate-nurture-email` (GPT-4o, direct OpenAI per your standing rule). For each milestone draft:
+
+- **Day 0 inputs**: lost reason, target sector, EBITDA range, deal type, brand → produces an insight email that references their specific sector dynamics. Lost Reason → insight angle:
+  - `Going DIY` → data-quality challenges insight
+  - `Chose Axial` → off-market vs listed inventory dynamics
+  - `Price was too high` → ROI/cost-per-deal math
+  - `Timing` → market timing for their sector
+  - `Went Dark / No response` → low-pressure relevance ping
+  - `Other / Stale` → neutral sector observation
+- **Day 30 inputs**: sector, EBITDA range, acquisition timeline → if timeline was "3-6 months" and 30 days have passed, explicitly acknowledges "you mentioned Q3 was when you'd be more actively deploying — is that still the plan?"
+- **Day 45**: stays manual (Malik writes himself, no AI) — surfaces the Fireflies transcript link + Malik's notes inline so he can write something specific in 60 seconds. This matches your wireframe note: *"the Fireflies transcript is Malik's memory."*
+- **Day 90 inputs**: firm type (PE fund / search fund / corp dev / family office) + sector + EBITDA → "We've helped [similar buyer type] source [X] targets in [range] recently."
+
+All AI copy obeys your standing rules (max 80 words, no filler, no em/en dashes, peer tone). All emails sent from Malik's connected mailbox (Gmail/Outlook) via existing `send-gmail-email` / `send-outlook-email` so they look human.
+
+### 5. Scope Mismatch exit branch
+Engine adds a one-time `lost_reason_v2 == "Scope Mismatch"` check at enrollment: instead of `nurture_sequence_status = 'active'`, it generates a single referral email draft (Day 0 only, no further touches) and sets status to `exited_referral`. Tracked in the campaign detail's "Exited" bucket.
+
+### 6. Activity tab integration (already mostly done)
+Every nurture send adds a `sequence_step = 'N0' / 'N30' / 'N45' / 'N90'` to `lead_emails` so the existing inline `Nx paused on reply` chip + auto-task suffix works for nurture emails too — no extra timeline work.
+
+## Technical details
+
+- **DB**: add `nurture_step_log` (jsonb on `leads`) tracking `{step, sent_at, draft_id, email_id, replied}` per step. No new table needed; reuse existing `lead_drafts`, `lead_emails`, `lead_activity_log`, `cron_run_log` (already wired). Add `nurture_exit_reason` text column to `leads` for Scope Mismatch / manual exit.
+- **New edge function**: `generate-nurture-email` (called by `nurture-engine` per milestone). Direct OpenAI GPT-4o, structured prompt per step with lost reason + mandate context.
+- **Engine update**: `nurture-engine/index.ts` — add Scope Mismatch branch at top of loop, replace placeholder copy blocks with `generate-nurture-email` invocations, stamp `sequence_step = 'N{day}'` on the inserted `lead_drafts.action_key` and on the eventual `lead_emails.sequence_step` when sent (the existing send pipeline already carries `sequence_step` through).
+- **Auto-enroll guard in `LeadContext`**: skip enrollment when `lostReasonV2 === 'Scope Mismatch'` (kick to referral branch instead).
+- **Cron logging**: `nurture-engine` already runs daily; add `logCronRun` call (same pattern as `process-scheduled-emails`) so it appears in Automation Health panel.
+- **New UI files**:
+  - `src/components/sequences/SequencesIndex.tsx` (campaign list)
+  - `src/components/sequences/CampaignDetail.tsx` (3-tab detail view)
+  - `src/components/sequences/EnrolledLeadsTable.tsx`
+  - `src/components/sequences/SequenceTimeline.tsx` (the 4-step visual matching the wireframe)
+  - `src/components/lead-panel/cards/SequenceCard.tsx` (right-rail card on deal panel for enrolled leads)
+- **Routing**: add `"sequences"` to the `View` type in `src/pages/Index.tsx` and a nav button (icon `Send` or `Workflow`).
+- **Brand/aesthetic**: monochrome cards, no traffic-light colors except the existing amber pill for `sequence_paused`, badges in `bg-secondary`, lucide icons only — matches your standing design memory.
+
+## Out of scope
+
+- Building additional sequences beyond the 90-day nurture (the framework supports them — adding S5 sample-stall etc. is a follow-up)
+- A/B testing on AI copy (single-variant first, can layer on later)
+- Editing AI prompts from the UI (prompts stay in code for v1)
+- Letting reps preview the AI-generated email *before* the cron fires (drafts still land in the existing Action Center for review/approve/send, same as today)
 
