@@ -19,6 +19,31 @@ function formatJoined(iso?: string) {
   }
 }
 
+function formatDateTime(iso?: string | null) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "—";
+  }
+}
+
+function initialsOf(name?: string | null, email?: string | null): string {
+  const source = (name?.trim() || email?.split("@")[0] || "").trim();
+  if (!source) return "?";
+  const parts = source.split(/[\s._-]+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function providerLabel(user: any): string {
+  const provider = user?.app_metadata?.provider || user?.identities?.[0]?.provider;
+  if (provider === "google") return "Signed in via Google";
+  if (provider === "email") return "Email & password";
+  if (typeof provider === "string" && provider.length) return `Signed in via ${provider}`;
+  return "Email & password";
+}
+
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { user, profile, role, loading, refreshProfile, signOut } = useAuth();
