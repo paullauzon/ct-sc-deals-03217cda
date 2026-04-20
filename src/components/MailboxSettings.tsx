@@ -355,14 +355,6 @@ export function MailboxSettings() {
                                 >
                                   {refreshingId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                                 </Button>
-                                <Button
-                                  variant="ghost" size="sm" className="h-7 px-2"
-                                  onClick={() => refreshToken(c)}
-                                  disabled={refreshingId === c.id}
-                                  title="Refresh access token"
-                                >
-                                  {refreshingId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                                </Button>
                               </>
                             )}
                             <Button
