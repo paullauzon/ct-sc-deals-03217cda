@@ -128,3 +128,9 @@ verify_jwt = false
 
 [functions.fuzzy-match-calendly]
 verify_jwt = false
+
+[functions.enqueue-fireflies-backfill]
+verify_jwt = false
+
+[functions.process-fireflies-backfill-queue]
+verify_jwt = false
