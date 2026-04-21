@@ -21,6 +21,13 @@ const corsHeaders = {
 
 const INTERNAL_DOMAINS = new Set(["captarget.com", "sourcecodeals.com"]);
 
+// Personal mailbox providers — NEVER infer a lead from these domains.
+const PERSONAL_PROVIDERS = new Set([
+  "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com",
+  "aol.com", "msn.com", "live.com", "me.com", "mac.com", "protonmail.com",
+  "proton.me", "yahoo.co.uk", "googlemail.com", "ymail.com",
+]);
+
 // Senders that will never map to a lead — newsletters, transactional notifications,
 // generic service domains. Skipped on the fast path so we don't waste lookups.
 const NOISE_DOMAINS = new Set([
@@ -43,39 +50,57 @@ function isInternal(email: string): boolean {
 interface LeadIndex {
   byEmail: Map<string, string>;        // exact email -> lead_id
   byDomain: Map<string, Set<string>>;  // domain -> set of lead_ids (only count==1 is usable)
+  duplicateOf: Map<string, string>;    // duplicate lead id -> canonical lead id
+}
+
+function resolveCanonical(idx: LeadIndex, leadId: string): string {
+  let current = leadId;
+  for (let i = 0; i < 3; i++) {
+    const next = idx.duplicateOf.get(current);
+    if (!next || next === current) return current;
+    current = next;
+  }
+  return current;
 }
 
 async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promise<LeadIndex> {
   const byEmail = new Map<string, string>();
   const byDomain = new Map<string, Set<string>>();
+  const duplicateOf = new Map<string, string>();
 
   const addToDomain = (dom: string, leadId: string) => {
-    if (!dom || INTERNAL_DOMAINS.has(dom) || NOISE_DOMAINS.has(dom)) return;
+    if (!dom || INTERNAL_DOMAINS.has(dom) || NOISE_DOMAINS.has(dom) || PERSONAL_PROVIDERS.has(dom)) return;
     let set = byDomain.get(dom);
     if (!set) { set = new Set(); byDomain.set(dom, set); }
     set.add(leadId);
   };
 
-  // Page through all leads (Supabase caps select at 1000 rows by default).
+  // Page through ALL leads — including duplicates — so we capture the duplicate map.
+  // Only canonical, non-archived leads get indexed as match targets.
   let from = 0;
   const PAGE = 1000;
   for (;;) {
     const { data, error } = await supabase
       .from("leads")
-      .select("id, email, secondary_contacts, company_url")
-      .is("archived_at", null)
-      .eq("is_duplicate", false)
+      .select("id, email, secondary_contacts, company_url, is_duplicate, duplicate_of, archived_at")
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`leads page ${from}: ${error.message}`);
     if (!data || data.length === 0) break;
 
-    for (const row of data as Array<{ id: string; email: string | null; secondary_contacts: any; company_url: string | null }>) {
+    for (const row of data as Array<{
+      id: string; email: string | null; secondary_contacts: any; company_url: string | null;
+      is_duplicate?: boolean; duplicate_of?: string | null; archived_at?: string | null;
+    }>) {
+      if (row.is_duplicate && row.duplicate_of && row.duplicate_of !== row.id) {
+        duplicateOf.set(row.id, row.duplicate_of);
+      }
+      if (row.archived_at || row.is_duplicate) continue;
+
       const primary = (row.email || "").toLowerCase();
       if (primary) {
         if (!byEmail.has(primary)) byEmail.set(primary, row.id);
         addToDomain(domainOf(primary), row.id);
       }
-      // Secondary contacts (jsonb array of {email, ...})
       const sec = Array.isArray(row.secondary_contacts) ? row.secondary_contacts : [];
       for (const c of sec) {
         const e = (c?.email || "").toLowerCase();
@@ -83,7 +108,6 @@ async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promis
         if (!byEmail.has(e)) byEmail.set(e, row.id);
         addToDomain(domainOf(e), row.id);
       }
-      // Company URL → domain
       const url = (row.company_url || "").toLowerCase();
       if (url) {
         try {
@@ -113,24 +137,24 @@ async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promis
     from += PAGE;
   }
 
-  return { byEmail, byDomain };
+  return { byEmail, byDomain, duplicateOf };
 }
 
 function findLead(idx: LeadIndex, candidates: string[]): string | null {
   // 1+2+3) Exact email match (covers primary, secondary, stakeholders)
   for (const c of candidates) {
     const hit = idx.byEmail.get(c);
-    if (hit) return hit;
+    if (hit) return resolveCanonical(idx, hit);
   }
-  // 4) Domain fallback — only if exactly one lead claims this domain
+  // 4) Domain fallback — exclude personal providers, only match if domain is unambiguous
   const seen = new Set<string>();
   for (const c of candidates) {
     const d = domainOf(c);
-    if (!d || INTERNAL_DOMAINS.has(d) || NOISE_DOMAINS.has(d)) continue;
+    if (!d || INTERNAL_DOMAINS.has(d) || NOISE_DOMAINS.has(d) || PERSONAL_PROVIDERS.has(d)) continue;
     if (seen.has(d)) continue;
     seen.add(d);
     const matches = idx.byDomain.get(d);
-    if (matches && matches.size === 1) return matches.values().next().value;
+    if (matches && matches.size === 1) return resolveCanonical(idx, matches.values().next().value);
   }
   return null;
 }
