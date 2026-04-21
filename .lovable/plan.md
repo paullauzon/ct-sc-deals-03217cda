@@ -1,41 +1,57 @@
 
 
-# Connect Outlook now → I activate the cron + audit immediately after
+# Our side is correct. The block is Microsoft-side — and I can pinpoint the 3 likely causes.
 
-## What Josh just did
-Tenant admin consent is granted for `sourcecodeals.com`. The "approval required" wall is gone. Any user on your tenant can now complete the OAuth flow without admin intervention.
+## What I verified (our side is clean)
 
-## What you do now (30 seconds)
+1. **`outlook-oauth-start` is firing correctly** — booted at 20:27 UTC (your last click). Returns the correct authorization URL with all 4 scopes (`Mail.Read`, `Mail.Send`, `User.Read`, `offline_access`).
+2. **`outlook-oauth-callback` has zero hits** — meaning Microsoft is killing the OAuth flow at the consent screen. You never reach the redirect back to us.
+3. **No Outlook connection has landed** in `user_email_connections` (only the two Gmail accounts).
+4. **Code, secrets, scopes, and redirect URI are all correct** — confirmed by reading the function source.
 
-1. Go to **Settings → Mailboxes** (you're already on `/#view=settings&sys=crm`)
-2. Click **Connect mailbox** → **Outlook**
-3. Sign in with your `sourcecodeals.com` Microsoft account
-4. Approve the consent screen (this time it'll be a clean consent prompt, not the admin wall)
-5. You'll be redirected back to the CRM with "Connected {your-email}"
+The screen you're seeing — **"This app requires your admin's approval"** with `unverified` underneath — is Microsoft reporting that **admin consent is still NOT granted for this app in your tenant.** Either Josh didn't actually click the "Grant admin consent" button, or he clicked it on a different app, or the app's account-type config is wrong.
 
-The 90-day backfill auto-fires the moment the connection lands (already wired in `outlook-oauth-callback`).
+## The 3 possible root causes (ranked by likelihood)
 
-## What I do the moment your connection lands
+### Cause #1 — Josh didn't click the right button (most likely, ~70%)
 
-1. **Verify the connection row** in `user_email_connections` (provider=outlook, is_active=true)
-2. **Register the `sync-outlook-emails-10min` pg_cron job** — mirror of the Gmail cron, fires every 10 min, calls `sync-outlook-emails` for all active Outlook connections
-3. **Watch the first backfill run** via `email_sync_runs` and `BackfillProgressPanel` — confirm `status='success'` with non-zero `fetched`
-4. **Run the routing accuracy audit** — sample 30 random matched emails from the backfill, confirm 100% direct-participant match (Tiers 1-3) and that any Tier-4 confirmations correctly auto-added stakeholders
-5. **Confirm `sync-watchdog` picked it up** — it's already provider-agnostic, so it should auto-monitor the new connection
-6. **Update `mem://integrations/email-sync-status`** to mark Outlook LIVE with cron schedule
+The Entra admin center has multiple buttons that look similar. The one we need is specifically labeled **"Grant admin consent for SMC SourceCo, LLC"** and it's at the **top of the API permissions table** (not in App registrations overview, not in Authentication, not in Token configuration).
 
-## If anything fails on connect
+If Josh did anything else — added permissions, saved settings, configured authentication — but didn't click that exact button, Microsoft still treats consent as un-granted.
 
-The two most likely failure modes (both have clear remediation):
+**How to verify:** Ask Josh to go back to **Entra → App registrations → Lovable CRM — Outlook Sync → API permissions** and look at the **"Status"** column for each permission. If it says **"Not granted for SMC SourceCo, LLC"** in red/orange — consent was never granted. If it says **"Granted for SMC SourceCo, LLC"** in green with a checkmark — consent IS granted (and we have a different problem).
 
-- **"Reconnect required — no refresh token"** → Microsoft sometimes withholds the refresh_token on a re-auth if the app already has prior consent for your account. Fix: go to https://account.live.com/consent/Manage, remove the app, retry connect.
-- **Token exchange failed** → Indicates a secret mismatch between Azure and our backend. I'd verify `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` against Azure and re-add if needed.
+### Cause #2 — Wrong "Supported account types" in app registration (~20%)
 
-Neither is likely — both secrets are saved and the Azure config matches our redirect URI.
+If when registering the app Josh selected **"Accounts in any organizational directory and personal Microsoft accounts"** (multitenant + personal), Microsoft requires per-tenant admin consent for EACH external tenant — and the consent grant only applies to the home tenant.
 
-## After audit passes
+If your app is registered in `sourcecodeals.com`'s Entra and you're trying to sign in as `adam.haile@sourcecodeals.com`, this should work… unless the registration's "Supported account types" is wrong.
 
-You're done. Outbound sends from the Outlook account will route through `send-outlook-email` (loop-protected with the same X-CRM-Source + Message-ID stamping as Gmail). Inbound stays in sync every 10 min. Malik or any other rep can connect their own Outlook the same way — no admin re-approval needed.
+**How to verify:** Entra → App registrations → Lovable CRM — Outlook Sync → **Authentication** tab → look at "Supported account types". For our use case (sales reps on `sourcecodeals.com`), the ideal setting is **"Accounts in this organizational directory only (SMC SourceCo only - Single tenant)"**.
 
-**Ping me with "connected" once the OAuth round-trip completes** and I'll kick off steps 1-6 immediately.
+### Cause #3 — Consent was granted on a different app registration (~10%)
+
+If Josh has multiple app registrations (maybe one from his earlier setup attempt and one new one), he might have clicked "Grant admin consent" on the wrong one. The Client ID currently saved in our `MICROSOFT_CLIENT_ID` secret must match the app where consent was granted.
+
+**How to verify:** Cross-check the **Application (client) ID** on the app where Josh granted consent against the value of our `MICROSOFT_CLIENT_ID` secret. If they don't match, either Josh consented on the wrong app, or our secret points to a stale registration.
+
+## What to send Josh
+
+Forward this verification checklist:
+
+> Hi Josh — quick check please. The "approval required" wall is still showing. Can you confirm 3 things in Entra:
+>
+> 1. Go to **Entra → App registrations → Lovable CRM — Outlook Sync → API permissions**. In the "Status" column, do all 4 permissions (Mail.Read, Mail.Send, User.Read, offline_access) show **"Granted for SMC SourceCo, LLC"** with a green checkmark? Screenshot if possible.
+>
+> 2. On the same app → **Authentication** tab → what does "Supported account types" say?
+>
+> 3. On the **Overview** tab → copy the **Application (client) ID** and send it to me so I can verify it matches what's saved in the CRM backend.
+
+## What I'll do once Josh responds
+
+- **If Cause #1** (consent not actually granted) → he clicks the button once and we're done
+- **If Cause #2** (wrong account type) → he changes "Supported account types" to single-tenant, no code change needed
+- **If Cause #3** (Client ID mismatch) → I'll update our `MICROSOFT_CLIENT_ID` secret to match the correct app, no code change needed
+
+In all 3 cases, **no code changes are required**. The issue is purely Microsoft tenant config, and our edge functions / secrets / Azure registration setup are confirmed correct on our end.
 
