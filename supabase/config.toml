@@ -125,3 +125,6 @@ verify_jwt = false
 
 [functions.backfill-activity-intel]
 verify_jwt = false
+
+[functions.fuzzy-match-calendly]
+verify_jwt = false
