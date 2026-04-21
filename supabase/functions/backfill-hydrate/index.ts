@@ -17,8 +17,36 @@ const corsHeaders = {
 };
 
 const INTERNAL_DOMAINS = new Set(["captarget.com", "sourcecodeals.com"]);
+// Personal mailbox providers — NEVER use for domain-fallback inference.
+// Many leads share these domains, so a domain hit is meaningless.
+const PERSONAL_PROVIDERS = new Set([
+  "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com",
+  "aol.com", "msn.com", "live.com", "me.com", "mac.com", "protonmail.com",
+  "proton.me", "yahoo.co.uk", "googlemail.com", "ymail.com",
+]);
 const BATCH_SIZE = 100; // ~40s at 400ms/msg — well inside wall-time
 const MAX_BATCHES_PER_INVOCATION = 2;
+
+// Resolve a lead id, following duplicate_of to the canonical record.
+async function resolveCanonicalLeadId(
+  supabase: ReturnType<typeof createClient>,
+  leadId: string,
+): Promise<string> {
+  // Walk up at most 3 hops to avoid pathological loops in dirty data.
+  let current = leadId;
+  for (let i = 0; i < 3; i++) {
+    const { data } = await supabase
+      .from("leads")
+      .select("id, is_duplicate, duplicate_of")
+      .eq("id", current)
+      .maybeSingle();
+    const row = data as { id: string; is_duplicate?: boolean; duplicate_of?: string } | null;
+    if (!row) return current;
+    if (!row.is_duplicate || !row.duplicate_of || row.duplicate_of === current) return row.id;
+    current = row.duplicate_of;
+  }
+  return current;
+}
 
 function domainOf(email: string): string {
   return email.includes("@") ? email.split("@")[1].toLowerCase() : "";
@@ -149,7 +177,7 @@ async function findLeadIdByEmail(supabase: ReturnType<typeof createClient>, cand
 
   // 1) Exact match against leads.email
   const { data: exact } = await supabase.from("leads").select("id, email").in("email", lowered).limit(1);
-  if (exact && exact.length > 0) return (exact[0] as { id: string }).id;
+  if (exact && exact.length > 0) return await resolveCanonicalLeadId(supabase, (exact[0] as { id: string }).id);
 
   // 2) Secondary contacts (CFO/attorney/etc. attached to existing deals)
   for (const addr of lowered) {
@@ -161,7 +189,7 @@ async function findLeadIdByEmail(supabase: ReturnType<typeof createClient>, cand
       .is("archived_at", null)
       .eq("is_duplicate", false)
       .limit(1);
-    if (sec && sec.length > 0) return (sec[0] as { id: string }).id;
+    if (sec && sec.length > 0) return await resolveCanonicalLeadId(supabase, (sec[0] as { id: string }).id);
   }
 
   // 3) Stakeholders table (free even when empty; activates the moment data exists)
@@ -170,18 +198,31 @@ async function findLeadIdByEmail(supabase: ReturnType<typeof createClient>, cand
     .select("lead_id")
     .in("email", lowered)
     .limit(1);
-  if (stake && stake.length > 0) return (stake[0] as { lead_id: string }).lead_id;
+  if (stake && stake.length > 0) return await resolveCanonicalLeadId(supabase, (stake[0] as { lead_id: string }).lead_id);
 
-  // 4) Domain-fuzzy fallback against leads.email / leads.company_url
-  const domains = Array.from(new Set(lowered.map(domainOf).filter((d) => d && !INTERNAL_DOMAINS.has(d))));
+  // 4) Domain fallback — STRICT.
+  //   - Skip personal mailbox providers entirely (gmail.com, etc.)
+  //   - Only match if EXACTLY ONE non-archived lead claims this domain
+  //   - Otherwise return null → email lands in Unmatched Inbox for manual review
+  const domains = Array.from(new Set(
+    lowered.map(domainOf).filter((d) =>
+      d && !INTERNAL_DOMAINS.has(d) && !PERSONAL_PROVIDERS.has(d)
+    ),
+  ));
   if (domains.length === 0) return null;
-  const orParts: string[] = [];
   for (const d of domains) {
-    orParts.push(`email.ilike.%@${d}`);
-    orParts.push(`company_url.ilike.%${d}%`);
+    const { data: hits } = await supabase
+      .from("leads")
+      .select("id")
+      .or(`email.ilike.%@${d},company_url.ilike.%${d}%`)
+      .is("archived_at", null)
+      .eq("is_duplicate", false)
+      .limit(2);
+    if (hits && hits.length === 1) {
+      return await resolveCanonicalLeadId(supabase, (hits[0] as { id: string }).id);
+    }
+    // hits.length === 0 → try next domain; hits.length >= 2 → ambiguous, skip
   }
-  const { data: fuzzy } = await supabase.from("leads").select("id").or(orParts.join(",")).is("archived_at", null).eq("is_duplicate", false).limit(1);
-  if (fuzzy && fuzzy.length > 0) return (fuzzy[0] as { id: string }).id;
   return null;
 }
 
