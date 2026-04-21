@@ -244,7 +244,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Case B: collect participants from this email.
+      // Case B/D: collect participants from this email.
       const participants = new Set<string>();
       if (row.from_address) participants.add(row.from_address.toLowerCase());
       for (const a of row.to_addresses || []) if (a) participants.add(a.toLowerCase());
@@ -262,16 +262,29 @@ Deno.serve(async (req) => {
       }
       if (participantMatch) { validated++; continue; }
 
+      // Case D-1: every participant is system noise (workspace@google.com,
+      // calendar-notification@…, noreply@…, mailer-daemon@…). Always unclaim.
+      const externalParticipants = Array.from(participants).filter(
+        (p) => p && !p.endsWith("@captarget.com") && !p.endsWith("@sourcecodeals.com"),
+      );
+      const allSystemNoise = externalParticipants.length > 0 &&
+        externalParticipants.every((p) => isSystemNoise(p));
+      if (allSystemNoise) {
+        toUnclaim.push(row.id); unclaimed++; continue;
+      }
+
       // No participant match. Decide whether the original match was unsafe.
-      // Unsafe if: ANY participant domain is a personal provider OR the lead's primary
-      // email domain is shared by ≥ 2 canonical leads.
+      // Unsafe if:
+      //   - ANY participant domain is a personal/system provider (gmail.com, google.com…)
+      //   - the lead's primary email domain is shared by ≥ 2 canonical leads
+      //   - Case D-2: NO participant overlaps with any known contact for this lead
+      //     (covers same-domain colleague pollution like CT-366's oilchangers.com case)
       let unsafe = false;
       for (const p of participants) {
         const d = domainOf(p);
         if (d && PERSONAL_PROVIDERS.has(d)) { unsafe = true; break; }
       }
       if (!unsafe) {
-        // Check ambiguity on the lead's own primary domain.
         const primaryEmail = claimedLead.emails.values().next().value || "";
         const leadDomain = domainOf(primaryEmail);
         if (leadDomain && !PERSONAL_PROVIDERS.has(leadDomain)) {
@@ -281,13 +294,17 @@ Deno.serve(async (req) => {
           unsafe = true;
         }
       }
+      // Case D-2: If still not flagged unsafe, the match must have come from Tier 4
+      // domain alone with no confirmed contact in the thread → unclaim.
+      if (!unsafe) {
+        unsafe = true; // strictly require participant overlap (we already returned early
+                       // above if any known contact appeared in participants)
+      }
 
       if (unsafe) {
         toUnclaim.push(row.id);
         unclaimed++;
       } else {
-        // Participant doesn't match but domain is unique & corporate — keep (could be a
-        // forwarded thread or assistant sending on behalf). Conservative.
         validated++;
       }
     }
