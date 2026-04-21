@@ -450,6 +450,7 @@ Deno.serve(async (req) => {
 
     const results: SyncStats[] = [];
     const skipped: Array<{ connection_id: string; email: string; reason: string }> = [];
+    const autoEnrolled: string[] = [];
     for (const conn of connections) {
       // Defer to the backfill orchestrator if a backfill job is active for this connection.
       if (!forceFull) {
@@ -463,6 +464,14 @@ Deno.serve(async (req) => {
           skipped.push({ connection_id: conn.id, email: conn.email_address, reason: "backfill_in_progress" });
           continue;
         }
+
+        // Auto-enroll existing connections that never had a backfill (parity with Gmail).
+        const enrolled = await maybeAutoEnrollBackfill(supabase, conn);
+        if (enrolled) {
+          autoEnrolled.push(conn.id);
+          skipped.push({ connection_id: conn.id, email: conn.email_address, reason: "auto_enrolled_backfill" });
+          continue;
+        }
       }
       results.push(await syncOneConnection(supabase, conn, forceFull));
     }
@@ -474,7 +483,7 @@ Deno.serve(async (req) => {
       job_name: "sync-outlook-emails",
       status: totalErrors > 0 ? "partial" : "success",
       items_processed: totalInserted,
-      details: { connections: results.length, skipped, results: results.map(r => ({ email: r.email, fetched: r.fetched, inserted: r.inserted, matched: r.matched })) },
+      details: { connections: results.length, skipped, auto_enrolled: autoEnrolled, results: results.map(r => ({ email: r.email, fetched: r.fetched, inserted: r.inserted, matched: r.matched })) },
     });
 
     const allSkipped = results.length === 0 && skipped.length > 0;
