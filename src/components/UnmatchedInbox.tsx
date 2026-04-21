@@ -121,6 +121,7 @@ export function UnmatchedInbox() {
 
   const claimToLead = async (emailId: string, leadId: string) => {
     setBusyId(emailId);
+    const target = emails.find((e) => e.id === emailId);
     const { error } = await supabase
       .from("lead_emails")
       .update({ lead_id: leadId })
@@ -128,14 +129,41 @@ export function UnmatchedInbox() {
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success("Claimed to lead");
+      // Auto-promote the sender as a stakeholder so future emails from this
+      // address route correctly via Tier 3 — no need to claim again.
+      if (target?.from_address) {
+        await ensureStakeholder(leadId, target.from_address, target.from_name || "");
+      }
+      toast.success("Claimed to lead — sender added as stakeholder for future routing");
       setEmails((prev) => prev.filter((e) => e.id !== emailId));
     }
     setBusyId(null);
   };
 
+  const ensureStakeholder = async (leadId: string, email: string, name: string) => {
+    const lower = email.toLowerCase().trim();
+    if (!lower) return;
+    const { data: existing } = await supabase
+      .from("lead_stakeholders")
+      .select("id")
+      .eq("lead_id", leadId)
+      .eq("email", lower)
+      .limit(1);
+    if (existing && existing.length > 0) return;
+    await supabase.from("lead_stakeholders").insert({
+      lead_id: leadId,
+      email: lower,
+      name: name.trim(),
+      role: "Manually claimed from Unmatched inbox",
+      notes: "Added when email was manually routed to this lead",
+      sentiment: "neutral",
+      last_contacted: new Date().toISOString(),
+    });
+  };
+
   const claimAllFromSender = async (fromAddress: string, leadId: string) => {
     setBusyId(fromAddress);
+    const sample = emails.find((e) => e.from_address === fromAddress);
     const { error, count } = await supabase
       .from("lead_emails")
       .update({ lead_id: leadId }, { count: "exact" })
@@ -144,7 +172,10 @@ export function UnmatchedInbox() {
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success(`Claimed ${count ?? 0} email${count === 1 ? "" : "s"} from ${fromAddress}`);
+      // Same auto-stakeholder write — claiming all from a sender obviously
+      // implies that sender belongs to this lead going forward.
+      await ensureStakeholder(leadId, fromAddress, sample?.from_name || "");
+      toast.success(`Claimed ${count ?? 0} email${count === 1 ? "" : "s"} from ${fromAddress} — added as stakeholder`);
       setEmails((prev) => prev.filter((e) => e.from_address !== fromAddress));
     }
     setBusyId(null);
