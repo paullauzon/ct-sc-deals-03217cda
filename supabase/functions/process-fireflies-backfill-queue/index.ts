@@ -57,8 +57,8 @@ Deno.serve(async (req) => {
     const rows = dueRows ?? [];
 
     if (rows.length === 0) {
-      await logCronRun(JOB_NAME, "noop", 0, { note: "no backfill rows due" });
-      return new Response(JSON.stringify({ ok: true, processed: 0 }), {
+      await logCronRun(JOB_NAME, "noop", 0, { note: "no backfill rows due", recovered: 0, gaveUp: 0, stillSearching: 0 });
+      return new Response(JSON.stringify({ ok: true, processed: 0, recovered: 0, gaveUp: 0, stillSearching: 0 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
