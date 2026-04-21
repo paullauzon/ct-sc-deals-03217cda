@@ -196,6 +196,66 @@ async function findLeadIdByEmail(supabase: ReturnType<typeof createClient>, cand
   return null;
 }
 
+/**
+ * Auto-stakeholder discovery — see sync-gmail-emails for full rationale.
+ * Adds same-corporate-domain colleagues uncovered through a confirmed match
+ * so future emails from them route via the stakeholder tier directly.
+ */
+async function maybeAutoAddStakeholder(
+  supabase: ReturnType<typeof createClient>,
+  leadId: string,
+  external: string[],
+  fromName: string,
+  fromAddress: string,
+): Promise<void> {
+  try {
+    if (!leadId || leadId === "unmatched" || external.length === 0) return;
+    const { data: leadRow } = await supabase
+      .from("leads")
+      .select("email, secondary_contacts")
+      .eq("id", leadId)
+      .maybeSingle();
+    if (!leadRow) return;
+    const lead = leadRow as { email: string | null; secondary_contacts: any };
+    const known = new Set<string>();
+    const primary = (lead.email || "").toLowerCase().trim();
+    if (primary) known.add(primary);
+    const sec = Array.isArray(lead.secondary_contacts) ? lead.secondary_contacts : [];
+    for (const c of sec) {
+      const e = (c?.email || "").toLowerCase().trim();
+      if (e) known.add(e);
+    }
+    const { data: stakes } = await supabase
+      .from("lead_stakeholders").select("email").eq("lead_id", leadId);
+    for (const s of (stakes || []) as Array<{ email: string | null }>) {
+      const e = (s.email || "").toLowerCase().trim();
+      if (e) known.add(e);
+    }
+    const leadDomain = primary ? domainOf(primary) : "";
+    for (const addr of external) {
+      const lower = addr.toLowerCase();
+      if (!lower || known.has(lower)) continue;
+      if (isSystemNoise(lower)) continue;
+      const dom = domainOf(lower);
+      if (!dom || INTERNAL_DOMAINS.has(dom) || PERSONAL_PROVIDERS.has(dom)) continue;
+      if (leadDomain && dom !== leadDomain) continue;
+      const candidateName = (lower === (fromAddress || "").toLowerCase()) ? (fromName || "").trim() : "";
+      await supabase.from("lead_stakeholders").insert({
+        lead_id: leadId,
+        email: lower,
+        name: candidateName,
+        role: "Discovered via email thread",
+        notes: "Auto-added from inbound email correspondence",
+        sentiment: "neutral",
+        last_contacted: new Date().toISOString(),
+      });
+      known.add(lower);
+    }
+  } catch (e) {
+    console.error("outlook auto-stakeholder (non-fatal):", (e as Error).message);
+  }
+}
+
 interface SyncStats {
   connection_id: string;
   email: string;
