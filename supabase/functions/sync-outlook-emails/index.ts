@@ -98,11 +98,17 @@ async function findLeadIdByEmail(supabase: ReturnType<typeof createClient>, cand
   if (candidates.length === 0) return null;
   const lowered = candidates.map((c) => c.toLowerCase());
 
-  // 1) Exact match
-  const { data: exact } = await supabase.from("leads").select("id, email").in("email", lowered).limit(1);
+  // 1) PRIMARY email match — prefer canonical (non-duplicate, non-archived).
+  const { data: exact } = await supabase
+    .from("leads")
+    .select("id, email, is_duplicate, archived_at")
+    .in("email", lowered)
+    .order("is_duplicate", { ascending: true })
+    .order("archived_at", { ascending: true, nullsFirst: true })
+    .limit(1);
   if (exact && exact.length > 0) return await resolveCanonicalLeadId(supabase, (exact[0] as { id: string }).id);
 
-  // 2) Secondary contacts (CFO/attorney/etc.)
+  // 2) Secondary contacts — ONLY runs if no primary match. Primary always wins.
   for (const addr of lowered) {
     if (!addr) continue;
     const { data: sec } = await supabase

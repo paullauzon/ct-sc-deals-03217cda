@@ -199,15 +199,21 @@ async function findLeadIdByEmail(
   if (candidates.length === 0) return null;
   const lowered = candidates.map((c) => c.toLowerCase());
 
-  // 1) Exact email match against leads.email
+  // 1) PRIMARY email match — prefer canonical (non-duplicate, non-archived) leads.
+  // Order by is_duplicate ASC + archived_at NULLS FIRST so a live primary always wins
+  // over an archived/duplicate that happens to share the address.
   const { data: exact } = await supabase
     .from("leads")
-    .select("id, email")
+    .select("id, email, is_duplicate, archived_at")
     .in("email", lowered)
+    .order("is_duplicate", { ascending: true })
+    .order("archived_at", { ascending: true, nullsFirst: true })
     .limit(1);
   if (exact && exact.length > 0) return await resolveCanonicalLeadId(supabase, (exact[0] as { id: string }).id);
 
-  // 2) Secondary contacts (JSONB array on leads): CFO/attorney attached to a deal
+  // 2) Secondary contacts (JSONB array on leads): CFO/attorney attached to a deal.
+  // ONLY runs if no PRIMARY match exists — primary always wins to avoid stapling
+  // a prospect's emails to a different deal that listed them as a secondary.
   for (const addr of lowered) {
     if (!addr) continue;
     const { data: sec } = await supabase
