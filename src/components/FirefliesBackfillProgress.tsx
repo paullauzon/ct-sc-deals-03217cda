@@ -101,6 +101,16 @@ export function FirefliesBackfillProgress() {
         <div className="flex items-center gap-2">
           <Button
             size="sm"
+            variant="ghost"
+            className="h-7 text-[11px] gap-1.5"
+            onClick={() => setReportOpen(true)}
+            title="View per-lead breakdown"
+          >
+            <ListChecks className="h-3 w-3" />
+            View full report
+          </Button>
+          <Button
+            size="sm"
             variant="outline"
             className="h-7 text-[11px] gap-1.5"
             onClick={handleDrainNow}
