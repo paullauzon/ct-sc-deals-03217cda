@@ -21,12 +21,33 @@ const corsHeaders = {
 
 const INTERNAL_DOMAINS = new Set(["captarget.com", "sourcecodeals.com"]);
 
-// Personal mailbox providers — NEVER infer a lead from these domains.
+// Personal/system mailbox providers — NEVER infer a lead from these domains.
 const PERSONAL_PROVIDERS = new Set([
   "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com",
   "aol.com", "msn.com", "live.com", "me.com", "mac.com", "protonmail.com",
   "proton.me", "yahoo.co.uk", "googlemail.com", "ymail.com",
+  "google.com", "apple.com", "microsoft.com", "mail.com", "zoho.com",
+  "qq.com", "163.com", "pm.me", "tutanota.com", "fastmail.com", "gmx.com",
 ]);
+
+const SYSTEM_NOISE_LOCALPARTS = new Set([
+  "noreply", "no-reply", "donotreply", "do-not-reply", "mailer-daemon",
+  "postmaster", "bounces", "bounce", "notifications", "notification",
+  "calendar-notification", "workspace", "billing", "support",
+  "accounts", "account", "alerts", "alert", "info", "hello",
+]);
+
+function isSystemNoise(addr: string): boolean {
+  if (!addr || !addr.includes("@")) return true;
+  const local = addr.split("@")[0].toLowerCase();
+  if (SYSTEM_NOISE_LOCALPARTS.has(local)) return true;
+  if (local.startsWith("noreply") || local.startsWith("no-reply")) return true;
+  if (local.startsWith("notification")) return true;
+  if (local.startsWith("calendar-")) return true;
+  if (local.startsWith("bounce")) return true;
+  if (local.includes("+caf_")) return true;
+  return false;
+}
 
 // Senders that will never map to a lead — newsletters, transactional notifications,
 // generic service domains. Skipped on the fast path so we don't waste lookups.

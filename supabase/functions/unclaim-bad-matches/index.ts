@@ -21,7 +21,28 @@ const PERSONAL_PROVIDERS = new Set([
   "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com",
   "aol.com", "msn.com", "live.com", "me.com", "mac.com", "protonmail.com",
   "proton.me", "yahoo.co.uk", "googlemail.com", "ymail.com",
+  "google.com", "apple.com", "microsoft.com", "mail.com", "zoho.com",
+  "qq.com", "163.com", "pm.me", "tutanota.com", "fastmail.com", "gmx.com",
 ]);
+
+const SYSTEM_NOISE_LOCALPARTS = new Set([
+  "noreply", "no-reply", "donotreply", "do-not-reply", "mailer-daemon",
+  "postmaster", "bounces", "bounce", "notifications", "notification",
+  "calendar-notification", "workspace", "billing", "support",
+  "accounts", "account", "alerts", "alert", "info", "hello",
+]);
+
+function isSystemNoise(addr: string): boolean {
+  if (!addr || !addr.includes("@")) return true;
+  const local = addr.split("@")[0].toLowerCase();
+  if (SYSTEM_NOISE_LOCALPARTS.has(local)) return true;
+  if (local.startsWith("noreply") || local.startsWith("no-reply")) return true;
+  if (local.startsWith("notification")) return true;
+  if (local.startsWith("calendar-")) return true;
+  if (local.startsWith("bounce")) return true;
+  if (local.includes("+caf_")) return true;
+  return false;
+}
 
 function domainOf(email: string): string {
   return email.includes("@") ? email.split("@")[1].toLowerCase() : "";
