@@ -1388,6 +1388,17 @@ export type Database = {
           schedule: string
         }[]
       }
+      list_cron_run_details: {
+        Args: { _limit_per_job?: number }
+        Returns: {
+          end_time: string
+          jobname: string
+          return_message: string
+          runid: number
+          start_time: string
+          status: string
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "rep"
