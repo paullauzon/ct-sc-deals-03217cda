@@ -23,6 +23,8 @@ const JOBS: CronJob[] = [
   { jobName: "auto-process-stale-transcripts", label: "Stale transcript processor", description: "Daily 03:00 UTC · 5 leads/run", intervalMinutes: 1440, endpoint: "bulk-process-stale-meetings", body: { limit: 5 } },
   { jobName: "process-scheduled-emails", label: "Scheduled-send dispatcher", description: "Every 5m · sends queued emails", intervalMinutes: 5, endpoint: "process-scheduled-emails", body: {} },
   { jobName: "process-fireflies-retry-queue", label: "Fireflies retry queue", description: "Every 15m · re-fetches broken transcripts", intervalMinutes: 15, endpoint: "process-fireflies-retry-queue", body: {} },
+  { jobName: "process-fireflies-backfill-queue", label: "Fireflies backfill queue", description: "Every 10m · searches historical Calendly meetings", intervalMinutes: 10, endpoint: "process-fireflies-backfill-queue", body: {} },
+  { jobName: "enqueue-fireflies-backfill", label: "Fireflies backfill enqueue", description: "Manual · scans Calendly leads missing transcripts", intervalMinutes: 1440 * 30, endpoint: "enqueue-fireflies-backfill", body: {} },
 ];
 
 interface RunRow {
