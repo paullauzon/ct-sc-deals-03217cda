@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
   // --- 2. Page through ALL claimed lead_emails (lead_id != 'unmatched').
   const WALL_BUDGET_MS = 90_000;
   const SCAN_PAGE = 1000;
-  let scanned = 0, unclaimed = 0, redirected = 0, errors = 0, validated = 0;
+  let scanned = 0, unclaimed = 0, redirected = 0, redirectedByPrimary = 0, errors = 0, validated = 0;
   let pageStart = 0;
 
   // Buffers
@@ -191,6 +191,35 @@ Deno.serve(async (req) => {
           bucket.push(row.id);
           redirected++;
           continue;
+        }
+      }
+
+      // Case C: PRIMARY-OVER-SECONDARY redirect.
+      // If the email is currently attached to a lead where the matched address is only
+      // a SECONDARY contact (or stakeholder), but ANOTHER lead owns one of the
+      // participants as their PRIMARY email — redirect to the primary owner.
+      // Fixes the Prateek-style bug where lead A listed lead B's primary as a secondary.
+      const partsForCaseC = new Set<string>();
+      if (row.from_address) partsForCaseC.add(row.from_address.toLowerCase());
+      for (const a of row.to_addresses || []) if (a) partsForCaseC.add(a.toLowerCase());
+      for (const a of row.cc_addresses || []) if (a) partsForCaseC.add(a.toLowerCase());
+      const claimedPrimary = claimedLead.primaryEmail;
+      const currentLeadPrimaryInParticipants = claimedPrimary && partsForCaseC.has(claimedPrimary);
+      if (!currentLeadPrimaryInParticipants) {
+        let primaryOwner: string | null = null;
+        for (const p of partsForCaseC) {
+          const owner = primaryEmailToLeadId.get(p);
+          if (owner && owner !== row.lead_id) { primaryOwner = owner; break; }
+        }
+        if (primaryOwner) {
+          const canonical = resolveCanonical(primaryOwner);
+          if (canonical && canonical !== row.lead_id && leadById.has(canonical)) {
+            let bucket = redirectsByCanonical.get(canonical);
+            if (!bucket) { bucket = []; redirectsByCanonical.set(canonical, bucket); }
+            bucket.push(row.id);
+            redirectedByPrimary++;
+            continue;
+          }
         }
       }
 
