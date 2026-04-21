@@ -148,6 +148,7 @@ async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promis
   for (const r of canonicalLeads) {
     if (r.email) {
       byEmail.set(r.email, r.id);  // primary always wins
+      addContact(r.id, r.email);
       addToDomain(domainOf(r.email), r.id);
     }
     if (r.company_url) {
@@ -164,6 +165,7 @@ async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promis
       const e = (c?.email || "").toLowerCase();
       if (!e) continue;
       if (!byEmail.has(e)) byEmail.set(e, r.id);
+      addContact(r.id, e);
       addToDomain(domainOf(e), r.id);
     }
   }
@@ -179,22 +181,28 @@ async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promis
     if (!data || data.length === 0) break;
     for (const s of data as Array<{ lead_id: string; email: string | null }>) {
       const e = (s.email || "").toLowerCase();
-      if (e && !byEmail.has(e)) byEmail.set(e, s.lead_id);
+      if (!e) continue;
+      if (!byEmail.has(e)) byEmail.set(e, s.lead_id);
+      addContact(s.lead_id, e);
     }
     if (data.length < PAGE) break;
     from += PAGE;
   }
 
-  return { byEmail, byDomain, duplicateOf };
+  return { byEmail, byDomain, byLeadContacts, duplicateOf };
 }
 
 function findLead(idx: LeadIndex, candidates: string[]): string | null {
+  // System-noise pre-check — if every candidate is system noise, refuse.
+  if (candidates.length > 0 && candidates.every((c) => isSystemNoise(c))) return null;
+
   // 1+2+3) Exact email match (covers primary, secondary, stakeholders)
   for (const c of candidates) {
     const hit = idx.byEmail.get(c);
     if (hit) return resolveCanonical(idx, hit);
   }
-  // 4) Domain fallback — exclude personal providers, only match if domain is unambiguous
+  // 4) Domain fallback — exclude personal/system providers, only match if domain is
+  // unambiguous AND at least one candidate is a confirmed contact for that lead.
   const seen = new Set<string>();
   for (const c of candidates) {
     const d = domainOf(c);
@@ -202,7 +210,16 @@ function findLead(idx: LeadIndex, candidates: string[]): string | null {
     if (seen.has(d)) continue;
     seen.add(d);
     const matches = idx.byDomain.get(d);
-    if (matches && matches.size === 1) return resolveCanonical(idx, matches.values().next().value);
+    if (!matches || matches.size !== 1) continue;
+    const candLeadId = matches.values().next().value;
+    const knownContacts = idx.byLeadContacts.get(candLeadId);
+    if (!knownContacts) continue;
+    let confirmed = false;
+    for (const p of candidates) {
+      if (knownContacts.has(p)) { confirmed = true; break; }
+    }
+    if (!confirmed) continue; // pure same-domain colleague thread → unmatched
+    return resolveCanonical(idx, candLeadId);
   }
   return null;
 }
