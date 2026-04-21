@@ -3,8 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
-import { CheckCircle2, Clock, XCircle, Play, Loader2 } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, Play, Loader2, ListChecks } from "lucide-react";
 import { toast } from "sonner";
+import { FirefliesBackfillReport } from "./FirefliesBackfillReport";
 
 interface Counts {
   pending: number;
@@ -26,6 +27,7 @@ interface Counts {
 export function FirefliesBackfillProgress() {
   const [counts, setCounts] = useState<Counts | null>(null);
   const [draining, setDraining] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const load = async () => {
     const nowIso = new Date().toISOString();
@@ -99,6 +101,16 @@ export function FirefliesBackfillProgress() {
         <div className="flex items-center gap-2">
           <Button
             size="sm"
+            variant="ghost"
+            className="h-7 text-[11px] gap-1.5"
+            onClick={() => setReportOpen(true)}
+            title="View per-lead breakdown"
+          >
+            <ListChecks className="h-3 w-3" />
+            View full report
+          </Button>
+          <Button
+            size="sm"
             variant="outline"
             className="h-7 text-[11px] gap-1.5"
             onClick={handleDrainNow}
@@ -139,6 +151,7 @@ export function FirefliesBackfillProgress() {
           </span>
         )}
       </div>
+      <FirefliesBackfillReport open={reportOpen} onOpenChange={setReportOpen} />
     </div>
   );
 }
