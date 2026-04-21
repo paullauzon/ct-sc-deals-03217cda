@@ -75,8 +75,15 @@ async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promis
     set.add(leadId);
   };
 
-  // Page through ALL leads — including duplicates — so we capture the duplicate map.
-  // Only canonical, non-archived leads get indexed as match targets.
+  // Page through ALL leads ONCE, collecting raw rows. We build the byEmail map in
+  // TWO PASSES afterwards so PRIMARY claims always win over secondary_contact claims.
+  // (Without this, a lead that lists Prateek's address as a secondary contact could
+  // claim Prateek's emails ahead of Prateek's own primary lead.)
+  type RawLead = {
+    id: string; email: string; secondary_contacts: any[]; company_url: string;
+  };
+  const canonicalLeads: RawLead[] = [];
+
   let from = 0;
   const PAGE = 1000;
   for (;;) {
@@ -96,31 +103,42 @@ async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promis
       }
       if (row.archived_at || row.is_duplicate) continue;
 
-      const primary = (row.email || "").toLowerCase();
-      if (primary) {
-        if (!byEmail.has(primary)) byEmail.set(primary, row.id);
-        addToDomain(domainOf(primary), row.id);
-      }
-      const sec = Array.isArray(row.secondary_contacts) ? row.secondary_contacts : [];
-      for (const c of sec) {
-        const e = (c?.email || "").toLowerCase();
-        if (!e) continue;
-        if (!byEmail.has(e)) byEmail.set(e, row.id);
-        addToDomain(domainOf(e), row.id);
-      }
-      const url = (row.company_url || "").toLowerCase();
-      if (url) {
-        try {
-          const u = new URL(url.startsWith("http") ? url : `https://${url}`);
-          addToDomain(u.hostname.replace(/^www\./, ""), row.id);
-        } catch { /* ignore bad URLs */ }
-      }
+      canonicalLeads.push({
+        id: row.id,
+        email: (row.email || "").toLowerCase(),
+        secondary_contacts: Array.isArray(row.secondary_contacts) ? row.secondary_contacts : [],
+        company_url: (row.company_url || "").toLowerCase(),
+      });
     }
     if (data.length < PAGE) break;
     from += PAGE;
   }
 
-  // Stakeholders: separate paged scan.
+  // PASS 1 — primaries first. Always claim the byEmail key.
+  for (const r of canonicalLeads) {
+    if (r.email) {
+      byEmail.set(r.email, r.id);  // primary always wins
+      addToDomain(domainOf(r.email), r.id);
+    }
+    if (r.company_url) {
+      try {
+        const u = new URL(r.company_url.startsWith("http") ? r.company_url : `https://${r.company_url}`);
+        addToDomain(u.hostname.replace(/^www\./, ""), r.id);
+      } catch { /* ignore bad URLs */ }
+    }
+  }
+
+  // PASS 2 — secondary contacts ONLY fill gaps where no primary already claimed the address.
+  for (const r of canonicalLeads) {
+    for (const c of r.secondary_contacts) {
+      const e = (c?.email || "").toLowerCase();
+      if (!e) continue;
+      if (!byEmail.has(e)) byEmail.set(e, r.id);
+      addToDomain(domainOf(e), r.id);
+    }
+  }
+
+  // PASS 3 — stakeholders fill remaining gaps (lowest priority).
   from = 0;
   for (;;) {
     const { data, error } = await supabase

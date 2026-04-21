@@ -47,9 +47,12 @@ Deno.serve(async (req) => {
 
   // --- 1. Build lead lookup: id → { primary email, secondary emails[], duplicate_of, etc. }
   // and domain → set of canonical lead ids (to detect ambiguity).
-  const leadById = new Map<string, { emails: Set<string>; isDuplicate: boolean; duplicateOf: string | null; archived: boolean }>();
+  // Also build primaryEmailToLeadId so we can detect Case C: an email currently
+  // attached to a lead by SECONDARY claim, when another lead owns it as PRIMARY.
+  const leadById = new Map<string, { emails: Set<string>; primaryEmail: string; secondaryEmails: Set<string>; isDuplicate: boolean; duplicateOf: string | null; archived: boolean }>();
   const stakeholderEmailsByLead = new Map<string, Set<string>>();
   const domainToCanonicalLeads = new Map<string, Set<string>>();
+  const primaryEmailToLeadId = new Map<string, string>();
 
   let from = 0;
   const PAGE = 1000;
@@ -67,19 +70,27 @@ Deno.serve(async (req) => {
 
     for (const r of data as LeadRow[]) {
       const emails = new Set<string>();
+      const secondaryEmails = new Set<string>();
       const primary = (r.email || "").toLowerCase().trim();
       if (primary) emails.add(primary);
       const sec = Array.isArray(r.secondary_contacts) ? r.secondary_contacts : [];
       for (const c of sec) {
         const e = (c?.email || "").toLowerCase().trim();
-        if (e) emails.add(e);
+        if (e) { emails.add(e); secondaryEmails.add(e); }
       }
       leadById.set(r.id, {
         emails,
+        primaryEmail: primary,
+        secondaryEmails,
         isDuplicate: !!r.is_duplicate,
         duplicateOf: r.duplicate_of || null,
         archived: !!r.archived_at,
       });
+
+      // Index canonical primary emails for Case C redirect.
+      if (!r.is_duplicate && !r.archived_at && primary && !primaryEmailToLeadId.has(primary)) {
+        primaryEmailToLeadId.set(primary, r.id);
+      }
 
       // Domain ambiguity tracking — canonical leads only.
       if (!r.is_duplicate && !r.archived_at && primary) {
@@ -133,7 +144,7 @@ Deno.serve(async (req) => {
   // --- 2. Page through ALL claimed lead_emails (lead_id != 'unmatched').
   const WALL_BUDGET_MS = 90_000;
   const SCAN_PAGE = 1000;
-  let scanned = 0, unclaimed = 0, redirected = 0, errors = 0, validated = 0;
+  let scanned = 0, unclaimed = 0, redirected = 0, redirectedByPrimary = 0, errors = 0, validated = 0;
   let pageStart = 0;
 
   // Buffers
@@ -180,6 +191,35 @@ Deno.serve(async (req) => {
           bucket.push(row.id);
           redirected++;
           continue;
+        }
+      }
+
+      // Case C: PRIMARY-OVER-SECONDARY redirect.
+      // If the email is currently attached to a lead where the matched address is only
+      // a SECONDARY contact (or stakeholder), but ANOTHER lead owns one of the
+      // participants as their PRIMARY email — redirect to the primary owner.
+      // Fixes the Prateek-style bug where lead A listed lead B's primary as a secondary.
+      const partsForCaseC = new Set<string>();
+      if (row.from_address) partsForCaseC.add(row.from_address.toLowerCase());
+      for (const a of row.to_addresses || []) if (a) partsForCaseC.add(a.toLowerCase());
+      for (const a of row.cc_addresses || []) if (a) partsForCaseC.add(a.toLowerCase());
+      const claimedPrimary = claimedLead.primaryEmail;
+      const currentLeadPrimaryInParticipants = claimedPrimary && partsForCaseC.has(claimedPrimary);
+      if (!currentLeadPrimaryInParticipants) {
+        let primaryOwner: string | null = null;
+        for (const p of partsForCaseC) {
+          const owner = primaryEmailToLeadId.get(p);
+          if (owner && owner !== row.lead_id) { primaryOwner = owner; break; }
+        }
+        if (primaryOwner) {
+          const canonical = resolveCanonical(primaryOwner);
+          if (canonical && canonical !== row.lead_id && leadById.has(canonical)) {
+            let bucket = redirectsByCanonical.get(canonical);
+            if (!bucket) { bucket = []; redirectsByCanonical.set(canonical, bucket); }
+            bucket.push(row.id);
+            redirectedByPrimary++;
+            continue;
+          }
         }
       }
 
@@ -263,6 +303,7 @@ Deno.serve(async (req) => {
     validated,
     unclaimed,
     redirected_to_canonical: redirected,
+    redirected_by_primary: redirectedByPrimary,
     errors,
     leads_indexed: leadById.size,
     elapsed_ms: Date.now() - startedAt,
