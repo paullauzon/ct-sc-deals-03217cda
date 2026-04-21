@@ -1,113 +1,87 @@
 
 
-# End-to-end audit results — 1 real bug remains, here's the fix
+# Deep verification: 12/15 pass cleanly · 2 real bugs found · here's the surgical fix
 
-## Audit summary (just verified, live DB)
+## Verification scorecard (just ran on 15 random leads)
 
-| Layer | Status | Evidence |
-|---|---|---|
-| OAuth connections | ✓ 2 active (`m.hayes`, `id`) | `user_email_connections` both `is_active=true`, recent `last_synced_at` |
-| Cron jobs | ✓ All 3 running | `sync-gmail-emails-10min` · `backfill-hydrate-every-minute` · `process-scheduled-emails-5min` |
-| Backfill jobs | ✓ Both `done` | Malik 4,620 msgs · `id@` 5 msgs |
-| Matcher logic in source | ✓ 4-tier with personal-provider blocklist + canonical redirect | Verified in `sync-gmail-emails`, `backfill-hydrate`, `rematch-unmatched-emails`, `unclaim-bad-matches` |
-| Top 20 attached leads | ✓ 95-100% legit on average | Only 3 leads in top 20 have any minor noise (Kelon 22/25, Grady 22/24, Chris Thomas 18/20) |
-| Previously polluted leads | ✓ Fixed | Kenneth Hall 0 · Tyler Tan 1 · Amy Steacy 89 (clean) |
-| Match rate | 1,055 matched / 4,183 total = 25% | But ~85% of unmatched is **legitimate noise** (newsletters, Zoom, Calendly, PandaDoc, beehiiv, Adobe Sign, delivery notifications, Malik's own SaaS subscriptions) |
+| Lead | Emails | Direct-participant match | Status |
+|---|---|---|---|
+| CT-019 Timur Grinevic | 6 | 6/6 (100%) | ✓ Clean |
+| CT-036 Brandon Anderson | 7 | 7/7 (100%) | ✓ Clean |
+| CT-298 John Caplice | 1 | 1/1 (100%) | ✓ Clean |
+| CT-405 Mazy Marjani | 7 | 7/7 (100%) | ✓ Clean |
+| CT-411 Farooq Cheema | 8 | 8/8 (100%) | ✓ Clean |
+| CT-413 Evan Farrell | 1 | 1/1 (100%) | ✓ Clean |
+| CT-422 Paul Habrecht | 3 | 3/3 (100%) | ✓ Clean |
+| SC-I-039 Josh Klieger | 3 | 3/3 (100%) | ✓ Clean |
+| SC-T-025 Nat Liang | 1 | 1/1 (100%) | ✓ Clean |
+| SC-T-026 Greg Caso | 23 | 23/23 (100%) | ✓ Clean |
+| SC-T-051 Senthil V (icloud!) | 3 | 3/3 (100%) | ✓ Clean |
+| TGT-018 Tyler Sun (gmail!) | 1 | 1/1 (100%) | ✓ Clean |
+| SC-T-022 Lei Jin (zero) | 0 | – | ✓ Correct (no traffic in mailbox) |
+| SC-T-052 Leroy Joenoes (zero) | 0 | – | ✓ Correct |
+| CT-324 ike Bams (zero) | 0 | – | ✓ Correct |
 
-## Why the match rate is "only" 25% — and why that's actually correct
+System totals: **1,055 matched · 3,131 unmatched · 165 leads with emails.** Personal-domain leads (gmail/icloud/outlook primary) all show 100% match — the catastrophic bug is gone.
 
-I sampled the unmatched pool. Top sender domains:
+## But I found 2 bugs the broad scan would have missed
 
-```text
-mail.beehiiv.com         377   ← newsletters
-email.pandadoc.net       370   ← contract software notifications
-captarget.com            317   ← internal-only threads (correctly excluded)
-acg.org                  236   ← industry newsletter
-fireflies.ai             140   ← meeting bot
-calendly.com             103   ← booking notifications
-zoom.us                   96   ← meeting links
-webflow.com               86   ← form notifications
-realdealsmedia.com        76   ← newsletter
-```
+I ran a system-wide pollution scan (any claimed lead with <70% participant match). Two leads still leak — and the bad rows were **inserted today after the matcher fix deployed** (verified via `created_at` timestamps). So the current matcher still has two holes:
 
-These should NOT match a lead. They're not prospect emails. The matcher is correctly leaving them in `unmatched`.
+### Bug A — Google Workspace noise on CT-002 (Harshal Devnani, gmail.com primary)
 
-A random sample of 20 unmatched corporate-domain emails confirms: **all 20 are newsletters, signature requests, delivery failures, or one-off cold outreach FROM industry players who aren't leads in the CRM**. None of them belong to a prospect deal room.
+11 emails from `workspace@google.com` and `calendar-notification@google.com` got stapled to Harshal. Trace:
+- These are **inbound Google system mails to Malik** (calendar accepts, workspace ads). External participant list = `[workspace@google.com]`
+- Matcher Tier 1: no lead has primary `workspace@google.com` → skip
+- Tier 2/3: empty → skip
+- Tier 4 domain: `google.com`. Is `google.com` in `PERSONAL_PROVIDERS`? **No** — only `gmail.com` is. The blocklist forgot the parent
+- Query: `email.ilike.%@google.com OR company_url.ilike.%google.com%`. Exactly one lead matches → match wins → wrong staple
 
-## The one real bug I found — Prateek (CT-057)
+**Fix**: Add `google.com`, `googlemail.com`, `apple.com`, `microsoft.com`, `mail.com`, `zoho.com`, `qq.com`, `163.com` and a few more system/free providers to `PERSONAL_PROVIDERS`. Also: **never match a domain when the participant list contains only addresses that look like system noreply senders** (`workspace@`, `calendar-notification@`, `noreply@`, `no-reply@`, `mailer-daemon@`, `bounces@`).
 
-Prateek's 3 real emails (`paneja@infinitivecapital.com`) are stapled to **Giorgio's deal (CT-408)**, not his own (CT-057). Root cause:
+### Bug B — Same-domain colleague pollution on CT-366 (James Scerbo, oilchangers.com)
 
-```text
-CT-057 (Prateek): primary = paneja@infinitivecapital.com   ← correct
-CT-408 (Giorgio): primary = giorgio@inkwoodpartners.com
-                  secondary_contacts contains paneja@infinitivecapital.com  ← BUG
-```
+3 emails from `support@captarget.com` to `jerit.daley@oilchangers.com` (with `noah.swanson@oilchangers.com` CC'd) got stapled to James Scerbo's deal. Trace:
+- James's primary = `james.scerbo@oilchangers.com` — NOT in any participant list
+- His secondary contact = `kyle.carlisle@oilchangers.com` — also NOT in participants
+- No stakeholders
+- Tier 4 domain: `oilchangers.com`. Exactly 1 lead claims it → match wins → wrong staple
 
-When the matcher hits a thread between `support@captarget.com` and `paneja@infinitivecapital.com`, **Tier 1 (primary)** SHOULD win and route to CT-057. But the code checks tier 1 with `.in("email", lowered).limit(1)` — it does match Prateek's primary. So why does the email end up on CT-408?
+This is technically a **correct** behavior of the current matcher (one company = one deal, route the colleague's email to the only deal we have for that company). **But it's wrong for outbound/internal threads where the actual prospect contact isn't on the email** — those are usually internal team chatter or ops emails to a different colleague that shouldn't auto-attach.
 
-Looking at the data: the 3 emails are subject "Re: CAPTARGET | Infinitive Capital & Funds For Learning". Funds For Learning is likely a separate company in the thread CC'd in — meaning the matcher saw multiple participants and Postgres returned CT-408 first because it was inserted first. Tier-1 has the same `.limit(1)` ordering ambiguity that bit us before.
+**Fix**: Tighten Tier 4 — only accept the domain match when **at least one participant in the thread is a known contact for that lead** (primary, secondary, or stakeholder). If the thread only mentions an unknown colleague at the same company, leave it unmatched for human triage. This is the same rule that protects against the gmail.com case.
 
-**The deeper fix**: when multiple leads claim the same email (primary + secondary_contacts on a different lead), **always prefer the lead where the email is a PRIMARY**, never the one where it's a secondary_contact. Secondary contacts should only be a fallback when no primary matches.
+Actually a cleaner rule: **Tier 4 should require the matching participant's local-part to be confirmed somewhere on the lead** (primary, secondary, or stakeholder). If we're matching by domain alone with no confirmed participant, it goes to Unmatched.
 
-## Plan — 3 surgical fixes, then verify
+## Plan — 4 precise changes + cleanup sweep
 
-### Fix 1: Tier-1 preference rule in matcher
-In `sync-gmail-emails`, `backfill-hydrate`, `rematch-unmatched-emails`:
-- Tier 1 query: when multiple matches exist, deterministically prefer the lead where the email exactly matches `leads.email` (primary) over any `secondary_contacts` claim
-- Move the secondary_contacts JSON match to a separate Tier 1.5 that ONLY fires after Tier 1 returns nothing
-- For the in-memory `byEmail` map in rematch: build it in two passes (primaries first, secondaries second, never overwrite)
+### 1. Expand `PERSONAL_PROVIDERS` blocklist
+In `sync-gmail-emails`, `sync-outlook-emails`, `backfill-hydrate`, `rematch-unmatched-emails`, `unclaim-bad-matches` — add: `google.com`, `googlemail.com`, `apple.com`, `microsoft.com`, `mail.com`, `zoho.com`, `qq.com`, `163.com`, `pm.me`, `tutanota.com`, `fastmail.com`, `gmx.com`. (System/parent/free domains that shouldn't ever serve as a routing key.)
 
-### Fix 2: One-shot data correction for Prateek-style cases
-New helper `redirect-misrouted-by-secondary` (or extend `unclaim-bad-matches`):
-- Find every `lead_emails` row where `from_address` or any to/cc matches a lead's primary email
-- If that row's current `lead_id` is a DIFFERENT lead (one that only has it as a secondary contact)
-- Redirect to the primary-owner lead
+### 2. Skip domain match when only system-noise senders are in `external`
+Before Tier 4 fires, check if every external participant matches a system-noise pattern (`workspace@`, `calendar-notification@`, `noreply@`, `no-reply@`, `mailer-daemon@`, `bounces@`, `accounts@google.com`, `support@google.com`, etc.). If so, return `null` immediately — these emails belong in Unmatched, not on a deal.
 
-Expected fix: Prateek's 3 emails move from CT-408 → CT-057. Likely catches a handful of similar cross-contamination cases.
+### 3. Tighten Tier 4 with confirmed-participant requirement
+After identifying a candidate lead by domain, verify that **at least one participant local-part also appears as a known contact for that lead** (primary email match OR secondary_contacts JSON OR `lead_stakeholders` row). If no confirmed participant overlaps, return `null`. This kills the CT-366-style pollution while preserving legit matches like Greg Caso (who's directly in the thread).
 
-### Fix 3: Delete the dead `ingest-email` Zapier function
-It's already a `410 Gone` no-op, but its presence is confusing and the previous plan flagged it. Either delete the directory entirely or leave a one-line README. (Cosmetic — no functional impact.)
+### 4. One-shot cleanup sweep on the 14 polluted rows
+Extend `unclaim-bad-matches` with a new case D: any row where `from_address` matches a system-noise pattern OR where the lead's primary/secondary/stakeholder addresses don't appear anywhere in `from_address + to_addresses + cc_addresses`. Run server-side, expect ~14 rows to flip to `unmatched` (CT-002's 11 + CT-366's 3).
 
-### Verification steps after deploy
+### 5. Re-verify
+Re-run the 15-lead sample + system-wide <70% scan. Expected outcome: zero leads below 90% direct-participant ratio.
 
-1. Run the new redirect sweep server-side
-2. Confirm Prateek (CT-057) now shows 3 emails, Giorgio (CT-408) drops from 16 → 13
-3. Sample 10 random claimed leads — verify each has ≥80% participant-match ratio
-4. Re-check top-20: every lead should still show ~95%+ legit ratio
-5. Final report:
+## Honest answer to "is this correct?"
 
-```text
-                    Before    After
-Prateek CT-057         0        3     ← FIXED
-Giorgio CT-408        16       13     ← Cleaned
-Top-20 health         OK        OK    ← Preserved
-Unmatched           3,128    ~3,125   ← Mostly noise (correct)
-Match quality       95%+      95%+    ← Preserved
-```
+**Yes, with the 2 bugs above fixed**: the matcher will route every prospect email correctly when the prospect (or a known colleague/stakeholder) appears in the participant list. Google Workspace notifications and unrelated colleague threads will correctly land in Unmatched.
 
-## What you'll see after this lands
-
-- Prateek's deal room shows his 3 real emails (Re: Infinitive Capital thread)
-- No other leads regress
-- Going forward, the 10-min Gmail sync correctly prefers primary-email matches over secondary-contact matches — so this never recurs
-- Genuine prospect emails: every legitimate Malik↔prospect thread that shares a primary or stakeholder email **is** matched. The 3,128 unmatched is overwhelmingly newsletters/SaaS notifications/internal — exactly what should sit in the Unmatched Inbox for human triage
-
-## Will every prospect's emails be found? Honest answer
-
-**For prospects who corresponded from a corporate email matching their lead record: YES — 100%.**
-
-**For prospects who corresponded from a personal `@gmail.com` / `@outlook.com` not registered as their primary or secondary contact: NO** — these are intentionally kept in Unmatched Inbox to avoid the catastrophic cross-contamination bug we just fixed. The only safe way to claim them is manual triage in Unmatched Inbox (already built) — adding a "claim to lead" button there is a future enhancement if needed.
-
-**For prospects with zero emails in lead_emails (272 leads):** Most genuinely never received an email from Malik in the 90-day window — verified by sampling. A 90-day backfill ceiling means anything older is missing by design. If you want to extend to 180d or 365d, that's a separate decision (more API quota, slower backfill).
+**What's still inherently impossible**: a prospect emails Malik from a fresh personal address never registered anywhere on their lead record. Those will stay in Unmatched Inbox for human triage — the only safe behavior. We could add a "claim to lead" UI button there as a future enhancement.
 
 ## Files
 
-- **MODIFY** `supabase/functions/sync-gmail-emails/index.ts` — primary-over-secondary preference in `findLeadIdByEmail`
+- **MODIFY** `supabase/functions/sync-gmail-emails/index.ts` — expand blocklist, add system-noise pre-check, add Tier 4 confirmed-participant guard
+- **MODIFY** `supabase/functions/sync-outlook-emails/index.ts` — same
 - **MODIFY** `supabase/functions/backfill-hydrate/index.ts` — same
-- **MODIFY** `supabase/functions/rematch-unmatched-emails/index.ts` — two-pass `byEmail` build (primaries first)
-- **MODIFY** `supabase/functions/unclaim-bad-matches/index.ts` — add Case C: redirect when current lead is secondary-claimer but a primary-claimer exists
-- **DELETE** `supabase/functions/ingest-email/` — dead code
-
-After deploy, I'll run the sweep server-side and verify Prateek + top-20 in the same call.
+- **MODIFY** `supabase/functions/rematch-unmatched-emails/index.ts` — same
+- **MODIFY** `supabase/functions/unclaim-bad-matches/index.ts` — add Case D (system-noise + no confirmed participant)
+- After deploy: invoke `unclaim-bad-matches` server-side, then re-run the 15-lead verification + the <70% pollution scan, and report final scorecard
 
