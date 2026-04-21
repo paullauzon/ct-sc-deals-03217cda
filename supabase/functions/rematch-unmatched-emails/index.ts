@@ -21,6 +21,13 @@ const corsHeaders = {
 
 const INTERNAL_DOMAINS = new Set(["captarget.com", "sourcecodeals.com"]);
 
+// Personal mailbox providers — NEVER infer a lead from these domains.
+const PERSONAL_PROVIDERS = new Set([
+  "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com",
+  "aol.com", "msn.com", "live.com", "me.com", "mac.com", "protonmail.com",
+  "proton.me", "yahoo.co.uk", "googlemail.com", "ymail.com",
+]);
+
 // Senders that will never map to a lead — newsletters, transactional notifications,
 // generic service domains. Skipped on the fast path so we don't waste lookups.
 const NOISE_DOMAINS = new Set([
