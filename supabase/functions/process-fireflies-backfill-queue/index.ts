@@ -77,7 +77,14 @@ Deno.serve(async (req) => {
     const leadMap = new Map<string, any>();
     (leads ?? []).forEach((l: any) => leadMap.set(l.id, l));
 
+    const tickStart = Date.now();
     for (const row of rows) {
+      // Hard wall-clock guard — bail BEFORE starting another lead if we're close
+      // to the 150s edge timeout. Remaining rows stay 'pending' for the next tick.
+      if (Date.now() - tickStart > WALL_BUDGET_MS) {
+        errors.push(`wall-budget reached after ${processed} leads, deferring rest`);
+        break;
+      }
       processed++;
       const lead = leadMap.get(row.lead_id);
       if (!lead) {
