@@ -1,88 +1,110 @@
 
 
-# Calendly meeting coverage audit + full historical backfill
+# Fireflies enrichment for 190 leads — background queue, no timeouts
 
-## Audit results (live DB)
+## Current state
 
-**347 leads** in the dashboard sit at "Meeting Set" or beyond (so they all should have at least one Calendly meeting). Today only **92 (27%)** have `calendly_booked_at` stamped. That's the gap.
+- **190 leads** have `calendly_booked_at` linked
+- **29** already have full transcripts (≥200 chars)
+- **161** are missing transcripts and need enrichment (132 Captarget + 29 SourceCo)
+- Date spread: 79 within 90d, 43 within 1y, 24 within 2y, 15 older than 2y
+- Existing `sync-fireflies-post-meeting` only handles a 10-min–2hr window (recent bookings only) — won't scale to historical backfill
+- `fetch-fireflies` already supports multi-signal matching (email, name, domain, company) with nickname maps and a 1000-transcript scan cap per call
 
-Breaking down the 347:
+## The 3 hard constraints
 
-| Bucket | Count | What it means |
-|---|---|---|
-| Has `calendly_booked_at` ✅ | 92 | Calendly-linked, fully synced |
-| Has `meeting_date` only (no Calendly link) | 149 | Imported from CSV — meeting happened but never tied to Calendly event |
-| Totally missing meeting data | 106 | Lead at Meeting Set+ stage with NO meeting_date AND no calendly_booked_at — historical Closed Lost rows from the bulk seed |
+1. **Edge function wall-time = 100s** — looping over 161 leads inline will time out around lead #15
+2. **Fireflies API rate limits** — GraphQL calls are not free; bulk-firing 161 parallel requests will get throttled (429)
+3. **Fireflies transcript retention** — older meetings (>1y) may not be in the API anymore, so we'll never get 100% coverage
 
-By stage, the Closed Lost bucket is the biggest gap (253 Captarget + 30 SourceCo Closed Lost; only 42+16 Calendly-linked). These are real historical meetings worth ~3–4 years of Malik's calendar.
+## Recommended architecture: persistent queue + cron drainer
 
-## The real constraint — current `backfill-calendly` only fetches 90 days
+Mirror the proven `fireflies_retry_queue` + `process-fireflies-retry-queue` pattern that's already shipping. Reuse the same table — no new schema needed.
 
-```ts
-// backfill-calendly/index.ts line 92
-const minStart = new Date(Date.now() - 90 * 86400000).toISOString();
+```text
+        ┌───────────────────────────────────┐
+        │  POST /enqueue-fireflies-backfill │  ← one-shot kickoff
+        │  (scans 161 leads, inserts queue) │
+        └─────────────────┬─────────────────┘
+                          │
+                          ▼
+        ┌───────────────────────────────────┐
+        │   fireflies_retry_queue (table)   │  ← 161 pending rows
+        └─────────────────┬─────────────────┘
+                          │ every 10 min
+                          ▼
+        ┌───────────────────────────────────┐
+        │ process-fireflies-backfill-queue  │  ← NEW cron drainer
+        │   - claims 8 rows per tick        │
+        │   - searches via fetch-fireflies  │
+        │   - writes transcript + intel     │
+        │   - on miss: backoff or gave_up   │
+        └───────────────────────────────────┘
 ```
 
-Earliest meeting in the DB is **2022-02-07** — almost 4 years before the 90-day Calendly window. The Calendly API itself accepts arbitrary `min_start_time` values, so the limit is purely our code.
+### Why a separate drainer (not the existing retry runner)
 
-Pagination cap is also 10 pages (1,000 events). Malik likely has 2,000–5,000 historical events across 4 years.
+The existing `process-fireflies-retry-queue` re-fetches by **known firefliesId** (path: re-fetch). For these 161 leads we DON'T know the firefliesId yet — we have a Calendly booking time + invitee email and need to **search** Fireflies for it. That's a different code path. The new drainer calls `fetch-fireflies` with `searchEmails`/`searchNames`/`searchDomains` + `since`/`until` window of ±48h around `calendly_booked_at`.
 
 ## What I'll build
 
-A **one-time full-history Calendly backfill** that:
+### 1. `enqueue-fireflies-backfill` (new edge function)
 
-1. **Removes the 90-day cap** — accepts a `?since=YYYY-MM-DD` query param defaulting to `2019-01-01` (well before earliest known meeting)
-2. **Removes the 10-page cap** — paginates until `next_page` is null, no limit
-3. **Includes cancelled events too** — currently filters `status=active`, but Calendly meetings that were rebooked or cancelled still represent a real touch point and the original lead should be stamped (with `meeting_outcome='cancelled'`)
-4. **Smarter linking on backfill** — current code only stamps when `lead.email` matches `invitee.email` exactly. Extend to also check `secondary_contacts` JSONB and `lead_stakeholders` so a CFO/attorney calendar invite stitches onto the right lead (mirrors the email matcher we just shipped)
-5. **Doesn't downgrade existing data** — never overwrites a `meeting_date` that's newer than the Calendly event (handles the "lead booked twice" case correctly)
-6. **Resilient pagination** — self-reschedules via fire-and-forget POST to itself if it hits 100s wall-time, using a checkpoint cursor stored in a small `calendly_backfill_jobs` row (mirror of email backfill pattern)
-7. **Writes summary** — counts of: events scanned, leads stamped, leads advanced from pre-meeting stages, leads not matched, returns the unmatched list so we can manually review
+One-shot kickoff. Scans all 161 eligible leads, inserts queue rows with `next_attempt_at` staggered 30s apart so the cron drainer picks them up gradually instead of all at once.
 
-## Output for Malik (the reason to do this turn)
+- Pulls leads where `calendly_booked_at <> ''` AND transcript missing
+- Stores `lead_id`, `meeting_date_iso` (in `last_error` field as JSON metadata, repurposing existing schema), `attempts=0`, `max_attempts=3`
+- Skips any already in queue (dedup by `lead_id`)
+- Returns count of newly enqueued
 
-After the backfill completes you get a result JSON like:
+### 2. `process-fireflies-backfill-queue` (new edge function, cron'd)
 
-```json
-{
-  "success": true,
-  "eventsScanned": 3847,
-  "leadsAdvanced": 12,
-  "leadsStamped": 184,
-  "alreadyStamped": 92,
-  "unmatchedInvitees": 1247,
-  "byBrandStamped": { "Captarget": 142, "SourceCo": 42 }
-}
-```
+Drainer that ticks every 10 min via pg_cron. Each tick:
 
-You'll see exactly which leads now have Calendly meetings tied to them, and the 1,200+ "unmatched" Calendly invitees that aren't in the CRM (those are people who booked but never submitted a form — separate cleanup).
+- Claims up to **8 rows** (well under the 100s budget @ ~10s per Fireflies search)
+- For each: calls `fetch-fireflies` with email/name/domain matchers + 48h window around `calendly_booked_at`
+- On match: writes transcript to `fireflies_transcript`, `fireflies_summary`, `fireflies_url`, appends to `meetings[]`, runs `process-meeting` for AI intelligence extraction
+- On no match within retention: marks `gave_up` with reason "not_in_fireflies_api"
+- On fetch error: exponential backoff (5m → 30m → 2h)
+- Logs to `cron_run_log` for Automation Health visibility
 
-## What this enables next turn
+### 3. Cron schedule
 
-Once every lead at Meeting Set+ has its real Calendly event timestamps, **the Fireflies enrichment pass** you mentioned can match accurately on `(meeting_date ± 24h, attendee email)` instead of guessing. The current `sync-fireflies-post-meeting` already uses this pattern but only fires for the 92 leads with `calendly_booked_at`. After this build it'll fire for ~280 leads and pull all their historical transcripts.
+Add pg_cron entry: `*/10 * * * *` → POST to drainer.
 
-## Files touched
+At 8 rows / 10 min = **48 leads/hour** throughput. Full backlog clears in **~3.5 hours** automatically. No timeouts because each tick is bounded.
 
-- `supabase/functions/backfill-calendly/index.ts` — remove 90d cap, remove 10-page cap, add `?since=` and `?include_cancelled=true` params, extend matcher to `secondary_contacts` + `lead_stakeholders`, never-downgrade logic, self-reschedule on wall-time
+### 4. Progress visibility
 
-## What I'm NOT doing this turn (per your instruction)
+Add a SQL view counting `pending / done / gave_up` so you can monitor: `SELECT status, COUNT(*) FROM fireflies_retry_queue WHERE created_at > now() - interval '1 day' GROUP BY status;`
 
-- **Fireflies enrichment** — separate request after this audit
-- **Promoting unmatched Calendly invitees to leads** — flagged in output but not auto-created (these are mostly old ghost prospects)
-- **UI changes** — backfill is a one-shot edge function call, no panel needed
-- **Re-running for every connected calendar in Calendly org** — keep `CALENDLY_DEFAULT_OWNER = "Malik"` since 100% of Calendly traffic is his calendar per project memory
+## Realistic outcome
 
-## Decisions baked in
+| Bucket | Leads | Expected hit rate | Reason |
+|---|---|---|---|
+| Last 90d | 79 | ~80% (63) | Fully retained in Fireflies API |
+| 90d–1y | 43 | ~50% (22) | Partial retention, depends on plan |
+| 1–2y | 24 | ~20% (5) | Most aged out |
+| >2y | 15 | ~5% (1) | Nearly all aged out |
+| **Total** | **161** | **~57% (~91)** | |
 
-1. **Backfill since date**: `2019-01-01` — covers all known leads (earliest meeting is 2022)
-2. **Cancelled events**: included, stamped with `meeting_outcome='cancelled'` so they're visible but don't pollute "Meeting Held" counts
-3. **Stage advancement**: only advance pre-meeting stages (`New Lead`/`Contacted`/`Qualifying`) → `Meeting Set`. Never re-advance a lead already at a later stage
-4. **Owner**: hardcoded `Malik` (matches existing logic and project memory)
+After the drain: ~120 of 190 leads (63%) will have full transcripts, up from 29 (15%). The remaining ~70 will be marked `gave_up` with a clear reason — those are historical meetings genuinely no longer in Fireflies' API.
+
+## Files I'll create
+
+- `supabase/functions/enqueue-fireflies-backfill/index.ts` — kickoff scanner
+- `supabase/functions/process-fireflies-backfill-queue/index.ts` — cron drainer
+- `supabase/config.toml` — register both functions
+- One SQL migration: pg_cron schedule for the drainer
+
+## What I'm NOT doing
+
+- **No bulk parallel calls** — strict serial drain per tick to respect Fireflies rate limits
+- **No UI** — all background, surfaces in existing Automation Health panel via `cron_run_log`
+- **No retry beyond 3 attempts** — Fireflies retention is binary; if we miss 3 times the meeting genuinely isn't there
+- **Not touching the 77 unmatched-Calendly leads** — those need Calendly link first (separate prior work)
 
 ## After this build
 
-- Run `backfill-calendly?since=2019-01-01&include_cancelled=true` once
-- All ~280 leads at Meeting Set+ get their true Calendly meeting timestamps
-- Result JSON shows exactly what was stamped and what wasn't
-- Next turn: targeted Fireflies enrichment using those timestamps
+You trigger `enqueue-fireflies-backfill` once. Drain runs autonomously over ~3.5 hours. Check progress anytime with the queue counts. No manual intervention, no timeout risk, no rate-limit explosions.
 
