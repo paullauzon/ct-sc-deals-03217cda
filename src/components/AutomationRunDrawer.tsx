@@ -100,6 +100,8 @@ export function AutomationRunDrawer({ open, onClose, invocation }: Props) {
     setElapsed(0);
     setProgress(null);
     setBacklog(null);
+    sessionLeadIdsRef.current = { recovered: new Set(), gaveUp: new Set() };
+    setSessionTouched({ recovered: 0, gaveUp: 0 });
 
     pushEvent(setEvents, {
       ts: start,
