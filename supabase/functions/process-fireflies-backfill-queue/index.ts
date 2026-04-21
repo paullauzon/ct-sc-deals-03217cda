@@ -237,6 +237,17 @@ Deno.serve(async (req) => {
 });
 
 async function scheduleNextOrGiveUp(supabase: any, row: any, errMsg: string) {
+  // Fail-fast: when Fireflies simply doesn't have the meeting (likely past
+  // their ~90d retention window), retrying is pointless. Mark gave_up
+  // immediately so the queue drains in minutes instead of hours. Only
+  // backoff on transient errors (HTTP 5xx, timeouts, rate limits, etc.).
+  const isTerminal = errMsg === "not_in_fireflies_api"
+    || errMsg === "lead not found"
+    || errMsg === "invalid calendly_booked_at";
+  if (isTerminal) {
+    await markGaveUp(supabase, row.id, errMsg);
+    return;
+  }
   const next = row.attempts + 1;
   if (next >= row.max_attempts) {
     await markGaveUp(supabase, row.id, errMsg);
