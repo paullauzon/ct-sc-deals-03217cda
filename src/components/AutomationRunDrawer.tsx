@@ -67,6 +67,12 @@ export function AutomationRunDrawer({ open, onClose, invocation }: Props) {
   const [restoredFromCache, setRestoredFromCache] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [backlog, setBacklog] = useState<{ pending: number; gaveUp: number; done: number } | null>(null);
+  // Track which lead IDs were touched in *this* drawer session (for the "Show me…" filter buttons).
+  const sessionLeadIdsRef = useRef<{ recovered: Set<string>; gaveUp: Set<string> }>({
+    recovered: new Set(),
+    gaveUp: new Set(),
+  });
+  const [sessionTouched, setSessionTouched] = useState({ recovered: 0, gaveUp: 0 });
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const invocationKey = invocation ? `${invocation.endpoint}:${invocation.jobName}` : null;
