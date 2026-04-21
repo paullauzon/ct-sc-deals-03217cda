@@ -1,71 +1,80 @@
 
 
-# Live Automation Progress Drawer
+# Verification + the missing piece that's hiding all the activity
 
-## What you'll get
+## Ground truth (just verified live)
 
-When you click ▷ on any automation row, instead of "fire and wait for one toast," a slide-out **Run Drawer** opens immediately and streams everything happening — heartbeats, items processed, errors, partial results — in real time, until the function ends (or until the gateway kills it).
+| Signal | Reality | Verdict |
+|---|---|---|
+| Backfill queue | **24 gave_up · 137 pending** (was 0/161) | Working |
+| Cron ticks | Last 8 ticks all logged successfully (15:05, 15:06, 15:07, …) | Healthy |
+| Per-item logs | Every lead emits an `item` row (`gave_up · not_in_fireflies_api`) | Healthy |
+| Heartbeats | Every tick writes a `heartbeat:true` row within ~300ms | Healthy |
+| Realtime publication on `cron_run_log` | **NOT enabled** | **Bug** |
+| Realtime publication on `fireflies_retry_queue` | **NOT enabled** | **Bug** |
 
-## How it will look
+Bottom line: the **backend is doing everything correctly**, but the drawer is staring at a Realtime channel that has nothing to deliver because neither table is in the `supabase_realtime` publication. That's why your drawer screenshot says "Waiting for first heartbeat…" 5 seconds in even though a heartbeat was just written to disk.
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│ ▶ Fireflies backfill queue                       LIVE • │
-│ Started 14:52:03 · 47s elapsed                          │
-├─────────────────────────────────────────────────────────┤
-│ Progress                                                │
-│  ▓▓▓▓▓▓░░░░░░░░░░  3 / 5 leads (this tick)              │
-│  Backlog: 145 pending · 16 gave up · 0 matched          │
-│                                                         │
-│ Live event stream                                       │
-│  14:52:03  ▶ invoked process-fireflies-backfill-queue   │
-│  14:52:04  • heartbeat logged · claimed 5 rows          │
-│  14:52:09  ✓ lead a3f1… not in Fireflies API → gave_up  │
-│  14:52:31  ✓ lead 9b22… not in Fireflies API → gave_up  │
-│  14:52:48  ⏳ fetching lead c7e9…                        │
-│  …                                                       │
-│                                                         │
-│ Final result (when done)                                │
-│  processed 3 · recovered 0 · gave up 3 · 142 pending    │
-└─────────────────────────────────────────────────────────┘
+## Why "0 done" but 24 classified?
+
+The drawer's "Backlog: 138 pending · 23 gave up · 0 done" is correct — `done` only ticks up when Fireflies *recovers* a transcript. The 23 `gave_up` are leads where Fireflies' API confirmed it has no recording (likely past their ~90 day retention). That's a permanent terminal state, not a failure.
+
+After full drain, expect: **~150 gave_up + maybe 5-10 done**. The recovery rate is low because the booked meetings are old enough that Fireflies discarded the transcripts.
+
+## What I need to fix (one migration + one drawer polish)
+
+### 1. Enable Realtime on both tables (migration)
+
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE public.cron_run_log;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.fireflies_retry_queue;
+ALTER TABLE public.cron_run_log REPLICA IDENTITY FULL;
+ALTER TABLE public.fireflies_retry_queue REPLICA IDENTITY FULL;
 ```
 
-## What changes
+This is the only reason the drawer looks dead. After this lands, every heartbeat and per-lead classification streams into the drawer within 100-300ms of the database commit.
 
-### 1. New `RunDrawer` component (`src/components/AutomationRunDrawer.tsx`)
-A right-side `Sheet` that opens the moment you click ▷. It shows:
-- Function name, start time, live elapsed seconds
-- A **live event stream** (newest at bottom) of every heartbeat / per-item update
-- A mini progress bar with current-batch and overall-backlog counts
-- The final JSON return when the function completes
-- "Working" indicator that pulses while the run is live, switches to "Done" / "Errored" / "Timed out by gateway" at the end
+### 2. Add a polling fallback to the drawer (belt + suspenders)
 
-### 2. Live data sources (no polling guesswork)
-The drawer combines three live feeds via Supabase Realtime:
-- **`cron_run_log`** — listens for new INSERTs filtered by `job_name`, so each `heartbeat: true` and final row appears as it commits
-- **`fireflies_retry_queue`** — listens for UPDATEs on backfill rows, so per-lead status flips (`pending → done/gave_up`) stream in
-- **Function return payload** — when the `invoke()` promise resolves (or rejects with timeout), the final summary lands in the same stream
+Even with Realtime enabled, add a 3-second poll that fetches new `cron_run_log` rows for this `job_name` since the drawer opened. This guarantees events render even if the Realtime channel disconnects. The poll de-dupes against existing events (already handled by `pushEvent`).
 
-This works for every job because all of them already use the shared `logCronRun` helper. For jobs that don't write per-item rows, the stream simply shows: invoked → heartbeat (if any) → final result.
+### 3. "Final results" panel after run completes
 
-### 3. Wire into AutomationHealthPanel
-- Replace today's "fire toast and forget" `runNow()` with: open the drawer, then invoke the function in the background. The drawer owns the rest of the UX.
-- Keep the existing toast as a fallback for the "Run all daily" button (which fires 5 jobs in parallel — drawer doesn't make sense there).
-- Add a small **"View live"** link on every row's status cell so you can re-open the drawer for the most recent run any time, even after closing it.
+When the drawer finishes (the function returns OR all in-flight ticks settle), show a clean summary block:
 
-### 4. Coverage for gateway-killed runs
-If `invoke()` throws "context canceled" or "504", the drawer doesn't show "Failed." It shows: **"Edge gateway killed the request after 150s — Postgres updates already committed are visible above. The function will continue on its next cron tick."** This matches reality (we already verified work commits before the kill).
+```text
+┌───────────────────────────────────────────────┐
+│ FINAL RESULTS                                 │
+│                                               │
+│ Backlog drained                               │
+│   ✓ 7 leads classified this drawer session    │
+│   ✓ 0 transcripts recovered                   │
+│   ✓ 7 marked "not in Fireflies API"           │
+│                                               │
+│ Remaining backlog                             │
+│   • 130 leads pending — next cron tick in 4m  │
+│   • Estimated full drain: ~2.5 hours          │
+│                                               │
+│ [ Show me the recovered leads ] (if any)      │
+│ [ Show me the gave-up leads ]                 │
+└───────────────────────────────────────────────┘
+```
 
-### 5. Persist last-run snapshot per job
-The drawer stores the last-completed run in `localStorage` keyed by job name, so reopening it shows the previous result instantly instead of an empty drawer until the next click.
+The "Show me the …" buttons filter the leads grid to those touched in this session (using the lead IDs we streamed) so you can audit each outcome.
 
 ## Files
 
-- **NEW** `src/components/AutomationRunDrawer.tsx` — the live drawer (Realtime subscriptions, event log, progress bar, final summary)
-- **MODIFY** `src/components/AutomationHealthPanel.tsx` — open drawer instead of one-shot toast; add "View live" link per row
-- **MODIFY** `supabase/functions/process-fireflies-backfill-queue/index.ts` — emit one extra `logCronRun(..., "success", n, { item: leadId, classification })` after every per-lead decision, so the drawer's event stream is dense (not just two heartbeats). Skip if it would push us past the 90s wall budget.
+- **NEW migration** — `ALTER PUBLICATION supabase_realtime ADD TABLE …` for both tables + `REPLICA IDENTITY FULL`
+- **MODIFY `src/components/AutomationRunDrawer.tsx`**:
+  - Add 3-second polling fallback for `cron_run_log` rows since `startedAt`
+  - Add "Final results" summary block after status flips to `done`/`killed`
+  - Add two action buttons that emit a custom event the parent can listen to (or just deep-link to a filtered leads view)
 
-## Why this fixes the "I clicked and nothing happened" problem permanently
+## What you'll see right after this lands
 
-You'll never again wonder if a click did anything. The drawer opens in <100ms, shows "invoked," then streams every database commit live. Even if the gateway kills the function, you see exactly what got done before the kill — and the drawer tells you the next cron tick will pick up where this one stopped.
+1. Click ▷ → drawer opens
+2. Within 1 second: `Heartbeat logged · claimed 5 rows`
+3. Every 5-30 seconds for the next ~90s: `Lead CT-XXX → gave_up (not_in_fireflies_api)` lines stream in
+4. Final summary card shows counts + actionable filter links
+5. Drawer pill flips from `LIVE` → `DONE` (or `GATEWAY KILL` if the function ran past 150s — same story, work still committed)
 
