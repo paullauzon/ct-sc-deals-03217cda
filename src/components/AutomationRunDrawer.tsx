@@ -431,6 +431,107 @@ export function AutomationRunDrawer({ open, onClose, invocation }: Props) {
   );
 }
 
+function FinalResultsPanel({
+  status,
+  sessionTouched,
+  backlog,
+  invocation,
+  sessionLeadIdsRef,
+}: {
+  status: "done" | "errored" | "killed";
+  sessionTouched: { recovered: number; gaveUp: number };
+  backlog: { pending: number; gaveUp: number; done: number } | null;
+  invocation: RunInvocation | null;
+  sessionLeadIdsRef: React.MutableRefObject<{ recovered: Set<string>; gaveUp: Set<string> }>;
+}) {
+  const isBackfill = invocation?.jobName === "process-fireflies-backfill-queue"
+    || invocation?.endpoint === "process-fireflies-backfill-queue";
+  const totalTouched = sessionTouched.recovered + sessionTouched.gaveUp;
+  // Estimate full drain: pending leads at ~5 per 5-min tick = 60/hr.
+  const drainEtaText = backlog && backlog.pending > 0
+    ? `~${Math.max(1, Math.ceil(backlog.pending / 60))} hour${Math.ceil(backlog.pending / 60) === 1 ? "" : "s"}`
+    : "—";
+
+  const openLeadsFiltered = (kind: "recovered" | "gaveUp") => {
+    const ids = Array.from(sessionLeadIdsRef.current[kind]);
+    if (ids.length === 0) return;
+    // Best-effort: emit a custom event the rest of the app can pick up to filter the leads grid.
+    window.dispatchEvent(new CustomEvent("lov:filter-leads-by-ids", { detail: { ids, source: `backfill-${kind}` } }));
+    // Also navigate to the leads view if not already there.
+    if (!window.location.hash.includes("view=leads")) {
+      window.location.hash = "view=leads";
+    }
+  };
+
+  return (
+    <div className="px-6 py-4 border-t border-border bg-secondary/30 space-y-3">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Final results</div>
+
+      {isBackfill ? (
+        <>
+          <div className="space-y-1.5">
+            <div className="text-xs font-medium text-foreground/90">This session</div>
+            <div className="text-xs text-foreground/80 tabular-nums space-y-0.5">
+              <div>· {totalTouched} lead{totalTouched === 1 ? "" : "s"} classified</div>
+              <div>· {sessionTouched.recovered} transcript{sessionTouched.recovered === 1 ? "" : "s"} recovered</div>
+              <div>· {sessionTouched.gaveUp} marked “not in Fireflies API”</div>
+            </div>
+          </div>
+
+          {backlog && (
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-foreground/90">Remaining backlog</div>
+              <div className="text-xs text-foreground/80 tabular-nums space-y-0.5">
+                <div>· {backlog.pending} pending — next cron tick within 5m</div>
+                <div>· Estimated full drain: {drainEtaText}</div>
+                <div className="text-muted-foreground">· {backlog.done} recovered · {backlog.gaveUp} gave up (lifetime)</div>
+              </div>
+            </div>
+          )}
+
+          {(sessionTouched.recovered > 0 || sessionTouched.gaveUp > 0) && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {sessionTouched.recovered > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px]"
+                  onClick={() => openLeadsFiltered("recovered")}
+                >
+                  Show recovered leads ({sessionTouched.recovered})
+                  <ExternalLink className="h-3 w-3 ml-1.5" />
+                </Button>
+              )}
+              {sessionTouched.gaveUp > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px]"
+                  onClick={() => openLeadsFiltered("gaveUp")}
+                >
+                  Show gave-up leads ({sessionTouched.gaveUp})
+                  <ExternalLink className="h-3 w-3 ml-1.5" />
+                </Button>
+              )}
+            </div>
+          )}
+
+          {status === "killed" && (
+            <div className="text-[11px] text-muted-foreground italic pt-1">
+              Edge gateway killed the request after ~150s, but every classification above is committed. The next cron tick continues from here.
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="text-xs text-foreground/80">
+          Run {status === "done" ? "completed" : status === "killed" ? "was killed by gateway (work above is safe)" : "errored"}.
+          See payload below for details.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EventRow({ ev }: { ev: StreamEvent }) {
   const { Icon, tone } = iconFor(ev.kind);
   return (
