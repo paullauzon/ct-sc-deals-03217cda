@@ -15,7 +15,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Loader2, Inbox, Link2, Trash2, Check, ChevronsUpDown, Search } from "lucide-react";
+import { Loader2, Inbox, Link2, Trash2, Check, ChevronsUpDown, Search, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
@@ -44,6 +44,7 @@ export function UnmatchedInbox() {
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [leads, setLeads] = useState<LeadOption[]>([]);
+  const [rematching, setRematching] = useState(false);
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = async () => {
@@ -149,6 +150,33 @@ export function UnmatchedInbox() {
     setBusyId(null);
   };
 
+  const rematchAll = async () => {
+    if (rematching) return;
+    if (!window.confirm(`Re-run the matcher across all ${emails.length} unmatched emails? Rows linked to a lead will move out of this inbox automatically.`)) return;
+    setRematching(true);
+    const toastId = toast.loading("Re-matching unmatched emails…");
+    try {
+      const { data, error } = await supabase.functions.invoke("rematch-unmatched-emails", {
+        body: { limit: 2000 },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Re-match failed");
+      const matched = data.matched ?? 0;
+      const remaining = data.remaining_unmatched ?? null;
+      toast.success(
+        matched === 0
+          ? "No new matches — remaining rows are genuinely unclaimable"
+          : `Matched ${matched} email${matched === 1 ? "" : "s"}${remaining != null ? ` · ${remaining} still unmatched` : ""}`,
+        { id: toastId, duration: 5000 },
+      );
+      await load();
+    } catch (e: any) {
+      toast.error(e.message || "Re-match failed", { id: toastId });
+    } finally {
+      setRematching(false);
+    }
+  };
+
   const dismiss = async (emailId: string) => {
     if (!window.confirm("Permanently delete this unmatched email?")) return;
     setBusyId(emailId);
@@ -173,8 +201,23 @@ export function UnmatchedInbox() {
             Synced emails that couldn't be linked to a lead. Claim them manually or dismiss noise.
           </p>
         </div>
-        <div className="text-xs text-muted-foreground">
-          {emails.length} unmatched
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs"
+            onClick={rematchAll}
+            disabled={rematching || emails.length === 0}
+          >
+            {rematching ? (
+              <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> Re-matching…</>
+            ) : (
+              <><Wand2 className="h-3 w-3 mr-1.5" /> Re-run matcher</>
+            )}
+          </Button>
+          <div className="text-xs text-muted-foreground">
+            {emails.length} unmatched
+          </div>
         </div>
       </div>
 
