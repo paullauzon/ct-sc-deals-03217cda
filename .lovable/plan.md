@@ -1,77 +1,52 @@
 
 
-# Why the button looks like it does nothing — and what's actually true under the hood
+# Verified: it IS working — but the panel is lying about "Stale"
 
-## The truth (verified against the live DB right now)
+## Ground truth (just verified against live DB)
 
-The button **IS working perfectly**. Two things are conspiring to make it look broken:
+| Signal | Reality |
+|---|---|
+| pg_cron ticks (last 50 min) | **10/10 succeeded** at exact 5-min intervals (14:05, 14:10, …, 14:50) |
+| Queue rows actually updated in last 15 min | **7 rows touched** |
+| Backlog progress | **16 gave_up · 145 pending** (was 0 / 161 an hour ago) |
+| `cron_run_log` entries in last 30 min | **Only 1** (14:42) — that's why panel shows "Stale" |
+| Manual curl just now | **Context-canceled** (function ran past gateway window) |
 
-### 1. You're clicking the wrong button for what you want
+So the work is happening — the panel just isn't seeing it because the function sometimes runs long enough to be killed before its final `logCronRun()` call fires.
 
-The screenshot shows you clicked **"Fireflies backfill enqueue"** (the small ▷ play icon on the right of that row). That function's job is *only* to scan leads and add them to the queue — and **all 161 are already queued**. So it correctly returns `noop · 0 items` in 200ms. From the UI it looks like "nothing happened" because nothing needed to happen.
+## Why "Stale · about 1 hour ago"
 
-What you actually want to click to *make leads get enriched* is **"Drain now"** on the Fireflies backfill progress widget. That button calls the *drainer* (`process-fireflies-backfill-queue`), which is the thing that actually fetches transcripts.
+`AutomationHealthPanel` reads the most recent `cron_run_log` row per job. When the function is killed mid-flight (context canceled by the edge gateway after ~150s), the `try { … logCronRun … } catch` block never reaches the log write. So even though pg_cron successfully invoked it 10 times, only 1 of those 10 produced a log entry.
 
-### 2. The drainer IS running and it IS working — but it's almost done finding nothing
+The work still gets done — Postgres updates committed before the kill stay committed — but the panel is blind to it.
 
-Hard data from the queue right now (14:00 UTC):
-- 161 pending · **0 done · 0 gave_up**
-- Last drainer run 13:42 UTC: processed 3, **recovered 0**, scheduled rest for retry
-- Earlier run 11:22 UTC: processed 2, recovered 0
-- The drainer has tried 31 leads so far — **0 transcripts found**
-- Average attempts on pending rows: 0.22 (most haven't even been touched yet because they keep getting backed-off into the future after each failed attempt)
+## Fix — three small, surgical changes
 
-**Why 0 are recovered:** Fireflies' API only retains transcripts for ~90 days on most plans. Of your 161 calendly bookings missing transcripts, the vast majority are from older meetings where Fireflies no longer holds the recording. They WILL all eventually flip to `gave_up` after 3 attempts each — but at the current 5-min cron tick + 5min/30min/2h backoff, that takes hours of wall time even though each tick is fast.
+### 1. Log first, work second
 
-### 3. The `invoke()` call has no return-value display, so the UI looks dead
+Move `logCronRun(JOB_NAME, "running", 0, { startedAt })` to the **top** of the function (right after queue counts), before the heavy fetch loop. Then on completion update with final stats. If the function gets killed mid-loop, you still see "running" + start time on the panel instead of nothing.
 
-`runNow()` calls `supabase.functions.invoke(job.endpoint)` and only shows a generic "triggered" toast. It doesn't surface what the function returned (e.g., `{ scanned: 161, enqueued: 0, skipped_existing: 161 }`). So even when enqueue runs successfully and returns useful info, you see nothing in the UI besides the toast disappearing fast.
+Implemented as: insert a "running" heartbeat row first, then UPDATE that row's status/details at the end. (Or simpler: just call `logCronRun` twice — once at start with status `running`, once at end with final status.)
 
-## What I'll build to fix the perception AND accelerate the actual work
+### 2. Tighten the wall budget so we always exit cleanly
 
-### Fix 1: Surface the function's actual return payload in the UI (kills the "nothing happened" feeling)
+Current `WALL_BUDGET_MS = 120_000` (120s). Edge gateway kills at ~150s. The 30s gap should be enough — but the loop has a per-lead 25-30s fetch, so if we start lead 5 at the 95s mark we can blow past 150s.
 
-Update `runNow()` in `src/components/AutomationHealthPanel.tsx` to:
-- Capture `data` from `invoke()`
-- Show a **detailed success toast**: `"enqueue-fireflies-backfill: scanned 161 · enqueued 0 · already queued 161 — backlog already in flight, click Drain now"`
-- For the backfill drainer: `"Drainer: processed 3 · recovered 0 · still searching 0 · gave up 3"`
-- Auto-refresh the row's "Last run" stats within 2s so you see the row update in front of you
+Drop `WALL_BUDGET_MS` to **90s** and `MAX_PER_TICK` stays at 5. That guarantees we exit ≥60s before gateway kill, with time to write the final `logCronRun`.
 
-### Fix 2: Inline-link "Drain now" directly from the row that needs it
+### 3. Re-arm the panel: count `last_row_update` as the freshness signal, not just `cron_run_log`
 
-Add a contextual hint under the **Fireflies backfill enqueue** row when the queue is non-empty:
-> *"Queue has 161 pending. Enqueue is a no-op. Use **Drain now** below to actually process them →"*
+In `AutomationHealthPanel.tsx`, for the Fireflies backfill row specifically: if the queue table itself shows recent activity (any `updated_at > now() - 15 min` on backfill rows), don't show "Stale" — show "Working" with the count of rows touched. This is the ground-truth signal and it can't lie.
 
-Plus add a second action button on that row labeled **"Drain queue"** that calls the drainer directly (not the enqueue function), so you don't have to scroll down to find it.
+## What you'll see after the fix
 
-### Fix 3: Compress the backoff so the 161 backlog drains in minutes instead of hours
+- Panel updates every 5 min showing real progress, never falsely stale
+- Each tick runs ~3-5 leads in <90s, exits cleanly, logs successfully
+- Backlog of 145 drains in ~2.5 hours (5 leads × 12 ticks/hour ÷ 60s overhead)
+- "Working · X leads classified in last 15 min" replaces misleading "Stale"
 
-The current backoff schedule (`5m → 30m → 2h`) was designed for transient API errors, not "Fireflies doesn't have this meeting." When the failure mode is "transcript not in Fireflies" (which it is, 100% of the time so far), there's no point waiting 2 hours to try again — it's not coming back.
+## Files
 
-I'll change `process-fireflies-backfill-queue/index.ts`:
-- When the failure is `not_in_fireflies_api` (vs a transient HTTP error), skip backoff entirely and **mark `gave_up` immediately on the first miss**
-- Keep the `5m → 30m → 2h` schedule only for actual fetch errors (HTTP 5xx, timeouts, rate limits)
-
-This means every tick attempts 20 fresh leads → all 161 will be classified within ~40 minutes (8 ticks × 5min) instead of 4+ hours.
-
-### Fix 4: Auto-trigger the drainer immediately after enqueue does anything useful
-
-If the user clicks "Run" on enqueue and it inserts ≥1 new row, fire-and-forget invoke `process-fireflies-backfill-queue` immediately so they see progress within 60s instead of waiting for the next cron tick. (The enqueue function already does this in code, but only in one branch — I'll verify it always fires.)
-
-### Fix 5: Force-tick the drainer once via curl as part of this build
-
-So when the build completes you immediately see counts move from `0 done / 0 gave_up` to something like `0 done / 20 gave_up · 141 pending` within 90 seconds.
-
-## Files I'll touch
-
-- `src/components/AutomationHealthPanel.tsx` — show full function return payload in toast; add "Drain queue" inline button on the enqueue row when queue is non-empty
-- `supabase/functions/process-fireflies-backfill-queue/index.ts` — fail-fast on `not_in_fireflies_api`, only backoff on real errors
-- One `supabase--curl_edge_functions` call to force-tick the drainer right after deploy
-
-## What you'll see within 2 minutes of the build
-
-- Click any "Run" button → toast shows the function's actual return data (no more silent "screen reload" feeling)
-- Backfill progress widget jumps from `0 / 161 (0%)` → roughly `0 done / 20 gave_up / 141 pending (12%)` within 90s
-- Within 40 minutes: full classification — likely a small handful matched, the rest marked `gave_up: not_in_fireflies_api` (Fireflies retention limit, not a code bug)
-- The "enqueue" row now visibly explains why clicking it is a no-op when the queue is full, and gives you a one-click path to the right action
+- `supabase/functions/process-fireflies-backfill-queue/index.ts` — log heartbeat at start; tighten `WALL_BUDGET_MS` to 90000
+- `src/components/AutomationHealthPanel.tsx` — query `fireflies_retry_queue` recent updates as fallback freshness signal for the Fireflies backfill row
 
