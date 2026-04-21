@@ -224,10 +224,16 @@ async function findLeadIdByEmail(supabase: ReturnType<typeof createClient>, cand
     .limit(1);
   if (stake && stake.length > 0) return await resolveCanonicalLeadId(supabase, (stake[0] as { lead_id: string }).lead_id);
 
+  // Pre-check: if every external participant is system noise (calendar invites,
+  // workspace notifications, bounces) refuse to match — these never belong to a deal.
+  const allNoise = lowered.every((a) => isSystemNoise(a));
+  if (allNoise) return null;
+
   // 4) Domain fallback — STRICT.
-  //   - Skip personal mailbox providers entirely (gmail.com, etc.)
+  //   - Skip personal/system mailbox providers entirely (gmail.com, google.com, etc.)
   //   - Only match if EXACTLY ONE non-archived lead claims this domain
-  //   - Otherwise return null → email lands in Unmatched Inbox for manual review
+  //   - AND at least one participant is a confirmed contact for that lead
+  //     (primary, secondary_contacts, or stakeholder)
   const domains = Array.from(new Set(
     lowered.map(domainOf).filter((d) =>
       d && !INTERNAL_DOMAINS.has(d) && !PERSONAL_PROVIDERS.has(d)
@@ -237,15 +243,35 @@ async function findLeadIdByEmail(supabase: ReturnType<typeof createClient>, cand
   for (const d of domains) {
     const { data: hits } = await supabase
       .from("leads")
-      .select("id")
+      .select("id, email, secondary_contacts")
       .or(`email.ilike.%@${d},company_url.ilike.%${d}%`)
       .is("archived_at", null)
       .eq("is_duplicate", false)
       .limit(2);
-    if (hits && hits.length === 1) {
-      return await resolveCanonicalLeadId(supabase, (hits[0] as { id: string }).id);
+    if (!hits || hits.length !== 1) continue;
+    const cand = hits[0] as { id: string; email: string | null; secondary_contacts: any };
+    const knownContacts = new Set<string>();
+    const primary = (cand.email || "").toLowerCase().trim();
+    if (primary) knownContacts.add(primary);
+    const sec = Array.isArray(cand.secondary_contacts) ? cand.secondary_contacts : [];
+    for (const c of sec) {
+      const e = (c?.email || "").toLowerCase().trim();
+      if (e) knownContacts.add(e);
     }
-    // hits.length === 0 → try next domain; hits.length >= 2 → ambiguous, skip
+    const { data: stakes } = await supabase
+      .from("lead_stakeholders")
+      .select("email")
+      .eq("lead_id", cand.id);
+    for (const s of (stakes || []) as Array<{ email: string | null }>) {
+      const e = (s.email || "").toLowerCase().trim();
+      if (e) knownContacts.add(e);
+    }
+    let confirmed = false;
+    for (const p of lowered) {
+      if (knownContacts.has(p)) { confirmed = true; break; }
+    }
+    if (!confirmed) continue;
+    return await resolveCanonicalLeadId(supabase, cand.id);
   }
   return null;
 }
