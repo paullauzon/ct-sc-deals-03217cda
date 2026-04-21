@@ -232,10 +232,18 @@ Deno.serve(async (req) => {
             .update({ status: "done", attempts: row.attempts + 1, last_error: `matched:${ffId}`, updated_at: startedAt })
             .eq("id", row.id);
           recovered++;
+          // Per-item log — drives the live drawer's event stream so users see
+          // exactly which lead was matched in real time. Cheap insert, fire-and-forget.
+          void logCronRun(JOB_NAME, "success", 1, {
+            item: `lead ${row.lead_id}`, classification: `matched (transcript ${transcriptLen} chars)`,
+          });
         } else {
           // No match within window — terminal (Fireflies retention miss).
           await scheduleNextOrGiveUp(supabase, row, "not_in_fireflies_api");
           gaveUp++;
+          void logCronRun(JOB_NAME, "success", 1, {
+            item: `lead ${row.lead_id}`, classification: "gave_up · not_in_fireflies_api",
+          });
         }
       } catch (e) {
         const msg = (e as Error).message.slice(0, 200);

@@ -9,6 +9,7 @@ import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { FirefliesBackfillProgress } from "./FirefliesBackfillProgress";
+import { AutomationRunDrawer, type RunInvocation } from "./AutomationRunDrawer";
 
 interface CronJob {
   jobName: string;
@@ -183,7 +184,6 @@ export function AutomationHealthPanel() {
   const [latestByJob, setLatestByJob] = useState<Record<string, RunRow | null>>({});
   const [stats7dByJob, setStats7dByJob] = useState<Record<string, JobStats>>({});
   const [loading, setLoading] = useState(true);
-  const [runningJob, setRunningJob] = useState<string | null>(null);
   const [runningAllDaily, setRunningAllDaily] = useState(false);
   const [firecrawlBroken, setFirecrawlBroken] = useState(false);
   const [firecrawlTesting, setFirecrawlTesting] = useState(false);
@@ -199,6 +199,8 @@ export function AutomationHealthPanel() {
   const [backfillActivity, setBackfillActivity] = useState<{ lastUpdate: string | null; recentCount: number }>({
     lastUpdate: null, recentCount: 0,
   });
+  const [drawerInvocation, setDrawerInvocation] = useState<RunInvocation | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -249,21 +251,23 @@ export function AutomationHealthPanel() {
 
   useEffect(() => { load(); }, []);
 
-  const runNow = async (job: CronJob, overrideEndpoint?: string, overrideLabel?: string) => {
+  const runNow = (job: CronJob, overrideEndpoint?: string, overrideLabel?: string) => {
     const endpoint = overrideEndpoint || job.endpoint;
     const label = overrideLabel || job.label;
-    setRunningJob(`${job.jobName}:${endpoint}`);
-    try {
-      const { data, error } = await supabase.functions.invoke(endpoint, { body: job.body });
-      if (error) throw error;
-      const summary = summarizeFunctionResult(endpoint, data);
-      toast.success(`${label}: ${summary}`, { duration: 7000 });
-      setTimeout(load, 1500);
-    } catch (e) {
-      toast.error(`${label} failed: ${(e as Error).message}`);
-    } finally {
-      setRunningJob(null);
-    }
+    // Open the live drawer instead of firing-and-forgetting a toast. The drawer
+    // owns the invocation lifecycle — streams heartbeats, per-item updates,
+    // gateway-kill detection, and the final return payload.
+    setDrawerInvocation({
+      jobName: endpoint, // log_job_name matches endpoint for direct invocations
+      logJobName: job.jobName !== endpoint ? endpoint : undefined,
+      endpoint,
+      label,
+      body: job.body,
+    });
+    setDrawerOpen(true);
+    // Refresh the panel a couple seconds after open so the row's "last run"
+    // timestamp reflects the new heartbeat once it lands.
+    setTimeout(load, 4000);
   };
 
   const runAllDaily = async () => {
@@ -543,18 +547,31 @@ export function AutomationHealthPanel() {
                     </td>
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="inline-flex items-center gap-1 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDrawerInvocation({
+                              jobName: job.jobName,
+                              endpoint: job.endpoint,
+                              label: job.label,
+                              body: job.body,
+                            });
+                            setDrawerOpen(true);
+                          }}
+                          className="text-[10px] text-muted-foreground hover:text-foreground hover:underline mr-1"
+                          title="Re-open the live run drawer for this job"
+                        >
+                          View live
+                        </button>
                         {job.jobName === "enqueue-fireflies-backfill" && (
                           <Button
                             variant="outline"
                             size="sm"
                             className="h-7 px-2 text-[11px]"
                             onClick={() => runNow(job, "process-fireflies-backfill-queue", "Drain queue")}
-                            disabled={runningJob === `${job.jobName}:process-fireflies-backfill-queue`}
-                            title="Actually process the queued backfill rows"
+                            title="Actually process the queued backfill rows (opens live drawer)"
                           >
-                            {runningJob === `${job.jobName}:process-fireflies-backfill-queue`
-                              ? <Loader2 className="h-3 w-3 animate-spin" />
-                              : "Drain"}
+                            Drain
                           </Button>
                         )}
                         <Button
@@ -562,12 +579,9 @@ export function AutomationHealthPanel() {
                           size="sm"
                           className="h-7 px-2"
                           onClick={() => runNow(job)}
-                          disabled={runningJob === `${job.jobName}:${job.endpoint}`}
-                          title="Run now"
+                          title="Run now (opens live drawer)"
                         >
-                          {runningJob === `${job.jobName}:${job.endpoint}`
-                            ? <Loader2 className="h-3 w-3 animate-spin" />
-                            : <Play className="h-3 w-3" />}
+                          <Play className="h-3 w-3" />
                         </Button>
                       </div>
                     </td>
@@ -595,6 +609,12 @@ export function AutomationHealthPanel() {
       <p className="text-[11px] text-muted-foreground">
         Crons are scheduled via <code className="font-mono">pg_cron</code> and report into <code className="font-mono">cron_run_log</code> at the end of each run. Click "Verify schedules" to confirm every job is actually registered with pg_cron and ticking on its expected cadence.
       </p>
+
+      <AutomationRunDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        invocation={drawerInvocation}
+      />
     </div>
   );
 }
