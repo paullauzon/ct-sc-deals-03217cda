@@ -276,6 +276,68 @@ async function findLeadIdByEmail(supabase: ReturnType<typeof createClient>, cand
   return null;
 }
 
+/**
+ * Auto-stakeholder discovery for backfill — passive coverage expansion.
+ * After a confirmed match (during a 90d/1y/all backfill), upsert any external
+ * participant who isn't already a known contact for this lead as a stakeholder.
+ * Limited to same-corporate-domain colleagues to avoid pulling in random
+ * bankers/lawyers from other firms cc'd on a thread.
+ */
+async function maybeAutoAddStakeholder(
+  supabase: ReturnType<typeof createClient>,
+  leadId: string,
+  external: string[],
+  fromName: string,
+  fromAddress: string,
+): Promise<void> {
+  try {
+    if (!leadId || leadId === "unmatched" || external.length === 0) return;
+    const { data: leadRow } = await supabase
+      .from("leads")
+      .select("email, secondary_contacts")
+      .eq("id", leadId)
+      .maybeSingle();
+    if (!leadRow) return;
+    const lead = leadRow as { email: string | null; secondary_contacts: any };
+    const known = new Set<string>();
+    const primary = (lead.email || "").toLowerCase().trim();
+    if (primary) known.add(primary);
+    const sec = Array.isArray(lead.secondary_contacts) ? lead.secondary_contacts : [];
+    for (const c of sec) {
+      const e = (c?.email || "").toLowerCase().trim();
+      if (e) known.add(e);
+    }
+    const { data: stakes } = await supabase
+      .from("lead_stakeholders").select("email").eq("lead_id", leadId);
+    for (const s of (stakes || []) as Array<{ email: string | null }>) {
+      const e = (s.email || "").toLowerCase().trim();
+      if (e) known.add(e);
+    }
+    const leadDomain = primary ? domainOf(primary) : "";
+    for (const addr of external) {
+      const lower = addr.toLowerCase();
+      if (!lower || known.has(lower)) continue;
+      if (isSystemNoise(lower)) continue;
+      const dom = domainOf(lower);
+      if (!dom || INTERNAL_DOMAINS.has(dom) || PERSONAL_PROVIDERS.has(dom)) continue;
+      if (leadDomain && dom !== leadDomain) continue;
+      const candidateName = (lower === (fromAddress || "").toLowerCase()) ? (fromName || "").trim() : "";
+      await supabase.from("lead_stakeholders").insert({
+        lead_id: leadId,
+        email: lower,
+        name: candidateName,
+        role: "Discovered via email thread",
+        notes: "Auto-added from backfilled email correspondence",
+        sentiment: "neutral",
+        last_contacted: new Date().toISOString(),
+      });
+      known.add(lower);
+    }
+  } catch (e) {
+    console.error("backfill auto-stakeholder (non-fatal):", (e as Error).message);
+  }
+}
+
 async function processBatchGmail(
   supabase: ReturnType<typeof createClient>,
   job: { id: string; connection_id: string; email_address: string },
@@ -330,7 +392,10 @@ async function processBatchGmail(
       if (external.length === 0) { queueSkippedIds.push(r.id); skipped++; continue; }
 
       const leadId = await findLeadIdByEmail(supabase, external);
-      if (leadId) matched++;
+      if (leadId) {
+        matched++;
+        await maybeAutoAddStakeholder(supabase, leadId, external, from.name, from.address);
+      }
 
       const { text, html } = extractBody(msg.payload);
       const preview = (text || html.replace(/<[^>]+>/g, " ")).slice(0, 280).replace(/\s+/g, " ").trim();
@@ -458,7 +523,10 @@ async function processBatchOutlook(
       if (external.length === 0) { queueSkippedIds.push(r.id); skipped++; continue; }
 
       const leadId = await findLeadIdByEmail(supabase, external);
-      if (leadId) matched++;
+      if (leadId) {
+        matched++;
+        await maybeAutoAddStakeholder(supabase, leadId, external, fromName, fromAddr);
+      }
 
       const emailDate = m.receivedDateTime || m.sentDateTime || new Date().toISOString();
       const html = m.body?.contentType === "html" ? m.body.content : "";
