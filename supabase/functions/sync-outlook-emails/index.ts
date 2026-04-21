@@ -358,23 +358,59 @@ async function syncOneConnection(
     updated_at: new Date().toISOString(),
   }).eq("id", connection.id);
 
-  // Log sync run
-  await supabase.from("email_sync_runs").insert({
-    connection_id: connection.id,
-    email_address: connection.email_address,
-    mode: stats.mode,
-    started_at: stats.started_at,
-    finished_at: new Date().toISOString(),
-    fetched: stats.fetched,
-    inserted: stats.inserted,
-    matched: stats.matched,
-    skipped: stats.skipped_dup + stats.skipped_internal,
-    unmatched: stats.inserted - stats.matched,
-    status: stats.errors.length > 0 ? "partial" : "success",
-    errors: stats.errors,
-  });
+  // Log sync run — skip noisy zero-effect incremental rows that bloat the UI.
+  const isNoiseRow =
+    stats.mode === "incremental" &&
+    stats.fetched === 0 &&
+    stats.inserted === 0 &&
+    stats.errors.length === 0;
+  if (!isNoiseRow) {
+    await supabase.from("email_sync_runs").insert({
+      connection_id: connection.id,
+      email_address: connection.email_address,
+      mode: stats.mode,
+      started_at: stats.started_at,
+      finished_at: new Date().toISOString(),
+      fetched: stats.fetched,
+      inserted: stats.inserted,
+      matched: stats.matched,
+      skipped: stats.skipped_dup + stats.skipped_internal,
+      unmatched: stats.inserted - stats.matched,
+      status: stats.errors.length > 0 ? "partial" : "success",
+      errors: stats.errors,
+    });
+  }
 
   return stats;
+}
+
+// Server-side auto-enroll for existing Outlook connections (parity with Gmail).
+async function maybeAutoEnrollBackfill(
+  supabase: ReturnType<typeof createClient>,
+  conn: { id: string; last_synced_at: string | null },
+): Promise<boolean> {
+  try {
+    if (!conn.last_synced_at) return false;
+    const { data: jobs } = await supabase
+      .from("email_backfill_jobs")
+      .select("id")
+      .eq("connection_id", conn.id)
+      .limit(1);
+    if (jobs && jobs.length > 0) return false;
+    if (Date.now() - new Date(conn.last_synced_at).getTime() < 3600_000) return false;
+    fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/start-email-backfill`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify({ connection_id: conn.id, target_window: "90d" }),
+    }).catch((e) => console.error("outlook auto-enroll dispatch failed:", e));
+    return true;
+  } catch (e) {
+    console.error("outlook auto-enroll guard failed (non-fatal):", e);
+    return false;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -414,6 +450,7 @@ Deno.serve(async (req) => {
 
     const results: SyncStats[] = [];
     const skipped: Array<{ connection_id: string; email: string; reason: string }> = [];
+    const autoEnrolled: string[] = [];
     for (const conn of connections) {
       // Defer to the backfill orchestrator if a backfill job is active for this connection.
       if (!forceFull) {
@@ -427,6 +464,14 @@ Deno.serve(async (req) => {
           skipped.push({ connection_id: conn.id, email: conn.email_address, reason: "backfill_in_progress" });
           continue;
         }
+
+        // Auto-enroll existing connections that never had a backfill (parity with Gmail).
+        const enrolled = await maybeAutoEnrollBackfill(supabase, conn);
+        if (enrolled) {
+          autoEnrolled.push(conn.id);
+          skipped.push({ connection_id: conn.id, email: conn.email_address, reason: "auto_enrolled_backfill" });
+          continue;
+        }
       }
       results.push(await syncOneConnection(supabase, conn, forceFull));
     }
@@ -438,7 +483,7 @@ Deno.serve(async (req) => {
       job_name: "sync-outlook-emails",
       status: totalErrors > 0 ? "partial" : "success",
       items_processed: totalInserted,
-      details: { connections: results.length, skipped, results: results.map(r => ({ email: r.email, fetched: r.fetched, inserted: r.inserted, matched: r.matched })) },
+      details: { connections: results.length, skipped, auto_enrolled: autoEnrolled, results: results.map(r => ({ email: r.email, fetched: r.fetched, inserted: r.inserted, matched: r.matched })) },
     });
 
     const allSkipped = results.length === 0 && skipped.length > 0;
