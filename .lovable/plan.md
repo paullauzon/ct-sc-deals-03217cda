@@ -1,119 +1,94 @@
 
 
-# Make automation health truly readable + verify everything actually works
+# Investigation result: enqueue ran, drainer registered but NOT firing — 0 enriched
 
-## What I found by auditing live data (last 7 days)
+## Hard facts from the live database
 
-| Job | Runs | Items | Status | Verdict |
-|---|---|---|---|---|
-| AI-tier enrichment | 25 | 0 | **100% errored** | BROKEN (Firecrawl 403 — known) |
-| LinkedIn URL backfill | 2 | 3 | OK | Healthy, low backlog |
-| Company URL backfill | 2 | 81 | OK | Healthy |
-| Reschedule overdue tasks | 2 | 1000 | OK | Healthy (cleared 1k tasks) |
-| Stale transcript processor | 2 | 0 | OK | No work to do |
-| Scheduled-send dispatcher | 257 | 0 | OK | No queued emails right now |
-| Fireflies retry queue | 86 | 108 | "success" but **0 recovered** | DEGRADED — keeps "stillFailing" without raising error |
-| **Fireflies backfill queue** | **1 only** | 2 | success | **BROKEN** — should tick every 5 min, hasn't ticked since 11:22 |
-| Fireflies backfill enqueue | 1 | 0 (noop, all 161 already queued) | OK | Manual, working |
+| Check | Result |
+|---|---|
+| Leads with calendly booking | **190** |
+| Already had transcript | **29** |
+| Need enrichment | **161** |
+| Currently `pending` in queue | **161** |
+| `done` (matched) | **0** |
+| `gave_up` | **0** |
+| Rows `due_now` (next_attempt_at ≤ now) | **105** |
+| Drainer cron entry | `process-fireflies-backfill-queue-every-5-min` · `*/5 * * * *` · **active=true** |
+| **Drainer runs logged since 11:22 UTC** | **ZERO** (1h 17m of silence despite being "every 5 min") |
+| Last drainer run | 11:22:09 — processed 2, recovered 0 |
+| Enqueue last run | 11:38:06 — noop (all 161 already queued) |
 
-So three real problems:
-1. **AI-tier enrichment silently broken** — the panel shows it as "Errored" but the *why* (Firecrawl 403) is buried
-2. **Fireflies backfill drainer not actually running on the new 5-min schedule** — the migration likely targeted the wrong cron entry name
-3. **Fireflies retry queue masks failures** — it returns `status='success'` even when 20/20 transcripts fail to recover, so the panel says "Healthy"
+**Bottom line: 0 of 161 leads enriched. The drainer is "registered" but pg_cron is not actually invoking it.**
 
-And the request itself: **every row needs a plain-English explanation of what the job does, what it touches, and what success looks like** — not just "Daily 02:00 UTC · 25 leads/run".
+## Why this is happening (root cause)
 
-## What I'll build
+The pg_cron schedule was created via `cron.schedule(name, '*/5 * * * *', $$ SELECT net.http_post(...) $$)`. The schedule shows `active=true` in `cron.job`, but no rows are landing in `cron.job_run_details` and `cron_run_log` is empty for that job after 11:22.
 
-### 1. Hyper-clear per-job explanations (expandable rows)
+Three plausible causes, in order of likelihood:
 
-Each row in the Automation Health table gets an optional expand toggle. When opened it shows:
+1. **The `net.http_post` call inside the cron command is malformed** — most commonly the anon key was substituted as the literal string `<anon>` (or wrapped wrong), so `net.http_post` returns a request_id but the request itself errors / 401s before the function sees it. `net.http_post` is fire-and-forget and swallows errors silently.
+2. **The cron command body has a SQL syntax error** — pg_cron will register it but skip execution each tick.
+3. **The schedule name change orphaned the previous worker registration** — pg_cron occasionally needs the database to recycle the background worker after a fresh `cron.schedule()`.
 
-```text
-┌─ AI-tier enrichment ──────────────────────────────────────────┐
-│ What it does                                                  │
-│   Scrapes company websites for SourceCo leads missing AUM     │
-│   data, runs them through GPT to extract firm size / fund     │
-│   stage / strategy, and writes results back to the lead.      │
-│                                                               │
-│ Triggered by                                                  │
-│   pg_cron · every 30 min on weekdays (US business hours)      │
-│                                                               │
-│ Touches                                                       │
-│   leads.firm_aum, leads.enrichment, leads.tier                │
-│                                                               │
-│ Success looks like                                            │
-│   "items_processed: 10" with no error_message. Leads now      │
-│   show AUM and tier scores in the pipeline.                   │
-│                                                               │
-│ Last 7 days: 25 runs, 0 items processed, 25 errored           │
-│ Last error: Firecrawl returned 403 (auth)                     │
-└───────────────────────────────────────────────────────────────┘
-```
+The drainer function code itself is fine (it ran successfully at 11:22). The break is in **how pg_cron is calling it**.
 
-I'll author these for all 9 jobs. Each gets four fields: **What it does**, **Triggered by**, **Touches** (which DB tables), **Success looks like**, plus inline 7-day stats.
+## Verification I'll run as part of the fix
 
-### 2. Fix the Fireflies backfill drainer schedule (it never went 5-min)
+Query `cron.job_run_details` for the job to see the actual error pg_cron is logging, then re-author the schedule with a **known-good HTTP invocation pattern** (the same one used by the working `sync-fireflies-post-meeting` job that fires reliably every 15 min).
 
-Verify and re-issue the pg_cron schedule:
+## What I'll do
+
+### 1. Diagnose & re-issue the cron with the proven pattern
 
 ```sql
--- Belt-and-suspenders: drop any existing entries with this name
-SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname IN (
-  'process-fireflies-backfill-queue-every-10-min',
-  'process-fireflies-backfill-queue-every-5-min',
-  'process-fireflies-backfill-queue'
-);
+-- Inspect why ticks are silently failing
+SELECT runid, status, return_message, start_time
+FROM cron.job_run_details
+WHERE jobid = (SELECT jobid FROM cron.job WHERE jobname='process-fireflies-backfill-queue-every-5-min')
+ORDER BY start_time DESC LIMIT 10;
 
--- Schedule fresh at 5-min cadence
+-- Drop and recreate using the exact pattern from the working sync-fireflies-post-meeting job
+SELECT cron.unschedule('process-fireflies-backfill-queue-every-5-min');
 SELECT cron.schedule(
   'process-fireflies-backfill-queue-every-5-min',
   '*/5 * * * *',
   $$ SELECT net.http_post(
-       url := 'https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/process-fireflies-backfill-queue',
-       headers := '{"Content-Type":"application/json","Authorization":"Bearer <anon>"}'::jsonb,
-       body := '{}'::jsonb
+       url:='https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/process-fireflies-backfill-queue',
+       headers:=jsonb_build_object(
+         'Content-Type','application/json',
+         'Authorization','Bearer <FRESH_ANON_KEY_FROM_ENV>'
+       ),
+       body:='{}'::jsonb
      ); $$
 );
 ```
 
-Will use `supabase--insert` (sensitive — anon key inline) per the rules.
+Done via `supabase--insert` (SQL with secret inline, not a migration).
 
-### 3. Stop the Fireflies retry queue from masking 100% failures
+### 2. Kick the queue immediately so we don't wait 5 min for proof of life
 
-Update `process-fireflies-retry-queue/index.ts`: when `recovered=0` AND `stillFailing > 0` AND no rows actually moved status, log `status='error'` (or `status='degraded'`) instead of `success`. Then the panel's red dot fires correctly.
+After the schedule is fixed, manually invoke `process-fireflies-backfill-queue` once via `supabase--curl_edge_functions`. With 105 rows due now and `MAX_PER_TICK=20`, this will process the first 20 leads in ~80s and you'll see `done`/`gave_up` counts move immediately in the progress widget.
 
-### 4. Promote the Firecrawl 403 banner into a permanent row state
+### 3. Add a self-heal "Drain now" button to the Automation Health panel
 
-The panel already has a `firecrawlBroken` banner at the top, but the AI-tier enrichment row itself just says "Errored". I'll add an inline link "Reconnect Firecrawl →" directly under that row's status when its last error contains "firecrawl" or "403", so the cause and the fix are co-located.
+Right now the only way to manually trigger the drainer is from the function logs page. I'll add a **"Drain queue now"** button next to the Fireflies backfill progress widget that POSTs to the drainer directly, so if pg_cron ever silently dies again you can drain on demand without waiting.
 
-### 5. Add per-job 7-day mini-stats next to each row
+### 4. Add `cron.job_run_details` heartbeat to the verify-cron-health endpoint
 
-Compact text under the description: `Last 7d: 25 runs · 0 items · 100% errored` so you can see at a glance whether a job is actually doing useful work or just failing quietly.
+Update `verify-cron-health` to also return the **last 3 actual pg_cron execution attempts per job** (not just registration). That way "registered" doesn't lie to you again — you'll see "registered but 0 of last 12 ticks executed" if the schedule is broken.
 
-### 6. Manual verification panel: "Verify all jobs"
+## Files I'll touch
 
-A new button next to "Test Firecrawl" that, in parallel, GET-pings the cron schedule (via a tiny new edge function `verify-cron-health` that queries `cron.job` server-side since RLS blocks client access) and reports back:
-- which jobs are scheduled vs missing
-- the actual cron expression each one carries
-- when each is next due to fire
+- `src/components/AutomationHealthPanel.tsx` — add "Drain queue now" button next to the Fireflies backfill progress widget
+- `src/components/FirefliesBackfillProgress.tsx` — show "X due now / Y scheduled later" so you can see the queue's true readiness
+- `supabase/functions/verify-cron-health/index.ts` — include `cron.job_run_details` so registered-but-not-firing is visible
+- One SQL via `supabase--insert`: diagnose + re-schedule the drainer with a proven invocation pattern
+- One curl via `supabase--curl_edge_functions`: kick the drainer once immediately
 
-Result rendered as a small table below so you can confirm everything the UI claims is actually wired up in pg_cron.
+## Expected outcome after build
 
-## Files I'll touch / create
-
-- `src/components/AutomationHealthPanel.tsx` — expandable row UI + per-row stats + Firecrawl inline link + "Verify schedules" button + 7-day stats fetch
-- `supabase/functions/process-fireflies-retry-queue/index.ts` — return `error` when 0 recovered and >0 stillFailing
-- `supabase/functions/verify-cron-health/index.ts` — NEW, tiny function that runs `SELECT jobname, schedule, active FROM cron.job` server-side and returns the rows
-- `supabase/config.toml` — register `verify-cron-health`
-- One pg_cron migration via `supabase--insert`: re-establish 5-min schedule for backfill drainer
-
-## What you'll see after this build
-
-- Click any automation row → expands with a 4-field plain-English explanation, the tables it writes to, and 7-day stats
-- AI-tier enrichment row shows "Reconnect Firecrawl →" inline (not just "Errored")
-- Fireflies backfill drainer ticks every 5 min — backlog of 161 starts dropping immediately
-- Fireflies retry queue turns red when it's silently failing (instead of green-but-useless)
-- "Verify schedules" button proves to you that pg_cron actually has every job registered with the cadence the UI claims
-- Live progress bar for the backfill keeps polling every 10s (already shipped) — now with accurate forecast based on real drain rate
+- Within 60 seconds of the fix: `done` count jumps from 0 → ~10–15 (the recent-90d leads, which Fireflies still has)
+- Within 30 minutes: full 161 attempted, ~57% recovered (per original forecast), rest marked `gave_up`
+- Verify schedules button now shows actual pg_cron tick history, not just registration status
+- Manual "Drain now" button gives you ground-truth control if cron ever silently dies again
 
