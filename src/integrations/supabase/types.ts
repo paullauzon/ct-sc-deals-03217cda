@@ -1380,6 +1380,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      list_cron_jobs: {
+        Args: never
+        Returns: {
+          active: boolean
+          jobname: string
+          schedule: string
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "rep"
