@@ -228,15 +228,18 @@ export function AutomationHealthPanel() {
 
   useEffect(() => { load(); }, []);
 
-  const runNow = async (job: CronJob) => {
-    setRunningJob(job.jobName);
+  const runNow = async (job: CronJob, overrideEndpoint?: string, overrideLabel?: string) => {
+    const endpoint = overrideEndpoint || job.endpoint;
+    const label = overrideLabel || job.label;
+    setRunningJob(`${job.jobName}:${endpoint}`);
     try {
-      const { error } = await supabase.functions.invoke(job.endpoint, { body: job.body });
+      const { data, error } = await supabase.functions.invoke(endpoint, { body: job.body });
       if (error) throw error;
-      toast.success(`${job.label} triggered`);
+      const summary = summarizeFunctionResult(endpoint, data);
+      toast.success(`${label}: ${summary}`, { duration: 7000 });
       setTimeout(load, 1500);
     } catch (e) {
-      toast.error(`Failed: ${(e as Error).message}`);
+      toast.error(`${label} failed: ${(e as Error).message}`);
     } finally {
       setRunningJob(null);
     }
