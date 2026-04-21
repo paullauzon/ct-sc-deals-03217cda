@@ -358,23 +358,59 @@ async function syncOneConnection(
     updated_at: new Date().toISOString(),
   }).eq("id", connection.id);
 
-  // Log sync run
-  await supabase.from("email_sync_runs").insert({
-    connection_id: connection.id,
-    email_address: connection.email_address,
-    mode: stats.mode,
-    started_at: stats.started_at,
-    finished_at: new Date().toISOString(),
-    fetched: stats.fetched,
-    inserted: stats.inserted,
-    matched: stats.matched,
-    skipped: stats.skipped_dup + stats.skipped_internal,
-    unmatched: stats.inserted - stats.matched,
-    status: stats.errors.length > 0 ? "partial" : "success",
-    errors: stats.errors,
-  });
+  // Log sync run — skip noisy zero-effect incremental rows that bloat the UI.
+  const isNoiseRow =
+    stats.mode === "incremental" &&
+    stats.fetched === 0 &&
+    stats.inserted === 0 &&
+    stats.errors.length === 0;
+  if (!isNoiseRow) {
+    await supabase.from("email_sync_runs").insert({
+      connection_id: connection.id,
+      email_address: connection.email_address,
+      mode: stats.mode,
+      started_at: stats.started_at,
+      finished_at: new Date().toISOString(),
+      fetched: stats.fetched,
+      inserted: stats.inserted,
+      matched: stats.matched,
+      skipped: stats.skipped_dup + stats.skipped_internal,
+      unmatched: stats.inserted - stats.matched,
+      status: stats.errors.length > 0 ? "partial" : "success",
+      errors: stats.errors,
+    });
+  }
 
   return stats;
+}
+
+// Server-side auto-enroll for existing Outlook connections (parity with Gmail).
+async function maybeAutoEnrollBackfill(
+  supabase: ReturnType<typeof createClient>,
+  conn: { id: string; last_synced_at: string | null },
+): Promise<boolean> {
+  try {
+    if (!conn.last_synced_at) return false;
+    const { data: jobs } = await supabase
+      .from("email_backfill_jobs")
+      .select("id")
+      .eq("connection_id", conn.id)
+      .limit(1);
+    if (jobs && jobs.length > 0) return false;
+    if (Date.now() - new Date(conn.last_synced_at).getTime() < 3600_000) return false;
+    fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/start-email-backfill`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify({ connection_id: conn.id, target_window: "90d" }),
+    }).catch((e) => console.error("outlook auto-enroll dispatch failed:", e));
+    return true;
+  } catch (e) {
+    console.error("outlook auto-enroll guard failed (non-fatal):", e);
+    return false;
+  }
 }
 
 Deno.serve(async (req) => {
