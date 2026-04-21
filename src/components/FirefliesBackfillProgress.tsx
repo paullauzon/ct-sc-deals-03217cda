@@ -27,6 +27,7 @@ interface Counts {
 export function FirefliesBackfillProgress() {
   const [counts, setCounts] = useState<Counts | null>(null);
   const [draining, setDraining] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const load = async () => {
     const nowIso = new Date().toISOString();
