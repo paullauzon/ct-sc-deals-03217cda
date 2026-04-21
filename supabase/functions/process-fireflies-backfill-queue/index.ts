@@ -24,7 +24,12 @@ const corsHeaders = {
 };
 
 const JOB_NAME = "process-fireflies-backfill-queue";
-const MAX_PER_TICK = 20;
+// Each Fireflies search takes 10-30s (paginates 20 metadata batches + speaker-name
+// fallback). At MAX_PER_TICK=20 we routinely blew past the 150s edge function
+// idle timeout. 5 leads × ~25s = ~125s, safely under the cap with headroom for
+// the final DB writes. Pair with WALL_BUDGET_MS as a hard escape hatch.
+const MAX_PER_TICK = 5;
+const WALL_BUDGET_MS = 120_000; // stop claiming new rows after 120s
 const WINDOW_HOURS = 48;
 const BACKOFF_MINUTES = [5, 30, 120]; // attempt 1 → 5m, 2 → 30m, 3 → 2h
 
@@ -72,7 +77,14 @@ Deno.serve(async (req) => {
     const leadMap = new Map<string, any>();
     (leads ?? []).forEach((l: any) => leadMap.set(l.id, l));
 
+    const tickStart = Date.now();
     for (const row of rows) {
+      // Hard wall-clock guard — bail BEFORE starting another lead if we're close
+      // to the 150s edge timeout. Remaining rows stay 'pending' for the next tick.
+      if (Date.now() - tickStart > WALL_BUDGET_MS) {
+        errors.push(`wall-budget reached after ${processed} leads, deferring rest`);
+        break;
+      }
       processed++;
       const lead = leadMap.get(row.lead_id);
       if (!lead) {
