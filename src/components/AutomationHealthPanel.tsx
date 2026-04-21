@@ -548,18 +548,31 @@ export function AutomationHealthPanel() {
                     </td>
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="inline-flex items-center gap-1 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDrawerInvocation({
+                              jobName: job.jobName,
+                              endpoint: job.endpoint,
+                              label: job.label,
+                              body: job.body,
+                            });
+                            setDrawerOpen(true);
+                          }}
+                          className="text-[10px] text-muted-foreground hover:text-foreground hover:underline mr-1"
+                          title="Re-open the live run drawer for this job"
+                        >
+                          View live
+                        </button>
                         {job.jobName === "enqueue-fireflies-backfill" && (
                           <Button
                             variant="outline"
                             size="sm"
                             className="h-7 px-2 text-[11px]"
                             onClick={() => runNow(job, "process-fireflies-backfill-queue", "Drain queue")}
-                            disabled={runningJob === `${job.jobName}:process-fireflies-backfill-queue`}
-                            title="Actually process the queued backfill rows"
+                            title="Actually process the queued backfill rows (opens live drawer)"
                           >
-                            {runningJob === `${job.jobName}:process-fireflies-backfill-queue`
-                              ? <Loader2 className="h-3 w-3 animate-spin" />
-                              : "Drain"}
+                            Drain
                           </Button>
                         )}
                         <Button
@@ -567,12 +580,9 @@ export function AutomationHealthPanel() {
                           size="sm"
                           className="h-7 px-2"
                           onClick={() => runNow(job)}
-                          disabled={runningJob === `${job.jobName}:${job.endpoint}`}
-                          title="Run now"
+                          title="Run now (opens live drawer)"
                         >
-                          {runningJob === `${job.jobName}:${job.endpoint}`
-                            ? <Loader2 className="h-3 w-3 animate-spin" />
-                            : <Play className="h-3 w-3" />}
+                          <Play className="h-3 w-3" />
                         </Button>
                       </div>
                     </td>
@@ -600,6 +610,12 @@ export function AutomationHealthPanel() {
       <p className="text-[11px] text-muted-foreground">
         Crons are scheduled via <code className="font-mono">pg_cron</code> and report into <code className="font-mono">cron_run_log</code> at the end of each run. Click "Verify schedules" to confirm every job is actually registered with pg_cron and ticking on its expected cadence.
       </p>
+
+      <AutomationRunDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        invocation={drawerInvocation}
+      />
     </div>
   );
 }
