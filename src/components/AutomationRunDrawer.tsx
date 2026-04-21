@@ -4,7 +4,8 @@ import {
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, CheckCircle2, AlertTriangle, Clock, Zap, ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, CheckCircle2, AlertTriangle, Clock, Zap, ArrowRight, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceStrict } from "date-fns";
