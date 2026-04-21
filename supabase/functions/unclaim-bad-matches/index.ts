@@ -70,19 +70,27 @@ Deno.serve(async (req) => {
 
     for (const r of data as LeadRow[]) {
       const emails = new Set<string>();
+      const secondaryEmails = new Set<string>();
       const primary = (r.email || "").toLowerCase().trim();
       if (primary) emails.add(primary);
       const sec = Array.isArray(r.secondary_contacts) ? r.secondary_contacts : [];
       for (const c of sec) {
         const e = (c?.email || "").toLowerCase().trim();
-        if (e) emails.add(e);
+        if (e) { emails.add(e); secondaryEmails.add(e); }
       }
       leadById.set(r.id, {
         emails,
+        primaryEmail: primary,
+        secondaryEmails,
         isDuplicate: !!r.is_duplicate,
         duplicateOf: r.duplicate_of || null,
         archived: !!r.archived_at,
       });
+
+      // Index canonical primary emails for Case C redirect.
+      if (!r.is_duplicate && !r.archived_at && primary && !primaryEmailToLeadId.has(primary)) {
+        primaryEmailToLeadId.set(primary, r.id);
+      }
 
       // Domain ambiguity tracking — canonical leads only.
       if (!r.is_duplicate && !r.archived_at && primary) {
