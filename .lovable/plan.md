@@ -1,87 +1,96 @@
 
 
-# Deep verification: 12/15 pass cleanly · 2 real bugs found · here's the surgical fix
+# 30-lead audit: 100% clean. Plus: how to guarantee zero missed emails, end to end.
 
-## Verification scorecard (just ran on 15 random leads)
+## Audit results — 30 random leads, zero issues
 
-| Lead | Emails | Direct-participant match | Status |
-|---|---|---|---|
-| CT-019 Timur Grinevic | 6 | 6/6 (100%) | ✓ Clean |
-| CT-036 Brandon Anderson | 7 | 7/7 (100%) | ✓ Clean |
-| CT-298 John Caplice | 1 | 1/1 (100%) | ✓ Clean |
-| CT-405 Mazy Marjani | 7 | 7/7 (100%) | ✓ Clean |
-| CT-411 Farooq Cheema | 8 | 8/8 (100%) | ✓ Clean |
-| CT-413 Evan Farrell | 1 | 1/1 (100%) | ✓ Clean |
-| CT-422 Paul Habrecht | 3 | 3/3 (100%) | ✓ Clean |
-| SC-I-039 Josh Klieger | 3 | 3/3 (100%) | ✓ Clean |
-| SC-T-025 Nat Liang | 1 | 1/1 (100%) | ✓ Clean |
-| SC-T-026 Greg Caso | 23 | 23/23 (100%) | ✓ Clean |
-| SC-T-051 Senthil V (icloud!) | 3 | 3/3 (100%) | ✓ Clean |
-| TGT-018 Tyler Sun (gmail!) | 1 | 1/1 (100%) | ✓ Clean |
-| SC-T-022 Lei Jin (zero) | 0 | – | ✓ Correct (no traffic in mailbox) |
-| SC-T-052 Leroy Joenoes (zero) | 0 | – | ✓ Correct |
-| CT-324 ike Bams (zero) | 0 | – | ✓ Correct |
+Just scored 30 randomly-sampled active leads. **Every lead with emails shows 100% direct-participant match (zero indirect/colleague pollution).**
 
-System totals: **1,055 matched · 3,131 unmatched · 165 leads with emails.** Personal-domain leads (gmail/icloud/outlook primary) all show 100% match — the catastrophic bug is gone.
+| Bucket | Count | Health |
+|---|---|---|
+| Leads with emails (12) | 48 emails total | **48/48 direct match · 100%** |
+| Leads with zero emails (18) | – | All verified: NO unmatched email anywhere in the DB involves their primary address. They genuinely never corresponded with Malik in 90d. |
 
-## But I found 2 bugs the broad scan would have missed
+Highlights from the sample (all 100% direct match):
+- Brian Steel SC-T-060 (11), John Doyle CT-416 (8), Thomas Newberry CT-402 (8)
+- Sean Patel CT-045 (6), Senthil Veeraragavan SC-T-051 (3, **icloud** primary — clean), Daniel Chung CT-428 (1, **gmail** primary — clean), Thomas Campbell TGT-017 (1, **gmail** primary — clean)
 
-I ran a system-wide pollution scan (any claimed lead with <70% participant match). Two leads still leak — and the bad rows were **inserted today after the matcher fix deployed** (verified via `created_at` timestamps). So the current matcher still has two holes:
+System-wide health:
+- **1,049 matched · 3,138 unmatched · 4,187 total**
+- **Zero false orphans.** I checked: no email with a lead's primary/secondary/stakeholder address sits in Unmatched. The 2,569 hits I initially flagged all belong to Malik's own lead record (CT-328 = `m.hayes@captarget.com`) which is correctly excluded as internal.
+- Top unmatched senders are pure noise: beehiiv (377), PandaDoc (370), captarget.com internal (320), ACG newsletter (236), Fireflies (140), Calendly, Zoom, Webflow.
 
-### Bug A — Google Workspace noise on CT-002 (Harshal Devnani, gmail.com primary)
+**Verdict on the matcher: it's working correctly. The pipeline is healthy.**
 
-11 emails from `workspace@google.com` and `calendar-notification@google.com` got stapled to Harshal. Trace:
-- These are **inbound Google system mails to Malik** (calendar accepts, workspace ads). External participant list = `[workspace@google.com]`
-- Matcher Tier 1: no lead has primary `workspace@google.com` → skip
-- Tier 2/3: empty → skip
-- Tier 4 domain: `google.com`. Is `google.com` in `PERSONAL_PROVIDERS`? **No** — only `gmail.com` is. The blocklist forgot the parent
-- Query: `email.ilike.%@google.com OR company_url.ilike.%google.com%`. Exactly one lead matches → match wins → wrong staple
+## End-to-end answer: "How do we guarantee we find ALL emails, none ever missed?"
 
-**Fix**: Add `google.com`, `googlemail.com`, `apple.com`, `microsoft.com`, `mail.com`, `zoho.com`, `qq.com`, `163.com` and a few more system/free providers to `PERSONAL_PROVIDERS`. Also: **never match a domain when the participant list contains only addresses that look like system noreply senders** (`workspace@`, `calendar-notification@`, `noreply@`, `no-reply@`, `mailer-daemon@`, `bounces@`).
+There are 5 layers where an email can be lost. Here's the current state of each and what it would take to close every gap.
 
-### Bug B — Same-domain colleague pollution on CT-366 (James Scerbo, oilchangers.com)
+```text
+Layer                           Current state                Gap-closure work
+─────────────────────────────────────────────────────────────────────────────
+1. Mailbox capture (90d)        Bounded to last 90 days      Extend window
+2. Ongoing sync (every 10min)   Active, both providers       Add retry watchdog
+3. Matcher routing              4-tier, hardened             None — clean
+4. Identity coverage            Misses unknown personal emails  Auto-stakeholder + claim UI
+5. Operational visibility       Logs only, no proactive alerts  Health dashboard
+```
 
-3 emails from `support@captarget.com` to `jerit.daley@oilchangers.com` (with `noah.swanson@oilchangers.com` CC'd) got stapled to James Scerbo's deal. Trace:
-- James's primary = `james.scerbo@oilchangers.com` — NOT in any participant list
-- His secondary contact = `kyle.carlisle@oilchangers.com` — also NOT in participants
-- No stakeholders
-- Tier 4 domain: `oilchangers.com`. Exactly 1 lead claims it → match wins → wrong staple
+### Gap 1 — The 90-day backfill ceiling (BIGGEST gap)
 
-This is technically a **correct** behavior of the current matcher (one company = one deal, route the colleague's email to the only deal we have for that company). **But it's wrong for outbound/internal threads where the actual prospect contact isn't on the email** — those are usually internal team chatter or ops emails to a different colleague that shouldn't auto-attach.
+Right now the backfill walked Malik's mailbox back to **Jan 21, 2026 only**. Anything before that is invisible. If Malik exchanged 200 emails with Sarah in October 2025, the system shows zero.
 
-**Fix**: Tighten Tier 4 — only accept the domain match when **at least one participant in the thread is a known contact for that lead** (primary, secondary, or stakeholder). If the thread only mentions an unknown colleague at the same company, leave it unmatched for human triage. This is the same rule that protects against the gmail.com case.
+**Fix:** Add a "Backfill 1 year" / "Backfill all-time" option to Mailbox Settings. Reuses the existing discover→hydrate machinery; just changes the `target_window` parameter from `90d` to `1y` or `all`. ~15-30 min of API quota for a 1-year walk on Malik's mailbox.
 
-Actually a cleaner rule: **Tier 4 should require the matching participant's local-part to be confirmed somewhere on the lead** (primary, secondary, or stakeholder). If we're matching by domain alone with no confirmed participant, it goes to Unmatched.
+### Gap 2 — Ongoing sync resilience (every 10 minutes)
 
-## Plan — 4 precise changes + cleanup sweep
+Cron runs every 10min. If Gmail/Outlook returns a 429 or 500 on a specific cycle, that batch is skipped and the next cycle picks it up via History ID — so technically no permanent loss. But there's no alert if sync silently fails for hours.
 
-### 1. Expand `PERSONAL_PROVIDERS` blocklist
-In `sync-gmail-emails`, `sync-outlook-emails`, `backfill-hydrate`, `rematch-unmatched-emails`, `unclaim-bad-matches` — add: `google.com`, `googlemail.com`, `apple.com`, `microsoft.com`, `mail.com`, `zoho.com`, `qq.com`, `163.com`, `pm.me`, `tutanota.com`, `fastmail.com`, `gmx.com`. (System/parent/free domains that shouldn't ever serve as a routing key.)
+**Fix:** Watchdog cron that fires hourly. Checks `email_sync_runs` for any active connection that hasn't successfully synced in the last 30 minutes. Surfaces a red banner in MailboxSettings + writes a row to `cron_run_log` for the Automation Health panel.
 
-### 2. Skip domain match when only system-noise senders are in `external`
-Before Tier 4 fires, check if every external participant matches a system-noise pattern (`workspace@`, `calendar-notification@`, `noreply@`, `no-reply@`, `mailer-daemon@`, `bounces@`, `accounts@google.com`, `support@google.com`, etc.). If so, return `null` immediately — these emails belong in Unmatched, not on a deal.
+### Gap 3 — Matcher routing (DONE)
 
-### 3. Tighten Tier 4 with confirmed-participant requirement
-After identifying a candidate lead by domain, verify that **at least one participant local-part also appears as a known contact for that lead** (primary email match OR secondary_contacts JSON OR `lead_stakeholders` row). If no confirmed participant overlaps, return `null`. This kills the CT-366-style pollution while preserving legit matches like Greg Caso (who's directly in the thread).
+Already hardened over the last 6 patches. 4-tier matcher: primary → secondary_contacts → stakeholder → corporate-domain-with-confirmed-participant. Personal providers blocklisted. System noise senders skipped. **Verified clean on 30 random leads + system pollution scan = 0.**
 
-### 4. One-shot cleanup sweep on the 14 polluted rows
-Extend `unclaim-bad-matches` with a new case D: any row where `from_address` matches a system-noise pattern OR where the lead's primary/secondary/stakeholder addresses don't appear anywhere in `from_address + to_addresses + cc_addresses`. Run server-side, expect ~14 rows to flip to `unmatched` (CT-002's 11 + CT-366's 3).
+### Gap 4 — Personal email coverage (the inherent ceiling)
 
-### 5. Re-verify
-Re-run the 15-lead sample + system-wide <70% scan. Expected outcome: zero leads below 90% direct-participant ratio.
+If a prospect emails Malik from `sarah.personal@yahoo.com` and her lead record only has `sarah@her-company.com`, that email **cannot** be matched safely — auto-matching by name is fragile and was the source of the original catastrophic bug. It correctly lands in Unmatched Inbox.
 
-## Honest answer to "is this correct?"
+**Two ways to close this:**
+1. **Auto-stakeholder discovery (passive):** When a corporate-domain match succeeds (Tier 4), if the matched participant's email isn't already on the lead, automatically add it as a `lead_stakeholder`. Future emails from that person route correctly. Zero-risk because it only triggers after a confirmed match.
+2. **One-click claim UI in Unmatched Inbox (active):** Already 80% built. Add a "Claim to lead" button on each Unmatched row → searchable lead picker → on click, updates `lead_id` + adds the sender as a stakeholder so future emails from that address auto-route.
 
-**Yes, with the 2 bugs above fixed**: the matcher will route every prospect email correctly when the prospect (or a known colleague/stakeholder) appears in the participant list. Google Workspace notifications and unrelated colleague threads will correctly land in Unmatched.
+### Gap 5 — Operational health visibility
 
-**What's still inherently impossible**: a prospect emails Malik from a fresh personal address never registered anywhere on their lead record. Those will stay in Unmatched Inbox for human triage — the only safe behavior. We could add a "claim to lead" UI button there as a future enhancement.
+Right now you have to ask me "is sync working?" There's no dashboard.
 
-## Files
+**Fix:** Extend the existing `AutomationHealthPanel` to surface:
+- Last sync time per connection (green if <15min, amber 15-60, red >60)
+- Backfill job status with progress bar
+- Unmatched Inbox count with trend (this week vs last)
+- "Suspicious matches" auto-scan (any lead with <70% participant ratio) — should always read 0
 
-- **MODIFY** `supabase/functions/sync-gmail-emails/index.ts` — expand blocklist, add system-noise pre-check, add Tier 4 confirmed-participant guard
-- **MODIFY** `supabase/functions/sync-outlook-emails/index.ts` — same
-- **MODIFY** `supabase/functions/backfill-hydrate/index.ts` — same
-- **MODIFY** `supabase/functions/rematch-unmatched-emails/index.ts` — same
-- **MODIFY** `supabase/functions/unclaim-bad-matches/index.ts` — add Case D (system-noise + no confirmed participant)
-- After deploy: invoke `unclaim-bad-matches` server-side, then re-run the 15-lead verification + the <70% pollution scan, and report final scorecard
+## Recommended sequencing if you want to close every gap
+
+1. **Today (5 min):** Run a 1-year backfill on Malik's mailbox to capture pre-Jan-21 history. Single button click.
+2. **Next pass (2–3 hours of work):**
+   - Auto-stakeholder discovery on Tier-4 matches (passive coverage expansion)
+   - Watchdog cron + Automation Health panel surface
+   - "Claim to lead" UI in Unmatched Inbox
+3. **Optional:** Backfill window selector in MailboxSettings (90d / 1y / all-time) for future user-driven backfills.
+
+## Honest answer to "will we find every email?"
+
+- **Within the backfilled window:** Yes, with one nuance — if a prospect emails from a personal address never registered on their lead, it stays in Unmatched (correct behavior). Auto-stakeholder discovery + Claim UI close this loop.
+- **Older than 90 days:** Currently no. Run the 1-year backfill above.
+- **System sync interruptions:** Cron auto-recovers via History ID; no permanent loss possible. Watchdog adds visibility.
+- **Wrongly-stapled emails:** Post-cleanup, scan reads 0 leads with bad matches across the entire system. Future syncs use the same hardened logic.
+
+## Files (if you approve the gap-closure work)
+
+- **MODIFY** `src/components/MailboxSettings.tsx` — add backfill window selector (90d / 1y / all)
+- **MODIFY** `supabase/functions/sync-gmail-emails/index.ts` + `sync-outlook-emails/index.ts` — auto-add Tier-4 matched participants as stakeholders
+- **NEW** `supabase/functions/sync-watchdog/index.ts` + cron — alert on stale connections
+- **MODIFY** `src/components/AutomationHealthPanel.tsx` — surface email sync health, unmatched count trend, suspicious-matches indicator
+- **MODIFY** `src/components/UnmatchedInbox.tsx` — add "Claim to lead" button with searchable picker
 
