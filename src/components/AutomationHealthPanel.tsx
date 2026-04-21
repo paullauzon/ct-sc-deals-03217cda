@@ -200,6 +200,8 @@ export function AutomationHealthPanel() {
   const [backfillActivity, setBackfillActivity] = useState<{ lastUpdate: string | null; recentCount: number }>({
     lastUpdate: null, recentCount: 0,
   });
+  const [drawerInvocation, setDrawerInvocation] = useState<RunInvocation | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -250,21 +252,23 @@ export function AutomationHealthPanel() {
 
   useEffect(() => { load(); }, []);
 
-  const runNow = async (job: CronJob, overrideEndpoint?: string, overrideLabel?: string) => {
+  const runNow = (job: CronJob, overrideEndpoint?: string, overrideLabel?: string) => {
     const endpoint = overrideEndpoint || job.endpoint;
     const label = overrideLabel || job.label;
-    setRunningJob(`${job.jobName}:${endpoint}`);
-    try {
-      const { data, error } = await supabase.functions.invoke(endpoint, { body: job.body });
-      if (error) throw error;
-      const summary = summarizeFunctionResult(endpoint, data);
-      toast.success(`${label}: ${summary}`, { duration: 7000 });
-      setTimeout(load, 1500);
-    } catch (e) {
-      toast.error(`${label} failed: ${(e as Error).message}`);
-    } finally {
-      setRunningJob(null);
-    }
+    // Open the live drawer instead of firing-and-forgetting a toast. The drawer
+    // owns the invocation lifecycle — streams heartbeats, per-item updates,
+    // gateway-kill detection, and the final return payload.
+    setDrawerInvocation({
+      jobName: endpoint, // log_job_name matches endpoint for direct invocations
+      logJobName: job.jobName !== endpoint ? endpoint : undefined,
+      endpoint,
+      label,
+      body: job.body,
+    });
+    setDrawerOpen(true);
+    // Refresh the panel a couple seconds after open so the row's "last run"
+    // timestamp reflects the new heartbeat once it lands.
+    setTimeout(load, 4000);
   };
 
   const runAllDaily = async () => {
