@@ -506,18 +506,34 @@ export function AutomationHealthPanel() {
                       {last?.items_processed ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
-                        onClick={() => runNow(job)}
-                        disabled={runningJob === job.jobName}
-                        title="Run now"
-                      >
-                        {runningJob === job.jobName
-                          ? <Loader2 className="h-3 w-3 animate-spin" />
-                          : <Play className="h-3 w-3" />}
-                      </Button>
+                      <div className="inline-flex items-center gap-1 justify-end">
+                        {job.jobName === "enqueue-fireflies-backfill" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => runNow(job, "process-fireflies-backfill-queue", "Drain queue")}
+                            disabled={runningJob === `${job.jobName}:process-fireflies-backfill-queue`}
+                            title="Actually process the queued backfill rows"
+                          >
+                            {runningJob === `${job.jobName}:process-fireflies-backfill-queue`
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : "Drain"}
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={() => runNow(job)}
+                          disabled={runningJob === `${job.jobName}:${job.endpoint}`}
+                          title="Run now"
+                        >
+                          {runningJob === `${job.jobName}:${job.endpoint}`
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Play className="h-3 w-3" />}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                   {isOpen && (
