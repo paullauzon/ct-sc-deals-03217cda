@@ -657,29 +657,77 @@ async function syncOneConnection(
 
   // Audit log: persist this sync run so the UI can render history without scraping logs.
   // Non-fatal — never let a logging failure mask the sync result.
-  try {
-    const status = stats.errors.length === 0
-      ? "success"
-      : stats.inserted > 0 ? "partial" : "failed";
-    await supabase.from("email_sync_runs").insert({
-      connection_id: connection.id,
-      email_address: connection.email_address,
-      mode: stats.mode === "incremental" ? "incremental" : "first_run",
-      started_at: stats.started_at,
-      finished_at: new Date().toISOString(),
-      fetched: stats.fetched,
-      inserted: stats.inserted,
-      matched: stats.matched,
-      unmatched: Math.max(0, stats.inserted - stats.matched),
-      skipped: stats.skipped_dup + stats.skipped_internal,
-      errors: stats.errors,
-      status,
-    });
-  } catch (logErr) {
-    console.error("email_sync_runs insert failed (non-fatal):", logErr);
+  // Skip noisy zero-effect incremental rows (every 10min cron tick on an idle mailbox)
+  // — they bloat the table and bury real backfill summaries in the UI.
+  const isNoiseRow =
+    stats.mode === "incremental" &&
+    stats.fetched === 0 &&
+    stats.inserted === 0 &&
+    stats.errors.length === 0;
+  if (!isNoiseRow) {
+    try {
+      const status = stats.errors.length === 0
+        ? "success"
+        : stats.inserted > 0 ? "partial" : "failed";
+      await supabase.from("email_sync_runs").insert({
+        connection_id: connection.id,
+        email_address: connection.email_address,
+        mode: stats.mode === "incremental" ? "incremental" : "first_run",
+        started_at: stats.started_at,
+        finished_at: new Date().toISOString(),
+        fetched: stats.fetched,
+        inserted: stats.inserted,
+        matched: stats.matched,
+        unmatched: Math.max(0, stats.inserted - stats.matched),
+        skipped: stats.skipped_dup + stats.skipped_internal,
+        errors: stats.errors,
+        status,
+      });
+    } catch (logErr) {
+      console.error("email_sync_runs insert failed (non-fatal):", logErr);
+    }
   }
 
   return stats;
+}
+
+// Server-side auto-enroll: if a connection has been live past first-run
+// (history_id IS NOT NULL) and never had a backfill job, queue the 90d backfill
+// once. Guarantees existing connections get historical data without depending
+// on the user opening MailboxSettings. The 1-hour last_synced_at gate prevents
+// fighting a fresh OAuth flow's own auto-fire from the callback.
+async function maybeAutoEnrollBackfill(
+  supabase: ReturnType<typeof createClient>,
+  conn: { id: string; history_id: string | null },
+): Promise<boolean> {
+  try {
+    if (!conn.history_id) return false;
+    const { data: jobs } = await supabase
+      .from("email_backfill_jobs")
+      .select("id")
+      .eq("connection_id", conn.id)
+      .limit(1);
+    if (jobs && jobs.length > 0) return false;
+    const { data: connRow } = await supabase
+      .from("user_email_connections")
+      .select("last_synced_at")
+      .eq("id", conn.id)
+      .single();
+    const lastSynced = (connRow as { last_synced_at: string | null } | null)?.last_synced_at;
+    if (lastSynced && Date.now() - new Date(lastSynced).getTime() < 3600_000) return false;
+    fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/start-email-backfill`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify({ connection_id: conn.id, target_window: "90d" }),
+    }).catch((e) => console.error("auto-enroll dispatch failed:", e));
+    return true;
+  } catch (e) {
+    console.error("auto-enroll guard failed (non-fatal):", e);
+    return false;
+  }
 }
 
 Deno.serve(async (req) => {
