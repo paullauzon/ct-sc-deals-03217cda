@@ -3,8 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
-import { CheckCircle2, Clock, XCircle, Play, Loader2 } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, Play, Loader2, ListChecks } from "lucide-react";
 import { toast } from "sonner";
+import { FirefliesBackfillReport } from "./FirefliesBackfillReport";
 
 interface Counts {
   pending: number;
