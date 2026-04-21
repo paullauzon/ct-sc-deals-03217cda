@@ -303,6 +303,7 @@ Deno.serve(async (req) => {
     validated,
     unclaimed,
     redirected_to_canonical: redirected,
+    redirected_by_primary: redirectedByPrimary,
     errors,
     leads_indexed: leadById.size,
     elapsed_ms: Date.now() - startedAt,
