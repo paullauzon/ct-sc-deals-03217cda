@@ -151,6 +151,7 @@ export function FirefliesBackfillProgress() {
           </span>
         )}
       </div>
+      <FirefliesBackfillReport open={reportOpen} onOpenChange={setReportOpen} />
     </div>
   );
 }
