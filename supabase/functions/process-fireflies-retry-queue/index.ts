@@ -133,10 +133,16 @@ Deno.serve(async (req) => {
     }
 
     // ── 2. Drain: process due rows ──
+    // CRITICAL: Exclude `backfill:%` rows — those belong exclusively to the
+    // process-fireflies-backfill-queue drainer (which uses a calendly-window
+    // search-by-name flow, not GET-by-id). If we claim them here, we'd treat
+    // the synthetic `backfill:<lead_id>` as a real Fireflies meeting id and
+    // get back "Transcript empty" forever, hijacking the proper drainer.
     const { data: dueRows, error: dueErr } = await supabase
       .from("fireflies_retry_queue")
       .select("id, fireflies_id, lead_id, attempts, max_attempts")
       .eq("status", "pending")
+      .not("fireflies_id", "like", "backfill:%")
       .lte("next_attempt_at", startedAt)
       .order("next_attempt_at", { ascending: true })
       .limit(20);
