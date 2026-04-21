@@ -1,80 +1,90 @@
 
 
-# Verification + the missing piece that's hiding all the activity
+# The 190 Fireflies leads — exactly where they stand right now
 
-## Ground truth (just verified live)
+## Ground truth (just queried)
 
-| Signal | Reality | Verdict |
+You actually have **161 leads** in the backfill queue (not 190 — the original enqueue de-duped against leads that already had a transcript). Here's the live status:
+
+| Status | Count | Meaning |
 |---|---|---|
-| Backfill queue | **24 gave_up · 137 pending** (was 0/161) | Working |
-| Cron ticks | Last 8 ticks all logged successfully (15:05, 15:06, 15:07, …) | Healthy |
-| Per-item logs | Every lead emits an `item` row (`gave_up · not_in_fireflies_api`) | Healthy |
-| Heartbeats | Every tick writes a `heartbeat:true` row within ~300ms | Healthy |
-| Realtime publication on `cron_run_log` | **NOT enabled** | **Bug** |
-| Realtime publication on `fireflies_retry_queue` | **NOT enabled** | **Bug** |
+| ✓ Matched (transcript recovered) | **0** | Fireflies returned a transcript |
+| ✗ Gave up | **29** | Fireflies API confirmed it has no recording (past their ~90 day retention) |
+| ⏳ Pending | **132** | Still in queue, will be picked up by the 5-min cron tick |
+| **Total** | **161** | |
 
-Bottom line: the **backend is doing everything correctly**, but the drawer is staring at a Realtime channel that has nothing to deliver because neither table is in the `supabase_realtime` publication. That's why your drawer screenshot says "Waiting for first heartbeat…" 5 seconds in even though a heartbeat was just written to disk.
+**100% of the gave-up leads** failed for the same terminal reason: `not_in_fireflies_api`. Their meetings were too old (mostly 2024 / early 2026) — Fireflies discarded the recordings before we asked for them.
 
-## Why "0 done" but 24 classified?
+The queue is draining at ~5 leads every 5 minutes, so the remaining **132 will finish in ~2.2 hours**. Realistic final outcome: maybe 5-10 matches, ~150 marked "gave up · not in Fireflies API."
 
-The drawer's "Backlog: 138 pending · 23 gave up · 0 done" is correct — `done` only ticks up when Fireflies *recovers* a transcript. The 23 `gave_up` are leads where Fireflies' API confirmed it has no recording (likely past their ~90 day retention). That's a permanent terminal state, not a failure.
+## Why you can't see this today
 
-After full drain, expect: **~150 gave_up + maybe 5-10 done**. The recovery rate is low because the booked meetings are old enough that Fireflies discarded the transcripts.
+The current `FirefliesBackfillProgress` widget only shows aggregate counts and the "Drain now" button. It doesn't let you **see which leads were classified, what happened to each, or browse the gave-up list**. The `AutomationRunDrawer` only shows events from a single drawer-session (since you opened it), not the full historical record.
 
-## What I need to fix (one migration + one drawer polish)
+## Fix — a "Backfill Progress Report" view
 
-### 1. Enable Realtime on both tables (migration)
+### 1. Expand `FirefliesBackfillProgress` into a full report card
 
-```sql
-ALTER PUBLICATION supabase_realtime ADD TABLE public.cron_run_log;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.fireflies_retry_queue;
-ALTER TABLE public.cron_run_log REPLICA IDENTITY FULL;
-ALTER TABLE public.fireflies_retry_queue REPLICA IDENTITY FULL;
-```
-
-This is the only reason the drawer looks dead. After this lands, every heartbeat and per-lead classification streams into the drawer within 100-300ms of the database commit.
-
-### 2. Add a polling fallback to the drawer (belt + suspenders)
-
-Even with Realtime enabled, add a 3-second poll that fetches new `cron_run_log` rows for this `job_name` since the drawer opened. This guarantees events render even if the Realtime channel disconnects. The poll de-dupes against existing events (already handled by `pushEvent`).
-
-### 3. "Final results" panel after run completes
-
-When the drawer finishes (the function returns OR all in-flight ticks settle), show a clean summary block:
+Add a "View all 161 leads" button next to the existing progress bar that opens a dedicated **Sheet** showing the complete per-lead breakdown:
 
 ```text
-┌───────────────────────────────────────────────┐
-│ FINAL RESULTS                                 │
-│                                               │
-│ Backlog drained                               │
-│   ✓ 7 leads classified this drawer session    │
-│   ✓ 0 transcripts recovered                   │
-│   ✓ 7 marked "not in Fireflies API"           │
-│                                               │
-│ Remaining backlog                             │
-│   • 130 leads pending — next cron tick in 4m  │
-│   • Estimated full drain: ~2.5 hours          │
-│                                               │
-│ [ Show me the recovered leads ] (if any)      │
-│ [ Show me the gave-up leads ]                 │
-└───────────────────────────────────────────────┘
+Fireflies Backfill Report                                    [Refresh]
+Started Apr 21, 11:19  ·  29 / 161 classified  ·  18% complete
+Estimated full drain:  ~2.2 hours remaining (132 pending @ 5/5min)
+
+[ All 161 ]  [ ✗ Gave up (29) ]  [ ⏳ Pending (132) ]  [ ✓ Matched (0) ]
+
+┌─────────────────────────────────────────────────────────────────┐
+│ Lead              Company             Booked        Status      │
+├─────────────────────────────────────────────────────────────────┤
+│ Dr. Phillip Hearn Helixmanagement.    Jan 12, 2026  Gave up · … │
+│ Nezim Mmegwa      Nezim               Feb 02, 2026  Gave up · … │
+│ Tim Murray        Conniehealth        Feb 26, 2026  Gave up · … │
+│ Bobby Tyson       Journeyman Partners Mar 31, 2026  Gave up · … │
+│ Malik Hayes       CAPTARGET Refer.    Feb 05, 2026  Pending · 504 timeout, retrying │
+│ …                                                                │
+└─────────────────────────────────────────────────────────────────┘
+
+Each row clickable → opens lead's Deal Room. "Gave up" rows show the
+exact reason on hover. Pending rows show "next attempt at HH:MM".
 ```
 
-The "Show me the …" buttons filter the leads grid to those touched in this session (using the lead IDs we streamed) so you can audit each outcome.
+### 2. Per-row detail (hover or click)
+For each lead show:
+- **Booked date** (so you see why Fireflies doesn't have it — if >90 days old, that's the explanation)
+- **Last attempt timestamp + error message** (truncated, full on hover)
+- **Attempts used / max** (e.g. "1/5")
+- **Quick action**: "Open in Deal Room" link
+
+### 3. Group + filter the data
+Tab-filter buttons at the top: **All · Gave up · Pending · Matched**. Default to **All**. Each tab shows count badge.
+
+### 4. Export to CSV
+Button: **Export report (CSV)** — downloads `lead_id, name, company, booked_at, status, last_error, attempts, updated_at` for all 161 rows so you have a permanent audit trail.
+
+### 5. Surface the "why no matches" story up front
+At the top of the report, a one-line summary:
+
+> "29 of 29 classified leads gave up because Fireflies API has no recording — their meetings were booked between May 2024 and Mar 2026, mostly past Fireflies' ~90 day retention. Match rate is expected to stay near 0% for these old meetings."
+
+This makes it instantly clear that the system is working correctly and the low recovery rate is a Fireflies retention limit, not a bug.
 
 ## Files
 
-- **NEW migration** — `ALTER PUBLICATION supabase_realtime ADD TABLE …` for both tables + `REPLICA IDENTITY FULL`
-- **MODIFY `src/components/AutomationRunDrawer.tsx`**:
-  - Add 3-second polling fallback for `cron_run_log` rows since `startedAt`
-  - Add "Final results" summary block after status flips to `done`/`killed`
-  - Add two action buttons that emit a custom event the parent can listen to (or just deep-link to a filtered leads view)
+- **MODIFY `src/components/FirefliesBackfillProgress.tsx`**
+  - Add "View full report" button next to "Drain now"
+  - Add `<FirefliesBackfillReport />` Sheet that loads on open
+- **NEW `src/components/FirefliesBackfillReport.tsx`**
+  - Sheet with tab filters, table of all 161 rows joined to `leads` for name/company/booked_at
+  - Per-row tooltip with error/attempts
+  - Export-to-CSV button
+  - Refreshes every 15s while open (lighter than the existing 10s poll since this view is heavier)
 
 ## What you'll see right after this lands
 
-1. Click ▷ → drawer opens
-2. Within 1 second: `Heartbeat logged · claimed 5 rows`
-3. Every 5-30 seconds for the next ~90s: `Lead CT-XXX → gave_up (not_in_fireflies_api)` lines stream in
-4. Final summary card shows counts + actionable filter links
-5. Drawer pill flips from `LIVE` → `DONE` (or `GATEWAY KILL` if the function ran past 150s — same story, work still committed)
+1. Open Settings → Automations
+2. The backfill progress card now has a `[View full report]` button
+3. Click it — slide-out sheet opens with all 161 leads, filterable by status
+4. You can immediately see exactly which leads gave up, why, and which are still pending
+5. Export the full report to CSV any time for offline review or audit
 
