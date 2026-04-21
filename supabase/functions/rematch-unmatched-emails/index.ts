@@ -1,11 +1,17 @@
-// One-shot sweep over lead_emails WHERE lead_id='unmatched'. Re-runs the
-// 4-tier matcher (primary -> secondary_contacts -> stakeholders -> domain)
-// and flips matched rows to the real lead_id. The existing
-// update_lead_email_metrics_on_claim trigger fires automatically when lead_id
-// changes from 'unmatched' -> real id, so metrics update without extra work.
+// Bulk re-matcher for lead_emails.lead_id = 'unmatched'.
 //
-// Bounded per invocation (default 1000 rows) so a single call stays within
-// wall-time. Safe to re-invoke — every call just claims more of the pool.
+// Strategy (fast path):
+//   1. Load ALL non-archived leads + secondary contacts + stakeholders + own
+//      mailbox addresses into in-memory maps ONCE per invocation.
+//   2. Stream unmatched rows in pages of 500. For each row do O(1) Map lookups
+//      instead of per-row Supabase queries.
+//   3. Apply 4-tier match (primary → secondary → stakeholder → unambiguous
+//      domain). Skip pure-noise senders (newsletters, service notifications,
+//      and internal-only threads) so we don't waste cycles.
+//   4. Bulk-update matched rows in chunks of 200 via .in() filter.
+//
+// The existing update_lead_email_metrics_on_claim trigger fires automatically
+// when lead_id flips from 'unmatched' → real id, so metrics stay accurate.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -15,6 +21,17 @@ const corsHeaders = {
 
 const INTERNAL_DOMAINS = new Set(["captarget.com", "sourcecodeals.com"]);
 
+// Senders that will never map to a lead — newsletters, transactional notifications,
+// generic service domains. Skipped on the fast path so we don't waste lookups.
+const NOISE_DOMAINS = new Set([
+  "mail.beehiiv.com", "email.pandadoc.net", "fireflies.ai", "calendly.com",
+  "zoom.us", "webflow.com", "mail.investopedia.com", "newsletter.trip.com",
+  "activecampaign.com", "m.starbucks.com", "shared1.ccsend.com",
+  "ruby.com", "news.mcguirewoods.net", "connectoutbound.com",
+  "realdealsmedia.com", "acg.org", "youthenrichmentalliance.com",
+  "dakotalive.com", "nperspective.com",
+]);
+
 function domainOf(email: string): string {
   return email.includes("@") ? email.split("@")[1].toLowerCase() : "";
 }
@@ -23,142 +40,211 @@ function isInternal(email: string): boolean {
   return INTERNAL_DOMAINS.has(domainOf(email));
 }
 
-async function findLeadIdByEmail(
-  supabase: ReturnType<typeof createClient>,
-  candidates: string[],
-): Promise<string | null> {
-  if (candidates.length === 0) return null;
-  const lowered = candidates.map((c) => c.toLowerCase()).filter(Boolean);
-  if (lowered.length === 0) return null;
+interface LeadIndex {
+  byEmail: Map<string, string>;        // exact email -> lead_id
+  byDomain: Map<string, Set<string>>;  // domain -> set of lead_ids (only count==1 is usable)
+}
 
-  // 1) Exact primary email
-  const { data: exact } = await supabase
-    .from("leads")
-    .select("id")
-    .in("email", lowered)
-    .is("archived_at", null)
-    .eq("is_duplicate", false)
-    .limit(1);
-  if (exact && exact.length > 0) return (exact[0] as { id: string }).id;
+async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promise<LeadIndex> {
+  const byEmail = new Map<string, string>();
+  const byDomain = new Map<string, Set<string>>();
 
-  // 2) Secondary contacts
-  for (const addr of lowered) {
-    if (!addr) continue;
-    const { data: sec } = await supabase
+  const addToDomain = (dom: string, leadId: string) => {
+    if (!dom || INTERNAL_DOMAINS.has(dom) || NOISE_DOMAINS.has(dom)) return;
+    let set = byDomain.get(dom);
+    if (!set) { set = new Set(); byDomain.set(dom, set); }
+    set.add(leadId);
+  };
+
+  // Page through all leads (Supabase caps select at 1000 rows by default).
+  let from = 0;
+  const PAGE = 1000;
+  for (;;) {
+    const { data, error } = await supabase
       .from("leads")
-      .select("id")
-      .filter("secondary_contacts", "cs", JSON.stringify([{ email: addr }]))
+      .select("id, email, secondary_contacts, company_url")
       .is("archived_at", null)
       .eq("is_duplicate", false)
-      .limit(1);
-    if (sec && sec.length > 0) return (sec[0] as { id: string }).id;
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`leads page ${from}: ${error.message}`);
+    if (!data || data.length === 0) break;
+
+    for (const row of data as Array<{ id: string; email: string | null; secondary_contacts: any; company_url: string | null }>) {
+      const primary = (row.email || "").toLowerCase();
+      if (primary) {
+        if (!byEmail.has(primary)) byEmail.set(primary, row.id);
+        addToDomain(domainOf(primary), row.id);
+      }
+      // Secondary contacts (jsonb array of {email, ...})
+      const sec = Array.isArray(row.secondary_contacts) ? row.secondary_contacts : [];
+      for (const c of sec) {
+        const e = (c?.email || "").toLowerCase();
+        if (!e) continue;
+        if (!byEmail.has(e)) byEmail.set(e, row.id);
+        addToDomain(domainOf(e), row.id);
+      }
+      // Company URL → domain
+      const url = (row.company_url || "").toLowerCase();
+      if (url) {
+        try {
+          const u = new URL(url.startsWith("http") ? url : `https://${url}`);
+          addToDomain(u.hostname.replace(/^www\./, ""), row.id);
+        } catch { /* ignore bad URLs */ }
+      }
+    }
+    if (data.length < PAGE) break;
+    from += PAGE;
   }
 
-  // 3) Stakeholders
-  const { data: stake } = await supabase
-    .from("lead_stakeholders")
-    .select("lead_id")
-    .in("email", lowered)
-    .limit(1);
-  if (stake && stake.length > 0) return (stake[0] as { lead_id: string }).lead_id;
-
-  // 4) Domain fallback (skip ambiguous)
-  const domains = Array.from(new Set(
-    lowered.map(domainOf).filter((d) => d && !INTERNAL_DOMAINS.has(d)),
-  ));
-  if (domains.length === 0) return null;
-  const orParts: string[] = [];
-  for (const d of domains) {
-    orParts.push(`email.ilike.%@${d}`);
-    orParts.push(`company_url.ilike.%${d}%`);
+  // Stakeholders: separate paged scan.
+  from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from("lead_stakeholders")
+      .select("lead_id, email")
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`stakeholders page ${from}: ${error.message}`);
+    if (!data || data.length === 0) break;
+    for (const s of data as Array<{ lead_id: string; email: string | null }>) {
+      const e = (s.email || "").toLowerCase();
+      if (e && !byEmail.has(e)) byEmail.set(e, s.lead_id);
+    }
+    if (data.length < PAGE) break;
+    from += PAGE;
   }
-  const { data: fuzzy } = await supabase
-    .from("leads")
-    .select("id")
-    .or(orParts.join(","))
-    .is("archived_at", null)
-    .eq("is_duplicate", false)
-    .limit(2);
-  // Only match if exactly one lead is associated with the domain set
-  if (fuzzy && fuzzy.length === 1) return (fuzzy[0] as { id: string }).id;
 
+  return { byEmail, byDomain };
+}
+
+function findLead(idx: LeadIndex, candidates: string[]): string | null {
+  // 1+2+3) Exact email match (covers primary, secondary, stakeholders)
+  for (const c of candidates) {
+    const hit = idx.byEmail.get(c);
+    if (hit) return hit;
+  }
+  // 4) Domain fallback — only if exactly one lead claims this domain
+  const seen = new Set<string>();
+  for (const c of candidates) {
+    const d = domainOf(c);
+    if (!d || INTERNAL_DOMAINS.has(d) || NOISE_DOMAINS.has(d)) continue;
+    if (seen.has(d)) continue;
+    seen.add(d);
+    const matches = idx.byDomain.get(d);
+    if (matches && matches.size === 1) return matches.values().next().value;
+  }
   return null;
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const startedAt = Date.now();
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  let body: { limit?: number; own_address?: string } = {};
-  try { body = await req.json(); } catch { /* allow empty body */ }
+  let body: { limit?: number } = {};
+  try { body = await req.json(); } catch { /* empty body */ }
   const limit = Math.min(Math.max(body.limit ?? 1000, 1), 5000);
 
-  // Pull unmatched rows oldest-first so repeated runs drain the queue.
-  const { data: rows, error: selErr } = await supabase
-    .from("lead_emails")
-    .select("id, from_address, to_addresses, cc_addresses")
-    .eq("lead_id", "unmatched")
-    .order("email_date", { ascending: true })
-    .limit(limit);
-
-  if (selErr) {
-    return new Response(JSON.stringify({ ok: false, error: selErr.message }), {
+  // Build the in-memory index ONCE.
+  let idx: LeadIndex;
+  try {
+    idx = await buildLeadIndex(supabase);
+  } catch (e: any) {
+    return new Response(JSON.stringify({ ok: false, error: `index_build_failed: ${e.message}` }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  const total = rows?.length ?? 0;
+  // Own mailbox addresses (excluded from candidate set).
+  const { data: conns } = await supabase.from("user_email_connections").select("email_address");
+  const own = new Set((conns || []).map((c: any) => (c.email_address || "").toLowerCase()).filter(Boolean));
+
+  // Page through unmatched rows oldest-first; stop early if wall-clock exceeds budget.
+  const WALL_BUDGET_MS = 90_000;
+  const PAGE = 500;
+
+  let scanned = 0;
   let matched = 0;
+  let skippedNoise = 0;
   let stillUnmatched = 0;
   let errors = 0;
+  let pageStart = 0;
 
-  // Collect connection email_addresses so we can exclude them from the
-  // "external" set when building match candidates.
-  const { data: conns } = await supabase
-    .from("user_email_connections")
-    .select("email_address");
-  const ownAddresses = new Set(
-    (conns || []).map((c: any) => (c.email_address || "").toLowerCase()).filter(Boolean),
-  );
+  // Buffer matches and apply in chunks per lead_id.
+  const updatesByLead = new Map<string, string[]>();
 
-  for (const row of (rows || []) as Array<{
-    id: string;
-    from_address: string | null;
-    to_addresses: string[] | null;
-    cc_addresses: string[] | null;
-  }>) {
-    try {
+  while (scanned < limit) {
+    if (Date.now() - startedAt > WALL_BUDGET_MS) break;
+
+    const remaining = limit - scanned;
+    const pageSize = Math.min(PAGE, remaining);
+
+    const { data: rows, error: selErr } = await supabase
+      .from("lead_emails")
+      .select("id, from_address, to_addresses, cc_addresses")
+      .eq("lead_id", "unmatched")
+      .order("email_date", { ascending: true })
+      .range(pageStart, pageStart + pageSize - 1);
+
+    if (selErr) {
+      return new Response(JSON.stringify({ ok: false, error: selErr.message }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!rows || rows.length === 0) break;
+
+    for (const row of rows as Array<{
+      id: string;
+      from_address: string | null;
+      to_addresses: string[] | null;
+      cc_addresses: string[] | null;
+    }>) {
+      scanned++;
+      const fromAddr = (row.from_address || "").toLowerCase();
+      const fromDom = domainOf(fromAddr);
+
+      // Fast skip: pure-noise sender domains never match.
+      if (NOISE_DOMAINS.has(fromDom)) { skippedNoise++; continue; }
+
       const participants = [
-        (row.from_address || "").toLowerCase(),
+        fromAddr,
         ...(row.to_addresses || []).map((a) => (a || "").toLowerCase()),
         ...(row.cc_addresses || []).map((a) => (a || "").toLowerCase()),
-      ];
-      const external = participants.filter(
-        (a) => a && !ownAddresses.has(a) && !isInternal(a),
-      );
-      if (external.length === 0) { stillUnmatched++; continue; }
+      ].filter(Boolean);
 
-      const leadId = await findLeadIdByEmail(supabase, external);
+      const external = participants.filter((a) => !own.has(a) && !isInternal(a));
+      if (external.length === 0) { skippedNoise++; continue; }
+
+      const leadId = findLead(idx, external);
       if (!leadId) { stillUnmatched++; continue; }
 
-      const { error: upErr } = await supabase
-        .from("lead_emails")
-        .update({ lead_id: leadId })
-        .eq("id", row.id)
-        .eq("lead_id", "unmatched"); // guard: someone else might have claimed it
+      let bucket = updatesByLead.get(leadId);
+      if (!bucket) { bucket = []; updatesByLead.set(leadId, bucket); }
+      bucket.push(row.id);
+    }
 
-      if (upErr) { errors++; continue; }
-      matched++;
-    } catch {
-      errors++;
+    pageStart += rows.length;
+    if (rows.length < pageSize) break;
+  }
+
+  // Flush updates: one statement per lead_id, batched by row id chunks of 200
+  // (PostgREST URL length is the only ceiling; 200 ids stays well under 8KB).
+  for (const [leadId, ids] of updatesByLead) {
+    for (let i = 0; i < ids.length; i += 200) {
+      const slice = ids.slice(i, i + 200);
+      const { error: upErr, count } = await supabase
+        .from("lead_emails")
+        .update({ lead_id: leadId }, { count: "exact" })
+        .in("id", slice)
+        .eq("lead_id", "unmatched"); // guard against concurrent claims
+      if (upErr) { errors += slice.length; continue; }
+      matched += count ?? 0;
     }
   }
 
-  // How many are still pending so the UI can decide whether to offer another pass.
   const { count: remaining } = await supabase
     .from("lead_emails")
     .select("id", { count: "exact", head: true })
@@ -166,11 +252,15 @@ Deno.serve(async (req) => {
 
   return new Response(JSON.stringify({
     ok: true,
-    scanned: total,
+    scanned,
     matched,
+    skipped_noise: skippedNoise,
     still_unmatched: stillUnmatched,
     errors,
     remaining_unmatched: remaining ?? null,
+    elapsed_ms: Date.now() - startedAt,
+    leads_indexed: idx.byEmail.size,
+    domains_indexed: idx.byDomain.size,
   }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
