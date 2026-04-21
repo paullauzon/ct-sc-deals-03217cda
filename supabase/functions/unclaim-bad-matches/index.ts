@@ -47,9 +47,12 @@ Deno.serve(async (req) => {
 
   // --- 1. Build lead lookup: id → { primary email, secondary emails[], duplicate_of, etc. }
   // and domain → set of canonical lead ids (to detect ambiguity).
-  const leadById = new Map<string, { emails: Set<string>; isDuplicate: boolean; duplicateOf: string | null; archived: boolean }>();
+  // Also build primaryEmailToLeadId so we can detect Case C: an email currently
+  // attached to a lead by SECONDARY claim, when another lead owns it as PRIMARY.
+  const leadById = new Map<string, { emails: Set<string>; primaryEmail: string; secondaryEmails: Set<string>; isDuplicate: boolean; duplicateOf: string | null; archived: boolean }>();
   const stakeholderEmailsByLead = new Map<string, Set<string>>();
   const domainToCanonicalLeads = new Map<string, Set<string>>();
+  const primaryEmailToLeadId = new Map<string, string>();
 
   let from = 0;
   const PAGE = 1000;
