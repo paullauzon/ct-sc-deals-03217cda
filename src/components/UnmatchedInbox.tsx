@@ -177,6 +177,38 @@ export function UnmatchedInbox() {
     }
   };
 
+  const cleanupSweep = async () => {
+    if (rematching) return;
+    if (!window.confirm("Run cleanup sweep? This unstapes wrongly-matched emails (personal-provider domains, ambiguous matches, duplicate-lead routing) and re-runs the matcher with the corrected logic. Safe to re-run anytime.")) return;
+    setRematching(true);
+    const toastId = toast.loading("Step 1 of 2 — un-staping wrong matches…");
+    try {
+      const { data: unclaimRes, error: unclaimErr } = await supabase.functions.invoke("unclaim-bad-matches", {});
+      if (unclaimErr) throw unclaimErr;
+      if (!unclaimRes?.ok) throw new Error(unclaimRes?.error || "Cleanup failed");
+      const unclaimed = unclaimRes.unclaimed ?? 0;
+      const redirected = unclaimRes.redirected_to_canonical ?? 0;
+
+      toast.loading(`Step 2 of 2 — re-matching ${unclaimed} freed emails…`, { id: toastId });
+      const { data: rematchRes, error: rematchErr } = await supabase.functions.invoke("rematch-unmatched-emails", {
+        body: { limit: 5000 },
+      });
+      if (rematchErr) throw rematchErr;
+      const matched = rematchRes?.matched ?? 0;
+      const remaining = rematchRes?.remaining_unmatched ?? null;
+
+      toast.success(
+        `Cleanup complete · ${unclaimed} un-staped · ${redirected} redirected to canonical · ${matched} re-matched${remaining != null ? ` · ${remaining} unmatched` : ""}`,
+        { id: toastId, duration: 8000 },
+      );
+      await load();
+    } catch (e: any) {
+      toast.error(e.message || "Cleanup failed", { id: toastId });
+    } finally {
+      setRematching(false);
+    }
+  };
+
   const dismiss = async (emailId: string) => {
     if (!window.confirm("Permanently delete this unmatched email?")) return;
     setBusyId(emailId);
@@ -206,14 +238,24 @@ export function UnmatchedInbox() {
             size="sm"
             variant="outline"
             className="h-8 text-xs"
+            onClick={cleanupSweep}
+            disabled={rematching}
+            title="Un-stape wrongly-matched emails and re-run the matcher with strict logic"
+          >
+            {rematching ? (
+              <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> Working…</>
+            ) : (
+              <><Wand2 className="h-3 w-3 mr-1.5" /> Run cleanup sweep</>
+            )}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs"
             onClick={rematchAll}
             disabled={rematching || emails.length === 0}
           >
-            {rematching ? (
-              <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> Re-matching…</>
-            ) : (
-              <><Wand2 className="h-3 w-3 mr-1.5" /> Re-run matcher</>
-            )}
+            Re-run matcher
           </Button>
           <div className="text-xs text-muted-foreground">
             {emails.length} unmatched
