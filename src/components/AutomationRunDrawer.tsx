@@ -248,11 +248,84 @@ export function AutomationRunDrawer({ open, onClose, invocation }: Props) {
             meta: { lead_id: row.lead_id, status: row.status, error: row.last_error },
           });
           setProgress(p => p ? { ...p, done: Math.min(p.total, p.done + 1) } : null);
+          // Track session-touched lead IDs for the "Show me…" filter buttons.
+          if (row.lead_id) {
+            if (row.status === "done") sessionLeadIdsRef.current.recovered.add(String(row.lead_id));
+            else if (row.status === "gave_up") sessionLeadIdsRef.current.gaveUp.add(String(row.lead_id));
+            setSessionTouched({
+              recovered: sessionLeadIdsRef.current.recovered.size,
+              gaveUp: sessionLeadIdsRef.current.gaveUp.size,
+            });
+          }
         }
       )
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [open, invocation]);
+
+  // Polling fallback (3s) — guarantees event flow even if Realtime channel drops.
+  // Pulls cron_run_log rows for this job since the drawer opened; pushEvent dedupes by message+ts.
+  useEffect(() => {
+    if (!open || !invocation || status !== "running" || !startedAt) return;
+    const targetJobNames = invocation.logJobName && invocation.logJobName !== invocation.jobName
+      ? [invocation.jobName, invocation.logJobName]
+      : [invocation.jobName];
+    const sinceIso = new Date(startedAt - 1000).toISOString();
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("cron_run_log")
+          .select("id,job_name,status,items_processed,error_message,details,ran_at")
+          .in("job_name", targetJobNames)
+          .gte("ran_at", sinceIso)
+          .order("ran_at", { ascending: true })
+          .limit(200);
+        if (cancelled || error || !data) return;
+        for (const row of data as any[]) {
+          const details = (row?.details ?? {}) as Record<string, unknown>;
+          const ts = row?.ran_at ? new Date(row.ran_at).getTime() : Date.now();
+          if (details.heartbeat) {
+            pushEvent(setEvents, {
+              ts,
+              kind: "heartbeat",
+              message: `Heartbeat logged · claimed ${details.claimed ?? 0} row(s)`,
+              meta: details,
+            });
+          } else if (details.item) {
+            pushEvent(setEvents, {
+              ts,
+              kind: "item",
+              message: `${details.item} · ${details.classification ?? "processed"}`,
+              meta: details,
+            });
+          } else {
+            pushEvent(setEvents, {
+              ts,
+              kind: row?.status === "error" ? "error" : "final",
+              message: `Finalized · status=${row?.status} · items=${row?.items_processed ?? 0}`,
+              meta: { ...details, error: row?.error_message },
+            });
+          }
+        }
+      } catch { /* ignore — Realtime is primary */ }
+    };
+
+    void tick(); // immediate first poll
+    const id = setInterval(tick, 3000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [open, invocation, status, startedAt]);
+
+  // Refresh backlog snapshot when the run finishes for backfill jobs (so the Final Results panel is current).
+  useEffect(() => {
+    if (!invocation) return;
+    if (status !== "done" && status !== "killed" && status !== "errored") return;
+    const isBackfill = invocation.jobName === "process-fireflies-backfill-queue"
+      || invocation.endpoint === "process-fireflies-backfill-queue";
+    if (!isBackfill) return;
+    void hydrateBacklog(setBacklog, () => {}, Date.now()); // refresh silently (no event row)
+  }, [status, invocation]);
 
   const headerStatus = useMemo(() => {
     switch (status) {
