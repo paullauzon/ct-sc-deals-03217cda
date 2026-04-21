@@ -207,9 +207,9 @@ Deno.serve(async (req) => {
             .eq("id", row.id);
           recovered++;
         } else {
-          // No match within window — backoff or give up.
+          // No match within window — terminal (Fireflies retention miss).
           await scheduleNextOrGiveUp(supabase, row, "not_in_fireflies_api");
-          if (row.attempts + 1 >= row.max_attempts) gaveUp++; else stillSearching++;
+          gaveUp++;
         }
       } catch (e) {
         const msg = (e as Error).message.slice(0, 200);
