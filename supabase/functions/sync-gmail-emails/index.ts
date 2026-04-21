@@ -83,12 +83,38 @@ const INTERNAL_DOMAINS = new Set([
   "sourcecodeals.com",
 ]);
 
-// Personal mailbox providers — NEVER use for domain-fallback inference.
+// Personal/system/free mailbox providers — NEVER use for domain-fallback inference.
+// Includes parent corporate domains (google.com, apple.com, microsoft.com) so system
+// emails like workspace@google.com or calendar-notification@google.com don't get
+// stapled to a random lead via Tier 4 domain match.
 const PERSONAL_PROVIDERS = new Set([
   "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com",
   "aol.com", "msn.com", "live.com", "me.com", "mac.com", "protonmail.com",
   "proton.me", "yahoo.co.uk", "googlemail.com", "ymail.com",
+  "google.com", "apple.com", "microsoft.com", "mail.com", "zoho.com",
+  "qq.com", "163.com", "pm.me", "tutanota.com", "fastmail.com", "gmx.com",
 ]);
+
+// Sender addresses/local-parts that are pure system noise — never belong to a deal.
+// If every external participant matches one of these, the email goes to Unmatched.
+const SYSTEM_NOISE_LOCALPARTS = new Set([
+  "noreply", "no-reply", "donotreply", "do-not-reply", "mailer-daemon",
+  "postmaster", "bounces", "bounce", "notifications", "notification",
+  "calendar-notification", "workspace", "billing", "support",
+  "accounts", "account", "alerts", "alert", "info", "hello",
+]);
+
+function isSystemNoise(addr: string): boolean {
+  if (!addr || !addr.includes("@")) return true;
+  const local = addr.split("@")[0].toLowerCase();
+  if (SYSTEM_NOISE_LOCALPARTS.has(local)) return true;
+  if (local.startsWith("noreply") || local.startsWith("no-reply")) return true;
+  if (local.startsWith("notification")) return true;
+  if (local.startsWith("calendar-")) return true;
+  if (local.startsWith("bounce")) return true;
+  if (local.includes("+caf_")) return true; // Google Calendar autoresponder pattern
+  return false;
+}
 
 async function resolveCanonicalLeadId(
   supabase: ReturnType<typeof createClient>,
