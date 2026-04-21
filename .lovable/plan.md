@@ -1,72 +1,77 @@
 
 
-# Don't wipe and re-sync — there's nothing to gain. Here's the honest scorecard and the actual next move.
+# Outlook integration: surface it and finish the activation
 
-## Why a wipe-and-resync would be wasteful (and risky)
+## Current state — already 100% built
 
-I just ran the full diagnostic. Current state of the matched data:
-
-| Check | Result |
+| Component | Status |
 |---|---|
-| Total emails in DB | 4,188 (1,049 matched · 3,139 unmatched) |
-| Matched leads with primary in participants | **1,049 / 1,049 = 100.0%** |
-| Unmatched emails where a lead's PRIMARY would match | **0** |
-| Unmatched emails where a STAKEHOLDER would match | **0** |
-| Unmatched emails where a SECONDARY contact would match | **0** |
-| Backfill window covered | Jan 21 → Apr 21, 2026 (90d, 4,620 msgs walked) |
+| `outlook-oauth-start` edge function | ✓ Deployed |
+| `outlook-oauth-callback` edge function | ✓ Deployed |
+| `refresh-outlook-token` edge function | ✓ Deployed |
+| `sync-outlook-emails` edge function (with hardened matcher + auto-stakeholder + system-noise guard) | ✓ Deployed |
+| `send-outlook-email` edge function (with pixel + click tracking + loop protection) | ✓ Deployed |
+| `MailboxSettings.tsx` "Connect Outlook" dropdown | ✓ Live in UI |
+| `EmailComposeDrawer.tsx` provider routing | ✓ Live |
+| `BackfillProgressPanel` provider-aware | ✓ Live |
+| Cron `sync-outlook-emails-10min` | Pending — added after first connection succeeds |
+| `MICROSOFT_CLIENT_ID` secret | ❌ Not set |
+| `MICROSOFT_CLIENT_SECRET` secret | ❌ Not set |
+| Azure App Registration | ❌ User action required |
 
-**Translation:** every email we currently have attached to a lead is correctly attached. Every email currently in Unmatched is unmatchable by any of the 4 routing tiers — it's newsletters, system noise, internal `captarget.com` threads, or one-off cold outreach from people who aren't in the CRM.
+**Translation:** The integration is fully ready. The only missing pieces are the Microsoft credentials and the matching Azure app registration. There is no further code to write — everything has already been hardened to the same standard as Gmail.
 
-A wipe + resync would:
-- Take 30+ minutes of API quota
-- Hit the exact same Gmail messages
-- Run them through the exact same hardened matcher
-- Produce the **exact same 1,049 matched / 3,139 unmatched** result
-- Risk losing the auto-discovered stakeholder additions made over the last few hours
+## What needs to happen — 3 steps
 
-## What "100% coverage" actually requires (and where we genuinely sit)
+### Step 1 — User registers the app in Microsoft Entra (5 min, user-side)
 
-```text
-Layer                          Coverage    Action needed
-────────────────────────────────────────────────────────────
-1. Mailbox fetch (90d)         ✓ Complete   None
-2. Ongoing 10min sync          ✓ Live       None — watchdog now alerts on stalls
-3. Matcher routing             ✓ 100%       None — 0 false orphans, 0 pollution
-4. Personal-email identity     ⚠ Inherent   Auto-stakeholder (live) + Claim UI (already built)
-5. Pre-Jan-21 history          ✗ Missing    1-year backfill (one-click)
-```
+I'll walk you through the Azure portal exactly, but the agent cannot do this for you. You'll need:
 
-The only **real** gap is layer 5: emails older than Jan 21, 2026 are not in the DB. That's not a matcher problem — it's a backfill-window problem. The fix is one button, not a wipe.
+1. Go to **Microsoft Entra admin center** → **App registrations** → **New registration**
+2. Name: `SourceCo CRM Outlook Sync` (or anything)
+3. Supported account types: **Accounts in any organizational directory and personal Microsoft accounts** (multi-tenant + personal — covers any Outlook account you'd want to connect)
+4. Redirect URI (Web): `https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/outlook-oauth-callback`
+5. After creation: **API permissions** → **Add a permission** → **Microsoft Graph** → **Delegated permissions** → check `Mail.Read`, `Mail.Send`, `User.Read`, `offline_access` → **Add**. Click **Grant admin consent** if it's your tenant's admin account.
+6. **Certificates & secrets** → **New client secret** → 24 month expiry → copy the **Value** (not the ID) immediately
+7. Copy the **Application (client) ID** from the Overview page
 
-## What I recommend instead — 1 action, 5 minutes
+### Step 2 — Add the two secrets to Lovable Cloud
 
-**Run a 1-year backfill on Malik's mailbox.** This:
-- Walks Gmail back to April 2025 (instead of Jan 2026)
-- Adds ~10,000-15,000 new historical messages
-- Routes each one through the hardened 4-tier matcher
-- Won't touch existing data — backfill is additive and uses message-ID dedup
-- Will likely surface another 1,000-2,000 matched emails for older deals (CT-001 thru CT-100 era)
-- Auto-stakeholder discovery fires on every Tier-4 match → expands future routing automatically
+I'll prompt you with `add_secret` for both:
+- `MICROSOFT_CLIENT_ID` — the Application (client) ID
+- `MICROSOFT_CLIENT_SECRET` — the secret Value
 
-**You already have the UI for this.** Mailbox Settings → backfill window selector → choose "1 year" → click run. The `BackfillProgressPanel` shows live progress.
+### Step 3 — Connect a mailbox + activate cron
 
-If after the 1-year backfill you still want more, the same selector offers "All time" which walks the entire mailbox history.
+1. You go to **Settings → Mailboxes** → **Connect mailbox** → **Connect Outlook**, enter a label (e.g. "Malik Outlook"), authorize via Microsoft
+2. Connection lands in `user_email_connections` with `provider='outlook'` and a refresh token
+3. Auto-backfill kicks off (90d default — you can choose 1y/3y/all in the BackfillProgressPanel after connect)
+4. I add `sync-outlook-emails-10min` pg_cron job so ongoing sync runs alongside Gmail
+5. I add the connection to the `sync-watchdog` monitoring (already monitors all active connections — Gmail and Outlook both)
+6. I update the memory file to mark Outlook as **LIVE**
 
-## When a wipe-and-resync WOULD make sense (none of these apply right now)
+## What you get the moment a mailbox connects
 
-- If the matcher had a known bug that mis-routed historical data → **doesn't apply** (0 pollution detected)
-- If body content was corrupted → **doesn't apply** (bodies are intact, never re-fetched after insert)
-- If we changed the schema in a breaking way → **doesn't apply** (no schema changes pending)
+- **Inbound + outbound sync every 10 min** via Microsoft Graph `/me/messages` and `/me/mailFolders/sentitems/messages`
+- **Same hardened 4-tier matcher** as Gmail — primary → secondary → stakeholder → corporate-domain-with-confirmed-participant
+- **Same blocklists** — personal providers (gmail/yahoo/google/apple/etc) excluded from Tier 4, system-noise senders skipped
+- **Auto-stakeholder discovery** on Tier 4 matches (passive coverage expansion)
+- **Composer routing** — Compose Drawer already loads all active connections; "From" picker auto-shows Outlook accounts and routes through `send-outlook-email`
+- **Loop protection** — `X-CRM-Source: lovable-crm` header + `<crm-{uuid}@domain>` Message-ID on outbound prevents the sync from re-ingesting our own sends
+- **Watchdog** — alerts if Outlook sync stalls >30 min, identical to Gmail
+- **90d / 1y / 3y / all-time backfill** — same `start-email-backfill` machinery, provider-aware
 
-## Honest answer to "are we 100%?"
+## Files (confirmation — no NEW code, just secrets + cron + memory)
 
-- **Of the emails we've fetched: yes, 100% routing accuracy.** Verified across 45+ random leads + system-wide pollution scan.
-- **Of the universe of emails in Malik's mailbox: ~70%.** The 30% gap is everything older than 90 days. Run the 1-year backfill to close it to ~95%+.
-- **Of personal-email edge cases (prospect emails Malik from `sarah.personal@gmail.com`):** these correctly land in Unmatched. The Claim UI in Unmatched Inbox routes them in one click + auto-adds the sender as a stakeholder so future emails route automatically.
+- **NO CODE CHANGES** to any edge function or component. Everything is built.
+- After secrets are added: invoke a SQL migration to register the `sync-outlook-emails-10min` pg_cron job
+- Update `mem://integrations/email-sync-status` to mark Outlook as LIVE
 
-## Suggested action
+## What I'll do right now after you approve
 
-Click **Backfill 1 year** on Malik's mailbox in Settings → Mailboxes. I'll monitor it server-side and report the new totals when it finishes (~20-30 min).
-
-If you want, I can also kick that off automatically — say the word and I'll invoke it now.
+1. Send `add_secret` requests for `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET` with clear copy-paste instructions for Azure
+2. Wait for both secrets to land
+3. Tell you to click **Connect Outlook** in Settings → Mailboxes
+4. The moment your first connection appears in `user_email_connections`, I'll add the pg_cron job and verify the first sync run
+5. Report back with first-sync results (fetched / matched / unmatched counts) so we can validate Outlook routing accuracy the same way we did for Gmail
 
