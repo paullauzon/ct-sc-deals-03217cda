@@ -77,6 +77,7 @@ const EXCLUDED_EMAILS = [
   "myall@captarget.com",
   "malik@captarget.com",
   "tomos@captarget.com",
+  "valeriarivera31@gmail.com",
 ];
 const EXCLUDED_DOMAINS = ["captarget.com", "sourcecodeals.com"];
 
