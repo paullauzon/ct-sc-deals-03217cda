@@ -184,7 +184,7 @@ export function AutomationHealthPanel() {
   const [latestByJob, setLatestByJob] = useState<Record<string, RunRow | null>>({});
   const [stats7dByJob, setStats7dByJob] = useState<Record<string, JobStats>>({});
   const [loading, setLoading] = useState(true);
-  const [runningJob, setRunningJob] = useState<string | null>(null);
+  const [runningAllDaily_unused_marker, _set] = [false, () => {}]; // placeholder removed below
   const [runningAllDaily, setRunningAllDaily] = useState(false);
   const [firecrawlBroken, setFirecrawlBroken] = useState(false);
   const [firecrawlTesting, setFirecrawlTesting] = useState(false);
