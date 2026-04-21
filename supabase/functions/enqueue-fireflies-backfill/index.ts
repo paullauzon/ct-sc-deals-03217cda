@@ -8,6 +8,7 @@
 // will discover). The drainer recognizes the prefix and switches to search
 // mode instead of re-fetch mode.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { logCronRun } from "../_shared/cron-log.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -87,6 +88,25 @@ Deno.serve(async (req) => {
       }
     }
 
+    await logCronRun("enqueue-fireflies-backfill", inserted === 0 ? "noop" : "success", inserted, {
+      scanned: all.length,
+      eligible: eligible.length,
+      skipped_existing: eligible.length - inserted,
+    });
+
+    // Fire-and-forget: kick the drainer immediately so progress starts now
+    // instead of waiting up to 5 minutes for the next cron tick.
+    if (inserted > 0) {
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/process-fireflies-backfill-queue`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
+        },
+        body: JSON.stringify({}),
+      }).catch(() => { /* best-effort */ });
+    }
+
     return new Response(JSON.stringify({
       ok: true,
       scanned: all.length,
@@ -95,6 +115,7 @@ Deno.serve(async (req) => {
       skipped_existing: eligible.length - inserted,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
+    await logCronRun("enqueue-fireflies-backfill", "error", 0, {}, (e as Error).message);
     return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
