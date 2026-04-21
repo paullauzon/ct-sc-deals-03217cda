@@ -1,6 +1,7 @@
-// Returns the current pg_cron registration for every automation job.
-// Used by the Automation Health "Verify schedules" button to prove that
-// the cron expressions the UI claims are actually wired into the database.
+// Returns the current pg_cron registration AND recent execution history for
+// every automation job. Used by the Automation Health "Verify schedules"
+// button to prove that the cron expressions the UI claims are actually wired
+// into the database AND actively firing — not just registered-but-silent.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -11,82 +12,87 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
-
-  // pg_cron lives in the `cron` schema which RLS-blocks anon. Service role
-  // can read it directly via PostgREST RPC isn't exposed, so we use a raw
-  // SQL fetch via PostgREST's `rpc` only if a function exists. Easiest path:
-  // hit the underlying REST endpoint with service_role.
-  // Fallback: execute via a one-off SQL through pg-meta isn't available either,
-  // so we read pg_cron through a Postgres function created on the fly is too
-  // invasive. Instead we return the static known-set from cron_run_log heuristics.
-  //
-  // Strategy used here: query cron.job via `postgres` REST. In Supabase Edge,
-  // service role can call `from('cron.job')` because schemas other than public
-  // need to be exposed. The cleanest portable way is a tiny RPC, but to avoid
-  // a migration we list jobs we expect and check their last-seen heartbeat.
-  //
-  // To actually read cron.job we use the SQL editor endpoint via service-role
-  // PostgREST 'pg_meta' isn't enabled, so we approximate: ask pg_cron via the
-  // `pg.cron_job` view if exposed; else return heartbeat-based status.
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
   try {
-    // Try direct cron.job read (works if `cron` schema exposed to PostgREST)
-    const url = `${Deno.env.get("SUPABASE_URL")}/rest/v1/rpc/list_cron_jobs`;
-    const r = await fetch(url, {
+    // Registration list (jobname, schedule, active)
+    const regRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/list_cron_jobs`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
       },
       body: "{}",
     });
 
-    if (r.ok) {
-      const jobs = await r.json();
-      return new Response(JSON.stringify({ ok: true, source: "rpc", jobs }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    let registered: any[] = [];
+    if (regRes.ok) registered = await regRes.json();
+
+    // Recent execution history (last 3 ticks per job)
+    const histRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/list_cron_run_details`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+      },
+      body: JSON.stringify({ _limit_per_job: 3 }),
+    });
+
+    let history: any[] = [];
+    if (histRes.ok) history = await histRes.json();
+
+    // Group history by jobname
+    const histByJob = new Map<string, any[]>();
+    for (const h of history) {
+      if (!histByJob.has(h.jobname)) histByJob.set(h.jobname, []);
+      histByJob.get(h.jobname)!.push(h);
     }
 
-    // Fallback: derive health from cron_run_log heartbeats over last 24h.
+    // Pull body-level heartbeats from cron_run_log for the last 24h
     const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-    const { data: rows } = await supabase
+    const { data: bodyRows } = await supabase
       .from("cron_run_log")
       .select("job_name, ran_at, status")
       .gte("ran_at", since)
       .order("ran_at", { ascending: false });
 
-    const seen = new Map<string, { last: string; status: string; runs: number }>();
-    (rows ?? []).forEach((row: any) => {
-      const cur = seen.get(row.job_name);
+    const heartbeatByJob = new Map<string, { last: string; status: string; runs: number }>();
+    (bodyRows ?? []).forEach((row: any) => {
+      const cur = heartbeatByJob.get(row.job_name);
       if (!cur) {
-        seen.set(row.job_name, { last: row.ran_at, status: row.status, runs: 1 });
+        heartbeatByJob.set(row.job_name, { last: row.ran_at, status: row.status, runs: 1 });
       } else {
         cur.runs += 1;
       }
     });
 
-    const jobs = Array.from(seen.entries()).map(([name, v]) => ({
-      jobname: name,
-      schedule: "(inferred from heartbeat)",
-      active: true,
-      last_run: v.last,
-      last_status: v.status,
-      runs_24h: v.runs,
-    }));
+    // Merge: every registered job + its last-3 pg_cron ticks + body heartbeat
+    const jobs = registered.map((j: any) => {
+      const recent = histByJob.get(j.jobname) ?? [];
+      const hb = heartbeatByJob.get(j.jobname);
+      const ticksOk = recent.filter((r: any) => r.status === "succeeded").length;
+      // "registered but silent" = pg_cron ran successfully but body never logged
+      const silent = recent.length > 0 && ticksOk > 0 && (!hb || hb.runs === 0);
+      return {
+        jobname: j.jobname,
+        schedule: j.schedule,
+        active: j.active,
+        recent_ticks: recent.map((r: any) => ({
+          status: r.status,
+          start_time: r.start_time,
+          return_message: r.return_message,
+        })),
+        body_heartbeat: hb ?? null,
+        silent_warning: silent,
+      };
+    });
 
     return new Response(
-      JSON.stringify({
-        ok: true,
-        source: "heartbeat-fallback",
-        note: "Direct cron.job read unavailable. Showing 24h heartbeat history instead.",
-        jobs,
-      }),
+      JSON.stringify({ ok: true, source: "rpc+history", jobs }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
