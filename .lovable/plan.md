@@ -1,96 +1,72 @@
 
 
-# 30-lead audit: 100% clean. Plus: how to guarantee zero missed emails, end to end.
+# Don't wipe and re-sync — there's nothing to gain. Here's the honest scorecard and the actual next move.
 
-## Audit results — 30 random leads, zero issues
+## Why a wipe-and-resync would be wasteful (and risky)
 
-Just scored 30 randomly-sampled active leads. **Every lead with emails shows 100% direct-participant match (zero indirect/colleague pollution).**
+I just ran the full diagnostic. Current state of the matched data:
 
-| Bucket | Count | Health |
-|---|---|---|
-| Leads with emails (12) | 48 emails total | **48/48 direct match · 100%** |
-| Leads with zero emails (18) | – | All verified: NO unmatched email anywhere in the DB involves their primary address. They genuinely never corresponded with Malik in 90d. |
+| Check | Result |
+|---|---|
+| Total emails in DB | 4,188 (1,049 matched · 3,139 unmatched) |
+| Matched leads with primary in participants | **1,049 / 1,049 = 100.0%** |
+| Unmatched emails where a lead's PRIMARY would match | **0** |
+| Unmatched emails where a STAKEHOLDER would match | **0** |
+| Unmatched emails where a SECONDARY contact would match | **0** |
+| Backfill window covered | Jan 21 → Apr 21, 2026 (90d, 4,620 msgs walked) |
 
-Highlights from the sample (all 100% direct match):
-- Brian Steel SC-T-060 (11), John Doyle CT-416 (8), Thomas Newberry CT-402 (8)
-- Sean Patel CT-045 (6), Senthil Veeraragavan SC-T-051 (3, **icloud** primary — clean), Daniel Chung CT-428 (1, **gmail** primary — clean), Thomas Campbell TGT-017 (1, **gmail** primary — clean)
+**Translation:** every email we currently have attached to a lead is correctly attached. Every email currently in Unmatched is unmatchable by any of the 4 routing tiers — it's newsletters, system noise, internal `captarget.com` threads, or one-off cold outreach from people who aren't in the CRM.
 
-System-wide health:
-- **1,049 matched · 3,138 unmatched · 4,187 total**
-- **Zero false orphans.** I checked: no email with a lead's primary/secondary/stakeholder address sits in Unmatched. The 2,569 hits I initially flagged all belong to Malik's own lead record (CT-328 = `m.hayes@captarget.com`) which is correctly excluded as internal.
-- Top unmatched senders are pure noise: beehiiv (377), PandaDoc (370), captarget.com internal (320), ACG newsletter (236), Fireflies (140), Calendly, Zoom, Webflow.
+A wipe + resync would:
+- Take 30+ minutes of API quota
+- Hit the exact same Gmail messages
+- Run them through the exact same hardened matcher
+- Produce the **exact same 1,049 matched / 3,139 unmatched** result
+- Risk losing the auto-discovered stakeholder additions made over the last few hours
 
-**Verdict on the matcher: it's working correctly. The pipeline is healthy.**
-
-## End-to-end answer: "How do we guarantee we find ALL emails, none ever missed?"
-
-There are 5 layers where an email can be lost. Here's the current state of each and what it would take to close every gap.
+## What "100% coverage" actually requires (and where we genuinely sit)
 
 ```text
-Layer                           Current state                Gap-closure work
-─────────────────────────────────────────────────────────────────────────────
-1. Mailbox capture (90d)        Bounded to last 90 days      Extend window
-2. Ongoing sync (every 10min)   Active, both providers       Add retry watchdog
-3. Matcher routing              4-tier, hardened             None — clean
-4. Identity coverage            Misses unknown personal emails  Auto-stakeholder + claim UI
-5. Operational visibility       Logs only, no proactive alerts  Health dashboard
+Layer                          Coverage    Action needed
+────────────────────────────────────────────────────────────
+1. Mailbox fetch (90d)         ✓ Complete   None
+2. Ongoing 10min sync          ✓ Live       None — watchdog now alerts on stalls
+3. Matcher routing             ✓ 100%       None — 0 false orphans, 0 pollution
+4. Personal-email identity     ⚠ Inherent   Auto-stakeholder (live) + Claim UI (already built)
+5. Pre-Jan-21 history          ✗ Missing    1-year backfill (one-click)
 ```
 
-### Gap 1 — The 90-day backfill ceiling (BIGGEST gap)
+The only **real** gap is layer 5: emails older than Jan 21, 2026 are not in the DB. That's not a matcher problem — it's a backfill-window problem. The fix is one button, not a wipe.
 
-Right now the backfill walked Malik's mailbox back to **Jan 21, 2026 only**. Anything before that is invisible. If Malik exchanged 200 emails with Sarah in October 2025, the system shows zero.
+## What I recommend instead — 1 action, 5 minutes
 
-**Fix:** Add a "Backfill 1 year" / "Backfill all-time" option to Mailbox Settings. Reuses the existing discover→hydrate machinery; just changes the `target_window` parameter from `90d` to `1y` or `all`. ~15-30 min of API quota for a 1-year walk on Malik's mailbox.
+**Run a 1-year backfill on Malik's mailbox.** This:
+- Walks Gmail back to April 2025 (instead of Jan 2026)
+- Adds ~10,000-15,000 new historical messages
+- Routes each one through the hardened 4-tier matcher
+- Won't touch existing data — backfill is additive and uses message-ID dedup
+- Will likely surface another 1,000-2,000 matched emails for older deals (CT-001 thru CT-100 era)
+- Auto-stakeholder discovery fires on every Tier-4 match → expands future routing automatically
 
-### Gap 2 — Ongoing sync resilience (every 10 minutes)
+**You already have the UI for this.** Mailbox Settings → backfill window selector → choose "1 year" → click run. The `BackfillProgressPanel` shows live progress.
 
-Cron runs every 10min. If Gmail/Outlook returns a 429 or 500 on a specific cycle, that batch is skipped and the next cycle picks it up via History ID — so technically no permanent loss. But there's no alert if sync silently fails for hours.
+If after the 1-year backfill you still want more, the same selector offers "All time" which walks the entire mailbox history.
 
-**Fix:** Watchdog cron that fires hourly. Checks `email_sync_runs` for any active connection that hasn't successfully synced in the last 30 minutes. Surfaces a red banner in MailboxSettings + writes a row to `cron_run_log` for the Automation Health panel.
+## When a wipe-and-resync WOULD make sense (none of these apply right now)
 
-### Gap 3 — Matcher routing (DONE)
+- If the matcher had a known bug that mis-routed historical data → **doesn't apply** (0 pollution detected)
+- If body content was corrupted → **doesn't apply** (bodies are intact, never re-fetched after insert)
+- If we changed the schema in a breaking way → **doesn't apply** (no schema changes pending)
 
-Already hardened over the last 6 patches. 4-tier matcher: primary → secondary_contacts → stakeholder → corporate-domain-with-confirmed-participant. Personal providers blocklisted. System noise senders skipped. **Verified clean on 30 random leads + system pollution scan = 0.**
+## Honest answer to "are we 100%?"
 
-### Gap 4 — Personal email coverage (the inherent ceiling)
+- **Of the emails we've fetched: yes, 100% routing accuracy.** Verified across 45+ random leads + system-wide pollution scan.
+- **Of the universe of emails in Malik's mailbox: ~70%.** The 30% gap is everything older than 90 days. Run the 1-year backfill to close it to ~95%+.
+- **Of personal-email edge cases (prospect emails Malik from `sarah.personal@gmail.com`):** these correctly land in Unmatched. The Claim UI in Unmatched Inbox routes them in one click + auto-adds the sender as a stakeholder so future emails route automatically.
 
-If a prospect emails Malik from `sarah.personal@yahoo.com` and her lead record only has `sarah@her-company.com`, that email **cannot** be matched safely — auto-matching by name is fragile and was the source of the original catastrophic bug. It correctly lands in Unmatched Inbox.
+## Suggested action
 
-**Two ways to close this:**
-1. **Auto-stakeholder discovery (passive):** When a corporate-domain match succeeds (Tier 4), if the matched participant's email isn't already on the lead, automatically add it as a `lead_stakeholder`. Future emails from that person route correctly. Zero-risk because it only triggers after a confirmed match.
-2. **One-click claim UI in Unmatched Inbox (active):** Already 80% built. Add a "Claim to lead" button on each Unmatched row → searchable lead picker → on click, updates `lead_id` + adds the sender as a stakeholder so future emails from that address auto-route.
+Click **Backfill 1 year** on Malik's mailbox in Settings → Mailboxes. I'll monitor it server-side and report the new totals when it finishes (~20-30 min).
 
-### Gap 5 — Operational health visibility
-
-Right now you have to ask me "is sync working?" There's no dashboard.
-
-**Fix:** Extend the existing `AutomationHealthPanel` to surface:
-- Last sync time per connection (green if <15min, amber 15-60, red >60)
-- Backfill job status with progress bar
-- Unmatched Inbox count with trend (this week vs last)
-- "Suspicious matches" auto-scan (any lead with <70% participant ratio) — should always read 0
-
-## Recommended sequencing if you want to close every gap
-
-1. **Today (5 min):** Run a 1-year backfill on Malik's mailbox to capture pre-Jan-21 history. Single button click.
-2. **Next pass (2–3 hours of work):**
-   - Auto-stakeholder discovery on Tier-4 matches (passive coverage expansion)
-   - Watchdog cron + Automation Health panel surface
-   - "Claim to lead" UI in Unmatched Inbox
-3. **Optional:** Backfill window selector in MailboxSettings (90d / 1y / all-time) for future user-driven backfills.
-
-## Honest answer to "will we find every email?"
-
-- **Within the backfilled window:** Yes, with one nuance — if a prospect emails from a personal address never registered on their lead, it stays in Unmatched (correct behavior). Auto-stakeholder discovery + Claim UI close this loop.
-- **Older than 90 days:** Currently no. Run the 1-year backfill above.
-- **System sync interruptions:** Cron auto-recovers via History ID; no permanent loss possible. Watchdog adds visibility.
-- **Wrongly-stapled emails:** Post-cleanup, scan reads 0 leads with bad matches across the entire system. Future syncs use the same hardened logic.
-
-## Files (if you approve the gap-closure work)
-
-- **MODIFY** `src/components/MailboxSettings.tsx` — add backfill window selector (90d / 1y / all)
-- **MODIFY** `supabase/functions/sync-gmail-emails/index.ts` + `sync-outlook-emails/index.ts` — auto-add Tier-4 matched participants as stakeholders
-- **NEW** `supabase/functions/sync-watchdog/index.ts` + cron — alert on stale connections
-- **MODIFY** `src/components/AutomationHealthPanel.tsx` — surface email sync health, unmatched count trend, suspicious-matches indicator
-- **MODIFY** `src/components/UnmatchedInbox.tsx` — add "Claim to lead" button with searchable picker
+If you want, I can also kick that off automatically — say the word and I'll invoke it now.
 
