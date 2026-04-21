@@ -4,7 +4,8 @@ import {
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, CheckCircle2, AlertTriangle, Clock, Zap, ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, CheckCircle2, AlertTriangle, Clock, Zap, ArrowRight, ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceStrict } from "date-fns";
@@ -66,6 +67,12 @@ export function AutomationRunDrawer({ open, onClose, invocation }: Props) {
   const [restoredFromCache, setRestoredFromCache] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [backlog, setBacklog] = useState<{ pending: number; gaveUp: number; done: number } | null>(null);
+  // Track which lead IDs were touched in *this* drawer session (for the "Show me…" filter buttons).
+  const sessionLeadIdsRef = useRef<{ recovered: Set<string>; gaveUp: Set<string> }>({
+    recovered: new Set(),
+    gaveUp: new Set(),
+  });
+  const [sessionTouched, setSessionTouched] = useState({ recovered: 0, gaveUp: 0 });
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const invocationKey = invocation ? `${invocation.endpoint}:${invocation.jobName}` : null;
@@ -93,6 +100,8 @@ export function AutomationRunDrawer({ open, onClose, invocation }: Props) {
     setElapsed(0);
     setProgress(null);
     setBacklog(null);
+    sessionLeadIdsRef.current = { recovered: new Set(), gaveUp: new Set() };
+    setSessionTouched({ recovered: 0, gaveUp: 0 });
 
     pushEvent(setEvents, {
       ts: start,
@@ -239,11 +248,84 @@ export function AutomationRunDrawer({ open, onClose, invocation }: Props) {
             meta: { lead_id: row.lead_id, status: row.status, error: row.last_error },
           });
           setProgress(p => p ? { ...p, done: Math.min(p.total, p.done + 1) } : null);
+          // Track session-touched lead IDs for the "Show me…" filter buttons.
+          if (row.lead_id) {
+            if (row.status === "done") sessionLeadIdsRef.current.recovered.add(String(row.lead_id));
+            else if (row.status === "gave_up") sessionLeadIdsRef.current.gaveUp.add(String(row.lead_id));
+            setSessionTouched({
+              recovered: sessionLeadIdsRef.current.recovered.size,
+              gaveUp: sessionLeadIdsRef.current.gaveUp.size,
+            });
+          }
         }
       )
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [open, invocation]);
+
+  // Polling fallback (3s) — guarantees event flow even if Realtime channel drops.
+  // Pulls cron_run_log rows for this job since the drawer opened; pushEvent dedupes by message+ts.
+  useEffect(() => {
+    if (!open || !invocation || status !== "running" || !startedAt) return;
+    const targetJobNames = invocation.logJobName && invocation.logJobName !== invocation.jobName
+      ? [invocation.jobName, invocation.logJobName]
+      : [invocation.jobName];
+    const sinceIso = new Date(startedAt - 1000).toISOString();
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("cron_run_log")
+          .select("id,job_name,status,items_processed,error_message,details,ran_at")
+          .in("job_name", targetJobNames)
+          .gte("ran_at", sinceIso)
+          .order("ran_at", { ascending: true })
+          .limit(200);
+        if (cancelled || error || !data) return;
+        for (const row of data as any[]) {
+          const details = (row?.details ?? {}) as Record<string, unknown>;
+          const ts = row?.ran_at ? new Date(row.ran_at).getTime() : Date.now();
+          if (details.heartbeat) {
+            pushEvent(setEvents, {
+              ts,
+              kind: "heartbeat",
+              message: `Heartbeat logged · claimed ${details.claimed ?? 0} row(s)`,
+              meta: details,
+            });
+          } else if (details.item) {
+            pushEvent(setEvents, {
+              ts,
+              kind: "item",
+              message: `${details.item} · ${details.classification ?? "processed"}`,
+              meta: details,
+            });
+          } else {
+            pushEvent(setEvents, {
+              ts,
+              kind: row?.status === "error" ? "error" : "final",
+              message: `Finalized · status=${row?.status} · items=${row?.items_processed ?? 0}`,
+              meta: { ...details, error: row?.error_message },
+            });
+          }
+        }
+      } catch { /* ignore — Realtime is primary */ }
+    };
+
+    void tick(); // immediate first poll
+    const id = setInterval(tick, 3000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [open, invocation, status, startedAt]);
+
+  // Refresh backlog snapshot when the run finishes for backfill jobs (so the Final Results panel is current).
+  useEffect(() => {
+    if (!invocation) return;
+    if (status !== "done" && status !== "killed" && status !== "errored") return;
+    const isBackfill = invocation.jobName === "process-fireflies-backfill-queue"
+      || invocation.endpoint === "process-fireflies-backfill-queue";
+    if (!isBackfill) return;
+    void hydrateBacklog(setBacklog, () => {}, Date.now()); // refresh silently (no event row)
+  }, [status, invocation]);
 
   const headerStatus = useMemo(() => {
     switch (status) {
@@ -326,9 +408,19 @@ export function AutomationRunDrawer({ open, onClose, invocation }: Props) {
           </ScrollArea>
         </div>
 
+        {(status === "done" || status === "killed" || status === "errored") && (
+          <FinalResultsPanel
+            status={status}
+            sessionTouched={sessionTouched}
+            backlog={backlog}
+            invocation={invocation}
+            sessionLeadIdsRef={sessionLeadIdsRef}
+          />
+        )}
+
         {finalPayload && (
           <div className="px-6 py-3 border-t border-border bg-secondary/30">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Final result</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Function payload</div>
             <pre className="text-[11px] font-mono text-foreground/80 leading-relaxed whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
               {JSON.stringify(finalPayload, null, 2)}
             </pre>
@@ -336,6 +428,107 @@ export function AutomationRunDrawer({ open, onClose, invocation }: Props) {
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function FinalResultsPanel({
+  status,
+  sessionTouched,
+  backlog,
+  invocation,
+  sessionLeadIdsRef,
+}: {
+  status: "done" | "errored" | "killed";
+  sessionTouched: { recovered: number; gaveUp: number };
+  backlog: { pending: number; gaveUp: number; done: number } | null;
+  invocation: RunInvocation | null;
+  sessionLeadIdsRef: React.MutableRefObject<{ recovered: Set<string>; gaveUp: Set<string> }>;
+}) {
+  const isBackfill = invocation?.jobName === "process-fireflies-backfill-queue"
+    || invocation?.endpoint === "process-fireflies-backfill-queue";
+  const totalTouched = sessionTouched.recovered + sessionTouched.gaveUp;
+  // Estimate full drain: pending leads at ~5 per 5-min tick = 60/hr.
+  const drainEtaText = backlog && backlog.pending > 0
+    ? `~${Math.max(1, Math.ceil(backlog.pending / 60))} hour${Math.ceil(backlog.pending / 60) === 1 ? "" : "s"}`
+    : "—";
+
+  const openLeadsFiltered = (kind: "recovered" | "gaveUp") => {
+    const ids = Array.from(sessionLeadIdsRef.current[kind]);
+    if (ids.length === 0) return;
+    // Best-effort: emit a custom event the rest of the app can pick up to filter the leads grid.
+    window.dispatchEvent(new CustomEvent("lov:filter-leads-by-ids", { detail: { ids, source: `backfill-${kind}` } }));
+    // Also navigate to the leads view if not already there.
+    if (!window.location.hash.includes("view=leads")) {
+      window.location.hash = "view=leads";
+    }
+  };
+
+  return (
+    <div className="px-6 py-4 border-t border-border bg-secondary/30 space-y-3">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Final results</div>
+
+      {isBackfill ? (
+        <>
+          <div className="space-y-1.5">
+            <div className="text-xs font-medium text-foreground/90">This session</div>
+            <div className="text-xs text-foreground/80 tabular-nums space-y-0.5">
+              <div>· {totalTouched} lead{totalTouched === 1 ? "" : "s"} classified</div>
+              <div>· {sessionTouched.recovered} transcript{sessionTouched.recovered === 1 ? "" : "s"} recovered</div>
+              <div>· {sessionTouched.gaveUp} marked “not in Fireflies API”</div>
+            </div>
+          </div>
+
+          {backlog && (
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-foreground/90">Remaining backlog</div>
+              <div className="text-xs text-foreground/80 tabular-nums space-y-0.5">
+                <div>· {backlog.pending} pending — next cron tick within 5m</div>
+                <div>· Estimated full drain: {drainEtaText}</div>
+                <div className="text-muted-foreground">· {backlog.done} recovered · {backlog.gaveUp} gave up (lifetime)</div>
+              </div>
+            </div>
+          )}
+
+          {(sessionTouched.recovered > 0 || sessionTouched.gaveUp > 0) && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {sessionTouched.recovered > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px]"
+                  onClick={() => openLeadsFiltered("recovered")}
+                >
+                  Show recovered leads ({sessionTouched.recovered})
+                  <ExternalLink className="h-3 w-3 ml-1.5" />
+                </Button>
+              )}
+              {sessionTouched.gaveUp > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px]"
+                  onClick={() => openLeadsFiltered("gaveUp")}
+                >
+                  Show gave-up leads ({sessionTouched.gaveUp})
+                  <ExternalLink className="h-3 w-3 ml-1.5" />
+                </Button>
+              )}
+            </div>
+          )}
+
+          {status === "killed" && (
+            <div className="text-[11px] text-muted-foreground italic pt-1">
+              Edge gateway killed the request after ~150s, but every classification above is committed. The next cron tick continues from here.
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="text-xs text-foreground/80">
+          Run {status === "done" ? "completed" : status === "killed" ? "was killed by gateway (work above is safe)" : "errored"}.
+          See payload below for details.
+        </div>
+      )}
+    </div>
   );
 }
 
