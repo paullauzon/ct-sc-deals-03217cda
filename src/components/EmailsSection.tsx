@@ -322,7 +322,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
       <div>
         {header}
         <p className="text-xs text-muted-foreground/60 text-center py-4">
-          No emails yet. {onCompose ? "Click Compose to start a conversation, or " : ""}connect Gmail/Outlook via Zapier to see correspondence here.
+          No emails yet. {onCompose ? "Click Compose to start a conversation, or " : ""}connect a mailbox in Settings → Mailboxes to see correspondence here.
         </p>
       </div>
     );
