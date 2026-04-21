@@ -637,7 +637,11 @@ async function syncOneConnection(
       }
 
       const leadId = await findLeadIdByEmail(supabase, external);
-      if (leadId) stats.matched += 1;
+      if (leadId) {
+        stats.matched += 1;
+        // Passive coverage expansion: add same-domain colleagues uncovered via this thread.
+        await maybeAutoAddStakeholder(supabase, leadId, external, from.name, from.address);
+      }
 
       const { text, html } = extractBody(msg.payload);
       const preview = (text || html.replace(/<[^>]+>/g, " ")).slice(0, 280).replace(/\s+/g, " ").trim();

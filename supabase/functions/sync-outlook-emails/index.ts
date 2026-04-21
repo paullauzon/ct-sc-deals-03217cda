@@ -377,7 +377,10 @@ async function syncOneConnection(
         if (external.length === 0) { stats.skipped_internal++; continue; }
 
         const leadId = await findLeadIdByEmail(supabase, external);
-        if (leadId) stats.matched++;
+        if (leadId) {
+          stats.matched++;
+          await maybeAutoAddStakeholder(supabase, leadId, external, fromName, fromAddr);
+        }
 
         const emailDate = m.receivedDateTime || m.sentDateTime || new Date().toISOString();
         const html = m.body?.contentType === "html" ? m.body.content : "";
