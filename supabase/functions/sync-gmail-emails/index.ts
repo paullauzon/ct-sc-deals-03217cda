@@ -318,6 +318,85 @@ async function findLeadIdByEmail(
   return null;
 }
 
+/**
+ * Auto-stakeholder discovery (passive coverage expansion).
+ * After a successful corporate-domain match (Tier 4 OR primary/secondary that
+ * uncovered a thread participant we don't yet know about), upsert any external
+ * participant who isn't already a known contact for this lead as a stakeholder.
+ * Future emails from that address will then route via Tier 3 directly.
+ *
+ * Safety: only fires when leadId is non-null (i.e., we already trust the match).
+ * Skips system-noise senders, internal/personal-provider domains, and the
+ * lead's own primary/secondary/existing stakeholder addresses. Idempotent —
+ * uses INSERT with a uniqueness check on (lead_id, email).
+ */
+async function maybeAutoAddStakeholder(
+  supabase: ReturnType<typeof createClient>,
+  leadId: string,
+  external: string[],
+  fromName: string,
+  fromAddress: string,
+): Promise<void> {
+  try {
+    if (!leadId || leadId === "unmatched") return;
+    if (external.length === 0) return;
+
+    // Load lead + existing stakeholders to compute known set
+    const { data: leadRow } = await supabase
+      .from("leads")
+      .select("email, secondary_contacts, company")
+      .eq("id", leadId)
+      .maybeSingle();
+    if (!leadRow) return;
+    const lead = leadRow as { email: string | null; secondary_contacts: any; company: string | null };
+
+    const known = new Set<string>();
+    const primary = (lead.email || "").toLowerCase().trim();
+    if (primary) known.add(primary);
+    const sec = Array.isArray(lead.secondary_contacts) ? lead.secondary_contacts : [];
+    for (const c of sec) {
+      const e = (c?.email || "").toLowerCase().trim();
+      if (e) known.add(e);
+    }
+    const { data: stakes } = await supabase
+      .from("lead_stakeholders")
+      .select("email")
+      .eq("lead_id", leadId);
+    for (const s of (stakes || []) as Array<{ email: string | null }>) {
+      const e = (s.email || "").toLowerCase().trim();
+      if (e) known.add(e);
+    }
+
+    const leadDomain = primary ? domainOf(primary) : "";
+    for (const addr of external) {
+      const lower = addr.toLowerCase();
+      if (!lower || known.has(lower)) continue;
+      if (isSystemNoise(lower)) continue;
+      const dom = domainOf(lower);
+      if (!dom || INTERNAL_DOMAINS.has(dom) || PERSONAL_PROVIDERS.has(dom)) continue;
+      // Only auto-add same-corporate-domain colleagues — never strangers from other companies
+      // who happen to be cc'd on a thread (e.g., bankers, lawyers from external firms).
+      if (leadDomain && dom !== leadDomain) continue;
+
+      // Use from_name only if the address we're adding matches the from address
+      const candidateName = (lower === (fromAddress || "").toLowerCase()) ? (fromName || "").trim() : "";
+      await supabase.from("lead_stakeholders").insert({
+        lead_id: leadId,
+        email: lower,
+        name: candidateName,
+        role: "Discovered via email thread",
+        notes: "Auto-added from inbound email correspondence",
+        sentiment: "neutral",
+        last_contacted: new Date().toISOString(),
+      });
+      known.add(lower);
+    }
+  } catch (e) {
+    // Stakeholder discovery is best-effort; never fail a sync because of it.
+    console.error("auto-stakeholder (non-fatal):", (e as Error).message);
+  }
+}
+
 interface SyncStats {
   connection_id: string;
   email: string;
@@ -558,7 +637,11 @@ async function syncOneConnection(
       }
 
       const leadId = await findLeadIdByEmail(supabase, external);
-      if (leadId) stats.matched += 1;
+      if (leadId) {
+        stats.matched += 1;
+        // Passive coverage expansion: add same-domain colleagues uncovered via this thread.
+        await maybeAutoAddStakeholder(supabase, leadId, external, from.name, from.address);
+      }
 
       const { text, html } = extractBody(msg.payload);
       const preview = (text || html.replace(/<[^>]+>/g, " ")).slice(0, 280).replace(/\s+/g, " ").trim();

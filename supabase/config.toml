@@ -137,3 +137,6 @@ verify_jwt = false
 
 [functions.verify-cron-health]
 verify_jwt = false
+
+[functions.sync-watchdog]
+verify_jwt = false

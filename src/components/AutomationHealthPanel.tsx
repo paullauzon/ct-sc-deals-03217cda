@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { FirefliesBackfillProgress } from "./FirefliesBackfillProgress";
 import { AutomationRunDrawer, type RunInvocation } from "./AutomationRunDrawer";
+import { EmailSyncHealthPanel } from "./EmailSyncHealthPanel";
 
 interface CronJob {
   jobName: string;
@@ -442,6 +443,8 @@ export function AutomationHealthPanel() {
           </div>
         </div>
       )}
+
+      <EmailSyncHealthPanel />
 
       <FirefliesBackfillProgress />
 
