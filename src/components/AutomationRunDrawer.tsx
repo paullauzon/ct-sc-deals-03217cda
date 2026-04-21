@@ -408,9 +408,19 @@ export function AutomationRunDrawer({ open, onClose, invocation }: Props) {
           </ScrollArea>
         </div>
 
+        {(status === "done" || status === "killed" || status === "errored") && (
+          <FinalResultsPanel
+            status={status}
+            sessionTouched={sessionTouched}
+            backlog={backlog}
+            invocation={invocation}
+            sessionLeadIdsRef={sessionLeadIdsRef}
+          />
+        )}
+
         {finalPayload && (
           <div className="px-6 py-3 border-t border-border bg-secondary/30">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Final result</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Function payload</div>
             <pre className="text-[11px] font-mono text-foreground/80 leading-relaxed whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
               {JSON.stringify(finalPayload, null, 2)}
             </pre>
