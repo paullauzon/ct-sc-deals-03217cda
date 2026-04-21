@@ -462,13 +462,21 @@ export function AutomationHealthPanel() {
               const last = latestByJob[job.jobName];
               const stats = stats7dByJob[job.jobName] || { runs7d: 0, items7d: 0, errors7d: 0 };
               const ageMin = last ? (Date.now() - new Date(last.ran_at).getTime()) / 60000 : Infinity;
-              const stale = ageMin > job.intervalMinutes * 1.5;
+              let stale = ageMin > job.intervalMinutes * 1.5;
               const neverRan = !last;
               const failed = last?.status === "error";
               const isOpen = expanded.has(job.jobName);
               const errLower = String(last?.error_message || "").toLowerCase();
               const isFirecrawlError = failed && (errLower.includes("firecrawl") || errLower.includes("403"));
               const errorRate = stats.runs7d > 0 ? Math.round((stats.errors7d / stats.runs7d) * 100) : 0;
+
+              // Ground-truth override for the Fireflies backfill drainer:
+              // even if its log heartbeat got killed by the gateway, the
+              // queue table itself shows whether work is committing. If any
+              // backfill row was updated in the last 15 min, it is NOT stale.
+              const isBackfillJob = job.jobName === "process-fireflies-backfill-queue";
+              const backfillWorking = isBackfillJob && backfillActivity.recentCount > 0;
+              if (backfillWorking) stale = false;
 
               return (
                 <>
@@ -491,7 +499,9 @@ export function AutomationHealthPanel() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {last ? formatDistanceToNow(new Date(last.ran_at), { addSuffix: true }) : "Never reported"}
+                      {backfillWorking && backfillActivity.lastUpdate
+                        ? `${formatDistanceToNow(new Date(backfillActivity.lastUpdate), { addSuffix: true })} (queue)`
+                        : last ? formatDistanceToNow(new Date(last.ran_at), { addSuffix: true }) : "Never reported"}
                     </td>
                     <td className="px-4 py-3">
                       <span className={cn(
@@ -501,12 +511,17 @@ export function AutomationHealthPanel() {
                         <span className={cn(
                           "w-1.5 h-1.5 rounded-full",
                           failed ? "bg-foreground" :
+                          backfillWorking ? "bg-foreground/60 animate-pulse" :
                           (stale || neverRan) ? "bg-foreground/60" :
                           "bg-foreground/30"
                         )} />
-                        {failed ? "Errored" : neverRan ? "Awaiting first run" : stale ? "Stale" : "Healthy"}
+                        {failed ? "Errored"
+                          : backfillWorking ? `Working · ${backfillActivity.recentCount} in 15m`
+                          : neverRan ? "Awaiting first run"
+                          : stale ? "Stale"
+                          : "Healthy"}
                       </span>
-                      {last?.error_message && (
+                      {last?.error_message && !backfillWorking && (
                         <div className="text-[10px] text-muted-foreground mt-1 truncate max-w-[220px]" title={last.error_message}>
                           {last.error_message}
                         </div>
