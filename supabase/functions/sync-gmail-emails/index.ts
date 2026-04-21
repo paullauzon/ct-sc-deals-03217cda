@@ -83,12 +83,38 @@ const INTERNAL_DOMAINS = new Set([
   "sourcecodeals.com",
 ]);
 
-// Personal mailbox providers — NEVER use for domain-fallback inference.
+// Personal/system/free mailbox providers — NEVER use for domain-fallback inference.
+// Includes parent corporate domains (google.com, apple.com, microsoft.com) so system
+// emails like workspace@google.com or calendar-notification@google.com don't get
+// stapled to a random lead via Tier 4 domain match.
 const PERSONAL_PROVIDERS = new Set([
   "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com",
   "aol.com", "msn.com", "live.com", "me.com", "mac.com", "protonmail.com",
   "proton.me", "yahoo.co.uk", "googlemail.com", "ymail.com",
+  "google.com", "apple.com", "microsoft.com", "mail.com", "zoho.com",
+  "qq.com", "163.com", "pm.me", "tutanota.com", "fastmail.com", "gmx.com",
 ]);
+
+// Sender addresses/local-parts that are pure system noise — never belong to a deal.
+// If every external participant matches one of these, the email goes to Unmatched.
+const SYSTEM_NOISE_LOCALPARTS = new Set([
+  "noreply", "no-reply", "donotreply", "do-not-reply", "mailer-daemon",
+  "postmaster", "bounces", "bounce", "notifications", "notification",
+  "calendar-notification", "workspace", "billing", "support",
+  "accounts", "account", "alerts", "alert", "info", "hello",
+]);
+
+function isSystemNoise(addr: string): boolean {
+  if (!addr || !addr.includes("@")) return true;
+  const local = addr.split("@")[0].toLowerCase();
+  if (SYSTEM_NOISE_LOCALPARTS.has(local)) return true;
+  if (local.startsWith("noreply") || local.startsWith("no-reply")) return true;
+  if (local.startsWith("notification")) return true;
+  if (local.startsWith("calendar-")) return true;
+  if (local.startsWith("bounce")) return true;
+  if (local.includes("+caf_")) return true; // Google Calendar autoresponder pattern
+  return false;
+}
 
 async function resolveCanonicalLeadId(
   supabase: ReturnType<typeof createClient>,
@@ -234,10 +260,18 @@ async function findLeadIdByEmail(
     .limit(1);
   if (stake && stake.length > 0) return await resolveCanonicalLeadId(supabase, (stake[0] as { lead_id: string }).lead_id);
 
+  // Pre-check: if EVERY external participant is a system-noise sender, refuse to
+  // match. These are calendar invites, workspace notifications, bounce backs, etc.
+  // — they belong in Unmatched, not stapled to a deal that happens to share a domain.
+  const allNoise = lowered.every((a) => isSystemNoise(a));
+  if (allNoise) return null;
+
   // 4) Domain fallback — STRICT.
-  //   - Skip personal mailbox providers entirely (gmail.com, yahoo.com, etc.)
+  //   - Skip personal/system mailbox providers entirely (gmail.com, google.com, etc.)
   //   - Only match if EXACTLY ONE non-archived lead claims this domain
-  //   - Otherwise return null → email lands in Unmatched Inbox for manual review
+  //   - AND at least one participant local-part is a confirmed contact for that lead
+  //     (primary email, secondary contact, or stakeholder). Pure same-domain colleague
+  //     threads (e.g. random@oilchangers.com -> different@oilchangers.com) go to Unmatched.
   const domains = Array.from(new Set(
     lowered.map(domainOf).filter((d) =>
       d && !INTERNAL_DOMAINS.has(d) && !PERSONAL_PROVIDERS.has(d)
@@ -247,14 +281,39 @@ async function findLeadIdByEmail(
   for (const d of domains) {
     const { data: hits } = await supabase
       .from("leads")
-      .select("id")
+      .select("id, email, secondary_contacts")
       .or(`email.ilike.%@${d},company_url.ilike.%${d}%`)
       .is("archived_at", null)
       .eq("is_duplicate", false)
       .limit(2);
-    if (hits && hits.length === 1) {
-      return await resolveCanonicalLeadId(supabase, (hits[0] as { id: string }).id);
+    if (!hits || hits.length !== 1) continue;
+    const cand = hits[0] as { id: string; email: string | null; secondary_contacts: any };
+
+    // Confirmed-participant guard: at least one participant must match a known
+    // contact for this lead (primary, secondary, or stakeholder).
+    const knownContacts = new Set<string>();
+    const primary = (cand.email || "").toLowerCase().trim();
+    if (primary) knownContacts.add(primary);
+    const sec = Array.isArray(cand.secondary_contacts) ? cand.secondary_contacts : [];
+    for (const c of sec) {
+      const e = (c?.email || "").toLowerCase().trim();
+      if (e) knownContacts.add(e);
     }
+    const { data: stakes } = await supabase
+      .from("lead_stakeholders")
+      .select("email")
+      .eq("lead_id", cand.id);
+    for (const s of (stakes || []) as Array<{ email: string | null }>) {
+      const e = (s.email || "").toLowerCase().trim();
+      if (e) knownContacts.add(e);
+    }
+    let confirmed = false;
+    for (const p of lowered) {
+      if (knownContacts.has(p)) { confirmed = true; break; }
+    }
+    if (!confirmed) continue; // domain matches but no real contact in thread → skip
+
+    return await resolveCanonicalLeadId(supabase, cand.id);
   }
   return null;
 }

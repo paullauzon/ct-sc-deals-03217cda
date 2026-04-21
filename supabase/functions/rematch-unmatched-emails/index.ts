@@ -21,12 +21,33 @@ const corsHeaders = {
 
 const INTERNAL_DOMAINS = new Set(["captarget.com", "sourcecodeals.com"]);
 
-// Personal mailbox providers — NEVER infer a lead from these domains.
+// Personal/system mailbox providers — NEVER infer a lead from these domains.
 const PERSONAL_PROVIDERS = new Set([
   "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com",
   "aol.com", "msn.com", "live.com", "me.com", "mac.com", "protonmail.com",
   "proton.me", "yahoo.co.uk", "googlemail.com", "ymail.com",
+  "google.com", "apple.com", "microsoft.com", "mail.com", "zoho.com",
+  "qq.com", "163.com", "pm.me", "tutanota.com", "fastmail.com", "gmx.com",
 ]);
+
+const SYSTEM_NOISE_LOCALPARTS = new Set([
+  "noreply", "no-reply", "donotreply", "do-not-reply", "mailer-daemon",
+  "postmaster", "bounces", "bounce", "notifications", "notification",
+  "calendar-notification", "workspace", "billing", "support",
+  "accounts", "account", "alerts", "alert", "info", "hello",
+]);
+
+function isSystemNoise(addr: string): boolean {
+  if (!addr || !addr.includes("@")) return true;
+  const local = addr.split("@")[0].toLowerCase();
+  if (SYSTEM_NOISE_LOCALPARTS.has(local)) return true;
+  if (local.startsWith("noreply") || local.startsWith("no-reply")) return true;
+  if (local.startsWith("notification")) return true;
+  if (local.startsWith("calendar-")) return true;
+  if (local.startsWith("bounce")) return true;
+  if (local.includes("+caf_")) return true;
+  return false;
+}
 
 // Senders that will never map to a lead — newsletters, transactional notifications,
 // generic service domains. Skipped on the fast path so we don't waste lookups.
@@ -50,6 +71,7 @@ function isInternal(email: string): boolean {
 interface LeadIndex {
   byEmail: Map<string, string>;        // exact email -> lead_id
   byDomain: Map<string, Set<string>>;  // domain -> set of lead_ids (only count==1 is usable)
+  byLeadContacts: Map<string, Set<string>>; // lead_id -> set of all known contact emails (primary+secondary+stakeholder)
   duplicateOf: Map<string, string>;    // duplicate lead id -> canonical lead id
 }
 
@@ -66,7 +88,15 @@ function resolveCanonical(idx: LeadIndex, leadId: string): string {
 async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promise<LeadIndex> {
   const byEmail = new Map<string, string>();
   const byDomain = new Map<string, Set<string>>();
+  const byLeadContacts = new Map<string, Set<string>>();
   const duplicateOf = new Map<string, string>();
+
+  const addContact = (leadId: string, email: string) => {
+    if (!email) return;
+    let s = byLeadContacts.get(leadId);
+    if (!s) { s = new Set(); byLeadContacts.set(leadId, s); }
+    s.add(email);
+  };
 
   const addToDomain = (dom: string, leadId: string) => {
     if (!dom || INTERNAL_DOMAINS.has(dom) || NOISE_DOMAINS.has(dom) || PERSONAL_PROVIDERS.has(dom)) return;
@@ -118,6 +148,7 @@ async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promis
   for (const r of canonicalLeads) {
     if (r.email) {
       byEmail.set(r.email, r.id);  // primary always wins
+      addContact(r.id, r.email);
       addToDomain(domainOf(r.email), r.id);
     }
     if (r.company_url) {
@@ -134,6 +165,7 @@ async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promis
       const e = (c?.email || "").toLowerCase();
       if (!e) continue;
       if (!byEmail.has(e)) byEmail.set(e, r.id);
+      addContact(r.id, e);
       addToDomain(domainOf(e), r.id);
     }
   }
@@ -149,22 +181,28 @@ async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promis
     if (!data || data.length === 0) break;
     for (const s of data as Array<{ lead_id: string; email: string | null }>) {
       const e = (s.email || "").toLowerCase();
-      if (e && !byEmail.has(e)) byEmail.set(e, s.lead_id);
+      if (!e) continue;
+      if (!byEmail.has(e)) byEmail.set(e, s.lead_id);
+      addContact(s.lead_id, e);
     }
     if (data.length < PAGE) break;
     from += PAGE;
   }
 
-  return { byEmail, byDomain, duplicateOf };
+  return { byEmail, byDomain, byLeadContacts, duplicateOf };
 }
 
 function findLead(idx: LeadIndex, candidates: string[]): string | null {
+  // System-noise pre-check — if every candidate is system noise, refuse.
+  if (candidates.length > 0 && candidates.every((c) => isSystemNoise(c))) return null;
+
   // 1+2+3) Exact email match (covers primary, secondary, stakeholders)
   for (const c of candidates) {
     const hit = idx.byEmail.get(c);
     if (hit) return resolveCanonical(idx, hit);
   }
-  // 4) Domain fallback — exclude personal providers, only match if domain is unambiguous
+  // 4) Domain fallback — exclude personal/system providers, only match if domain is
+  // unambiguous AND at least one candidate is a confirmed contact for that lead.
   const seen = new Set<string>();
   for (const c of candidates) {
     const d = domainOf(c);
@@ -172,7 +210,16 @@ function findLead(idx: LeadIndex, candidates: string[]): string | null {
     if (seen.has(d)) continue;
     seen.add(d);
     const matches = idx.byDomain.get(d);
-    if (matches && matches.size === 1) return resolveCanonical(idx, matches.values().next().value);
+    if (!matches || matches.size !== 1) continue;
+    const candLeadId = matches.values().next().value;
+    const knownContacts = idx.byLeadContacts.get(candLeadId);
+    if (!knownContacts) continue;
+    let confirmed = false;
+    for (const p of candidates) {
+      if (knownContacts.has(p)) { confirmed = true; break; }
+    }
+    if (!confirmed) continue; // pure same-domain colleague thread → unmatched
+    return resolveCanonical(idx, candLeadId);
   }
   return null;
 }
