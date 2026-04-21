@@ -759,6 +759,7 @@ Deno.serve(async (req) => {
 
     const results: SyncStats[] = [];
     const skipped: Array<{ connection_id: string; email: string; reason: string }> = [];
+    const autoEnrolled: string[] = [];
     for (const c of conns ?? []) {
       const conn = c as { id: string; email_address: string; history_id: string | null };
 
@@ -773,6 +774,15 @@ Deno.serve(async (req) => {
           .limit(1);
         if (activeJobs && activeJobs.length > 0) {
           skipped.push({ connection_id: conn.id, email: conn.email_address, reason: "backfill_in_progress" });
+          continue;
+        }
+
+        // Auto-enroll: if this is a live connection that has never had a backfill,
+        // queue 90d in the background and skip this tick (the orchestrator owns it).
+        const enrolled = await maybeAutoEnrollBackfill(supabase, conn);
+        if (enrolled) {
+          autoEnrolled.push(conn.id);
+          skipped.push({ connection_id: conn.id, email: conn.email_address, reason: "auto_enrolled_backfill" });
           continue;
         }
       }
@@ -794,6 +804,24 @@ Deno.serve(async (req) => {
       }),
       { fetched: 0, inserted: 0, matched: 0, skipped_dup: 0, skipped_internal: 0 },
     );
+
+    // Cron log so Automation Health can flag stale Gmail sync (parity with sync-outlook-emails).
+    const totalErrors = results.reduce((s, r) => s + r.errors.length, 0);
+    try {
+      await supabase.from("cron_run_log").insert({
+        job_name: "sync-gmail-emails",
+        status: totalErrors > 0 ? "partial" : "success",
+        items_processed: summary.inserted,
+        details: {
+          connections: results.length,
+          skipped,
+          auto_enrolled: autoEnrolled,
+          results: results.map(r => ({ email: r.email, fetched: r.fetched, inserted: r.inserted, matched: r.matched })),
+        },
+      });
+    } catch (logErr) {
+      console.error("cron_run_log insert failed (non-fatal):", logErr);
+    }
 
     const allSkipped = results.length === 0 && skipped.length > 0;
     return new Response(
