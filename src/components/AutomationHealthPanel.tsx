@@ -228,15 +228,18 @@ export function AutomationHealthPanel() {
 
   useEffect(() => { load(); }, []);
 
-  const runNow = async (job: CronJob) => {
-    setRunningJob(job.jobName);
+  const runNow = async (job: CronJob, overrideEndpoint?: string, overrideLabel?: string) => {
+    const endpoint = overrideEndpoint || job.endpoint;
+    const label = overrideLabel || job.label;
+    setRunningJob(`${job.jobName}:${endpoint}`);
     try {
-      const { error } = await supabase.functions.invoke(job.endpoint, { body: job.body });
+      const { data, error } = await supabase.functions.invoke(endpoint, { body: job.body });
       if (error) throw error;
-      toast.success(`${job.label} triggered`);
+      const summary = summarizeFunctionResult(endpoint, data);
+      toast.success(`${label}: ${summary}`, { duration: 7000 });
       setTimeout(load, 1500);
     } catch (e) {
-      toast.error(`Failed: ${(e as Error).message}`);
+      toast.error(`${label} failed: ${(e as Error).message}`);
     } finally {
       setRunningJob(null);
     }
@@ -503,18 +506,34 @@ export function AutomationHealthPanel() {
                       {last?.items_processed ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
-                        onClick={() => runNow(job)}
-                        disabled={runningJob === job.jobName}
-                        title="Run now"
-                      >
-                        {runningJob === job.jobName
-                          ? <Loader2 className="h-3 w-3 animate-spin" />
-                          : <Play className="h-3 w-3" />}
-                      </Button>
+                      <div className="inline-flex items-center gap-1 justify-end">
+                        {job.jobName === "enqueue-fireflies-backfill" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => runNow(job, "process-fireflies-backfill-queue", "Drain queue")}
+                            disabled={runningJob === `${job.jobName}:process-fireflies-backfill-queue`}
+                            title="Actually process the queued backfill rows"
+                          >
+                            {runningJob === `${job.jobName}:process-fireflies-backfill-queue`
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : "Drain"}
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={() => runNow(job)}
+                          disabled={runningJob === `${job.jobName}:${job.endpoint}`}
+                          title="Run now"
+                        >
+                          {runningJob === `${job.jobName}:${job.endpoint}`
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Play className="h-3 w-3" />}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                   {isOpen && (
@@ -551,4 +570,48 @@ function ExplainField({ label, value, mono }: { label: string; value: string; mo
       <div className={cn("text-foreground/90 leading-snug", mono && "font-mono text-[11px]")}>{value}</div>
     </div>
   );
+}
+
+/**
+ * Translates an edge-function JSON response into a one-line, human-readable
+ * summary so the success toast actually conveys what happened (instead of a
+ * generic "triggered" message that makes the UI feel dead).
+ */
+function summarizeFunctionResult(endpoint: string, data: any): string {
+  if (!data || typeof data !== "object") return "completed";
+  const d = data as Record<string, any>;
+
+  if (endpoint === "enqueue-fireflies-backfill") {
+    const scanned = d.scanned ?? 0;
+    const enqueued = d.enqueued ?? 0;
+    const skipped = d.skipped_existing ?? 0;
+    if (enqueued === 0 && skipped > 0) {
+      return `scanned ${scanned} · 0 new · ${skipped} already queued — use Drain to process them`;
+    }
+    return `scanned ${scanned} · enqueued ${enqueued} · skipped ${skipped}`;
+  }
+
+  if (endpoint === "process-fireflies-backfill-queue") {
+    const processed = d.processed ?? 0;
+    const recovered = d.recovered ?? 0;
+    const gaveUp = d.gaveUp ?? 0;
+    const stillSearching = d.stillSearching ?? 0;
+    if (processed === 0) return "no rows due right now";
+    return `processed ${processed} · recovered ${recovered} · gave up ${gaveUp} · still searching ${stillSearching}`;
+  }
+
+  if (endpoint === "process-fireflies-retry-queue") {
+    const processed = d.processed ?? d.attempted ?? 0;
+    const recovered = d.recovered ?? d.fixed ?? 0;
+    return `processed ${processed} · recovered ${recovered}`;
+  }
+
+  const parts: string[] = [];
+  for (const k of ["processed", "items_processed", "inserted", "updated", "matched", "skipped", "errors"]) {
+    if (typeof d[k] === "number") parts.push(`${k} ${d[k]}`);
+  }
+  if (parts.length > 0) return parts.join(" · ");
+  if (d.ok === true) return "ok";
+  if (d.message) return String(d.message).slice(0, 120);
+  return "completed";
 }

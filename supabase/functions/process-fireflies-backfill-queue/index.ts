@@ -207,9 +207,9 @@ Deno.serve(async (req) => {
             .eq("id", row.id);
           recovered++;
         } else {
-          // No match within window — backoff or give up.
+          // No match within window — terminal (Fireflies retention miss).
           await scheduleNextOrGiveUp(supabase, row, "not_in_fireflies_api");
-          if (row.attempts + 1 >= row.max_attempts) gaveUp++; else stillSearching++;
+          gaveUp++;
         }
       } catch (e) {
         const msg = (e as Error).message.slice(0, 200);
@@ -237,6 +237,17 @@ Deno.serve(async (req) => {
 });
 
 async function scheduleNextOrGiveUp(supabase: any, row: any, errMsg: string) {
+  // Fail-fast: when Fireflies simply doesn't have the meeting (likely past
+  // their ~90d retention window), retrying is pointless. Mark gave_up
+  // immediately so the queue drains in minutes instead of hours. Only
+  // backoff on transient errors (HTTP 5xx, timeouts, rate limits, etc.).
+  const isTerminal = errMsg === "not_in_fireflies_api"
+    || errMsg === "lead not found"
+    || errMsg === "invalid calendly_booked_at";
+  if (isTerminal) {
+    await markGaveUp(supabase, row.id, errMsg);
+    return;
+  }
   const next = row.attempts + 1;
   if (next >= row.max_attempts) {
     await markGaveUp(supabase, row.id, errMsg);
