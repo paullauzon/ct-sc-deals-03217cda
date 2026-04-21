@@ -236,11 +236,26 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Always log — including no-ops where nothing was due AND nothing was bootstrapped
-    const status = (processed === 0 && bootstrapped === 0) ? "noop" : "success";
+    // Status logic:
+    //   - noop:    nothing was due AND nothing was bootstrapped
+    //   - error:   we processed rows but recovered ZERO and >0 are still failing
+    //              (this prevents the panel from showing "Healthy" when the job
+    //              is silently unable to recover any transcripts)
+    //   - success: at least one transcript was recovered, or work was bootstrapped
+    let status: "noop" | "success" | "error";
+    if (processed === 0 && bootstrapped === 0) {
+      status = "noop";
+    } else if (processed > 0 && recovered === 0 && stillFailing > 0) {
+      status = "error";
+    } else {
+      status = "success";
+    }
+    const errorMessage = status === "error"
+      ? `0/${processed} transcripts recovered. Fireflies likely doesn't have these meetings.`
+      : "";
     await logCronRun(JOB_NAME, status, processed, {
       recovered, gaveUp, stillFailing, bootstrapped, errorSamples: errors.slice(0, 3),
-    });
+    }, errorMessage);
 
     return new Response(JSON.stringify({ ok: true, processed, recovered, gaveUp, stillFailing, bootstrapped }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
