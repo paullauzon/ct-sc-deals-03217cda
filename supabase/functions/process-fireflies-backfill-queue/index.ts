@@ -29,7 +29,12 @@ const JOB_NAME = "process-fireflies-backfill-queue";
 // idle timeout. 5 leads × ~25s = ~125s, safely under the cap with headroom for
 // the final DB writes. Pair with WALL_BUDGET_MS as a hard escape hatch.
 const MAX_PER_TICK = 5;
-const WALL_BUDGET_MS = 120_000; // stop claiming new rows after 120s
+// Edge gateway kills at ~150s. Each lead's Fireflies search takes 10-30s
+// (depends on rate-limit retries). Cap the loop at 90s so we always have
+// 60+ seconds of headroom to write the final logCronRun before a kill.
+// Without this headroom, the heartbeat row never lands and the panel shows
+// "Stale" even though the underlying work is committing successfully.
+const WALL_BUDGET_MS = 90_000;
 const WINDOW_HOURS = 48;
 const BACKOFF_MINUTES = [5, 30, 120]; // attempt 1 → 5m, 2 → 30m, 3 → 2h
 
@@ -67,6 +72,15 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Heartbeat: log a "running" row IMMEDIATELY so the panel sees the tick
+    // even if the function gets killed mid-loop by the 150s gateway timeout.
+    // Without this, killed runs leave no log entry and the panel falsely
+    // reports "Stale" while work is actually committing under the hood.
+    await logCronRun(JOB_NAME, "success", 0, {
+      heartbeat: true, claimed: rows.length, startedAt,
+      note: "tick started — final stats will overwrite if completion reached",
+    });
 
     // Load lead context once per tick.
     const leadIds = Array.from(new Set(rows.map(r => r.lead_id)));

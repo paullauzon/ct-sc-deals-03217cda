@@ -191,16 +191,33 @@ export function AutomationHealthPanel() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<null | { source: string; note?: string; jobs: any[] }>(null);
+  // Ground-truth freshness signal for the Fireflies backfill row: if any
+  // backfill queue row has updated_at within the last 15 minutes, the drainer
+  // is actively classifying leads — even if its cron_run_log heartbeat got
+  // killed by the gateway. This prevents the panel from falsely reporting
+  // "Stale" while real work is committing.
+  const [backfillActivity, setBackfillActivity] = useState<{ lastUpdate: string | null; recentCount: number }>({
+    lastUpdate: null, recentCount: 0,
+  });
 
   const load = async () => {
     setLoading(true);
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
-    const { data } = await supabase
-      .from("cron_run_log")
-      .select("id, job_name, status, items_processed, ran_at, error_message, details")
-      .gte("ran_at", since)
-      .order("ran_at", { ascending: false })
-      .limit(2000);
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const [{ data }, { data: backfillRows }] = await Promise.all([
+      supabase
+        .from("cron_run_log")
+        .select("id, job_name, status, items_processed, ran_at, error_message, details")
+        .gte("ran_at", since)
+        .order("ran_at", { ascending: false })
+        .limit(2000),
+      supabase
+        .from("fireflies_retry_queue")
+        .select("updated_at")
+        .like("fireflies_id", "backfill:%")
+        .gte("updated_at", fifteenMinAgo)
+        .order("updated_at", { ascending: false }),
+    ]);
 
     const map: Record<string, RunRow | null> = {};
     const stats: Record<string, JobStats> = {};
@@ -223,6 +240,10 @@ export function AutomationHealthPanel() {
     setLatestByJob(map);
     setStats7dByJob(stats);
     setFirecrawlBroken(firecrawl403);
+    setBackfillActivity({
+      lastUpdate: backfillRows?.[0]?.updated_at ?? null,
+      recentCount: backfillRows?.length ?? 0,
+    });
     setLoading(false);
   };
 
