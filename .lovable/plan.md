@@ -1,90 +1,87 @@
 
 
-# The 190 Fireflies leads — exactly where they stand right now
+# Malik's Gmail is connected — here's what's already running and what to do next
 
-## Ground truth (just queried)
+## What's already happening automatically (no action needed)
 
-You actually have **161 leads** in the backfill queue (not 190 — the original enqueue de-duped against leads that already had a transcript). Here's the live status:
-
-| Status | Count | Meaning |
+| System | State | Evidence |
 |---|---|---|
-| ✓ Matched (transcript recovered) | **0** | Fireflies returned a transcript |
-| ✗ Gave up | **29** | Fireflies API confirmed it has no recording (past their ~90 day retention) |
-| ⏳ Pending | **132** | Still in queue, will be picked up by the 5-min cron tick |
-| **Total** | **161** | |
+| OAuth connection | Active · `m.hayes@captarget.com` | Row in `user_email_connections`, `is_active=true` |
+| 90d backfill | **Running** (kicked off automatically by `gmail-oauth-callback`) | Job `66ac353e…` · status `running` · 4,620 messages discovered |
+| Discovery cron (finds message IDs) | Ticking | `backfill-discover` logged 4,000 + 620 msgs at 16:16 |
+| Hydration cron (fetches bodies + matches to leads) | Ticking every minute | `backfill-hydrate-every-minute` · last tick processed 200 |
+| Incremental sync (new inbound after today) | Every 10 min | `sync-gmail-emails-10min` cron is `active=true` |
+| Token refresh | Automatic | `refresh-gmail-token` runs server-side |
 
-**100% of the gave-up leads** failed for the same terminal reason: `not_in_fireflies_api`. Their meetings were too old (mostly 2024 / early 2026) — Fireflies discarded the recordings before we asked for them.
+**Queue right now:** 127 done · 73 skipped (dupes / CRM loop) · **4,420 pending**. At ~200/minute hydration, full drain lands in **~22 minutes**.
 
-The queue is draining at ~5 leads every 5 minutes, so the remaining **132 will finish in ~2.2 hours**. Realistic final outcome: maybe 5-10 matches, ~150 marked "gave up · not in Fireflies API."
+## The real problem to solve: match quality, not sync coverage
 
-## Why you can't see this today
+Looking at the existing connection (`id@captarget.com` · already drained):
+- 98 emails **matched** to leads
+- 128 emails **unmatched** → sitting in the Unmatched Inbox
 
-The current `FirefliesBackfillProgress` widget only shows aggregate counts and the "Drain now" button. It doesn't let you **see which leads were classified, what happened to each, or browse the gave-up list**. The `AutomationRunDrawer` only shows events from a single drawer-session (since you opened it), not the full historical record.
+That's a **43% match rate**. Acceptable but not great — and once Malik's mailbox drains, the unmatched count will jump by roughly 3-5x because his personal inbox will have more 1:1 prospect threads than the shared `id@` inbox.
 
-## Fix — a "Backfill Progress Report" view
+So the "what next" isn't "turn on sync" (it's on). The work is:
 
-### 1. Expand `FirefliesBackfillProgress` into a full report card
+## Plan — 3 things, in order
 
-Add a "View all 161 leads" button next to the existing progress bar that opens a dedicated **Sheet** showing the complete per-lead breakdown:
+### 1. Verify the live drain + surface it to Malik (5 min)
+
+Confirm the backfill is moving and make the progress visible. The existing `BackfillProgressPanel` polls every 5s — we just need to make sure Malik can see his mailbox's row.
+
+- Open Settings → Mailbox → confirm Malik's "Malik Inbox" connection card shows the blue "Backfilling · 127/4,620" pill with live progress
+- If the panel only shows one mailbox, fix it to render one progress row per active job
+
+### 2. Raise the match rate before the flood lands (the real work)
+
+Today's matcher (in `sync-gmail-emails` / `backfill-hydrate`) matches on `from_address` or `to_addresses` exact-equal to a lead's `email`. That misses:
+
+- **Forwarded threads** — lead email buried in body, sender is someone else (e.g. assistant@, noreply@)
+- **Secondary contacts** — `leads.secondary_contacts` jsonb holds additional emails per lead, currently ignored by the matcher
+- **Stakeholder emails** — `lead_stakeholders.email` is not consulted during matching
+- **Domain-level fallback** — if no exact email match, match on `@company-domain` when unambiguous (one lead per domain)
+
+Fix the matcher in `backfill-hydrate` and `sync-gmail-emails`:
 
 ```text
-Fireflies Backfill Report                                    [Refresh]
-Started Apr 21, 11:19  ·  29 / 161 classified  ·  18% complete
-Estimated full drain:  ~2.2 hours remaining (132 pending @ 5/5min)
-
-[ All 161 ]  [ ✗ Gave up (29) ]  [ ⏳ Pending (132) ]  [ ✓ Matched (0) ]
-
-┌─────────────────────────────────────────────────────────────────┐
-│ Lead              Company             Booked        Status      │
-├─────────────────────────────────────────────────────────────────┤
-│ Dr. Phillip Hearn Helixmanagement.    Jan 12, 2026  Gave up · … │
-│ Nezim Mmegwa      Nezim               Feb 02, 2026  Gave up · … │
-│ Tim Murray        Conniehealth        Feb 26, 2026  Gave up · … │
-│ Bobby Tyson       Journeyman Partners Mar 31, 2026  Gave up · … │
-│ Malik Hayes       CAPTARGET Refer.    Feb 05, 2026  Pending · 504 timeout, retrying │
-│ …                                                                │
-└─────────────────────────────────────────────────────────────────┘
-
-Each row clickable → opens lead's Deal Room. "Gave up" rows show the
-exact reason on hover. Pending rows show "next attempt at HH:MM".
+Match order (first hit wins):
+  1. Exact primary email  (leads.email)          ← current behavior
+  2. Exact secondary email (leads.secondary_contacts[*].email)
+  3. Exact stakeholder email (lead_stakeholders.email)
+  4. Domain fallback: counterparty domain maps to exactly ONE lead
+     (skip if ambiguous — stays unmatched for manual review)
+  5. Unmatched → Unmatched Inbox (unchanged)
 ```
 
-### 2. Per-row detail (hover or click)
-For each lead show:
-- **Booked date** (so you see why Fireflies doesn't have it — if >90 days old, that's the explanation)
-- **Last attempt timestamp + error message** (truncated, full on hover)
-- **Attempts used / max** (e.g. "1/5")
-- **Quick action**: "Open in Deal Room" link
+Expected lift: 43% → **~70-80%** match rate based on the shape of current unmatched rows.
 
-### 3. Group + filter the data
-Tab-filter buttons at the top: **All · Gave up · Pending · Matched**. Default to **All**. Each tab shows count badge.
+### 3. Auto-claim pass for Malik's existing unmatched inbox
 
-### 4. Export to CSV
-Button: **Export report (CSV)** — downloads `lead_id, name, company, booked_at, status, last_error, attempts, updated_at` for all 161 rows so you have a permanent audit trail.
+After the matcher upgrade deploys, run a **one-time re-match sweep** over `lead_emails WHERE lead_id='unmatched'`. The `update_lead_email_metrics_on_claim` trigger already exists and will correctly fire when these rows flip to a real lead_id, so metrics update automatically. No manual janitorial work.
 
-### 5. Surface the "why no matches" story up front
-At the top of the report, a one-line summary:
+## What Malik sees when this is done
 
-> "29 of 29 classified leads gave up because Fireflies API has no recording — their meetings were booked between May 2024 and Mar 2026, mostly past Fireflies' ~90 day retention. Match rate is expected to stay near 0% for these old meetings."
-
-This makes it instantly clear that the system is working correctly and the low recovery rate is a Fireflies retention limit, not a bug.
+- Each prospect's Deal Room → **Emails tab** lights up with every Gmail thread he's ever had with them (inbound + outbound, last 90 days)
+- Pipeline cards show real `last_received_date` / `last_replied_date` signals → powers the "stale" / "hot" urgency badges already in the UI
+- Follow-Ups tab surfaces threads where the prospect replied but Malik hasn't → highest-value signal in the whole CRM
+- Unmatched Inbox shrinks to the genuinely-unclaimable stuff (generic newsletters, random one-offs)
 
 ## Files
 
-- **MODIFY `src/components/FirefliesBackfillProgress.tsx`**
-  - Add "View full report" button next to "Drain now"
-  - Add `<FirefliesBackfillReport />` Sheet that loads on open
-- **NEW `src/components/FirefliesBackfillReport.tsx`**
-  - Sheet with tab filters, table of all 161 rows joined to `leads` for name/company/booked_at
-  - Per-row tooltip with error/attempts
-  - Export-to-CSV button
-  - Refreshes every 15s while open (lighter than the existing 10s poll since this view is heavier)
+- **MODIFY** `supabase/functions/backfill-hydrate/index.ts` — extend matcher: secondary_contacts → stakeholders → domain fallback
+- **MODIFY** `supabase/functions/sync-gmail-emails/index.ts` — same matcher upgrade (shared helper inlined in both; edge functions can't share non-`_shared/` code)
+- **NEW** `supabase/functions/rematch-unmatched-emails/index.ts` — one-shot sweep over `lead_emails WHERE lead_id='unmatched'`, re-runs the new matcher, flips matched rows (trigger handles metrics)
+- **MODIFY** `src/components/BackfillProgressPanel.tsx` — ensure it renders one row per `running` job so Malik sees his own progress alongside the Captarget one
+- **MODIFY** `src/components/UnmatchedInbox.tsx` — add "Re-run matcher on all unmatched" button that invokes the new rematch function, with a live count
 
-## What you'll see right after this lands
+## What I won't touch
 
-1. Open Settings → Automations
-2. The backfill progress card now has a `[View full report]` button
-3. Click it — slide-out sheet opens with all 161 leads, filterable by status
-4. You can immediately see exactly which leads gave up, why, and which are still pending
-5. Export the full report to CSV any time for offline review or audit
+- OAuth flow — working
+- Cron schedules — working, already dialed in (10min incremental, 1min hydrate)
+- Token refresh — working
+- Outlook — not relevant here, Malik is on Gmail
+
+
 
