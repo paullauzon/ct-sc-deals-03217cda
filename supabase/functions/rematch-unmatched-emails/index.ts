@@ -71,6 +71,7 @@ function isInternal(email: string): boolean {
 interface LeadIndex {
   byEmail: Map<string, string>;        // exact email -> lead_id
   byDomain: Map<string, Set<string>>;  // domain -> set of lead_ids (only count==1 is usable)
+  byLeadContacts: Map<string, Set<string>>; // lead_id -> set of all known contact emails (primary+secondary+stakeholder)
   duplicateOf: Map<string, string>;    // duplicate lead id -> canonical lead id
 }
 
@@ -87,7 +88,15 @@ function resolveCanonical(idx: LeadIndex, leadId: string): string {
 async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promise<LeadIndex> {
   const byEmail = new Map<string, string>();
   const byDomain = new Map<string, Set<string>>();
+  const byLeadContacts = new Map<string, Set<string>>();
   const duplicateOf = new Map<string, string>();
+
+  const addContact = (leadId: string, email: string) => {
+    if (!email) return;
+    let s = byLeadContacts.get(leadId);
+    if (!s) { s = new Set(); byLeadContacts.set(leadId, s); }
+    s.add(email);
+  };
 
   const addToDomain = (dom: string, leadId: string) => {
     if (!dom || INTERNAL_DOMAINS.has(dom) || NOISE_DOMAINS.has(dom) || PERSONAL_PROVIDERS.has(dom)) return;
