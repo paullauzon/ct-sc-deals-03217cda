@@ -24,7 +24,7 @@ const corsHeaders = {
 };
 
 const JOB_NAME = "process-fireflies-backfill-queue";
-const MAX_PER_TICK = 8;
+const MAX_PER_TICK = 20;
 const WINDOW_HOURS = 48;
 const BACKOFF_MINUTES = [5, 30, 120]; // attempt 1 → 5m, 2 → 30m, 3 → 2h
 
