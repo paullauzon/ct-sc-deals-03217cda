@@ -510,6 +510,13 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     <div>
       <EmailTabHeader lead={lead} emails={emails as any} threadCount={threads.length} onCompose={onCompose} />
       <EmailTabIntro leadName={lead?.name} />
+      {suppression && <SuppressionBanner suppression={suppression} leadId={leadId} onCleared={() => setSuppression(null)} />}
+      {hideFilters.length > 0 && (
+        <div className="text-[10px] text-muted-foreground mb-2 flex items-center gap-1.5">
+          <Filter className="h-3 w-3" />
+          Hiding emails from {hideFilters.length} filtered sender{hideFilters.length === 1 ? "" : "s"} on this deal.
+        </div>
+      )}
       {header}
       {scheduled.length > 0 && (
         <ScheduledStrip scheduled={scheduled} onCancel={cancelScheduled} />
