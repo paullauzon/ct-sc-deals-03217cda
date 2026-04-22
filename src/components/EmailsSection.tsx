@@ -1085,3 +1085,55 @@ function SuggestResponsesDialog({
     </Dialog>
   );
 }
+
+function SuppressionBanner({
+  suppression, leadId, onCleared,
+}: {
+  suppression: { quarantined: boolean; unsubscribed: boolean; bounceCount: number; lastBounceAt: string | null };
+  leadId: string;
+  onCleared: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const reasons: string[] = [];
+  if (suppression.unsubscribed) reasons.push("recipient unsubscribed");
+  if (suppression.quarantined) reasons.push(`auto-quarantined after ${suppression.bounceCount || 2}+ hard bounces`);
+  const label = reasons.join(" · ");
+
+  const clear = async () => {
+    if (!window.confirm("Lift suppression? Outbound sends will be permitted again. Use only if you've verified the address is valid or the lead asked to re-engage.")) return;
+    setBusy(true);
+    const { error } = await supabase
+      .from("lead_email_metrics")
+      .update({ email_quarantined: false, unsubscribed_all: false, updated_at: new Date().toISOString() })
+      .eq("lead_id", leadId);
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Suppression cleared");
+    onCleared();
+  };
+
+  const Icon = suppression.unsubscribed ? Ban : ShieldAlert;
+  return (
+    <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 flex items-start gap-2">
+      <Icon className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-semibold text-destructive">
+          Email suppressed — outbound sends will be refused
+        </div>
+        <div className="text-[11px] text-muted-foreground mt-0.5">
+          {label || "Marked as suppressed"}
+          {suppression.lastBounceAt ? ` · last bounce ${formatDistanceToNow(new Date(suppression.lastBounceAt), { addSuffix: true })}` : ""}
+        </div>
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 text-[10px] text-destructive hover:text-destructive shrink-0"
+        onClick={clear}
+        disabled={busy}
+      >
+        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : "Lift suppression"}
+      </Button>
+    </div>
+  );
+}
