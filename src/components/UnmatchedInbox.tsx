@@ -15,9 +15,11 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Loader2, Inbox, Link2, Trash2, Check, ChevronsUpDown, Search, Wand2 } from "lucide-react";
+import { Loader2, Inbox, Link2, Trash2, Check, ChevronsUpDown, Search, Wand2, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { CompanyInboxView } from "./CompanyInboxView";
 
 interface UnmatchedEmail {
   id: string;
