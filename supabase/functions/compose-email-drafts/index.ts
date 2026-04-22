@@ -1,7 +1,10 @@
 // Phase 4 — generate 3 distinct AI email drafts (direct / data-led / question-led)
 // in a single tool call. Returns drafts plus the variable map used and a list of
 // missing variables so the UI can render red chips and block send.
-import { corsHeaders } from "https://esm.sh/@supabase/[email protected]/cors";
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 

@@ -1,6 +1,9 @@
 // Phase 4 — inline writing tools: rewrite a single line/paragraph or whole body.
 // Modes: "improve" | "shorten" | "expand" | "add_proof" | "soften" | "strengthen"
-import { corsHeaders } from "https://esm.sh/@supabase/[email protected]/cors";
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
