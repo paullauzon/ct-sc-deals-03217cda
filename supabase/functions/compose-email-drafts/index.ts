@@ -226,7 +226,20 @@ Deno.serve(async (req) => {
   const ctx = body.context || {};
   const senderName = ctx.senderName || "";
   const variables = buildVariables(lead, senderName);
-  const recommended = body.recommendedApproach || defaultRecommendedApproach(lead, ctx.purpose);
+  // Phase 6 — try the learned recommendation first, fall back to heuristic.
+  let recommended: Approach = body.recommendedApproach || defaultRecommendedApproach(lead, ctx.purpose);
+  let recommendationBasis = "heuristic";
+  if (!body.recommendedApproach) {
+    const learned = await learnedRecommendedApproach(
+      lead.brand || "Captarget",
+      lead.stage || "",
+      ctx.purpose || "free_form",
+    );
+    if (learned) {
+      recommended = learned.approach;
+      recommendationBasis = `learned: ${learned.basis}`;
+    }
+  }
 
   // Build the context block. Keep it dense — small but information-rich.
   const proofBank = pickStringList(
