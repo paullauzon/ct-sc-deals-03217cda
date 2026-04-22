@@ -4,6 +4,11 @@
 // All future manual sweeps MUST go through this helper. Yesterday's
 // `ILIKE '%domain%'` mistake becomes structurally impossible.
 //
+// Round 9 — outbound branch. For direction='outbound' messages the rep is
+// the sender (e.g. adam.haile@sourcecodeals.com) and will never match a
+// lead's primary email. Match by recipient instead: any to_addresses /
+// cc_addresses value must overlap the destination lead's known contacts.
+//
 // Returns { ok, reason? } so callers can surface a precise refusal.
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -26,7 +31,7 @@ export async function claimEmailToLead(
   // Pull the email row
   const { data: email, error: emailErr } = await supabase
     .from("lead_emails")
-    .select("id, lead_id, from_address, to_addresses, cc_addresses")
+    .select("id, lead_id, direction, from_address, to_addresses, cc_addresses")
     .eq("id", emailId)
     .maybeSingle();
   if (emailErr || !email) {
@@ -62,50 +67,57 @@ export async function claimEmailToLead(
     if (e) known.add(e);
   }
 
-  // Build participant set from the email
-  const participants = new Set<string>();
-  const add = (a: any) => {
-    const v = (a || "").toString().toLowerCase().trim();
-    if (v) participants.add(v);
-  };
-  add(email.from_address);
-  for (const a of (email.to_addresses || [])) add(a);
-  for (const a of (email.cc_addresses || [])) add(a);
-
-  // Round 6 — overlap tier scoring. From-match (highest confidence) >
-  // To-match > CC-match. CC overlap NOW counts as valid match (was previously
-  // refused) — this rescues 994 backlog messages and prevents future ones.
+  // Round 9 — outbound branch. Rep-as-sender will never match a lead's
+  // primary; require a recipient overlap instead.
+  const isOutbound = (email as any).direction === "outbound";
   let overlap = false;
-  let tier: "from" | "to" | "cc" | null = null;
-  const fromAddr = (email.from_address || "").toLowerCase().trim();
-  if (fromAddr && known.has(fromAddr)) { overlap = true; tier = "from"; }
-  if (!overlap) {
+  let tier: "from" | "to" | "cc" | "to_outbound" | null = null;
+
+  if (isOutbound) {
     for (const a of (email.to_addresses || [])) {
       const v = (a || "").toString().toLowerCase().trim();
-      if (v && known.has(v)) { overlap = true; tier = "to"; break; }
+      if (v && known.has(v)) { overlap = true; tier = "to_outbound"; break; }
+    }
+    if (!overlap) {
+      for (const a of (email.cc_addresses || [])) {
+        const v = (a || "").toString().toLowerCase().trim();
+        if (v && known.has(v)) { overlap = true; tier = "cc"; break; }
+      }
+    }
+  } else {
+    // Round 6 — inbound overlap tiers. From > To > CC.
+    const fromAddr = (email.from_address || "").toLowerCase().trim();
+    if (fromAddr && known.has(fromAddr)) { overlap = true; tier = "from"; }
+    if (!overlap) {
+      for (const a of (email.to_addresses || [])) {
+        const v = (a || "").toString().toLowerCase().trim();
+        if (v && known.has(v)) { overlap = true; tier = "to"; break; }
+      }
+    }
+    if (!overlap) {
+      for (const a of (email.cc_addresses || [])) {
+        const v = (a || "").toString().toLowerCase().trim();
+        if (v && known.has(v)) { overlap = true; tier = "cc"; break; }
+      }
     }
   }
-  if (!overlap) {
-    for (const a of (email.cc_addresses || [])) {
-      const v = (a || "").toString().toLowerCase().trim();
-      if (v && known.has(v)) { overlap = true; tier = "cc"; break; }
-    }
-  }
+
   if (!overlap) {
     return {
       ok: false,
-      reason: "no_exact_participant_overlap",
+      reason: isOutbound ? "no_outbound_recipient_overlap" : "no_exact_participant_overlap",
       email_id: emailId,
       lead_id: leadId,
     };
   }
 
+  const reason = `overlap_tier_${tier}`;
   const { error: updErr } = await supabase
     .from("lead_emails")
-    .update({ lead_id: leadId })
+    .update({ lead_id: leadId, classification_reason: reason })
     .eq("id", emailId);
   if (updErr) {
     return { ok: false, reason: `update_failed: ${updErr.message}`, email_id: emailId, lead_id: leadId };
   }
-  return { ok: true, email_id: emailId, lead_id: leadId, reason: `overlap_tier_${tier}` };
+  return { ok: true, email_id: emailId, lead_id: leadId, reason };
 }
