@@ -10,7 +10,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
-import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check, Clock, X, Search, Filter, Maximize2 } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check, Clock, X, Search, Filter, Maximize2, ShieldAlert, Ban } from "lucide-react";
 import { Lead } from "@/types/lead";
 import { detectEmailObjections, DetectedObjection } from "@/lib/meetingCoach";
 import { toast } from "sonner";
@@ -176,6 +176,9 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   const [activeSequenceSteps, setActiveSequenceSteps] = useState<Set<string>>(new Set());
   const [recapOpen, setRecapOpen] = useState(false);
   const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
+  // Round 5 — suppression status + per-lead noise filters
+  const [suppression, setSuppression] = useState<{ quarantined: boolean; unsubscribed: boolean; bounceCount: number; lastBounceAt: string | null } | null>(null);
+  const [hideFilters, setHideFilters] = useState<Array<{ pattern: string; type: string }>>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -239,6 +242,41 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     };
   }, [leadId, showMarketing]);
 
+  // Round 5 — load suppression status and per-lead hide filters
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [metricsRes, filtersRes] = await Promise.all([
+        supabase
+          .from("lead_email_metrics")
+          .select("email_quarantined, unsubscribed_all, total_bounces, last_bounce_date")
+          .eq("lead_id", leadId)
+          .maybeSingle(),
+        supabase
+          .from("lead_email_filters")
+          .select("sender_pattern, pattern_type, action")
+          .eq("lead_id", leadId)
+          .eq("action", "hide"),
+      ]);
+      if (cancelled) return;
+      const m = metricsRes.data as { email_quarantined?: boolean; unsubscribed_all?: boolean; total_bounces?: number; last_bounce_date?: string | null } | null;
+      if (m && (m.email_quarantined || m.unsubscribed_all)) {
+        setSuppression({
+          quarantined: !!m.email_quarantined,
+          unsubscribed: !!m.unsubscribed_all,
+          bounceCount: m.total_bounces ?? 0,
+          lastBounceAt: m.last_bounce_date ?? null,
+        });
+      } else {
+        setSuppression(null);
+      }
+      setHideFilters(((filtersRes.data || []) as Array<{ sender_pattern: string; pattern_type: string }>).map(r => ({
+        pattern: (r.sender_pattern || "").toLowerCase(), type: r.pattern_type || "domain",
+      })));
+    })();
+    return () => { cancelled = true; };
+  }, [leadId]);
+
   const markRead = async (emailId: string) => {
     setEmails((prev) => prev.map(e => e.id === emailId ? { ...e, is_read: true } : e));
     await supabase.from("lead_emails").update({ is_read: true }).eq("id", emailId);
@@ -269,10 +307,20 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     return Array.from(set).sort();
   }, [emails]);
 
-  // Apply search + sequence filter to the email list before grouping
+  // Apply search + sequence filter + per-lead hide filters to the email list before grouping
   const filteredEmails = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const matchesHideFilter = (addr: string): boolean => {
+      const a = (addr || "").toLowerCase();
+      if (!a) return false;
+      const dom = a.includes("@") ? a.split("@")[1] : "";
+      return hideFilters.some(f => {
+        if (f.type === "exact_email") return a === f.pattern;
+        return dom === f.pattern || a.endsWith(`@${f.pattern}`);
+      });
+    };
     return emails.filter(e => {
+      if (hideFilters.length > 0 && matchesHideFilter(e.from_address)) return false;
       if (activeSequenceSteps.size > 0 && (!e.sequence_step || !activeSequenceSteps.has(e.sequence_step))) return false;
       if (!q) return true;
       const hay = [
@@ -281,7 +329,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
       ].join(" ").toLowerCase();
       return hay.includes(q);
     });
-  }, [emails, searchQuery, activeSequenceSteps]);
+  }, [emails, searchQuery, activeSequenceSteps, hideFilters]);
 
   const deliveredForCount = filteredEmails.filter(e => e.send_status !== "scheduled");
   const threadCount = groupByThread(deliveredForCount).length;
@@ -462,6 +510,13 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     <div>
       <EmailTabHeader lead={lead} emails={emails as any} threadCount={threads.length} onCompose={onCompose} />
       <EmailTabIntro leadName={lead?.name} />
+      {suppression && <SuppressionBanner suppression={suppression} leadId={leadId} onCleared={() => setSuppression(null)} />}
+      {hideFilters.length > 0 && (
+        <div className="text-[10px] text-muted-foreground mb-2 flex items-center gap-1.5">
+          <Filter className="h-3 w-3" />
+          Hiding emails from {hideFilters.length} filtered sender{hideFilters.length === 1 ? "" : "s"} on this deal.
+        </div>
+      )}
       {header}
       {scheduled.length > 0 && (
         <ScheduledStrip scheduled={scheduled} onCancel={cancelScheduled} />
@@ -1028,5 +1083,57 @@ function SuggestResponsesDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SuppressionBanner({
+  suppression, leadId, onCleared,
+}: {
+  suppression: { quarantined: boolean; unsubscribed: boolean; bounceCount: number; lastBounceAt: string | null };
+  leadId: string;
+  onCleared: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const reasons: string[] = [];
+  if (suppression.unsubscribed) reasons.push("recipient unsubscribed");
+  if (suppression.quarantined) reasons.push(`auto-quarantined after ${suppression.bounceCount || 2}+ hard bounces`);
+  const label = reasons.join(" · ");
+
+  const clear = async () => {
+    if (!window.confirm("Lift suppression? Outbound sends will be permitted again. Use only if you've verified the address is valid or the lead asked to re-engage.")) return;
+    setBusy(true);
+    const { error } = await supabase
+      .from("lead_email_metrics")
+      .update({ email_quarantined: false, unsubscribed_all: false, updated_at: new Date().toISOString() })
+      .eq("lead_id", leadId);
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Suppression cleared");
+    onCleared();
+  };
+
+  const Icon = suppression.unsubscribed ? Ban : ShieldAlert;
+  return (
+    <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 flex items-start gap-2">
+      <Icon className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-semibold text-destructive">
+          Email suppressed — outbound sends will be refused
+        </div>
+        <div className="text-[11px] text-muted-foreground mt-0.5">
+          {label || "Marked as suppressed"}
+          {suppression.lastBounceAt ? ` · last bounce ${formatDistanceToNow(new Date(suppression.lastBounceAt), { addSuffix: true })}` : ""}
+        </div>
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 text-[10px] text-destructive hover:text-destructive shrink-0"
+        onClick={clear}
+        disabled={busy}
+      >
+        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : "Lift suppression"}
+      </Button>
+    </div>
   );
 }

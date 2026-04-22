@@ -311,6 +311,27 @@ Deno.serve(async (req) => {
     if (!conn.is_active) throw new Error("Mailbox is disconnected");
     if (conn.provider !== "gmail") throw new Error("Only Gmail send is supported");
 
+    // Round 5 — refuse to send when this lead is suppressed (quarantined or
+    // unsubscribed). Composers can lift via the deal-room banner.
+    if (typeof lead_id === "string" && lead_id && lead_id !== "unmatched") {
+      const { data: m } = await supabase
+        .from("lead_email_metrics")
+        .select("email_quarantined, unsubscribed_all")
+        .eq("lead_id", lead_id)
+        .maybeSingle();
+      const mr = m as { email_quarantined?: boolean; unsubscribed_all?: boolean } | null;
+      if (mr?.unsubscribed_all) {
+        return new Response(JSON.stringify({ ok: false, error: "suppressed_unsubscribed", message: "This lead is unsubscribed. Lift suppression on the deal-room before sending." }), {
+          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (mr?.email_quarantined) {
+        return new Response(JSON.stringify({ ok: false, error: "suppressed_quarantined", message: "This lead is auto-quarantined after repeated hard bounces. Lift suppression on the deal-room before sending." }), {
+          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const token = await getValidAccessToken(connection_id);
 
     const fromAddress = conn.email_address as string;
