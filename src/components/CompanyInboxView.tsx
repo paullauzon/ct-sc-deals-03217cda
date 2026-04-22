@@ -289,6 +289,29 @@ export function CompanyInboxView() {
                       {e.body_preview && (
                         <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{e.body_preview}</div>
                       )}
+                      {(() => {
+                        const hint = previouslySeen.get((e.from_address || "").toLowerCase());
+                        if (!hint) return null;
+                        const ownerMatch = g.owners.find(o => o.kind === "lead" && o.id === hint.leadId);
+                        return (
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            <Badge variant="secondary" className="h-5 text-[10px] px-1.5 font-normal">
+                              Previously seen on {hint.leadName} · {hint.count} prior email{hint.count === 1 ? "" : "s"}
+                            </Badge>
+                            {ownerMatch && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 px-1.5 text-[10px] text-primary hover:text-primary"
+                                disabled={busy === e.id}
+                                onClick={() => claim(e.id, hint.leadId, e.from_address, e.from_name)}
+                              >
+                                Route to {hint.leadName}
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div className="flex items-center gap-2 mt-2">
                         <OwnerPicker
                           owners={g.owners}
