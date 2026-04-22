@@ -10,7 +10,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
-import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check, Clock, X, Search, Filter, Maximize2 } from "lucide-react";
+import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check, Clock, X, Search, Filter, Maximize2, ShieldAlert, Ban } from "lucide-react";
 import { Lead } from "@/types/lead";
 import { detectEmailObjections, DetectedObjection } from "@/lib/meetingCoach";
 import { toast } from "sonner";
