@@ -155,7 +155,6 @@ export function FirmActivityCard({ lead }: { lead: Lead }) {
   return (
     <>
       <CollapsibleCard
-        id="firm-activity-card"
         title={`Firm activity at @${firmDomain}`}
         icon={<Building2 className="h-3.5 w-3.5" />}
         defaultOpen={false}
