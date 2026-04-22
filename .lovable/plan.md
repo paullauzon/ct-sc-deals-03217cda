@@ -1,74 +1,107 @@
 
 
-# End-to-end audit against original prompt — verdict
+# Phase 11 — Activate Outlook deep sync with Josh's tenant ID
 
-I traced every wireframe element against the actual codebase (UI + edge functions + DB + config). Below is the complete scorecard. **The system is essentially fully built.** I found **one tiny config gap** worth fixing, plus three optional polish items if you want to overdeliver further.
+Josh handed over the **Microsoft directory (tenant) ID** for SMC SourceCo, LLC. That's the exact unlock the OAuth flow has been waiting on. The deep-sync code, send code, token refresh, UI provider routing, and dedup logic are all already built and deployed — they've just been pointed at Microsoft's multi-tenant `/common/` endpoint, which requires a global admin consent step Adam can't perform. Switching to the single-tenant endpoint scoped to Josh's tenant bypasses the global-admin requirement and lets any user in that tenant grant the app personal mailbox access.
 
-## Scorecard — every wireframe element
+This phase flips that switch, stores the tenant ID as a secret, runs the connect flow, validates an end-to-end sync, and turns on the cron.
 
-### Tab 1 · Email tab — final design — **100% built**
-KPI strip, AI insight strip with Draft/See all/Dismiss, About-this-view box, search-within-emails, sequence filter, AI recap button, Threaded/Flat/1-to-1/All chip toggles, per-thread engagement badges (Opens/Clicks/Replies/Hot), per-thread AI strip with Draft button. Verified in `EmailsSection.tsx` lines 307–423 and `EmailTabHeader.tsx`.
+## What we're changing
 
-### Tab 2 · Thread expanded — **100% built**
-Inline expansion + optional "Open thread ↗" focused mode (`Maximize2` icon), thread-level AI summary with Draft + **Send to intelligence tab** (writes to `lead_intelligence_notes`), per-message AI reading with sentiment, per-message action bar (Reply / AI reply / Forward / Mark important / **Link to deal field** / View original / Copy content), Show N more earlier collapse. Verified in `ExpandedThreadView.tsx`, `MessageActionBar.tsx`, `ThreadAiStrip.tsx`, `FocusedThreadView.tsx`.
+### 1. Store the tenant ID as a secret
+Add `MICROSOFT_TENANT_ID` to project secrets (value provided by Josh, format like `8a4b...-...-...-...-...`). All three Outlook edge functions read from env so no code in the function body needs the raw ID.
 
-### Tab 3 · Compose experience — **100% built**
-Top metadata bar (From / To / Re / Seq), AI context panel with deal stage / stall / Fireflies / mandate / proof points + editable variable chips (red blocks send), 3 AI drafts with Recommended badge, expandable selected draft, **Improve line / Shorten / + Proof point / Attach / Schedule send / Save as variant / Send now**, **Tracking ON/OFF** pill, **+ Stakeholder** popover, **Switch to SC / Switch to CT** brand swap. Verified in `EmailComposerV2.tsx` (1050+ lines, every tool wired).
+### 2. Repoint the OAuth endpoints from `/common/` to the tenant
+Three small edits — one URL each — in:
+- `supabase/functions/outlook-oauth-start/index.ts` → `https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/authorize`
+- `supabase/functions/outlook-oauth-callback/index.ts` → `https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token`
+- `supabase/functions/refresh-outlook-token/index.ts` → same `/token` endpoint
 
-### Tab 4 · AI system — all 8 functions live
-1. Draft assistant — `compose-email-drafts` (GPT-5)
-2. Reply analyzer — `analyze-email-message`
-3. Thread summarizer — `analyze-email-thread`
-4. Next-action recommender — `EmailTabHeader` heuristic (smarter + cheaper than hourly cron)
-5. Fireflies recap — `summarize-meeting`
-6. **First-email research** — `research-first-email-fact` (GPT-5, results cached on `leads.first_email_fact`, injected into `compose-email-drafts` system prompt for line 1/2 anchoring)
-7. Signal detector — `email-workflow-trigger` cron
-8. Learning loop — `composeLearning.ts` + `email_compose_events/outcomes` + `AILearningPanel`
+Each function already pulls `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET` from env; we add a `MICROSOFT_TENANT_ID` read with a graceful fallback to `common` so if the secret is missing for any reason we don't break in a confusing way.
 
-### Tab 5 · Where emails appear — 9/10 surfaces
-Email tab, Activity timeline, Overview highlights, Right sidebar Signals, Deal Health factors, Workflow triggers, Settings AILearningPanel pattern view, **Company-record aggregate (`EmailsAtCompanyCard` mounted in `ClientAccountDetail.tsx`)**, auto-generated tasks. Mobile email summary remains intentionally out of scope per Phase 1.
+### 3. Confirm Azure App Registration redirect URI matches
+The redirect URI in Josh's Azure App Registration must be exactly:
+`https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/outlook-oauth-callback`
+Already documented in our memory file, but worth a manual confirmation before the first connect attempt — a single character mismatch returns a friendly Microsoft error immediately, no data risk.
 
-### Tab 6 · Learning loop — fully wired
-All 8 capture signals (edit distance, draft selection, opens, clicks, reply sentiment, reply velocity, stage movement, unsubscribe) recording. Default-ON with per-send `do_not_train` toggle. `compose-email-drafts` reads learned patterns and biases `recommendedApproach`.
+### 4. Deploy + connect Adam's mailbox
+Deploy the three updated functions. Then in **Settings → Mailboxes → Connect mailbox → Connect Outlook**, Adam labels the mailbox (e.g. "Adam SourceCo") and is sent through Microsoft's tenant-scoped consent screen. Because it's now scoped to SMC SourceCo's tenant, only individual-user consent is needed (not global admin). On approval the existing callback exchanges the code, fetches `/me`, persists tokens, and **automatically dispatches a 90-day backfill** (already wired in `outlook-oauth-callback` lines that hit `start-email-backfill`).
 
-### Phase 9 backend gaps — all closed
-- `tracking_enabled` honored in both `send-gmail-email` and `send-outlook-email` (skip pixel + skip `rewriteLinks` when false; `lead_emails.tracked = false`).
-- `attachments[]` honored: Gmail `multipart/mixed` build with base64 chunks; Outlook `#microsoft.graph.fileAttachment`.
-- `process-scheduled-emails` forwards both `tracking_enabled` and `attachments` from `raw_payload`.
-- `EmailTabHeader.tsx` shows the "Tracking off · this mailbox" banner when `mailbox_preferences.tracking_enabled = false`.
+### 5. Validate end-to-end on real data
+After the backfill finishes (visible live in `BackfillProgressPanel` already mounted in `MailboxSettings`):
+- Confirm `lead_emails` rows landed with `source = 'outlook'`
+- Spot-check three matched leads to confirm threading, `replied_at` stamping, and stakeholder auto-discovery look right
+- Trigger a manual **Sync now** to confirm the incremental pull works
+- Send one test email from the composer to confirm `send-outlook-email` delivers, the loop-protection header lands, and the resulting message does NOT get re-ingested on the next sync
+- Confirm the EmailMetricsCard / Email tab KPIs populate for an Outlook lead
 
----
+### 6. Schedule the 5-minute cron
+Once the manual loop is clean, schedule `sync-outlook-emails` to run every 5 minutes via pg_cron, mirroring the Gmail cadence. Includes a watchdog log entry on each run for visibility in the existing automation health panel.
 
-## The one real gap I found
+### 7. Update the memory note
+Flip `mem://integrations/email-sync-status` to reflect: *Outlook deep sync LIVE in tenant `[id]`. Cron active every 5 min.* Remove the "blocked on tenant admin consent" line.
 
-**`refine-email-line` is not registered in `supabase/config.toml`.** This is the function that powers the wireframe's **Improve line / Shorten / + Proof point** inline buttons in the composer. Without a `[functions.refine-email-line]\nverify_jwt = false` entry, the function will reject anonymous calls in some environments, which would silently break those three buttons. The function file exists and is correctly written — it's just unregistered.
+## Out of scope for this phase
 
-## Build plan — Phase 10 (small, surgical)
+- **Multi-tenant support for other Outlook customers** — we're explicitly single-tenanting to SMC SourceCo. If another tenant ever needs to connect, we either add a second app registration or move back to `/common/` after global-admin consent. Not relevant today.
+- **Sent-items folder permissions edge cases** — Microsoft surfaces the user's own sent folder under the same `Mail.Read` scope we already request; no new scope needed.
+- **Outlook calendar / Teams** — separate scopes, separate problem, not part of email sync.
 
-### Edit 1 (required) — Register `refine-email-line`
-Add this block to `supabase/config.toml`:
-```toml
-[functions.refine-email-line]
-verify_jwt = false
-```
+## Risks and how we handle them
 
-### Edit 2 (overdelivery #1) — Verify with a real call
-After the config update, invoke `refine-email-line` once via the curl-edge-functions tool with a sample body and `mode: "shorten"`, confirm a 200 with non-empty `rewritten`, and inspect the function logs to confirm OpenAI call succeeds. Repeat for `improve` and `add_proof`.
+- **Tenant ID typo** → connect fails immediately with `AADSTS50020` or `AADSTS90002`. Caught on first connect attempt before any DB writes. No cleanup needed.
+- **Redirect URI mismatch in Azure** → Microsoft returns `AADSTS50011` on the consent screen. Caught before token exchange. No cleanup needed.
+- **A user outside Josh's tenant tries to connect** → Microsoft refuses with `AADSTS50020`. Expected behavior — this is exactly what single-tenant scoping is supposed to do.
+- **First backfill is slow** → already handled by `BackfillProgressPanel`'s live progress; user sees real-time counts and can keep working.<lov-plan>
 
-### Edit 3 (overdelivery #2) — Smoke test the first-email-fact path on a real lead
-Pick a lead with `company_url` set and zero outbound emails. Call `research-first-email-fact` directly, confirm a non-generic fact lands in `leads.first_email_fact`. Then open Compose for the same lead and confirm Draft 1 line 1/2 anchors to that fact. This proves Phase 9 Edit 3 works end-to-end against live data, not just code.
+# Phase 11 — Activate Outlook deep sync with Josh's tenant ID
 
-### Edit 4 (overdelivery #3) — Confirm `summarize-deal-emails` works on a multi-thread lead
-Pick a lead with 2+ email threads, click the new **AI recap ↗** button, confirm the slide-over returns a clean synthesis citing both threads, and confirm **Save to Intelligence** writes a `lead_intelligence_notes` row.
+Josh handed over the **Microsoft directory (tenant) ID** for SMC SourceCo, LLC. That's the exact unlock the OAuth flow has been waiting on. The deep-sync code, send code, token refresh, UI provider routing, and dedup logic are all already built and deployed — they've just been pointed at Microsoft's multi-tenant `/common/` endpoint, which requires a global admin consent step Adam can't perform. Switching to the single-tenant endpoint scoped to Josh's tenant bypasses the global-admin requirement and lets users in that tenant grant the app personal mailbox access.
 
-## What is intentionally NOT built (after this audit)
+This phase flips that switch, stores the tenant ID as a secret, runs the connect flow, validates an end-to-end sync, and turns on the cron.
 
-- Mobile email summary view — out of scope per your Phase 1 decision.
-- Outlook deep sync UI changes — paused pending Josh's tenant approval. Code already handles Outlook the moment OAuth lights up.
-- Per-deal Intelligence pattern view — `Settings → AI Learning` already exposes the matrix. Per-deal slicing has near-zero data per deal and would mislead. Revisit at 90 days of real send data.
-- Historical click rewriting on already-sent emails — physically impossible.
+## What we're changing
 
-## Verification outcome after Phase 10
+### 1. Store the tenant ID as a secret
+Add `MICROSOFT_TENANT_ID` to project secrets (the GUID Josh sent, format like `8a4b...-...-...-...-...`). All three Outlook edge functions read from env so the raw ID never lives in code.
 
-Once Edits 1–4 pass, every element of every one of your 7 wireframe tabs is built, wired backend-to-frontend, registered in config, and verified against the live database.
+### 2. Repoint the OAuth endpoints from `/common/` to the tenant
+Three small edits — one URL each — in:
+- `outlook-oauth-start/index.ts` → `https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/authorize`
+- `outlook-oauth-callback/index.ts` → `https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token`
+- `refresh-outlook-token/index.ts` → same `/token` endpoint
+
+Each function pulls `MICROSOFT_TENANT_ID` from env with a graceful fallback to `common` so a missing secret fails loudly instead of silently.
+
+### 3. Confirm the Azure App Registration redirect URI
+Must be exactly `https://qlvlftqzctywlrsdlyty.supabase.co/functions/v1/outlook-oauth-callback`. Worth a one-second visual check in Josh's Azure portal before the first connect — a mismatch returns a friendly Microsoft error, no data risk.
+
+### 4. Deploy + connect Adam's mailbox
+Deploy the three updated functions. Then in **Settings → Mailboxes → Connect mailbox → Connect Outlook**, Adam labels the mailbox (e.g. "Adam SourceCo") and is sent through Microsoft's tenant-scoped consent screen. Because it's now scoped to SMC SourceCo's tenant, only individual-user consent is needed (no global admin). On approval the existing callback exchanges the code, fetches `/me`, persists tokens, and **automatically dispatches a 90-day backfill** (already wired in the callback).
+
+### 5. Validate end-to-end on real data
+After the backfill finishes (visible live in `BackfillProgressPanel`):
+- Confirm `lead_emails` rows landed with `source = 'outlook'`
+- Spot-check three matched leads for threading, `replied_at` stamping, and stakeholder auto-discovery
+- Trigger a manual **Sync now** to confirm the incremental pull works
+- Send one test from the composer to confirm `send-outlook-email` delivers, the loop-protection header lands, and the message does NOT get re-ingested on the next sync
+- Confirm `EmailMetricsCard` and the Email tab KPIs populate for an Outlook lead
+
+### 6. Schedule the 5-minute cron
+Once the manual loop is clean, schedule `sync-outlook-emails` every 5 minutes via pg_cron, mirroring the Gmail cadence, with a watchdog log entry on each run for the automation health panel.
+
+### 7. Update the memory note
+Flip `mem://integrations/email-sync-status` to reflect: *Outlook deep sync LIVE in tenant `[id]`. Cron active every 5 min.* Remove the "blocked on tenant admin consent" line.
+
+## Out of scope
+
+- **Multi-tenant support for other Outlook customers** — single-tenanted to SMC SourceCo intentionally. Another tenant ever needs to connect → second app registration or fall back to `/common/`.
+- **Outlook calendar / Teams** — separate scopes, separate problem.
+
+## Risks and handling
+
+- **Tenant ID typo** → connect fails immediately with `AADSTS50020/90002`. Caught on first attempt, no DB writes.
+- **Redirect URI mismatch** → Microsoft returns `AADSTS50011` on consent screen. Caught before token exchange.
+- **User outside Josh's tenant tries to connect** → Microsoft refuses with `AADSTS50020`. Expected behavior — exactly what single-tenant scoping is supposed to do.
+- **First backfill is slow** → already handled by `BackfillProgressPanel`'s live progress; Adam sees real-time counts.
 
