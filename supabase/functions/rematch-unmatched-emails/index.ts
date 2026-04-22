@@ -50,8 +50,9 @@ function isSystemNoise(addr: string): boolean {
 }
 
 // Senders that will never map to a lead — newsletters, transactional notifications,
-// generic service domains. Skipped on the fast path so we don't waste lookups.
-const NOISE_DOMAINS = new Set([
+// generic service domains. The hardcoded set is the fallback; live noise rules
+// added through the Mailboxes UI extend this Set at runtime via loadNoiseDomains().
+const NOISE_DOMAINS = new Set<string>([
   "mail.beehiiv.com", "email.pandadoc.net", "fireflies.ai", "calendly.com",
   "zoom.us", "webflow.com", "mail.investopedia.com", "newsletter.trip.com",
   "activecampaign.com", "m.starbucks.com", "shared1.ccsend.com",
@@ -59,6 +60,18 @@ const NOISE_DOMAINS = new Set([
   "realdealsmedia.com", "acg.org", "youthenrichmentalliance.com",
   "dakotalive.com", "nperspective.com",
 ]);
+
+async function loadNoiseDomains(supabase: ReturnType<typeof createClient>): Promise<void> {
+  try {
+    const { data } = await supabase.from("email_noise_domains").select("domain");
+    for (const r of (data || []) as Array<{ domain: string }>) {
+      const d = (r.domain || "").toLowerCase().trim();
+      if (d) NOISE_DOMAINS.add(d);
+    }
+  } catch {
+    // Table may not exist on first run — fall back to hardcoded set.
+  }
+}
 
 function domainOf(email: string): string {
   return email.includes("@") ? email.split("@")[1].toLowerCase() : "";
@@ -236,6 +249,9 @@ Deno.serve(async (req) => {
   let body: { limit?: number } = {};
   try { body = await req.json(); } catch { /* empty body */ }
   const limit = Math.min(Math.max(body.limit ?? 1000, 1), 5000);
+
+  // Pull live noise rules into the in-memory NOISE_DOMAINS set.
+  await loadNoiseDomains(supabase);
 
   // Build the in-memory index ONCE.
   let idx: LeadIndex;
