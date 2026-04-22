@@ -47,8 +47,8 @@ export function UnmatchedInbox() {
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [leads, setLeads] = useState<LeadOption[]>([]);
-  const [rematching, setRematching] = useState(false);
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { busy: rematching, rematchAll, cleanupSweep } = useMatcherControls();
 
   const load = async () => {
     setLoading(true);
