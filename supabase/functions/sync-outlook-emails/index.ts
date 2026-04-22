@@ -388,8 +388,17 @@ async function syncOneConnection(
         const text = m.body?.contentType === "text" ? m.body.content : "";
         const preview = (m.bodyPreview || "").substring(0, 280);
 
+        // Round 6 — auto-park noise classes (out-of-office, role-based, calendar)
+        // BEFORE writing as unmatched. Matched messages always win.
+        let parkedSentinel: string | null = null;
+        if (!leadId) {
+          const { classifyEmail, sentinelForClass } = await import("../_shared/classify-email.ts");
+          const cls = classifyEmail({ fromAddress: fromAddr, subject: m.subject || "", bodyPreview: preview });
+          parkedSentinel = sentinelForClass(cls);
+        }
+
         const { data: insertedRow, error: insertErr } = await supabase.from("lead_emails").insert({
-          lead_id: leadId || "unmatched",
+          lead_id: leadId || parkedSentinel || "unmatched",
           message_id: internetMsgId || m.id,
           provider_message_id: m.id,
           thread_id: m.conversationId || "",
@@ -407,7 +416,7 @@ async function syncOneConnection(
           source: "outlook",
           is_read: !!m.isRead,
           attachments: m.hasAttachments ? [{ has: true }] : [],
-          raw_payload: m as unknown as Record<string, unknown>,
+          raw_payload: { ...(m as unknown as Record<string, unknown>), ...(parkedSentinel ? { auto_parked: parkedSentinel } : {}) },
         }).select("id").single();
 
         if (insertErr) {
