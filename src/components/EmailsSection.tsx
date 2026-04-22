@@ -15,6 +15,7 @@ import { EmailTabHeader } from "@/components/lead-panel/EmailTabHeader";
 import { computeThreadEngagement } from "@/lib/threadEngagement";
 import { ThreadEngagementBadges } from "@/components/lead-panel/ThreadEngagementBadges";
 import { ThreadAiStrip } from "@/components/lead-panel/ThreadAiStrip";
+import { ExpandedThreadView } from "@/components/lead-panel/ExpandedThreadView";
 
 interface LeadEmail {
   id: string;
