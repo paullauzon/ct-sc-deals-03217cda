@@ -406,6 +406,7 @@ Mark the "${recommended}" approach as the recommended one in your rationale fiel
     variables,
     missingVariables,
     recommendedApproach: recommended,
+    recommendationBasis,
     model: "google/gemini-3-flash-preview",
   }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
