@@ -60,6 +60,8 @@ export function CompanyInboxView() {
   const [busy, setBusy] = useState<string | null>(null);
 
   const [previouslySeen, setPreviouslySeen] = useState<Map<string, { leadId: string; leadName: string; count: number }>>(new Map());
+  // Round 5 — senders that appear on 3+ deals are likely intermediaries.
+  const [intermediaryCandidates, setIntermediaryCandidates] = useState<Map<string, { dealCount: number; flagged: boolean; stakeholderIds: string[] }>>(new Map());
 
   const load = async () => {
     setLoading(true);
