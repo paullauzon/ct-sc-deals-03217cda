@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Mail, Plus, Loader2, Trash2, RefreshCw, CheckCircle2, AlertCircle, DownloadCloud, History, ChevronDown, ShieldCheck, Copy, ExternalLink } from "lucide-react";
+import { Mail, Plus, Loader2, Trash2, RefreshCw, CheckCircle2, AlertCircle, DownloadCloud, History, ChevronDown, ShieldCheck, Copy, ExternalLink, Wand2, Inbox, Info } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { UnmatchedInbox } from "./UnmatchedInbox";
@@ -26,6 +26,8 @@ import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
 import { AutomationHealthPanel } from "./AutomationHealthPanel";
 import { BackfillProgressPanel } from "./BackfillProgressPanel";
 import { AILearningPanel } from "./settings/AILearningPanel";
+import { useMatcherControls } from "@/hooks/useMatcherControls";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface Connection {
   id: string;
@@ -60,13 +62,28 @@ export function MailboxSettings() {
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [requestingAdminConsent, setRequestingAdminConsent] = useState(false);
   const [adminConsentUrl, setAdminConsentUrl] = useState<string | null>(null);
-  
+
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (typeof window === "undefined") return "mailboxes";
+    const params = new URLSearchParams(window.location.hash.replace("#", ""));
+    return params.get("tab") === "automation" ? "automation" : "mailboxes";
+  });
+  const [howOpen, setHowOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("lovable.mailboxes.how-dismissed") !== "1";
+  });
+  const matcher = useMatcherControls();
 
   // Connect dialog state
   const [connectOpen, setConnectOpen] = useState(false);
   const [connectProvider, setConnectProvider] = useState<"gmail" | "outlook">("gmail");
   const [labelDraft, setLabelDraft] = useState("");
+
+  const dismissHow = () => {
+    setHowOpen(false);
+    try { localStorage.setItem("lovable.mailboxes.how-dismissed", "1"); } catch { /* ignore */ }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -259,7 +276,7 @@ export function MailboxSettings() {
         </p>
       </div>
 
-      <Tabs defaultValue={typeof window !== "undefined" && new URLSearchParams(window.location.hash.replace("#","")).get("tab") === "automation" ? "automation" : "mailboxes"} className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <div className="flex items-center justify-between">
           <TabsList>
             <TabsTrigger value="mailboxes">Mailboxes</TabsTrigger>
@@ -290,6 +307,109 @@ export function MailboxSettings() {
         </div>
 
         <TabsContent value="mailboxes" className="space-y-6">
+          <Collapsible open={howOpen} onOpenChange={setHowOpen}>
+            <div className="rounded-lg border border-border bg-secondary/20">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-left"
+                >
+                  <span className="inline-flex items-center gap-2 text-sm font-medium">
+                    <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                    How email sync works
+                  </span>
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${howOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="px-4 pb-3 pt-1 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <div className="font-medium text-foreground">Live sync</div>
+                    <p className="text-muted-foreground mt-0.5">
+                      Runs automatically every 5 minutes for each connected mailbox. Pulls new mail and routes it to the right lead.
+                    </p>
+                  </div>
+                  <div>
+                    <div className="font-medium text-foreground">Backfill</div>
+                    <p className="text-muted-foreground mt-0.5">
+                      One-shot pull of historical mail (90 days, 1y, 3y, or all). Auto-runs once on first connect for the last 90 days.
+                    </p>
+                  </div>
+                  <div>
+                    <div className="font-medium text-foreground">Matcher</div>
+                    <p className="text-muted-foreground mt-0.5">
+                      Re-runs the routing logic against emails that didn't auto-link to a lead — useful after adding stakeholders or merging duplicates.
+                    </p>
+                  </div>
+                  <div>
+                    <div className="font-medium text-foreground">Unmatched inbox</div>
+                    <p className="text-muted-foreground mt-0.5">
+                      Emails the matcher couldn't confidently route. Claim them to a lead manually, or dismiss as noise.
+                    </p>
+                  </div>
+                  <div className="sm:col-span-2 flex justify-end pt-1">
+                    <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={dismissHow}>
+                      Got it — don't show again
+                    </Button>
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
+
+          <div className="rounded-lg border border-border px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <Inbox className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-medium leading-tight">
+                  {matcher.unmatchedCount === null
+                    ? "Loading unmatched count…"
+                    : `${matcher.unmatchedCount.toLocaleString()} email${matcher.unmatchedCount === 1 ? "" : "s"} not yet linked to a lead`}
+                </div>
+                <div className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                  {matcher.lastRun
+                    ? `Last ${matcher.lastRun.kind === "cleanup" ? "cleanup" : "matcher run"}: ${formatDistanceToNow(new Date(matcher.lastRun.ranAt), { addSuffix: true })} · matched ${matcher.lastRun.matched}${matcher.lastRun.scanned ? ` of ${matcher.lastRun.scanned}` : ""}`
+                    : "No matcher run recorded yet in this browser"}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 text-xs"
+                onClick={() => setActiveTab("unmatched")}
+              >
+                Review unmatched →
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs"
+                onClick={() => matcher.cleanupSweep()}
+                disabled={matcher.busy}
+                title="Un-staple wrongly-matched emails (personal-provider domains, ambiguous matches, duplicate-lead routing) and re-run the matcher with strict logic"
+              >
+                {matcher.busy ? (
+                  <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> Working…</>
+                ) : (
+                  <><Wand2 className="h-3 w-3 mr-1.5" /> Cleanup sweep</>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => matcher.rematchAll()}
+                disabled={matcher.busy || matcher.unmatchedCount === 0}
+                title="Re-run the matcher across the unmatched inbox. Rows that find a lead will move out automatically."
+              >
+                Re-run matcher
+              </Button>
+            </div>
+          </div>
+
           <div className="border border-border rounded-lg overflow-hidden">
             {loading ? (
               <div className="p-8 text-center text-sm text-muted-foreground">
@@ -322,6 +442,7 @@ export function MailboxSettings() {
                     const olderThan24h = (new Date().getTime() - new Date(c.created_at).getTime()) > 24 * 60 * 60 * 1000;
                     const needsReconnect = c.is_active && tokenExpired && neverSynced && olderThan24h;
                     const runs = recentRuns[c.id] || [];
+                    const historyOpen = historyOpenId === c.id && runs.length > 0;
 
                     return (
                       <tr key={c.id} className="hover:bg-secondary/20 align-top">
@@ -357,103 +478,96 @@ export function MailboxSettings() {
                           {c.is_active && (
                             <>
                               <div className="mt-0.5 text-[11px]">
-                                <span className="text-foreground font-medium">{recentCounts[c.id] ?? 0}</span> in last 24h
+                                <span className="text-foreground font-medium tabular-nums">
+                                  {(recentCounts[c.id] ?? 0).toLocaleString()}
+                                </span>{" "}
+                                emails synced (24h)
+                              </div>
+                              <div className="mt-2 -ml-0.5">
+                                <BackfillProgressPanel
+                                  connectionId={c.id}
+                                  emailAddress={c.email_address}
+                                  provider={c.provider}
+                                />
                               </div>
                               {runs.length > 0 && (
                                 <button
                                   type="button"
-                                  onClick={() => setHistoryOpenId(historyOpenId === c.id ? null : c.id)}
-                                  className="mt-0.5 text-[11px] inline-flex items-center gap-1 hover:text-foreground"
+                                  onClick={() => setHistoryOpenId(historyOpen ? null : c.id)}
+                                  className="mt-2 text-[11px] inline-flex items-center gap-1 hover:text-foreground"
                                 >
                                   <History className="h-2.5 w-2.5" />
-                                  {historyOpenId === c.id ? "Hide" : "Show"} recent syncs
+                                  {historyOpen ? "Hide" : "Show"} recent syncs
                                 </button>
+                              )}
+                              {historyOpen && (
+                                <div className="mt-2 rounded border border-border/60 bg-secondary/10 p-2">
+                                  <table className="w-full text-xs">
+                                    <thead className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                                      <tr>
+                                        <th className="text-left py-1 font-medium">When</th>
+                                        <th className="text-left py-1 font-medium">Mode</th>
+                                        <th className="text-right py-1 font-medium">Fetched</th>
+                                        <th className="text-right py-1 font-medium">Inserted</th>
+                                        <th className="text-right py-1 font-medium">Matched</th>
+                                        <th className="text-left py-1 font-medium pl-3">Status</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/50">
+                                      {runs.map((r) => (
+                                        <tr key={r.id}>
+                                          <td className="py-1.5">{formatDistanceToNow(new Date(r.started_at), { addSuffix: true })}</td>
+                                          <td className="py-1.5">{r.mode}</td>
+                                          <td className="py-1.5 text-right tabular-nums">{r.fetched}</td>
+                                          <td className="py-1.5 text-right tabular-nums">{r.inserted}</td>
+                                          <td className="py-1.5 text-right tabular-nums">{r.matched}</td>
+                                          <td className="py-1.5 pl-3 capitalize">{r.status}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
                               )}
                             </>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
                             {c.is_active && (
                               <>
                                 <Button
-                                  variant="ghost" size="sm" className="h-7 px-2"
+                                  variant="outline" size="sm" className="h-7 px-2 text-xs"
                                   onClick={() => syncNow(c)}
                                   disabled={syncingId === c.id}
                                   title="Sync new emails now"
                                 >
-                                  {syncingId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <DownloadCloud className="h-3 w-3" />}
+                                  {syncingId === c.id ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <DownloadCloud className="h-3 w-3 mr-1.5" />}
+                                  Sync now
                                 </Button>
                                 <Button
-                                  variant="ghost" size="sm" className="h-7 px-2"
+                                  variant="ghost" size="sm" className="h-7 px-2 text-xs"
                                   onClick={() => refreshToken(c)}
                                   disabled={refreshingId === c.id}
-                                  title="Refresh access token"
+                                  title="Refresh OAuth access token for this mailbox"
                                 >
-                                  {refreshingId === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                                  {refreshingId === c.id ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1.5" />}
+                                  Refresh token
                                 </Button>
                               </>
                             )}
                             <Button
-                              variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-foreground"
+                              variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
                               onClick={() => disconnect(c.id, c.email_address)}
-                              title="Disconnect mailbox"
+                              title="Disconnect this mailbox — sync stops immediately"
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="h-3 w-3 mr-1.5" />
+                              Disconnect
                             </Button>
                           </div>
                         </td>
                       </tr>
                     );
                   })}
-                  {connections.map((c) => (
-                    c.is_active ? (
-                      <tr key={`backfill-${c.id}`} className="bg-secondary/5">
-                        <td colSpan={5} className="px-4 py-2.5">
-                          <BackfillProgressPanel
-                            connectionId={c.id}
-                            emailAddress={c.email_address}
-                            provider={c.provider}
-                          />
-                        </td>
-                      </tr>
-                    ) : null
-                  ))}
-                  {connections.map((c) => (
-                    historyOpenId === c.id && (recentRuns[c.id] || []).length > 0 ? (
-                      <tr key={`history-${c.id}`} className="bg-secondary/10">
-                        <td colSpan={5} className="px-4 py-3">
-                          <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
-                            Recent syncs — {c.email_address}
-                          </div>
-                          <table className="w-full text-xs">
-                            <thead className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                              <tr>
-                                <th className="text-left py-1 font-medium">When</th>
-                                <th className="text-left py-1 font-medium">Mode</th>
-                                <th className="text-right py-1 font-medium">Fetched</th>
-                                <th className="text-right py-1 font-medium">Inserted</th>
-                                <th className="text-right py-1 font-medium">Matched</th>
-                                <th className="text-left py-1 font-medium pl-4">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border/50">
-                              {(recentRuns[c.id] || []).map((r) => (
-                                <tr key={r.id}>
-                                  <td className="py-1.5">{formatDistanceToNow(new Date(r.started_at), { addSuffix: true })}</td>
-                                  <td className="py-1.5">{r.mode}</td>
-                                  <td className="py-1.5 text-right tabular-nums">{r.fetched}</td>
-                                  <td className="py-1.5 text-right tabular-nums">{r.inserted}</td>
-                                  <td className="py-1.5 text-right tabular-nums">{r.matched}</td>
-                                  <td className="py-1.5 pl-4 capitalize">{r.status}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </td>
-                      </tr>
-                    ) : null
-                  ))}
                 </tbody>
               </table>
             )}
