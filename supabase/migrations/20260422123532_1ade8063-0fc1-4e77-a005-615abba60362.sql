@@ -1,0 +1,3 @@
+ALTER TABLE public.leads
+  ADD COLUMN IF NOT EXISTS first_email_fact TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS first_email_fact_source TEXT NOT NULL DEFAULT '';

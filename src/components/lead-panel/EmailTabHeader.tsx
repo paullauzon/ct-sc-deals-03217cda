@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Lead } from "@/types/lead";
 import { Button } from "@/components/ui/button";
-import { Sparkles, PenSquare, X, ChevronRight } from "lucide-react";
+import { Sparkles, PenSquare, X, ChevronRight, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getDealSignals } from "@/components/lead-panel/shared";
+import { supabase } from "@/integrations/supabase/client";
 
 interface LeadEmailLite {
   id: string;
@@ -161,9 +162,38 @@ export function EmailTabHeader({ lead, emails, threadCount, onCompose, onSeeAllS
     const key = `emailAiInsightDismissed:${lead.id}`;
     const ts = localStorage.getItem(key);
     if (!ts) return false;
-    // Auto-undismiss after 24h so insights resurface
     return Date.now() - Number(ts) < 24 * 3600 * 1000;
   });
+
+  // Phase 9 — surface a small banner when the rep's primary mailbox has tracking disabled.
+  const [trackingOffMailbox, setTrackingOffMailbox] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: conns } = await (supabase as any)
+          .from("user_email_connections")
+          .select("id, email_address, is_active")
+          .eq("is_active", true)
+          .limit(5);
+        if (!conns || conns.length === 0) return;
+        const ids = conns.map((c: any) => c.id);
+        const { data: prefs } = await (supabase as any)
+          .from("mailbox_preferences")
+          .select("connection_id, tracking_enabled")
+          .in("connection_id", ids);
+        if (cancelled) return;
+        const prefMap = new Map<string, boolean>(
+          (prefs || []).map((p: any) => [p.connection_id, p.tracking_enabled !== false]),
+        );
+        const off = conns.find((c: any) => prefMap.get(c.id) === false);
+        if (off) setTrackingOffMailbox(off.email_address);
+      } catch {
+        /* silent */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [lead?.id]);
 
   const stats = useMemo(() => {
     const delivered = emails.filter(e => e.send_status !== "scheduled");
@@ -199,7 +229,17 @@ export function EmailTabHeader({ lead, emails, threadCount, onCompose, onSeeAllS
 
   return (
     <div className="space-y-2 mb-3">
+      {trackingOffMailbox && (
+        <div className="rounded-md border border-border bg-muted/40 px-3 py-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <EyeOff className="h-3 w-3 shrink-0" />
+          <span>
+            Open/click tracking disabled for <span className="font-medium text-foreground">{trackingOffMailbox}</span> — engagement metrics will not populate for emails sent from this mailbox.
+          </span>
+        </div>
+      )}
       {/* KPI strip */}
+      <div className="rounded-md border border-border bg-secondary/30 px-1 py-1 flex flex-wrap items-stretch divide-x divide-border">
+        <KpiTile label="Threads" value={String(stats.threads)} />
       <div className="rounded-md border border-border bg-secondary/30 px-1 py-1 flex flex-wrap items-stretch divide-x divide-border">
         <KpiTile label="Threads" value={String(stats.threads)} />
         <KpiTile label="Emails" value={String(stats.total)} hint={`${stats.sent} sent · ${stats.received} received`} />

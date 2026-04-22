@@ -28,7 +28,14 @@ interface ScheduledRow {
   body_html: string | null;
   thread_id: string | null;
   message_id: string | null;
-  raw_payload: { connection_id?: string; in_reply_to?: string } | null;
+  attachments: unknown;
+  raw_payload: {
+    connection_id?: string;
+    in_reply_to?: string;
+    tracking_enabled?: boolean;
+    attachments?: Array<{ name?: string; url?: string; size?: number; mime?: string }>;
+    provider?: string;
+  } | null;
 }
 
 Deno.serve(async (req) => {
@@ -47,7 +54,7 @@ Deno.serve(async (req) => {
   try {
     const { data: due, error } = await supabase
       .from("lead_emails")
-      .select("id, lead_id, to_addresses, cc_addresses, bcc_addresses, subject, body_text, body_html, thread_id, message_id, raw_payload")
+      .select("id, lead_id, to_addresses, cc_addresses, bcc_addresses, subject, body_text, body_html, thread_id, message_id, attachments, raw_payload")
       .eq("send_status", "scheduled")
       .lte("scheduled_for", startedAt)
       .limit(50);
@@ -58,6 +65,15 @@ Deno.serve(async (req) => {
     for (const row of rows) {
       const conn = row.raw_payload?.connection_id;
       const inReplyTo = row.raw_payload?.in_reply_to;
+      const trackingEnabled = row.raw_payload?.tracking_enabled !== false;
+      // Attachments may live on raw_payload (composer V2) or on the dedicated column.
+      const attachmentsFromPayload = Array.isArray(row.raw_payload?.attachments)
+        ? row.raw_payload!.attachments
+        : null;
+      const attachmentsFromColumn = Array.isArray(row.attachments)
+        ? row.attachments as Array<{ name?: string; url?: string; size?: number; mime?: string }>
+        : null;
+      const attachments = attachmentsFromPayload ?? attachmentsFromColumn ?? [];
       const recipients = row.to_addresses ?? [];
 
       if (!conn || recipients.length === 0 || !row.subject) {
@@ -68,8 +84,21 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // Resolve provider from connection so scheduled outlook sends route correctly.
+      let providerFn = "send-gmail-email";
       try {
-        const sendRes = await fetch(`${SUPABASE_URL}/functions/v1/send-gmail-email`, {
+        const { data: connRow } = await supabase
+          .from("user_email_connections")
+          .select("provider")
+          .eq("id", conn)
+          .maybeSingle();
+        if ((connRow as any)?.provider === "outlook") providerFn = "send-outlook-email";
+      } catch {
+        // fall back to gmail
+      }
+
+      try {
+        const sendRes = await fetch(`${SUPABASE_URL}/functions/v1/${providerFn}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -84,6 +113,8 @@ Deno.serve(async (req) => {
             subject: row.subject,
             body_text: row.body_text ?? "",
             body_html: row.body_html ?? "",
+            tracking_enabled: trackingEnabled,
+            attachments,
             ...(row.thread_id ? { thread_id: row.thread_id } : {}),
             ...(inReplyTo ? { in_reply_to: inReplyTo } : {}),
           }),

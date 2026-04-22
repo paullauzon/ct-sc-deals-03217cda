@@ -1,6 +1,8 @@
 // Sends an email via Microsoft Graph /me/sendMail for a chosen Outlook connection.
-// Mirrors send-gmail-email: pre-inserts lead_emails, injects pixel, rewrite links,
+// Mirrors send-gmail-email: pre-inserts lead_emails, conditionally injects pixel, rewrites links,
 // stamps ai_drafted, marks source draft as sent.
+//
+// Phase 9: honors tracking_enabled (default true) and attachments[] passed by composer.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -8,7 +10,19 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Inline token refresh for Outlook
+interface AttachmentInput {
+  name?: string;
+  url?: string;
+  size?: number;
+  mime?: string;
+}
+interface PreparedAttachment {
+  filename: string;
+  mime: string;
+  base64: string;
+  size: number;
+}
+
 async function getValidOutlookToken(connectionId: string): Promise<string> {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -66,6 +80,54 @@ function textToHtml(s: string): string {
   return `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.5;color:#0f172a;white-space:pre-wrap;">${escapeHtml(s)}</div>`;
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+function mimeFromName(name: string, fallback?: string): string {
+  const ext = name.toLowerCase().split(".").pop() || "";
+  const map: Record<string, string> = {
+    pdf: "application/pdf",
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+    gif: "image/gif", webp: "image/webp",
+    csv: "text/csv", txt: "text/plain", md: "text/markdown",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    zip: "application/zip", json: "application/json",
+  };
+  return map[ext] || fallback || "application/octet-stream";
+}
+
+async function fetchAttachments(input: AttachmentInput[]): Promise<PreparedAttachment[]> {
+  const out: PreparedAttachment[] = [];
+  for (const a of input) {
+    if (!a?.url) continue;
+    try {
+      const r = await fetch(a.url);
+      if (!r.ok) {
+        console.warn("attachment fetch failed", a.url, r.status);
+        continue;
+      }
+      const buf = new Uint8Array(await r.arrayBuffer());
+      const filename = (a.name || "attachment").replace(/[\r\n"]/g, "_");
+      const mime = a.mime || r.headers.get("content-type") || mimeFromName(filename);
+      out.push({ filename, mime, base64: bytesToBase64(buf), size: buf.byteLength });
+    } catch (e) {
+      console.warn("attachment error", a.url, (e as Error).message);
+    }
+  }
+  return out;
+}
+
 function rewriteLinks(html: string, leadEmailId: string, baseUrl: string): string {
   const trackBase = `${baseUrl}/functions/v1/track-email-click`;
   return html.replace(/(<a\b[^>]*\bhref\s*=\s*)(["'])([^"']+)\2/gi, (m, pre, q, href) => {
@@ -95,12 +157,16 @@ Deno.serve(async (req) => {
       subject, body_text, body_html,
       in_reply_to, thread_id,
       ai_drafted, source_draft_id,
+      tracking_enabled, attachments: attachmentsRaw,
     } = body as Record<string, unknown>;
 
     const isAiDrafted = ai_drafted === true;
     const sourceDraftId = typeof source_draft_id === "string" && source_draft_id ? source_draft_id : null;
+    const trackingEnabled = tracking_enabled !== false; // default true
+    const attachmentInputs: AttachmentInput[] = Array.isArray(attachmentsRaw)
+      ? (attachmentsRaw as AttachmentInput[]).filter(a => a && typeof a === "object" && a.url)
+      : [];
 
-    // Stamp sequence_step from source nurture draft (parity with Gmail send).
     let sequenceStep: string | null = null;
     if (sourceDraftId) {
       const { data: draft } = await supabase
@@ -145,7 +211,16 @@ Deno.serve(async (req) => {
     const fromName = (conn.user_label as string)?.split("—")[0]?.trim() || undefined;
     const rfc822MessageId = `<crm-${crypto.randomUUID()}@${fromAddress.split("@")[1] || "lovable.local"}>`;
 
-    // Pre-insert lead_emails row
+    const preparedAttachments = attachmentInputs.length > 0
+      ? await fetchAttachments(attachmentInputs)
+      : [];
+    const attachmentsForRow = preparedAttachments.map((a, i) => ({
+      name: a.filename,
+      mime: a.mime,
+      size: a.size,
+      url: attachmentInputs[i]?.url ?? null,
+    }));
+
     const preview = text.slice(0, 280).replace(/\s+/g, " ").trim();
     const insertRow = {
       lead_id: typeof lead_id === "string" && lead_id ? lead_id : "unmatched",
@@ -165,12 +240,14 @@ Deno.serve(async (req) => {
       email_date: new Date().toISOString(),
       source: "outlook",
       is_read: true,
-      tracked: true,
+      tracked: trackingEnabled,
       ai_drafted: isAiDrafted,
       sequence_step: sequenceStep,
+      attachments: attachmentsForRow,
       raw_payload: {
         sent_via: "crm",
         x_crm_source: "lovable-crm",
+        tracking_enabled: trackingEnabled,
         ...(sourceDraftId ? { source_draft_id: sourceDraftId } : {}),
       },
     };
@@ -185,19 +262,22 @@ Deno.serve(async (req) => {
     }
     const leadEmailId = inserted.id as string;
 
-    // Inject open-pixel + rewrite links
-    const baseUrl = Deno.env.get("SUPABASE_URL")!;
-    const trackUrl = `${baseUrl}/functions/v1/track-email-open?eid=${leadEmailId}`;
-    const pixelTag = `<img src="${trackUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />`;
-    const rewritten = rewriteLinks(html, leadEmailId, baseUrl);
-    const htmlWithPixel = rewritten.includes("</body>")
-      ? rewritten.replace(/<\/body>/i, `${pixelTag}</body>`)
-      : `${rewritten}${pixelTag}`;
+    // Conditionally inject pixel + rewrite links
+    let htmlForSend = html;
+    if (trackingEnabled) {
+      const baseUrl = Deno.env.get("SUPABASE_URL")!;
+      const trackUrl = `${baseUrl}/functions/v1/track-email-open?eid=${leadEmailId}`;
+      const pixelTag = `<img src="${trackUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />`;
+      const rewritten = rewriteLinks(html, leadEmailId, baseUrl);
+      htmlForSend = rewritten.includes("</body>")
+        ? rewritten.replace(/<\/body>/i, `${pixelTag}</body>`)
+        : `${rewritten}${pixelTag}`;
+    }
 
     // Build Graph sendMail payload
     const graphMessage: Record<string, unknown> = {
       subject: subj,
-      body: { contentType: "HTML", content: htmlWithPixel },
+      body: { contentType: "HTML", content: htmlForSend },
       toRecipients: to.map((a) => ({ emailAddress: { address: a } })),
       internetMessageHeaders: [
         { name: "X-CRM-Source", value: "lovable-crm" },
@@ -206,12 +286,21 @@ Deno.serve(async (req) => {
     if (cc.length) graphMessage.ccRecipients = cc.map((a) => ({ emailAddress: { address: a } }));
     if (bcc.length) graphMessage.bccRecipients = bcc.map((a) => ({ emailAddress: { address: a } }));
 
-    // Threading: use conversationId if replying
     if (typeof in_reply_to === "string" && in_reply_to) {
       (graphMessage.internetMessageHeaders as Array<{name: string; value: string}>).push(
         { name: "In-Reply-To", value: in_reply_to },
         { name: "References", value: in_reply_to },
       );
+    }
+
+    if (preparedAttachments.length > 0) {
+      // Graph sendMail accepts inline fileAttachment objects (under 3MB each works inline; we go up to ~25MB total per Graph guidance for sendMail).
+      graphMessage.attachments = preparedAttachments.map(a => ({
+        "@odata.type": "#microsoft.graph.fileAttachment",
+        name: a.filename,
+        contentType: a.mime,
+        contentBytes: a.base64,
+      }));
     }
 
     const sendRes = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
@@ -229,10 +318,6 @@ Deno.serve(async (req) => {
       throw new Error(`Outlook send failed: ${sendRes.status} ${errTxt.slice(0, 200)}`);
     }
 
-    // Graph sendMail returns 202 with no body — we can't get the message ID directly.
-    // The next sync run will pick up the sent message and backfill provider_message_id.
-
-    // Mark source draft as sent
     if (sourceDraftId) {
       await (supabase as any)
         .from("lead_drafts")
@@ -244,6 +329,8 @@ Deno.serve(async (req) => {
       ok: true,
       rfc822_message_id: rfc822MessageId,
       lead_email_id: leadEmailId,
+      tracking_enabled: trackingEnabled,
+      attachments_count: preparedAttachments.length,
     }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

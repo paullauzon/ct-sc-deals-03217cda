@@ -241,6 +241,52 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Phase 9 — first-email research injection.
+  // When this lead has zero prior outbound, fetch (or reuse cached) one specific
+  // firm-website fact and require the AI to anchor line 1/2 to it.
+  let firstEmailFact = "";
+  let firstEmailFactSource = "";
+  try {
+    const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { count: outboundCount } = await sb
+      .from("lead_emails")
+      .select("id", { count: "exact", head: true })
+      .eq("lead_id", lead.id)
+      .eq("direction", "outbound");
+    const isFirstEmail = (outboundCount ?? 0) === 0;
+    if (isFirstEmail) {
+      const { data: leadRow } = await sb
+        .from("leads")
+        .select("first_email_fact, first_email_fact_source")
+        .eq("id", lead.id)
+        .maybeSingle();
+      const cachedFact = (leadRow as any)?.first_email_fact as string | undefined;
+      const cachedSrc = (leadRow as any)?.first_email_fact_source as string | undefined;
+      if (cachedFact && cachedFact.trim()) {
+        firstEmailFact = cachedFact.trim();
+        firstEmailFactSource = cachedSrc?.trim() || "";
+      } else {
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/research-first-email-fact`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ leadId: lead.id }),
+        });
+        if (r.ok) {
+          const j = await r.json() as { fact?: string; source_url?: string };
+          if (j.fact && j.fact.trim()) {
+            firstEmailFact = j.fact.trim();
+            firstEmailFactSource = (j.source_url || "").trim();
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("first-email-fact lookup failed", (e as Error).message);
+  }
+
   // Build the context block. Keep it dense — small but information-rich.
   const proofBank = pickStringList(
     lead.firefliesSummary && `Last call summary: ${lead.firefliesSummary}`,
@@ -263,6 +309,7 @@ HARD RULES (enforced):
 - Reference one concrete signal from the context (deal stage, last meeting, criteria) — not a generic platitude.
 - If a fact is unknown, use a square-bracket variable like [first_name] or [ebitda]. Never invent numbers.
 - Each draft must use a DIFFERENT angle. Do not repeat the same opening across drafts.
+${firstEmailFact ? `- THIS IS THE FIRST OUTBOUND EMAIL. You MUST anchor line 1 or line 2 of every draft to this specific researched fact (paraphrased, never verbatim): "${firstEmailFact}". Do not generalize it away.` : ""}
 
 Approaches you must produce (one of each):
 1) "direct" — Get to the point in line 1. Single ask. Short and confident.
@@ -280,6 +327,7 @@ ${ctx.sequenceStep ? `- Sequence step: ${ctx.sequenceStep}` : ""}
 ${ctx.threadSummary ? `\nThread so far: ${ctx.threadSummary}` : ""}
 ${ctx.lastInboundExcerpt ? `\nProspect's last message: """${ctx.lastInboundExcerpt}"""` : ""}
 ${ctx.customInstruction ? `\nUser instruction (highest priority): ${ctx.customInstruction}` : ""}
+${firstEmailFact ? `\nFIRST-EMAIL RESEARCHED FACT (anchor line 1/2 of every draft to this): "${firstEmailFact}"${firstEmailFactSource ? ` — source: ${firstEmailFactSource}` : ""}` : ""}
 
 Available proof points to draw from:
 ${proofBank.length ? proofBank.map((p, i) => `${i + 1}. ${p}`).join("\n") : "(none — keep drafts question-led)"}
