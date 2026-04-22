@@ -831,6 +831,19 @@ export function EmailComposerV2({
                 </div>
               </PopoverContent>
             </Popover>
+            {/* Phase 6 — per-email do-not-train toggle for sensitive content */}
+            <label
+              className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer select-none"
+              title="When ON, this send is excluded from AI learning and pattern stats."
+            >
+              <ShieldOff className="h-3 w-3" />
+              Don't train
+              <Switch
+                checked={doNotTrain}
+                onCheckedChange={setDoNotTrain}
+                className="scale-75 -ml-0.5"
+              />
+            </label>
           </div>
 
           <div className="flex items-center gap-2">
