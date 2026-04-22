@@ -307,10 +307,20 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     return Array.from(set).sort();
   }, [emails]);
 
-  // Apply search + sequence filter to the email list before grouping
+  // Apply search + sequence filter + per-lead hide filters to the email list before grouping
   const filteredEmails = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const matchesHideFilter = (addr: string): boolean => {
+      const a = (addr || "").toLowerCase();
+      if (!a) return false;
+      const dom = a.includes("@") ? a.split("@")[1] : "";
+      return hideFilters.some(f => {
+        if (f.type === "exact_email") return a === f.pattern;
+        return dom === f.pattern || a.endsWith(`@${f.pattern}`);
+      });
+    };
     return emails.filter(e => {
+      if (hideFilters.length > 0 && matchesHideFilter(e.from_address)) return false;
       if (activeSequenceSteps.size > 0 && (!e.sequence_step || !activeSequenceSteps.has(e.sequence_step))) return false;
       if (!q) return true;
       const hay = [
@@ -319,7 +329,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
       ].join(" ").toLowerCase();
       return hay.includes(q);
     });
-  }, [emails, searchQuery, activeSequenceSteps]);
+  }, [emails, searchQuery, activeSequenceSteps, hideFilters]);
 
   const deliveredForCount = filteredEmails.filter(e => e.send_status !== "scheduled");
   const threadCount = groupByThread(deliveredForCount).length;
