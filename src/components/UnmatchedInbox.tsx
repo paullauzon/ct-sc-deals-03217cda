@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CompanyInboxView } from "./CompanyInboxView";
+import { useMatcherControls } from "@/hooks/useMatcherControls";
 
 interface UnmatchedEmail {
   id: string;
