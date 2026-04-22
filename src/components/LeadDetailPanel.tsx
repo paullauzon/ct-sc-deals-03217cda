@@ -31,7 +31,7 @@ import { DealHealthAlerts } from "./lead-panel/shared";
 import { NoteDialog } from "./lead-panel/dialogs/NoteDialog";
 import { TaskDialog } from "./lead-panel/dialogs/TaskDialog";
 import { LogCallDialog } from "./lead-panel/dialogs/LogCallDialog";
-import { EmailComposeDrawer } from "./lead-panel/dialogs/EmailComposeDrawer";
+import { EmailComposerV2 as EmailComposeDrawer } from "./lead-panel/dialogs/EmailComposerV2";
 import { KeyboardCheatsheet } from "./lead-panel/KeyboardCheatsheet";
 import { AskDealDrawer } from "./lead-panel/AskDealDrawer";
 import { SimilarWonDealsSection } from "./lead-panel/cards/SimilarWonDealsSection";
