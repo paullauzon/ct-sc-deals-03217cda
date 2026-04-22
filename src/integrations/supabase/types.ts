@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      auto_classified_noise_senders: {
+        Row: {
+          classified_as: string
+          classified_at: string
+          classified_by: string | null
+          message_count: number
+          reason: string
+          sender: string
+        }
+        Insert: {
+          classified_as?: string
+          classified_at?: string
+          classified_by?: string | null
+          message_count?: number
+          reason?: string
+          sender: string
+        }
+        Update: {
+          classified_as?: string
+          classified_at?: string
+          classified_by?: string | null
+          message_count?: number
+          reason?: string
+          sender?: string
+        }
+        Relationships: []
+      }
       business_cost_inputs: {
         Row: {
           ad_spend: number
@@ -551,6 +578,30 @@ export type Database = {
         }
         Relationships: []
       }
+      email_send_suppression: {
+        Row: {
+          added_at: string
+          added_by: string | null
+          email: string
+          reason: string
+          source_lead_id: string | null
+        }
+        Insert: {
+          added_at?: string
+          added_by?: string | null
+          email: string
+          reason?: string
+          source_lead_id?: string | null
+        }
+        Update: {
+          added_at?: string
+          added_by?: string | null
+          email?: string
+          reason?: string
+          source_lead_id?: string | null
+        }
+        Relationships: []
+      }
       email_sync_runs: {
         Row: {
           connection_id: string
@@ -934,6 +985,7 @@ export type Database = {
           bounce_reason: string | null
           canonical_thread_lead_id: string | null
           cc_addresses: string[] | null
+          classification_reason: string | null
           clicks: Json | null
           created_at: string | null
           direction: string
@@ -969,6 +1021,7 @@ export type Database = {
           bounce_reason?: string | null
           canonical_thread_lead_id?: string | null
           cc_addresses?: string[] | null
+          classification_reason?: string | null
           clicks?: Json | null
           created_at?: string | null
           direction?: string
@@ -1004,6 +1057,7 @@ export type Database = {
           bounce_reason?: string | null
           canonical_thread_lead_id?: string | null
           cc_addresses?: string[] | null
+          classification_reason?: string | null
           clicks?: Json | null
           created_at?: string | null
           direction?: string
