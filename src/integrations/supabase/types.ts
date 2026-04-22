@@ -438,6 +438,57 @@ export type Database = {
         }
         Relationships: []
       }
+      email_thread_intelligence: {
+        Row: {
+          email_count: number
+          generated_at: string
+          hot_flag: boolean
+          last_email_at: string | null
+          lead_id: string
+          model: string
+          recommended_action: string
+          recommended_body: string
+          recommended_subject: string
+          sentiment: string
+          signal_tags: string[]
+          suggested_sequence_step: string
+          summary: string
+          thread_id: string
+        }
+        Insert: {
+          email_count?: number
+          generated_at?: string
+          hot_flag?: boolean
+          last_email_at?: string | null
+          lead_id: string
+          model?: string
+          recommended_action?: string
+          recommended_body?: string
+          recommended_subject?: string
+          sentiment?: string
+          signal_tags?: string[]
+          suggested_sequence_step?: string
+          summary?: string
+          thread_id: string
+        }
+        Update: {
+          email_count?: number
+          generated_at?: string
+          hot_flag?: boolean
+          last_email_at?: string | null
+          lead_id?: string
+          model?: string
+          recommended_action?: string
+          recommended_body?: string
+          recommended_subject?: string
+          sentiment?: string
+          signal_tags?: string[]
+          suggested_sequence_step?: string
+          summary?: string
+          thread_id?: string
+        }
+        Relationships: []
+      }
       fireflies_retry_queue: {
         Row: {
           attempts: number
