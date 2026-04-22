@@ -280,7 +280,7 @@ export function PendingAttributionsPanel() {
                       onClick={() => accept(s)}
                     >
                       {busy === s.id ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Check className="h-3 w-3 mr-1" />}
-                      Accept
+                      {s.reason === "intermediary_candidate" ? "Mark intermediary" : "Accept"}
                     </Button>
                     <Button
                       size="sm"
