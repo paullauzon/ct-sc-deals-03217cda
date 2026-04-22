@@ -184,63 +184,14 @@ export function UnmatchedInbox() {
     setBusyId(null);
   };
 
-  const rematchAll = async () => {
-    if (rematching) return;
-    if (!window.confirm(`Re-run the matcher across all ${emails.length} unmatched emails? Rows linked to a lead will move out of this inbox automatically.`)) return;
-    setRematching(true);
-    const toastId = toast.loading("Re-matching unmatched emails…");
-    try {
-      const { data, error } = await supabase.functions.invoke("rematch-unmatched-emails", {
-        body: { limit: 2000 },
-      });
-      if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error || "Re-match failed");
-      const matched = data.matched ?? 0;
-      const remaining = data.remaining_unmatched ?? null;
-      toast.success(
-        matched === 0
-          ? "No new matches — remaining rows are genuinely unclaimable"
-          : `Matched ${matched} email${matched === 1 ? "" : "s"}${remaining != null ? ` · ${remaining} still unmatched` : ""}`,
-        { id: toastId, duration: 5000 },
-      );
-      await load();
-    } catch (e: any) {
-      toast.error(e.message || "Re-match failed", { id: toastId });
-    } finally {
-      setRematching(false);
-    }
+  const handleRematch = async () => {
+    const ok = await rematchAll();
+    if (ok) await load();
   };
 
-  const cleanupSweep = async () => {
-    if (rematching) return;
-    if (!window.confirm("Run cleanup sweep? This unstapes wrongly-matched emails (personal-provider domains, ambiguous matches, duplicate-lead routing) and re-runs the matcher with the corrected logic. Safe to re-run anytime.")) return;
-    setRematching(true);
-    const toastId = toast.loading("Step 1 of 2 — un-staping wrong matches…");
-    try {
-      const { data: unclaimRes, error: unclaimErr } = await supabase.functions.invoke("unclaim-bad-matches", {});
-      if (unclaimErr) throw unclaimErr;
-      if (!unclaimRes?.ok) throw new Error(unclaimRes?.error || "Cleanup failed");
-      const unclaimed = unclaimRes.unclaimed ?? 0;
-      const redirected = unclaimRes.redirected_to_canonical ?? 0;
-
-      toast.loading(`Step 2 of 2 — re-matching ${unclaimed} freed emails…`, { id: toastId });
-      const { data: rematchRes, error: rematchErr } = await supabase.functions.invoke("rematch-unmatched-emails", {
-        body: { limit: 5000 },
-      });
-      if (rematchErr) throw rematchErr;
-      const matched = rematchRes?.matched ?? 0;
-      const remaining = rematchRes?.remaining_unmatched ?? null;
-
-      toast.success(
-        `Cleanup complete · ${unclaimed} un-staped · ${redirected} redirected to canonical · ${matched} re-matched${remaining != null ? ` · ${remaining} unmatched` : ""}`,
-        { id: toastId, duration: 8000 },
-      );
-      await load();
-    } catch (e: any) {
-      toast.error(e.message || "Cleanup failed", { id: toastId });
-    } finally {
-      setRematching(false);
-    }
+  const handleCleanup = async () => {
+    const ok = await cleanupSweep();
+    if (ok) await load();
   };
 
   const dismiss = async (emailId: string) => {
