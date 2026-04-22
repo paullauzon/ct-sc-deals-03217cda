@@ -59,6 +59,7 @@ export function MailboxSettings() {
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [requestingAdminConsent, setRequestingAdminConsent] = useState(false);
+  const [adminConsentUrl, setAdminConsentUrl] = useState<string | null>(null);
   
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
 
