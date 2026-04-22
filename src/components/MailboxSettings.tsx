@@ -28,6 +28,7 @@ import { BackfillProgressPanel } from "./BackfillProgressPanel";
 import { AILearningPanel } from "./settings/AILearningPanel";
 import { NoiseRulesPanel } from "./settings/NoiseRulesPanel";
 import { DuplicateLeadsPanel } from "./settings/DuplicateLeadsPanel";
+import { PendingAttributionsPanel } from "./settings/PendingAttributionsPanel";
 import { useMatcherControls } from "@/hooks/useMatcherControls";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
