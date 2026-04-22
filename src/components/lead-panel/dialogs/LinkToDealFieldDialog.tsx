@@ -131,14 +131,14 @@ export function LinkToDealFieldDialog({
       if (insErr) console.warn("audit insert failed:", insErr.message);
 
       // 3) Activity log entry
-      await logActivity({
-        leadId: lead.id,
-        eventType: "field_update",
-        description: `Linked email quote → ${fieldDef.label}`,
-        oldValue: previousValue,
-        newValue: value,
-        metadata: { source: "email_field_link", emailId, threadId, quote: quote.slice(0, 280) },
-      });
+      await logActivity(
+        lead.id,
+        "field_update",
+        `Linked email quote → ${fieldDef.label}`,
+        previousValue,
+        value,
+        { source: "email_field_link", emailId, threadId, quote: quote.slice(0, 280) },
+      );
 
       toast.success(`${fieldDef.label} updated from email`);
       onLinked?.(fieldKey, value);
