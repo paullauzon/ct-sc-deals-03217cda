@@ -563,7 +563,7 @@ function ThreadCard({ thread, leadId, lead, expandAllSignal, onSuggestResponses,
       </CollapsibleTrigger>
       <CollapsibleContent>
         <ExpandedThreadView
-          lead={(typeof window !== "undefined" ? (window as any).__currentLead : undefined) as Lead | undefined}
+          lead={lead}
           threadId={thread.threadId}
           threadSubject={thread.subject}
           emails={thread.emails as any}
