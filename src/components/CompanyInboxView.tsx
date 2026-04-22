@@ -14,7 +14,7 @@ import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from "@/components/ui/command";
 import {
-  Loader2, Building2, ChevronDown, ChevronRight, Link2, Trash2, ChevronsUpDown,
+  Loader2, Building2, ChevronDown, ChevronRight, Link2, Trash2, ChevronsUpDown, Archive, AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -195,6 +195,39 @@ export function CompanyInboxView() {
     }
   };
 
+  const setAside = async (emailId: string, fromAddress: string) => {
+    const domain = domainOf(fromAddress);
+    if (!domain) {
+      toast.error("Cannot determine firm domain");
+      return;
+    }
+    setBusy(emailId);
+    try {
+      // 1. Flip the email to the firm_activity sentinel so it leaves unmatched
+      const { error: flipErr } = await supabase
+        .from("lead_emails")
+        .update({ lead_id: "firm_activity" })
+        .eq("id", emailId);
+      if (flipErr) throw flipErr;
+
+      // 2. Record it in the sidecar table for the deal-room surface
+      const { error: insErr } = await supabase
+        .from("firm_activity_emails")
+        .insert({ email_id: emailId, firm_domain: domain });
+      if (insErr) throw insErr;
+
+      toast.success(`Set aside as firm activity at @${domain}`);
+      setGroups((prev) => prev.map((g) => ({
+        ...g,
+        emails: g.emails.filter((e) => e.id !== emailId),
+      })).filter((g) => g.emails.length > 0));
+    } catch (e: any) {
+      toast.error(e.message || "Could not set aside");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const dismissAllFromDomain = async (domain: string) => {
     if (!window.confirm(`Permanently delete all ${groups.find(g => g.domain === domain)?.emails.length ?? 0} unmatched emails from @${domain}? This is meant for firm-noise like billing/marketing/no-reply blasts.`)) return;
     setBusy(`dom:${domain}`);
@@ -318,6 +351,17 @@ export function CompanyInboxView() {
                           disabled={busy === e.id}
                           onPick={(leadId) => claim(e.id, leadId, e.from_address, e.from_name)}
                         />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-muted-foreground"
+                          disabled={busy === e.id}
+                          onClick={() => setAside(e.id, e.from_address)}
+                          title="Set aside as firm activity — keeps it visible on related deal-rooms but removes it from unmatched"
+                        >
+                          <Archive className="h-3 w-3 mr-1.5" />
+                          Set aside (firm activity)
+                        </Button>
                       </div>
                     </li>
                   ))}

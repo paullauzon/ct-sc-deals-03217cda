@@ -180,10 +180,14 @@ export function DuplicateLeadsPanel() {
           .eq("id", o.id);
         if (error) throw error;
       }
-      // Move all their historical emails to the canonical (strict primary-email
-      // merges are safe — same person, no participant-overlap risk).
+      // Move all their historical emails + child rows to the canonical (strict
+      // primary-email merges are safe — same person, no participant-overlap risk).
       for (const o of others) {
         await supabase.from("lead_emails").update({ lead_id: canonicalId }).eq("lead_id", o.id);
+        await supabase.from("lead_stakeholders").update({ lead_id: canonicalId }).eq("lead_id", o.id);
+        await supabase.from("lead_tasks").update({ lead_id: canonicalId }).eq("lead_id", o.id);
+        await supabase.from("lead_activity_log").update({ lead_id: canonicalId }).eq("lead_id", o.id);
+        await supabase.from("lead_drafts").update({ lead_id: canonicalId }).eq("lead_id", o.id);
       }
       toast.success(`Merged ${others.length} duplicate${others.length === 1 ? "" : "s"} into ${canonicalId}`);
       await load();
