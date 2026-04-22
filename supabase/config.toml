@@ -152,3 +152,6 @@ verify_jwt = false
 
 [functions.summarize-deal-emails]
 verify_jwt = false
+
+[functions.refine-email-line]
+verify_jwt = false
