@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Mail, Plus, Loader2, Trash2, RefreshCw, CheckCircle2, AlertCircle, DownloadCloud, History, ChevronDown, ShieldCheck, Copy, ExternalLink } from "lucide-react";
+import { Mail, Plus, Loader2, Trash2, RefreshCw, CheckCircle2, AlertCircle, DownloadCloud, History, ChevronDown, ShieldCheck, Copy, ExternalLink, Wand2, Inbox, Info } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { UnmatchedInbox } from "./UnmatchedInbox";
@@ -26,6 +26,8 @@ import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
 import { AutomationHealthPanel } from "./AutomationHealthPanel";
 import { BackfillProgressPanel } from "./BackfillProgressPanel";
 import { AILearningPanel } from "./settings/AILearningPanel";
+import { useMatcherControls } from "@/hooks/useMatcherControls";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface Connection {
   id: string;
