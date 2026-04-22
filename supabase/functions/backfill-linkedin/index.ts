@@ -172,66 +172,28 @@ async function firecrawlScrape(
   }
 }
 
-// ─── AI Call Helper (OpenAI with Lovable AI Gateway fallback) ───
+// ─── AI Call Helper (OpenAI direct) ───
 
-// Fix 3: Session-level flag — once OpenAI 429s, skip retries for all subsequent calls
-let _openAIExhausted = false;
 
 async function callAI(
   messages: Array<{ role: string; content: string }>,
   openaiKey: string,
   model: string,
 ): Promise<string> {
-  // Fix 3: If OpenAI already 429'd this session, go straight to Gemini
-  if (!_openAIExhausted) {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openaiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ model, messages }),
-    });
-    if (res.status === 429) {
-      await res.text();
-      _openAIExhausted = true;
-      console.warn(`  OpenAI 429 — session flag set, all subsequent calls go to Gemini`);
-    } else if (!res.ok) {
-      throw new Error(`OpenAI HTTP ${res.status}`);
-    } else {
-      const data = await res.json();
-      return (data.choices?.[0]?.message?.content || "").trim();
-    }
-  }
-
-  // Fallback to Lovable AI Gateway (Gemini)
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) {
-    throw new Error("OpenAI 429 and no LOVABLE_API_KEY for fallback");
-  }
-  
-  const fallbackModel = model.includes("4o-mini") ? "google/gemini-2.5-flash" : "google/gemini-2.5-pro";
-  if (!_openAIExhausted) {
-    // This path only hit on first fallback
-    console.warn(`  Falling back to Lovable AI (${fallbackModel})`);
-  }
-  
-  const fallbackRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      Authorization: `Bearer ${openaiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ model: fallbackModel, messages }),
+    body: JSON.stringify({ model, messages }),
   });
-  
-  if (!fallbackRes.ok) {
-    const errText = await fallbackRes.text();
-    throw new Error(`Lovable AI fallback HTTP ${fallbackRes.status}: ${errText}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`OpenAI HTTP ${res.status}: ${errText.slice(0, 200)}`);
   }
-  
-  const fallbackData = await fallbackRes.json();
-  return (fallbackData.choices?.[0]?.message?.content || "").trim();
+  const data = await res.json();
+  return (data.choices?.[0]?.message?.content || "").trim();
 }
 
 // ─── Firecrawl Map (discover URLs on a site) ───

@@ -10,7 +10,7 @@
 //   "Closed Won"       → kickoff email copying Valeria
 //   "Negotiating"      → soft follow-up clarifying pricing/terms
 //
-// Uses Lovable AI gateway (google/gemini-3-flash-preview) — no external key needed.
+// Uses OpenAI gpt-5 directly via OPENAI_API_KEY.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -220,17 +220,17 @@ Deno.serve(async (req) => {
       inboundContext,
     ].filter(Boolean).join("\n");
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not configured");
 
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "gpt-5",
         messages: [
           { role: "system", content: promptBuilder(ctx) },
           { role: "user", content: `Draft the email now for stage: ${new_stage}${isStall ? " (stalled 7+ days)" : ""}${isReply ? " (reply to their inbound message)" : ""}` },
@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
 
     if (!aiRes.ok) {
       const txt = await aiRes.text();
-      throw new Error(`AI gateway error: ${aiRes.status} ${txt.slice(0, 200)}`);
+      throw new Error(`OpenAI error: ${aiRes.status} ${txt.slice(0, 200)}`);
     }
 
     const aiData = await aiRes.json();

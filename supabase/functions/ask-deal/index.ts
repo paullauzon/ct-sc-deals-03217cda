@@ -23,11 +23,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured" }), {
+    if (!OPENAI_API_KEY) {
+      return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -133,15 +133,15 @@ ${enrichment.urgency ? `Urgency: ${enrichment.urgency}` : ""}
 
 Keep responses under 200 words unless the rep explicitly asks for more depth. Use short paragraphs or bullet lists.`;
 
-    // Stream from Lovable AI Gateway
-    const upstream = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Stream from OpenAI directly
+    const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "gpt-5",
         messages: [
           { role: "system", content: systemPrompt },
           ...messages.slice(-12),
@@ -152,18 +152,13 @@ Keep responses under 200 words unless the rep explicitly asks for more depth. Us
 
     if (!upstream.ok) {
       if (upstream.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit hit, try again in a moment." }), {
+        return new Response(JSON.stringify({ error: "Rate limited, try again shortly." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (upstream.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Add funds in Settings → Workspace → Usage." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
       const t = await upstream.text();
-      console.error("AI gateway error", upstream.status, t);
-      return new Response(JSON.stringify({ error: "AI gateway error" }), {
+      console.error("OpenAI error", upstream.status, t);
+      return new Response(JSON.stringify({ error: "AI provider error" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

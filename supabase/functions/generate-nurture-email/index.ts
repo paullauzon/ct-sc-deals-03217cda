@@ -6,9 +6,9 @@
 // Inputs: lead row + day milestone (0 | 30 | 90).
 // Output: { subject: string, body: string } — plain text body, no HTML.
 //
-// Uses Lovable AI Gateway (google/gemini-3-flash-preview default) per project
-// AI rules. Obeys: max 80 words body, no em/en dashes, no banned filler,
-// no "you mentioned", peer-to-peer tone, single-sentence subject.
+// Uses OpenAI gpt-5 directly per project AI rules. Obeys: max 80 words body,
+// no em/en dashes, no banned filler, no "you mentioned", peer-to-peer tone,
+// single-sentence subject.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 
@@ -17,7 +17,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
 
 const RULES = `
 HARD RULES (violating any makes the email unusable):
@@ -116,14 +116,14 @@ ${i.firstName ? "" : ""}Malik`;
 }
 
 async function callAI(system: string, user: string): Promise<string> {
-  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
+      model: "gpt-5",
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -132,7 +132,7 @@ async function callAI(system: string, user: string): Promise<string> {
   });
   if (!resp.ok) {
     const t = await resp.text();
-    throw new Error(`AI gateway ${resp.status}: ${t.slice(0, 200)}`);
+    throw new Error(`OpenAI ${resp.status}: ${t.slice(0, 200)}`);
   }
   const j = await resp.json();
   return j.choices?.[0]?.message?.content ?? "";
