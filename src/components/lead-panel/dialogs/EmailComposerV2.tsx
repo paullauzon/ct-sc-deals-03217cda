@@ -246,6 +246,7 @@ export function EmailComposerV2({
       setSelectedIdx(0);
       setSubject(list[0].subject);
       setBody(list[0].body);
+      initialSnapshotRef.current = { subject: list[0].subject, body: list[0].body };
       toast.success("3 drafts ready");
     } catch (e: any) {
       toast.error(e.message || "Failed to generate drafts");
@@ -259,6 +260,7 @@ export function EmailComposerV2({
     setSelectedIdx(i);
     setSubject(drafts[i].subject);
     setBody(drafts[i].body);
+    initialSnapshotRef.current = { subject: drafts[i].subject, body: drafts[i].body };
   };
 
   // ───────── Inline writing tools ─────────
