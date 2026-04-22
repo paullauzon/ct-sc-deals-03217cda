@@ -1,63 +1,81 @@
 
 
-# Fix Benjamin Parrish's incorrectly attributed emails
+# Email-attribution audit + system-wide fixes
 
-## What I found (deep investigation)
+## What I found across the whole DB
 
-Benjamin's deal-room shows "3 emails" with "Last reply 394d ago." That is **wrong on every level**. None of the 3 emails are from or to Benjamin Parrish. They were swept onto his lead because my earlier UPDATE was too aggressive — it grabbed any orphaned `@boynecapital.com` email instead of only emails involving `bparrish@boynecapital.com`.
+After scanning every lead-email row I found **only a handful of truly broken cases**, but several **systemic patterns** that need addressing now or they'll bite again. Headline numbers:
 
-### The 3 emails currently attached to SC-T-071 (all incorrect)
+- **278 leads** have at least one attached email
+- **107 rows** look "suspicious" at first glance (lead's primary email isn't in the participants), but **104 are legitimately attributed** via a registered secondary contact or stakeholder — the person at the firm we deal with isn't the form-filler
+- **3 rows** are truly misattributed (only Nathan Hendrix CT-079 outbound to a banker — actually legitimate prospecting outreach about his deal; the other 2 are the Boyne billing thread I already moved to CT-369 yesterday)
+- **22 leads** have stale `lead_email_metrics` (drift = 176 inbound, 37 outbound) — the trigger doesn't fire when `lead_id` is updated, only on insert
+- **14 emails** are still attached to **3 duplicate leads** (`SC-I-004`→`CT-012`, `SC-I-013`→`CT-039`, `SC-I-016`→`CT-055`) instead of their canonicals
+- **20,296 emails** sit in `unmatched` — most are noise but a portion are claimable with safe exact-email matching
+- **5 corporate domains** are shared by 2+ active leads (`conniehealth.com`, `queenscourtcap.com`, `alturacap.com`, `teambigtable.com`, `boynecapital.com`) — domain-fallback claims on these would be ambiguous and must be blocked
 
-| Date | From | To | Subject | What it actually is |
-|---|---|---|---|---|
-| Mar 24 2025 | **janaya@**boynecapital.com | billing@captarget.com | RE: CAPTARGET Receipts | Jessica Anaya (AP/billing) chasing receipts |
-| Mar 21 2025 | **wguthrie@**boynecapital.com | m.hayes@captarget.com | DealMAX 2025 invitation | William Guthrie marketing blast |
-| Mar 19 2025 | **janaya@**boynecapital.com | m.hayes@captarget.com | RE: CAPTARGET Receipts | Same Jessica receipts thread |
+## Two big architectural insights
 
-Two of these (Jessica/billing) actually belong to **Rob Regan's deal CT-369** — Rob is the Captarget client at Boyne and Jessica is his firm's accounts-payable contact. The third (William Guthrie) is a generic conference invite to Malik that never belonged to any deal.
+### Insight 1 — "Personal-email primary, work-email correspondence" is real but rare
+**CT-283 Philip DeCarlo** signed up with `pmdecarlo@yahoo.com` but actually corresponds from `pmdecarlo@eagle.partners` and his colleague `mdukas@eagle.partners` is on every thread. 13 of his 15 emails look "suspicious" but are 100% his deal. This is exactly the pattern your question anticipates. Solution: register `pmdecarlo@eagle.partners` and `mdukas@eagle.partners` as **secondary contacts** on CT-283 so future Tier-2 matches succeed cleanly. Only one lead in the entire DB has this pattern today.
 
-### What's also wrong as a side effect
-- "Last reply 394d ago" → it's not a reply, it's Jessica Anaya asking about receipts a year ago
-- `lead_email_metrics` shows `total_received: 3, last_received_date: 2025-03-24` → all garbage
-- The AI Suggests strip ("Benjamin replied 394d ago — awaiting your response") → **fabricated insight** based on Jessica's email being misattributed as Benjamin's reply
-- 2 of these emails (the Jessica/billing thread) actually belong on **CT-369 / Rob Regan** but are now stolen from him
+### Insight 2 — "Same firm, unrelated to this prospect" handling is your real question
+You asked: what about emails from the prospect's firm that are **not** about this deal? Example: Boyne's accounts-payable person Jessica Anaya emailing about Rob Regan's invoices — same domain, different person, different deal context. The right behavior is **never auto-claim by domain alone**. The current code already does this correctly (domain match requires a confirmed participant overlap), but I want to formalize a **third lane** between "matched" and "unmatched":
 
-### Ground truth
-- **Zero emails exist anywhere in the database from or to `bparrish@boynecapital.com`.** Confirmed by direct query — no row contains his address in `from_address` or `to_addresses`.
-- This makes sense — Benjamin filled the SourceCo form for the **first time ever** today (Apr 22, 2026). He has never been emailed by us and never emailed us before this submission landed in Outlook 90 minutes ago.
-- The actual Webflow form-submission email (the screenshot you sent at 16:51 today) sits in Outlook but hasn't synced into the CRM yet because **the Outlook deep-sync connection still hasn't been completed in Settings → Mailboxes**.
+- A lightweight **`company_inbox`** view in the UI that surfaces unmatched emails grouped by sender domain when that domain is the primary domain of any active lead/client. Reps can one-click "claim to Lead X" or "leave in firm inbox" without those emails ever auto-attaching to the wrong deal.
 
-## The plan — three corrections
+This protects against the Boyne-billing failure mode permanently: if Jessica emails again, her email lands in unmatched, the UI surfaces "1 new email from @boynecapital.com — not yet attributed (Rob Regan, Benjamin Parrish are at this firm)", and the rep decides.
 
-### 1. Reverse the bad sweep
-- Move the 2 Jessica Anaya billing emails (`thread_id 195ac33715738718`) **back to CT-369 / Rob Regan** where they correctly belong (Jessica works for Rob's firm and the thread is about Rob's Captarget invoice payments)
-- Move the 1 William Guthrie DealMAX email **back to `unmatched`** (it's a marketing blast to Malik, not a lead-bearing email — leaving it on Benjamin would also be wrong, and putting it on Rob would be wrong since it's addressed to a different person at Boyne)
-- Reset `lead_email_metrics` for SC-T-071 to zero (no real emails yet)
-- Recalculate `lead_email_metrics` for CT-369 to absorb the 2 emails being returned
+## The full plan — 6 corrections + 1 new surface
 
-### 2. Make Benjamin's panel reflect reality
-After step 1, Benjamin's Emails tab will correctly show: "0 threads, 0 emails — no email history yet with Benjamin Parrish." The bogus AI insight ("Benjamin replied 394d ago") will disappear automatically because it's derived from the email rows.
+### 1. Backfill secondary contacts for CT-283 (the one lead with the work-email pattern)
+Add `pmdecarlo@eagle.partners` and `mdukas@eagle.partners` as `secondary_contacts` on CT-283 so all 13 currently-stapled emails are now legitimately attributed via Tier 2, and any future Eagle Partners email auto-routes correctly.
 
-### 3. Capture the real first email (the Webflow form notification)
-The Webflow form submission email that triggered this whole episode (subject: "New Request - SourceCo", to: `sourceco@…`) is sitting in your Outlook inbox right now. The honest answer is: **we cannot pull it into the CRM until you complete the Outlook connect in Settings → Mailboxes** (which is the exact step that's queued up after Josh's admin approval).
+### 2. Reassign emails from duplicate leads to their canonicals (14 rows)
+- 8 emails: `SC-I-004` → `CT-012`
+- 3 emails: `SC-I-013` → `CT-039`
+- 3 emails: `SC-I-016` → `CT-055`
 
-Once Outlook is connected and the 90-day backfill runs, that form-notification email will sync in and either:
-- Auto-match to SC-T-071 (because Benjamin's email address `bparrish@boynecapital.com` is in the form-submission body), **or**
-- Land in unmatched and get claimed by the next sweep
+This is purely "follow the canonical pointer" — these duplicate leads exist but their email rows never got moved.
 
-I will **not** try to fabricate or hand-craft a stand-in record for that email — that's how we ended up with the current mess. The right answer is: zero is the truthful number until real sync runs.
+### 3. Recompute `lead_email_metrics` for the 22 drifted leads
+Wipe and re-aggregate metrics for every lead whose `lead_email_metrics` row disagrees with the actual count in `lead_emails` (drift was caused by the trigger gap when `lead_id` is UPDATED rather than INSERTED).
 
-## Why this happened (root cause + guardrail)
+### 4. Patch the trigger gap permanently (database migration)
+Currently `update_lead_email_metrics_on_claim` only fires when an email moves from `unmatched` → real lead. Add a second branch so it ALSO fires when `lead_id` changes from one real lead to another (which is what happens on manual reassignment, duplicate consolidation, and merges). This eliminates future drift without anyone having to remember to recompute by hand.
 
-The earlier sweep used the SQL pattern `from_address ILIKE '%boynecapital.com%'` which is too broad — it matches every employee at Boyne, not just Benjamin. The correct pattern would have been `from_address = 'bparrish@boynecapital.com' OR 'bparrish@boynecapital.com' = ANY(to_addresses)`. Going forward, any manual email-claim must use **exact email match** on the lead's `email` field, not domain-level matching, because deal-bearing relationships are person-to-person not firm-to-firm.
+### 5. Lock down all manual-claim paths to use exact-email match
+The bug from yesterday (broad `ILIKE '%domain%'` claim) shouldn't have been possible. Add a **hard rule documented in the codebase memory** plus a small reusable SQL helper `claim_email_to_lead(email_id, lead_id)` that explicitly verifies at least one participant equals a known contact for the lead. All future manual sweeps go through this — broad domain claims become impossible.
 
-## Technical execution (default mode)
+### 6. One safe sweep of the unmatched bucket — strict exact-email match only
+Run `rematch-unmatched-emails` once with the existing safe code path (it already enforces exact-email + confirmed-participant + non-personal domains). This will quietly claim the legit subset of those 20K unmatched rows without touching cross-contamination cases. Anything that doesn't pass the strict test stays in unmatched.
 
-1. `UPDATE lead_emails SET lead_id = 'CT-369' WHERE id IN ('7015de25-…', '9ce4ddaa-…')` — return Jessica's billing thread to Rob
-2. `UPDATE lead_emails SET lead_id = 'unmatched' WHERE id = '68071d01-…'` — DealMAX blast back to unmatched
-3. `DELETE FROM lead_email_metrics WHERE lead_id = 'SC-T-071'` — wipe bogus metrics (the trigger will recreate it cleanly when a real email arrives)
-4. Recompute `lead_email_metrics` for CT-369 from scratch by re-aggregating `lead_emails` for that lead (since the trigger only fires on insert/update of the email row, not on lead_id changes — I'll do an explicit UPSERT with the full counts)
-5. Confirm SC-T-071 shows 0 emails and CT-369 shows the corrected count
+### 7. NEW — "Company Inbox" surface for the shared-domain problem
+A small new section inside the existing Unmatched Inbox view that groups orphan emails by sender domain when that domain matches an active lead or client account's primary domain. Each group shows: domain, lead/client names at that firm, count of orphan emails, with one-click "Claim to {Lead}" or "Dismiss as firm noise" actions. This is the structural answer to your "should we put them somehow aside" question — emails like Boyne's billing dept stay quarantined in this lane until a human routes them, never silently auto-claimed.
 
-No code changes — pure data correction.
+No changes to live sync code (Gmail / Outlook syncs already implement the correct strict logic). No changes to `rematch-unmatched-emails` (it's already correct). The systemic fixes are: trigger patch + duplicate-email cleanup + 1 lead's secondary contacts + a guard helper + a new UI lane for the domain-ambiguity case.
+
+## Technical execution (in default mode)
+
+1. **Data correction (no code) — single SQL batch:**
+   - Update `leads.secondary_contacts` for CT-283 (insert two contact entries)
+   - `UPDATE lead_emails SET lead_id = canonical` for the 14 duplicate-attached rows
+   - `DELETE FROM lead_email_metrics WHERE lead_id IN (drifted_set)` then `INSERT … SELECT COUNT(*)…` per lead
+
+2. **Migration — patch the trigger:**
+   - Modify `update_lead_email_metrics_on_claim` to also handle `lead_id_old <> lead_id_new` when both are real leads (decrement old lead's counters, increment new lead's counters). Keeps single-source-of-truth intact.
+   - Add a second trigger covering DELETE so removed rows decrement metrics.
+
+3. **Code — `claim_email_to_lead` helper:**
+   - New `supabase/functions/_shared/claim-email.ts` exporting one function: `claimEmailToLead(supabase, emailId, leadId)` which verifies participant overlap before issuing the UPDATE. All future ad-hoc claims use this. Add a memory note enforcing the rule.
+
+4. **Code — Company Inbox UI:**
+   - Extend `src/components/UnmatchedInbox.tsx` with a "By Company" tab that groups unmatched emails by sender domain, joins to active leads/clients sharing that domain, and exposes `Claim to {Lead}` and `Dismiss` actions wired through `claimEmailToLead`.
+   - No new tables — pure read-side aggregation over `lead_emails` + `leads` + `client_accounts`.
+
+5. **Single safe sweep:**
+   - `curl_edge_functions` POST to `rematch-unmatched-emails` with `{ limit: 5000 }` and report the resulting `matched / skipped / still_unmatched` counts back to you.
+
+6. **Verification queries:**
+   - Re-run the 4 probe queries above to confirm: 0 truly-misattributed, 0 metric drift, 0 emails on duplicates, CT-283 now showing 13/15 attributed via secondary.
 
