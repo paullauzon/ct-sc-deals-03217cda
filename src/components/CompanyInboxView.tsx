@@ -477,7 +477,7 @@ export function CompanyInboxView() {
                         </Button>
                       </div>
                     </li>
-                  ))}
+                  );})}
                 </ul>
               )}
             </li>
