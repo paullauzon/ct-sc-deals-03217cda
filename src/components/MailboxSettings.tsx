@@ -421,6 +421,10 @@ export function MailboxSettings() {
         <TabsContent value="automation">
           <AutomationHealthPanel />
         </TabsContent>
+
+        <TabsContent value="ai-learning">
+          <AILearningPanel />
+        </TabsContent>
       </Tabs>
 
       <Dialog open={connectOpen} onOpenChange={(v) => { if (!connecting) setConnectOpen(v); }}>
