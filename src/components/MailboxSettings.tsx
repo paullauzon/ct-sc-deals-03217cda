@@ -149,7 +149,12 @@ export function MailboxSettings() {
   // their first Outlook connect attempt — a tenant admin (e.g. Josh) opens
   // this URL once, approves the app, and afterwards every user can connect
   // through the normal flow without seeing the wall again.
-  const requestAdminConsent = async () => {
+  // Fetches the Microsoft tenant admin-consent URL once and caches it. Used by
+  // both the "Copy link" and "Open in new tab" buttons below — the URL itself
+  // never changes for a given tenant + app, so we only need to fetch it once
+  // per dialog session.
+  const fetchAdminConsentUrl = async (): Promise<string | null> => {
+    if (adminConsentUrl) return adminConsentUrl;
     setRequestingAdminConsent(true);
     try {
       const returnTo = `${window.location.origin}/#sys=crm&view=settings&connected=1`;
@@ -160,15 +165,36 @@ export function MailboxSettings() {
       if (!res.ok || !json.url) {
         throw new Error(json.error || `Could not generate admin-consent link (HTTP ${res.status})`);
       }
-      window.open(json.url, "_blank", "noopener");
-      toast.success("Admin-consent link opened in a new tab", {
-        description: "Have a Microsoft tenant admin sign in and approve. After they accept, retry Connect Outlook.",
-      });
+      setAdminConsentUrl(json.url);
+      return json.url as string;
     } catch (e: any) {
       toast.error(e.message || "Failed to generate admin-consent link");
+      return null;
     } finally {
       setRequestingAdminConsent(false);
     }
+  };
+
+  const copyAdminConsentLink = async () => {
+    const url = await fetchAdminConsentUrl();
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Copied — paste it to your Microsoft tenant admin", {
+        description: "They'll sign in once with their admin account and click Accept.",
+      });
+    } catch {
+      toast.error("Couldn't copy automatically — long-press the link below to copy it manually.");
+    }
+  };
+
+  const openAdminConsentLink = async () => {
+    const url = await fetchAdminConsentUrl();
+    if (!url) return;
+    window.open(url, "_blank", "noopener");
+    toast.success("Admin-consent link opened in a new tab", {
+      description: "Have a Microsoft tenant admin sign in and approve. After they accept, retry Connect Outlook.",
+    });
   };
 
   const disconnect = async (id: string, email: string) => {
