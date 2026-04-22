@@ -12,6 +12,9 @@ import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { EmailTabHeader } from "@/components/lead-panel/EmailTabHeader";
+import { computeThreadEngagement } from "@/lib/threadEngagement";
+import { ThreadEngagementBadges } from "@/components/lead-panel/ThreadEngagementBadges";
+import { ThreadAiStrip } from "@/components/lead-panel/ThreadAiStrip";
 
 interface LeadEmail {
   id: string;
@@ -359,6 +362,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
                 <ThreadCard
                   key={thread.threadId}
                   thread={thread}
+                  leadId={leadId}
                   expandAllSignal={expandAllSignal}
                   onSuggestResponses={(email, objections) => setResponseDialog({ email, objections })}
                   onReply={onReply}
@@ -436,7 +440,7 @@ function ScheduledStrip({ scheduled, onCancel }: { scheduled: LeadEmail[]; onCan
   );
 }
 
-function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMarkRead, leadName, showMailbox }: { thread: ThreadGroup; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; leadName?: string; showMailbox?: boolean }) {
+function ThreadCard({ thread, leadId, expandAllSignal, onSuggestResponses, onReply, onMarkRead, leadName, showMailbox }: { thread: ThreadGroup; leadId: string; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; leadName?: string; showMailbox?: boolean }) {
   const isSingleEmail = thread.emails.length === 1;
   const unreadCount = thread.emails.filter(e => e.direction === "inbound" && !e.is_read).length;
   const [open, setOpen] = useState(false);
@@ -458,9 +462,49 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
   const hasAi = thread.emails.some(e => e.ai_drafted);
   // Pick the earliest sequence step touched in this thread (for display anchor)
   const sequenceStep = thread.emails.find(e => e.sequence_step)?.sequence_step;
+  const engagement = computeThreadEngagement(thread.emails);
+
+  // Anchor reply data — used by AI Draft to prefill compose
+  const replyAnchor = latestInbound ? {
+    to: latestInbound.from_address,
+    subject: latestInbound.subject || thread.subject,
+    thread_id: latestInbound.thread_id || thread.threadId,
+    in_reply_to: latestInbound.message_id || "",
+  } : {
+    subject: thread.subject,
+    thread_id: thread.threadId,
+  };
+
+  const handleAiDraft = (prefill: ReplyPrefill & { body?: string }) => {
+    if (!onReply) return;
+    // Pass body via the quote slot so existing composer surfaces it
+    onReply({
+      to: prefill.to,
+      subject: prefill.subject,
+      thread_id: prefill.thread_id,
+      in_reply_to: prefill.in_reply_to,
+      quote: prefill.body || "",
+    });
+  };
 
   if (isSingleEmail) {
-    return <EmailRow email={thread.emails[0]} expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} showMailbox={showMailbox} />;
+    return (
+      <div className="space-y-1">
+        <EmailRow email={thread.emails[0]} expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} showMailbox={showMailbox} />
+        {(engagement.isHot || engagement.opens > 2 || engagement.clicks > 0) && (
+          <div className="ml-7 mb-1">
+            <ThreadAiStrip
+              threadId={thread.threadId}
+              leadId={leadId}
+              threadEmailCount={thread.emails.length}
+              threadLatestDate={thread.latestDate}
+              onUseDraft={handleAiDraft}
+              replyAnchor={replyAnchor}
+            />
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -501,6 +545,8 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
                 </Badge>
               )}
             </div>
+            {/* Engagement badges row */}
+            <ThreadEngagementBadges engagement={engagement} className="mt-1" />
             {truncatedPreview && (
               <div className="text-[10px] text-muted-foreground/80 truncate mt-0.5 italic">
                 Last reply · {formatDate(latestInbound.email_date)} · "{truncatedPreview}"
@@ -514,7 +560,16 @@ function ThreadCard({ thread, expandAllSignal, onSuggestResponses, onReply, onMa
         </div>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="pl-4 space-y-0.5 border-l-2 border-border ml-3 mt-1 mb-2">
+        <div className="pl-4 space-y-1 border-l-2 border-border ml-3 mt-1 mb-2">
+          {/* AI thread analysis */}
+          <ThreadAiStrip
+            threadId={thread.threadId}
+            leadId={leadId}
+            threadEmailCount={thread.emails.length}
+            threadLatestDate={thread.latestDate}
+            onUseDraft={handleAiDraft}
+            replyAnchor={replyAnchor}
+          />
           {thread.emails.map((email) => (
             <EmailRow key={email.id} email={email} compact expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} showMailbox={showMailbox} />
           ))}
