@@ -51,9 +51,6 @@ Deno.serve(async (req) => {
     }
 
     // 3. Orphan lead_email_metrics: lead_id not in leads
-    const { data: orphans, error: orphErr } = await supabase.rpc("list_cron_jobs"); // probe call to ensure RPC works
-    void orphans; void orphErr;
-
     const { data: allMetrics } = await supabase
       .from("lead_email_metrics")
       .select("lead_id");
@@ -73,17 +70,43 @@ Deno.serve(async (req) => {
       else deletedGhostMetrics = orphanIds.length;
     }
 
-    const status = errors.length > 0 ? "error" : (deletedNoise + deletedGhostMetrics > 0 ? "success" : "noop");
+    // 4. Round 6 — orphan firm_activity_emails rows whose underlying email is gone
+    let deletedOrphanFirm = 0;
+    const { data: firmRows } = await supabase
+      .from("firm_activity_emails")
+      .select("id, email_id");
+    if (firmRows && firmRows.length > 0) {
+      const emailIds = (firmRows as Array<{ id: string; email_id: string }>).map((r) => r.email_id);
+      const { data: existing } = await supabase
+        .from("lead_emails")
+        .select("id")
+        .in("id", emailIds);
+      const existingSet = new Set(((existing || []) as Array<{ id: string }>).map((r) => r.id));
+      const orphanFirmIds = (firmRows as Array<{ id: string; email_id: string }>)
+        .filter((r) => !existingSet.has(r.email_id))
+        .map((r) => r.id);
+      if (orphanFirmIds.length > 0) {
+        const { error: delFirmErr } = await supabase
+          .from("firm_activity_emails")
+          .delete()
+          .in("id", orphanFirmIds);
+        if (delFirmErr) errors.push(`delete_firm_orphans: ${delFirmErr.message}`);
+        else deletedOrphanFirm = orphanFirmIds.length;
+      }
+    }
+
+    const totalCleaned = deletedNoise + deletedGhostMetrics + deletedOrphanFirm;
+    const status = errors.length > 0 ? "error" : (totalCleaned > 0 ? "success" : "noop");
     await logCronRun(
       "cleanup-unmatched-noise",
       status,
-      deletedNoise + deletedGhostMetrics,
-      { deletedNoise, deletedGhostMetrics, domainsScanned: domains.length, cutoff },
+      totalCleaned,
+      { deletedNoise, deletedGhostMetrics, deletedOrphanFirm, domainsScanned: domains.length, cutoff },
       errors.join("; "),
     );
 
     return new Response(
-      JSON.stringify({ ok: true, deletedNoise, deletedGhostMetrics, domainsScanned: domains.length, errors }),
+      JSON.stringify({ ok: true, deletedNoise, deletedGhostMetrics, deletedOrphanFirm, domainsScanned: domains.length, errors }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {

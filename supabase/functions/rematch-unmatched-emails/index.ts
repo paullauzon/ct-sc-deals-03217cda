@@ -13,6 +13,7 @@
 // The existing update_lead_email_metrics_on_claim trigger fires automatically
 // when lead_id flips from 'unmatched' → real id, so metrics stay accurate.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { extractOriginalSender, isForwardedSubject } from "../_shared/extract-original-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -282,6 +283,16 @@ Deno.serve(async (req) => {
   let stillUnmatched = 0;
   let errors = 0;
   let pageStart = 0;
+  let threadAutoClaimed = 0;
+  let forwardedExtracted = 0;
+  let intermediarySkipped = 0;
+
+  // Round 6 — load intermediary senders so we never auto-claim them by sender match.
+  const { data: imRows } = await supabase
+    .from("lead_stakeholders")
+    .select("email")
+    .eq("is_intermediary", true);
+  const intermediarySenders = new Set(((imRows || []) as Array<{ email: string }>).map((r) => (r.email || "").toLowerCase()));
 
   // Buffer matches and apply in chunks per lead_id.
   const updatesByLead = new Map<string, string[]>();
@@ -294,7 +305,7 @@ Deno.serve(async (req) => {
 
     const { data: rows, error: selErr } = await supabase
       .from("lead_emails")
-      .select("id, from_address, to_addresses, cc_addresses")
+      .select("id, from_address, to_addresses, cc_addresses, subject, body_text, thread_id")
       .eq("lead_id", "unmatched")
       .order("email_date", { ascending: true })
       .range(pageStart, pageStart + pageSize - 1);
@@ -306,11 +317,47 @@ Deno.serve(async (req) => {
     }
     if (!rows || rows.length === 0) break;
 
+    // Round 6 — Pre-pass: thread-continuity auto-claim. Group rows by thread_id,
+    // resolve each thread to a single owner via one bulk query.
+    const threadIds = Array.from(new Set(
+      (rows as Array<{ thread_id: string | null }>)
+        .map((r) => (r.thread_id || "").trim())
+        .filter(Boolean),
+    ));
+    const threadOwner = new Map<string, string | null>();
+    if (threadIds.length > 0) {
+      const { data: threadHits } = await supabase
+        .from("lead_emails")
+        .select("thread_id, lead_id")
+        .in("thread_id", threadIds)
+        .neq("lead_id", "unmatched")
+        .neq("lead_id", "firm_activity")
+        .neq("lead_id", "auto_reply")
+        .neq("lead_id", "role_based");
+      const setByThread = new Map<string, Set<string>>();
+      for (const r of (threadHits || []) as Array<{ thread_id: string; lead_id: string }>) {
+        const tid = (r.thread_id || "").trim();
+        if (!tid) continue;
+        const canonical = resolveCanonical(idx, r.lead_id);
+        let set = setByThread.get(tid);
+        if (!set) { set = new Set(); setByThread.set(tid, set); }
+        set.add(canonical);
+      }
+      for (const tid of threadIds) {
+        const set = setByThread.get(tid);
+        if (set && set.size === 1) threadOwner.set(tid, set.values().next().value);
+        else threadOwner.set(tid, null);
+      }
+    }
+
     for (const row of rows as Array<{
       id: string;
       from_address: string | null;
       to_addresses: string[] | null;
       cc_addresses: string[] | null;
+      subject: string | null;
+      body_text: string | null;
+      thread_id: string | null;
     }>) {
       scanned++;
       const fromAddr = (row.from_address || "").toLowerCase();
@@ -319,11 +366,36 @@ Deno.serve(async (req) => {
       // Fast skip: pure-noise sender domains never match.
       if (NOISE_DOMAINS.has(fromDom)) { skippedNoise++; continue; }
 
+      // Round 6 — thread-continuity auto-claim wins before any sender logic.
+      const tid = (row.thread_id || "").trim();
+      if (tid) {
+        const owner = threadOwner.get(tid);
+        if (owner && !intermediarySenders.has(fromAddr)) {
+          let bucket = updatesByLead.get(owner);
+          if (!bucket) { bucket = []; updatesByLead.set(owner, bucket); }
+          bucket.push(row.id);
+          threadAutoClaimed++;
+          continue;
+        }
+      }
+
+      if (intermediarySenders.has(fromAddr)) { intermediarySkipped++; continue; }
+
       const participants = [
         fromAddr,
         ...(row.to_addresses || []).map((a) => (a || "").toLowerCase()),
         ...(row.cc_addresses || []).map((a) => (a || "").toLowerCase()),
       ].filter(Boolean);
+
+      // Round 6 — forwarded-email original-sender extraction. When this is a
+      // Fwd:, attribute by the original sender from the body header block.
+      if (isForwardedSubject(row.subject)) {
+        const orig = extractOriginalSender(row.subject, row.body_text);
+        if (orig?.email) {
+          participants.unshift(orig.email);
+          forwardedExtracted++;
+        }
+      }
 
       const external = participants.filter((a) => !own.has(a) && !isInternal(a));
       if (external.length === 0) { skippedNoise++; continue; }
@@ -366,6 +438,9 @@ Deno.serve(async (req) => {
     matched,
     skipped_noise: skippedNoise,
     still_unmatched: stillUnmatched,
+    thread_auto_claimed: threadAutoClaimed,
+    forwarded_extracted: forwardedExtracted,
+    intermediary_skipped: intermediarySkipped,
     errors,
     remaining_unmatched: remaining ?? null,
     elapsed_ms: Date.now() - startedAt,

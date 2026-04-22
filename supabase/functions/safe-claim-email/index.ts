@@ -33,8 +33,11 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Optional: allow the Company Inbox flow to promote the sender to a
-    // stakeholder FIRST, so the participant-overlap check then succeeds.
+    // Round 6 — guardrails BEFORE any promote/claim:
+    //   1) Refuse promote if sender's domain is on the noise list
+    //   2) Refuse promote if sender is an `is_intermediary` on ANY lead
+    //      (caller can pass force_promote=true to override after confirmation)
+    const forcePromote = Boolean(body.force_promote);
     if (promoteSenderToStakeholder) {
       const { data: email } = await supabase
         .from("lead_emails")
@@ -43,6 +46,43 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (email?.from_address) {
         const lower = email.from_address.toLowerCase().trim();
+        const dom = lower.includes("@") ? lower.split("@")[1] : "";
+
+        if (!forcePromote && dom) {
+          const { data: noise } = await supabase
+            .from("email_noise_domains")
+            .select("domain")
+            .eq("domain", dom)
+            .limit(1);
+          if (noise && noise.length > 0) {
+            return new Response(
+              JSON.stringify({ ok: false, reason: "sender_domain_is_noise", email_id: emailId, lead_id: leadId, blocking_domain: dom }),
+              { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        }
+
+        if (!forcePromote) {
+          const { data: imRows } = await supabase
+            .from("lead_stakeholders")
+            .select("lead_id, is_intermediary")
+            .eq("email", lower)
+            .eq("is_intermediary", true)
+            .limit(5);
+          if (imRows && imRows.length > 0) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                reason: "sender_flagged_intermediary",
+                email_id: emailId,
+                lead_id: leadId,
+                flagged_on_leads: (imRows as Array<{ lead_id: string }>).map((r) => r.lead_id),
+              }),
+              { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        }
+
         const { data: existing } = await supabase
           .from("lead_stakeholders")
           .select("id")

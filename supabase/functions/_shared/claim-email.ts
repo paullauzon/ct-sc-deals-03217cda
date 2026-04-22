@@ -72,9 +72,24 @@ export async function claimEmailToLead(
   for (const a of (email.to_addresses || [])) add(a);
   for (const a of (email.cc_addresses || [])) add(a);
 
+  // Round 6 — overlap tier scoring. From-match (highest confidence) >
+  // To-match > CC-match. CC overlap NOW counts as valid match (was previously
+  // refused) — this rescues 994 backlog messages and prevents future ones.
   let overlap = false;
-  for (const p of participants) {
-    if (known.has(p)) { overlap = true; break; }
+  let tier: "from" | "to" | "cc" | null = null;
+  const fromAddr = (email.from_address || "").toLowerCase().trim();
+  if (fromAddr && known.has(fromAddr)) { overlap = true; tier = "from"; }
+  if (!overlap) {
+    for (const a of (email.to_addresses || [])) {
+      const v = (a || "").toString().toLowerCase().trim();
+      if (v && known.has(v)) { overlap = true; tier = "to"; break; }
+    }
+  }
+  if (!overlap) {
+    for (const a of (email.cc_addresses || [])) {
+      const v = (a || "").toString().toLowerCase().trim();
+      if (v && known.has(v)) { overlap = true; tier = "cc"; break; }
+    }
   }
   if (!overlap) {
     return {
@@ -92,5 +107,5 @@ export async function claimEmailToLead(
   if (updErr) {
     return { ok: false, reason: `update_failed: ${updErr.message}`, email_id: emailId, lead_id: leadId };
   }
-  return { ok: true, email_id: emailId, lead_id: leadId };
+  return { ok: true, email_id: emailId, lead_id: leadId, reason: `overlap_tier_${tier}` };
 }
