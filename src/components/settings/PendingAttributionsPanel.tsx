@@ -91,6 +91,28 @@ export function PendingAttributionsPanel() {
   const accept = async (s: Suggestion) => {
     setBusy(s.id);
     try {
+      // Round 7 — intermediary candidates flag the sender on every existing
+      // stakeholder row instead of routing emails.
+      if (s.reason === "intermediary_candidate") {
+        const { data: stakeRows } = await supabase
+          .from("lead_stakeholders")
+          .select("id")
+          .eq("email", s.sender_email);
+        const ids = (stakeRows || []).map((r: any) => r.id);
+        if (ids.length > 0) {
+          await supabase
+            .from("lead_stakeholders")
+            .update({ is_intermediary: true, updated_at: new Date().toISOString() })
+            .in("id", ids);
+        }
+        await supabase
+          .from("pending_attribution_suggestions")
+          .update({ status: "accepted", resolved_at: new Date().toISOString() })
+          .eq("id", s.id);
+        toast.success(`${s.sender_email} marked as intermediary on ${ids.length} deal${ids.length === 1 ? "" : "s"}`);
+        setItems((prev) => prev.filter((x) => x.id !== s.id));
+        return;
+      }
       const claimed = await claimEmailsForSuggestion(s);
       await supabase
         .from("pending_attribution_suggestions")
