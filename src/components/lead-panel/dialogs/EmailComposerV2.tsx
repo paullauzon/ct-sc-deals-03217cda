@@ -179,6 +179,70 @@ export function EmailComposerV2({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead.id, replyContext?.thread_id]);
 
+  // Phase 8 — load tracking preference for the selected mailbox
+  useEffect(() => {
+    if (!fromConnectionId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await (supabase as any)
+        .from("mailbox_preferences")
+        .select("tracking_enabled")
+        .eq("connection_id", fromConnectionId)
+        .maybeSingle();
+      if (!cancelled) setTrackingEnabled(data?.tracking_enabled ?? true);
+    })();
+    return () => { cancelled = true; };
+  }, [fromConnectionId]);
+
+  const toggleTracking = async (next: boolean) => {
+    setTrackingEnabled(next);
+    if (!fromConnectionId) return;
+    const { error } = await (supabase as any)
+      .from("mailbox_preferences")
+      .upsert({ connection_id: fromConnectionId, tracking_enabled: next, updated_at: new Date().toISOString() }, { onConflict: "connection_id" });
+    if (error) toast.error("Could not save tracking preference");
+    else toast.success(`Open/click tracking ${next ? "ON" : "OFF"} for this mailbox`);
+  };
+
+  // Phase 8 — switch sender brand: pick the next mailbox of the other brand if available
+  const currentMailbox = mailboxes.find(m => m.id === fromConnectionId);
+  const isCaptarget = (m: Mailbox) => /captarget/i.test(`${m.email_address} ${m.user_label}`);
+  const isSourceCo = (m: Mailbox) => /source/i.test(`${m.email_address} ${m.user_label}`);
+  const otherBrandMailbox = useMemo(() => {
+    if (!currentMailbox) return null;
+    if (isCaptarget(currentMailbox)) return mailboxes.find(isSourceCo) || null;
+    if (isSourceCo(currentMailbox)) return mailboxes.find(isCaptarget) || null;
+    // Fallback: if labels don't carry brand, just pick any other mailbox
+    return mailboxes.find(m => m.id !== currentMailbox.id) || null;
+  }, [currentMailbox, mailboxes]);
+  const switchSenderBrand = () => {
+    if (!otherBrandMailbox) return;
+    setFromConnectionId(otherBrandMailbox.id);
+    toast.success(`Switched sender to ${otherBrandMailbox.email_address}`);
+  };
+
+  // Phase 8 — attachment upload to email-attachments bucket
+  const handleAttachmentChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setUploadingAtt(true);
+    try {
+      for (const file of files) {
+        if (file.size > 20 * 1024 * 1024) { toast.error(`${file.name} exceeds 20MB`); continue; }
+        const path = `${lead.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+        const { error: upErr } = await supabase.storage.from("email-attachments").upload(path, file, { upsert: false });
+        if (upErr) { toast.error(`Upload failed: ${upErr.message}`); continue; }
+        const { data: pub } = supabase.storage.from("email-attachments").getPublicUrl(path);
+        setAttachments(prev => [...prev, { name: file.name, url: pub.publicUrl, size: file.size }]);
+      }
+      toast.success("Attachment(s) added");
+    } finally {
+      setUploadingAtt(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+  const removeAttachment = (idx: number) => setAttachments(prev => prev.filter((_, i) => i !== idx));
+
   // ───────── Variable resolution ─────────
   const senderName = useMemo(() => {
     const mb = mailboxes.find(m => m.id === fromConnectionId);
