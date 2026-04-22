@@ -613,7 +613,62 @@ export function EmailComposerV2({
               )}
             </div>
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">To</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">To</label>
+                <Popover open={stakeholderPopOpen} onOpenChange={setStakeholderPopOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+                      title="Add a stakeholder or new email"
+                    >
+                      <Plus className="h-2.5 w-2.5" /> Stakeholder
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-72 p-2 space-y-2">
+                    <Input
+                      value={stakeholderQuery}
+                      onChange={(e) => setStakeholderQuery(e.target.value)}
+                      placeholder="Search or type email…"
+                      className="h-8 text-xs"
+                      autoFocus
+                    />
+                    <div className="max-h-48 overflow-y-auto space-y-0.5">
+                      {stakeholderOptions
+                        .filter(s => {
+                          const q = stakeholderQuery.toLowerCase().trim();
+                          if (!q) return true;
+                          return `${s.name} ${s.email} ${s.role}`.toLowerCase().includes(q);
+                        })
+                        .map(s => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => { addRecipient(s.email); setStakeholderPopOpen(false); setStakeholderQuery(""); }}
+                            className="w-full text-left px-2 py-1.5 rounded text-[11px] hover:bg-secondary/60"
+                          >
+                            <div className="font-medium text-foreground truncate">{s.name || s.email}</div>
+                            <div className="text-muted-foreground truncate">
+                              {s.email}{s.role ? ` · ${s.role}` : ""}
+                            </div>
+                          </button>
+                        ))}
+                      {stakeholderOptions.length === 0 && (
+                        <p className="text-[10px] text-muted-foreground italic px-2 py-1">No stakeholders yet.</p>
+                      )}
+                    </div>
+                    {stakeholderQuery.includes("@") && (
+                      <button
+                        type="button"
+                        onClick={() => { addRecipient(stakeholderQuery.trim()); setStakeholderPopOpen(false); setStakeholderQuery(""); }}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] border border-dashed border-border hover:bg-secondary/40"
+                      >
+                        Add new: <span className="font-mono">{stakeholderQuery.trim()}</span>
+                      </button>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              </div>
               <Input value={to} onChange={(e) => setTo(e.target.value)} className="h-9 text-sm mt-1" />
             </div>
             <div>
@@ -637,25 +692,44 @@ export function EmailComposerV2({
             </div>
           </div>
 
-          {/* Add stakeholder chips */}
-          {stakeholderOptions.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              <span className="text-[10px] text-muted-foreground/70 self-center mr-0.5">Add recipient:</span>
-              {stakeholderOptions.map(s => (
+          {/* Phase 8 — Attachment chips + picker */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={handleAttachmentChange}
+              className="hidden"
+            />
+            <Button
+              variant="ghost" size="sm"
+              className="h-7 text-[10px] gap-1.5 text-muted-foreground"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingAtt}
+              title="Attach files (max 20MB each)"
+            >
+              {uploadingAtt ? <Loader2 className="h-3 w-3 animate-spin" /> : <Paperclip className="h-3 w-3" />}
+              {uploadingAtt ? "Uploading…" : "Attach"}
+            </Button>
+            {attachments.map((a, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-1 rounded border border-border bg-secondary/40"
+                title={`${(a.size / 1024).toFixed(0)} KB`}
+              >
+                <Paperclip className="h-2.5 w-2.5" />
+                <span className="truncate max-w-[140px]">{a.name}</span>
                 <button
-                  key={s.id}
                   type="button"
-                  onClick={() => addRecipient(s.email)}
-                  className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-secondary text-foreground/80 hover:bg-secondary/80 transition-colors"
-                  title={`Add ${s.email}`}
+                  onClick={() => removeAttachment(i)}
+                  className="ml-0.5 text-muted-foreground hover:text-destructive"
+                  aria-label="Remove attachment"
                 >
-                  <Plus className="h-2.5 w-2.5" />
-                  {s.name || s.email}
-                  {s.role && <span className="text-muted-foreground">· {s.role}</span>}
+                  <XIcon className="h-2.5 w-2.5" />
                 </button>
-              ))}
-            </div>
-          )}
+              </span>
+            ))}
+          </div>
 
           {/* ───────── AI Context Panel ───────── */}
           <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-2">
