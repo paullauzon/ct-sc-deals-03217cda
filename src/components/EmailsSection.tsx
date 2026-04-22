@@ -171,6 +171,11 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   const [showMarketing, setShowMarketing] = useState(false);
   const [expandAllSignal, setExpandAllSignal] = useState<"expand" | "collapse" | null>(null);
   const [flatten, setFlatten] = useState(false);
+  // Phase 8 — search, sequence filter, AI recap, focused view
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeSequenceSteps, setActiveSequenceSteps] = useState<Set<string>>(new Set());
+  const [recapOpen, setRecapOpen] = useState(false);
+  const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -205,7 +210,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
         { event: "INSERT", schema: "public", table: "lead_emails", filter: `lead_id=eq.${leadId}` },
         (payload) => {
           const newEmail = payload.new as unknown as LeadEmail;
-          const type = (newEmail as any).email_type || "one_to_one";
+          const type = (newEmail as { email_type?: string }).email_type || "one_to_one";
           if (!showMarketing && !["one_to_one", "sequence"].includes(type)) return;
           setEmails((prev) => [newEmail, ...prev]);
         }
@@ -236,7 +241,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
 
   const markRead = async (emailId: string) => {
     setEmails((prev) => prev.map(e => e.id === emailId ? { ...e, is_read: true } : e));
-    await supabase.from("lead_emails").update({ is_read: true } as any).eq("id", emailId);
+    await supabase.from("lead_emails").update({ is_read: true }).eq("id", emailId);
   };
 
   const cancelScheduled = async (emailId: string) => {
@@ -257,7 +262,28 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   ));
   const multipleMailboxes = mailboxes.length > 1;
 
-  const deliveredForCount = emails.filter(e => e.send_status !== "scheduled");
+  // Phase 8 — collect all sequence steps that appear in this lead's threads
+  const availableSequenceSteps = useMemo(() => {
+    const set = new Set<string>();
+    emails.forEach(e => { if (e.sequence_step) set.add(e.sequence_step); });
+    return Array.from(set).sort();
+  }, [emails]);
+
+  // Apply search + sequence filter to the email list before grouping
+  const filteredEmails = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return emails.filter(e => {
+      if (activeSequenceSteps.size > 0 && (!e.sequence_step || !activeSequenceSteps.has(e.sequence_step))) return false;
+      if (!q) return true;
+      const hay = [
+        e.subject || "", e.from_address || "", e.from_name || "",
+        e.body_preview || "", e.body_text || "", e.sequence_step || "",
+      ].join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+  }, [emails, searchQuery, activeSequenceSteps]);
+
+  const deliveredForCount = filteredEmails.filter(e => e.send_status !== "scheduled");
   const threadCount = groupByThread(deliveredForCount).length;
   const emailCount = deliveredForCount.length;
   const firstName = lead?.name?.split(" ")[0] || lead?.name || "";
