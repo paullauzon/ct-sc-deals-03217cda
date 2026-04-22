@@ -309,6 +309,7 @@ HARD RULES (enforced):
 - Reference one concrete signal from the context (deal stage, last meeting, criteria) — not a generic platitude.
 - If a fact is unknown, use a square-bracket variable like [first_name] or [ebitda]. Never invent numbers.
 - Each draft must use a DIFFERENT angle. Do not repeat the same opening across drafts.
+${firstEmailFact ? `- THIS IS THE FIRST OUTBOUND EMAIL. You MUST anchor line 1 or line 2 of every draft to this specific researched fact (paraphrased, never verbatim): "${firstEmailFact}". Do not generalize it away.` : ""}
 
 Approaches you must produce (one of each):
 1) "direct" — Get to the point in line 1. Single ask. Short and confident.
@@ -326,6 +327,7 @@ ${ctx.sequenceStep ? `- Sequence step: ${ctx.sequenceStep}` : ""}
 ${ctx.threadSummary ? `\nThread so far: ${ctx.threadSummary}` : ""}
 ${ctx.lastInboundExcerpt ? `\nProspect's last message: """${ctx.lastInboundExcerpt}"""` : ""}
 ${ctx.customInstruction ? `\nUser instruction (highest priority): ${ctx.customInstruction}` : ""}
+${firstEmailFact ? `\nFIRST-EMAIL RESEARCHED FACT (anchor line 1/2 of every draft to this): "${firstEmailFact}"${firstEmailFactSource ? ` — source: ${firstEmailFactSource}` : ""}` : ""}
 
 Available proof points to draw from:
 ${proofBank.length ? proofBank.map((p, i) => `${i + 1}. ${p}`).join("\n") : "(none — keep drafts question-led)"}
