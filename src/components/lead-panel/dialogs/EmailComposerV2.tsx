@@ -388,6 +388,8 @@ export function EmailComposerV2({
           ...(inReplyTo ? { in_reply_to: inReplyTo } : {}),
           ...(drafts.length > 0 ? { ai_drafted: true } : {}),
           ...(sourceDraftId ? { source_draft_id: sourceDraftId } : {}),
+          ...(attachments.length > 0 ? { attachments } : {}),
+          tracking_enabled: trackingEnabled,
         },
       });
       if (error) throw error;
