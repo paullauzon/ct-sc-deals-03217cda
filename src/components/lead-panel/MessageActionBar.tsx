@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Reply, Sparkles, Forward, Star, Link2, Loader2 } from "lucide-react";
+import { Reply, Sparkles, Forward, Star, Link2, Loader2, ExternalLink, Copy, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ReplyPrefill } from "@/components/EmailsSection";
@@ -13,6 +13,7 @@ interface Email {
   from_address: string;
   from_name?: string;
   subject?: string;
+  body_html?: string;
   body_text?: string;
   body_preview?: string;
   email_date: string;
@@ -45,6 +46,36 @@ export function MessageActionBar({
   isImportant,
 }: Props) {
   const [aiLoading, setAiLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const text = email.body_text || email.body_preview || "";
+    if (!text) { toast.info("No plain text body to copy"); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Could not copy");
+    }
+  };
+
+  const handleViewOriginal = () => {
+    const html = email.body_html;
+    if (!html) {
+      toast.info("Original HTML not stored for this message");
+      return;
+    }
+    const win = window.open("", "_blank");
+    if (!win) { toast.error("Popup blocked — allow popups to view original"); return; }
+    win.document.write(`<!doctype html><html><head><title>${(email.subject || "Email").replace(/[<>]/g, "")}</title>
+<style>body{font-family:system-ui;font-size:14px;color:#222;margin:0;padding:18px;line-height:1.5}img{max-width:100%}a{color:#1d4ed8}</style>
+</head><body><div style="max-width:720px;margin:0 auto"><h2 style="font-size:16px;margin:0 0 12px">${(email.subject || "").replace(/[<>]/g, "")}</h2>
+<div style="font-size:12px;color:#666;margin-bottom:12px">From: ${(email.from_name || email.from_address || "").replace(/[<>]/g, "")} · ${new Date(email.email_date).toLocaleString()}</div>
+${html}</div></body></html>`);
+    win.document.close();
+  };
 
   const handleReply = () => {
     if (!onReply) return;

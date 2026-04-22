@@ -96,7 +96,7 @@ export function DealEmailRecapDialog({ leadId, leadName, open, onOpenChange }: P
                   {data.threadCount} thread{data.threadCount !== 1 ? "s" : ""}
                 </Badge>
                 {data.hotThreads ? (
-                  <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-500/30">
+                  <Badge variant="outline" className="text-[10px]">
                     {data.hotThreads} hot
                   </Badge>
                 ) : null}
