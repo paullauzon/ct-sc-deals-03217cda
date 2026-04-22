@@ -1,11 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check, Clock, X } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
+import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check, Clock, X, Search, Filter, Maximize2 } from "lucide-react";
 import { Lead } from "@/types/lead";
 import { detectEmailObjections, DetectedObjection } from "@/lib/meetingCoach";
 import { toast } from "sonner";
@@ -16,6 +21,8 @@ import { computeThreadEngagement } from "@/lib/threadEngagement";
 import { ThreadEngagementBadges } from "@/components/lead-panel/ThreadEngagementBadges";
 import { ThreadAiStrip } from "@/components/lead-panel/ThreadAiStrip";
 import { ExpandedThreadView } from "@/components/lead-panel/ExpandedThreadView";
+import { FocusedThreadView } from "@/components/lead-panel/dialogs/FocusedThreadView";
+import { DealEmailRecapDialog } from "@/components/lead-panel/dialogs/DealEmailRecapDialog";
 
 interface LeadEmail {
   id: string;
@@ -164,6 +171,11 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   const [showMarketing, setShowMarketing] = useState(false);
   const [expandAllSignal, setExpandAllSignal] = useState<"expand" | "collapse" | null>(null);
   const [flatten, setFlatten] = useState(false);
+  // Phase 8 — search, sequence filter, AI recap, focused view
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeSequenceSteps, setActiveSequenceSteps] = useState<Set<string>>(new Set());
+  const [recapOpen, setRecapOpen] = useState(false);
+  const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -198,7 +210,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
         { event: "INSERT", schema: "public", table: "lead_emails", filter: `lead_id=eq.${leadId}` },
         (payload) => {
           const newEmail = payload.new as unknown as LeadEmail;
-          const type = (newEmail as any).email_type || "one_to_one";
+          const type = (newEmail as { email_type?: string }).email_type || "one_to_one";
           if (!showMarketing && !["one_to_one", "sequence"].includes(type)) return;
           setEmails((prev) => [newEmail, ...prev]);
         }
@@ -229,7 +241,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
 
   const markRead = async (emailId: string) => {
     setEmails((prev) => prev.map(e => e.id === emailId ? { ...e, is_read: true } : e));
-    await supabase.from("lead_emails").update({ is_read: true } as any).eq("id", emailId);
+    await supabase.from("lead_emails").update({ is_read: true }).eq("id", emailId);
   };
 
   const cancelScheduled = async (emailId: string) => {
@@ -250,57 +262,163 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   ));
   const multipleMailboxes = mailboxes.length > 1;
 
-  const deliveredForCount = emails.filter(e => e.send_status !== "scheduled");
+  // Phase 8 — collect all sequence steps that appear in this lead's threads
+  const availableSequenceSteps = useMemo(() => {
+    const set = new Set<string>();
+    emails.forEach(e => { if (e.sequence_step) set.add(e.sequence_step); });
+    return Array.from(set).sort();
+  }, [emails]);
+
+  // Apply search + sequence filter to the email list before grouping
+  const filteredEmails = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return emails.filter(e => {
+      if (activeSequenceSteps.size > 0 && (!e.sequence_step || !activeSequenceSteps.has(e.sequence_step))) return false;
+      if (!q) return true;
+      const hay = [
+        e.subject || "", e.from_address || "", e.from_name || "",
+        e.body_preview || "", e.body_text || "", e.sequence_step || "",
+      ].join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+  }, [emails, searchQuery, activeSequenceSteps]);
+
+  const deliveredForCount = filteredEmails.filter(e => e.send_status !== "scheduled");
   const threadCount = groupByThread(deliveredForCount).length;
   const emailCount = deliveredForCount.length;
   const firstName = lead?.name?.split(" ")[0] || lead?.name || "";
 
+  const ChipToggle = ({ active, onClick, label, title }: { active: boolean; onClick: () => void; label: string; title?: string }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={cn(
+        "h-6 px-2 rounded-full text-[10px] font-medium border transition-colors",
+        active
+          ? "border-foreground/40 bg-foreground/5 text-foreground"
+          : "border-border bg-background text-muted-foreground hover:text-foreground hover:bg-secondary/40",
+      )}
+    >
+      {label}
+    </button>
+  );
+
   const header = onCompose ? (
-    <div className="flex items-center justify-between border-b border-border pb-2 mb-3 flex-wrap gap-2">
-      <div className="flex items-center gap-2 flex-wrap">
-        <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.12em]">
-          All email threads{firstName ? ` — ${firstName}` : ""}
-          {emailCount > 0 && (
-            <span className="ml-1 text-muted-foreground/70 normal-case tracking-normal font-normal">
-              ({threadCount} thread{threadCount !== 1 ? "s" : ""}, {emailCount} email{emailCount !== 1 ? "s" : ""} total)
+    <div className="border-b border-border pb-2 mb-3 space-y-2">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.12em]">
+            All email threads{firstName ? ` — ${firstName}` : ""}
+            {emailCount > 0 && (
+              <span className="ml-1 text-muted-foreground/70 normal-case tracking-normal font-normal">
+                ({threadCount} thread{threadCount !== 1 ? "s" : ""}, {emailCount} email{emailCount !== 1 ? "s" : ""} total)
+              </span>
+            )}
+          </h3>
+          {(totalOpens > 0 || totalClicks > 0 || totalReplies > 0) && (
+            <span className="text-[10px] text-muted-foreground">
+              {totalOpens > 0 && `${totalOpens} open${totalOpens !== 1 ? "s" : ""}`}
+              {totalClicks > 0 && ` · ${totalClicks} click${totalClicks !== 1 ? "s" : ""}`}
+              {totalReplies > 0 && ` · ${totalReplies} repl${totalReplies !== 1 ? "ies" : "y"}`}
             </span>
           )}
-        </h3>
-        {(totalOpens > 0 || totalClicks > 0 || totalReplies > 0) && (
-          <span className="text-[10px] text-muted-foreground">
-            {totalOpens > 0 && `${totalOpens} open${totalOpens !== 1 ? "s" : ""}`}
-            {totalClicks > 0 && ` · ${totalClicks} click${totalClicks !== 1 ? "s" : ""}`}
-            {totalReplies > 0 && ` · ${totalReplies} repl${totalReplies !== 1 ? "ies" : "y"}`}
-          </span>
-        )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="ghost" size="sm"
+            onClick={() => setRecapOpen(true)}
+            className="h-7 text-[10px] gap-1.5 text-muted-foreground hover:text-foreground"
+            title="Generate AI recap across all threads"
+          >
+            <Sparkles className="h-3 w-3" /> AI recap
+          </Button>
+          <Button variant="outline" size="sm" onClick={onCompose} className="h-7 text-xs gap-1.5">
+            <PenSquare className="h-3 w-3" /> Compose
+          </Button>
+        </div>
       </div>
-      <div className="flex items-center gap-1.5">
-        <Button
-          variant="ghost" size="sm"
-          onClick={() => setShowMarketing(v => !v)}
-          className="h-7 text-[10px] text-muted-foreground"
-          title={showMarketing ? "Hide marketing/transactional" : "Show marketing/transactional"}
-        >
-          {showMarketing ? "1-to-1 only" : "Show all"}
-        </Button>
-        <Button
-          variant="ghost" size="sm"
-          onClick={() => setFlatten(v => !v)}
-          className="h-7 text-[10px] text-muted-foreground"
-          title={flatten ? "Group emails into threads" : "Show one row per email"}
-        >
-          {flatten ? "Group threads" : "Individual rows"}
-        </Button>
-        <Button
-          variant="ghost" size="sm"
-          onClick={() => setExpandAllSignal(s => s === "expand" ? "collapse" : "expand")}
-          className="h-7 text-[10px] text-muted-foreground"
-        >
-          {expandAllSignal === "expand" ? "Collapse all" : "Expand all"}
-        </Button>
-        <Button variant="outline" size="sm" onClick={onCompose} className="h-7 text-xs gap-1.5">
-          <PenSquare className="h-3 w-3" /> Compose
-        </Button>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[180px] max-w-[280px]">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search within emails…"
+            className="h-7 text-[11px] pl-7 pr-7"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 h-4 w-4 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+        {availableSequenceSteps.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 text-[10px] gap-1.5 text-muted-foreground">
+                <Filter className="h-3 w-3" />
+                Sequence
+                {activeSequenceSteps.size > 0 && (
+                  <Badge variant="secondary" className="text-[9px] px-1 py-0 ml-0.5">{activeSequenceSteps.size}</Badge>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Filter by sequence
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {availableSequenceSteps.map(step => (
+                <DropdownMenuCheckboxItem
+                  key={step}
+                  checked={activeSequenceSteps.has(step)}
+                  onCheckedChange={(checked) => {
+                    setActiveSequenceSteps(prev => {
+                      const next = new Set(prev);
+                      if (checked) next.add(step); else next.delete(step);
+                      return next;
+                    });
+                  }}
+                  className="text-[11px] font-mono"
+                >
+                  {step}
+                </DropdownMenuCheckboxItem>
+              ))}
+              {activeSequenceSteps.size > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <button
+                    type="button"
+                    onClick={() => setActiveSequenceSteps(new Set())}
+                    className="w-full text-left text-[10px] px-2 py-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary/40"
+                  >
+                    Clear filter
+                  </button>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        <div className="flex items-center gap-1 ml-auto">
+          <ChipToggle active={!flatten} onClick={() => setFlatten(false)} label="Threaded" />
+          <ChipToggle active={flatten} onClick={() => setFlatten(true)} label="Flat" />
+          <span className="w-px h-4 bg-border mx-0.5" />
+          <ChipToggle active={!showMarketing} onClick={() => setShowMarketing(false)} label="1-to-1 only" />
+          <ChipToggle active={showMarketing} onClick={() => setShowMarketing(true)} label="All (incl. marketing)" />
+          <span className="w-px h-4 bg-border mx-0.5" />
+          <Button
+            variant="ghost" size="sm"
+            onClick={() => setExpandAllSignal(s => s === "expand" ? "collapse" : "expand")}
+            className="h-6 text-[10px] text-muted-foreground"
+          >
+            {expandAllSignal === "expand" ? "Collapse all" : "Expand all"}
+          </Button>
+        </div>
       </div>
     </div>
   ) : null;

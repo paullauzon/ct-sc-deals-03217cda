@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Sparkles, RefreshCw, PenSquare, Loader2 } from "lucide-react";
+import { Sparkles, RefreshCw, PenSquare, Loader2, BookmarkPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { ReplyPrefill } from "@/components/EmailsSection";
@@ -112,6 +112,27 @@ export function ThreadAiStrip({ threadId, leadId, threadEmailCount, threadLatest
     });
   };
 
+  const sendToIntelligence = async () => {
+    if (!intel) return;
+    try {
+      const { error } = await (supabase as never as { from: (t: string) => { insert: (v: unknown) => Promise<{ error: unknown }> } })
+        .from("lead_intelligence_notes")
+        .insert({
+          lead_id: leadId,
+          source: "email_thread",
+          source_ref: threadId,
+          title: `Thread snapshot · ${new Date().toLocaleDateString()}`,
+          body: `**Summary:** ${intel.summary}\n\n**Recommended:** ${intel.recommended_action || "none"}\n\n**Sentiment:** ${intel.sentiment} · ${intel.email_count} email${intel.email_count !== 1 ? "s" : ""}`,
+          signal_tags: intel.signal_tags || [],
+        });
+      if (error) throw error as Error;
+      toast.success("Saved to Intelligence tab");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Save failed";
+      toast.error(msg);
+    }
+  };
+
   // Skeleton on first load
   if (!intel && loading) {
     return (
@@ -182,6 +203,14 @@ export function ThreadAiStrip({ threadId, leadId, threadEmailCount, threadLatest
             <PenSquare className="h-3 w-3" /> Draft
           </Button>
         )}
+        <Button
+          size="sm" variant="ghost" className="h-7 text-[11px] gap-1.5 text-muted-foreground hover:text-foreground"
+          onClick={sendToIntelligence}
+          title="Save thread snapshot to Intelligence tab"
+        >
+          <BookmarkPlus className="h-3 w-3" />
+          Save
+        </Button>
         <Button
           size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
           onClick={() => generate(true)}
