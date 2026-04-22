@@ -1,11 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check, Clock, X } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
+import { ArrowUpRight, ArrowDownLeft, ChevronDown, Mail, Paperclip, Reply, AlertCircle, PenSquare, Eye, MousePointerClick, Sparkles, Loader2, Copy, Check, Clock, X, Search, Filter, Maximize2 } from "lucide-react";
 import { Lead } from "@/types/lead";
 import { detectEmailObjections, DetectedObjection } from "@/lib/meetingCoach";
 import { toast } from "sonner";
@@ -16,6 +21,8 @@ import { computeThreadEngagement } from "@/lib/threadEngagement";
 import { ThreadEngagementBadges } from "@/components/lead-panel/ThreadEngagementBadges";
 import { ThreadAiStrip } from "@/components/lead-panel/ThreadAiStrip";
 import { ExpandedThreadView } from "@/components/lead-panel/ExpandedThreadView";
+import { FocusedThreadView } from "@/components/lead-panel/dialogs/FocusedThreadView";
+import { DealEmailRecapDialog } from "@/components/lead-panel/dialogs/DealEmailRecapDialog";
 
 interface LeadEmail {
   id: string;
