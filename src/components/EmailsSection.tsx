@@ -11,6 +11,7 @@ import { detectEmailObjections, DetectedObjection } from "@/lib/meetingCoach";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { EmailTabHeader } from "@/components/lead-panel/EmailTabHeader";
 
 interface LeadEmail {
   id: string;
