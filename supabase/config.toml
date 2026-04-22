@@ -140,3 +140,9 @@ verify_jwt = false
 
 [functions.sync-watchdog]
 verify_jwt = false
+
+[functions.extract-email-tasks]
+verify_jwt = false
+
+[functions.email-workflow-trigger]
+verify_jwt = false
