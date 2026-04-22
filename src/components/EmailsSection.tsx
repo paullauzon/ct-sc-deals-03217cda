@@ -897,6 +897,11 @@ function EmailRow({ email, compact, expandAllSignal, onSuggestResponses, onReply
                 <AlertCircle className="h-2.5 w-2.5" />Bounced
               </Badge>
             )}
+            {/^\s*(fwd?|fw):/i.test(email.subject || "") && !isOutbound && (
+              <Badge variant="outline" className="text-[9px] shrink-0 gap-0.5" title={`Forwarded by ${email.from_name || email.from_address} — original sender may differ`}>
+                <ArrowDownLeft className="h-2.5 w-2.5" />Forwarded
+              </Badge>
+            )}
           </div>
           {!compact && (
             <div className="text-[10px] text-muted-foreground truncate">
