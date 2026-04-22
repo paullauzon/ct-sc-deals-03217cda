@@ -158,3 +158,9 @@ verify_jwt = false
 
 [functions.refine-email-line]
 verify_jwt = false
+
+[functions.safe-claim-email]
+verify_jwt = false
+
+[functions.cleanup-unmatched-noise]
+verify_jwt = false
