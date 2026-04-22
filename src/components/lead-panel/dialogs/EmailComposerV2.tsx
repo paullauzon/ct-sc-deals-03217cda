@@ -117,9 +117,6 @@ export function EmailComposerV2({
   // Send / schedule state
   const [sending, setSending] = useState(false);
   const [scheduling, setScheduling] = useState(false);
-  const [pickTimeOpen, setPickTimeOpen] = useState(false);
-  const [pickedDate, setPickedDate] = useState<Date | undefined>(undefined);
-  const [pickedTime, setPickedTime] = useState<string>("09:00");
 
   // Save-as-template
   const [saveTplOpen, setSaveTplOpen] = useState(false);
@@ -412,18 +409,11 @@ export function EmailComposerV2({
     setTo(list.join(", "));
   };
 
-  const handlePickTimeConfirm = () => {
-    if (!pickedDate) { toast.error("Pick a date"); return; }
-    const [hh, mm] = pickedTime.split(":").map(Number);
-    const when = set(pickedDate, { hours: hh, minutes: mm, seconds: 0, milliseconds: 0 });
-    setPickTimeOpen(false);
-    scheduleSend(when);
-  };
-
-  // Schedule presets
-  const tomorrow8 = set(addDays(new Date(), 1), { hours: 8, minutes: 0, seconds: 0, milliseconds: 0 });
-  const tomorrow1 = set(addDays(new Date(), 1), { hours: 13, minutes: 0, seconds: 0, milliseconds: 0 });
-  const inOneHour = addHours(new Date(), 1);
+  // Primary recipient drives per-contact send-time intelligence
+  const primaryRecipient = useMemo(
+    () => to.split(/[,;]\s*/).map(s => s.trim()).filter(Boolean)[0] || lead.email || "",
+    [to, lead.email],
+  );
 
   const stakeholderOptions = stakeholders.filter(s => s.email && s.email.trim());
 
