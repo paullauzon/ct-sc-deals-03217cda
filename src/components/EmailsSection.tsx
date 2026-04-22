@@ -15,6 +15,7 @@ import { EmailTabHeader } from "@/components/lead-panel/EmailTabHeader";
 import { computeThreadEngagement } from "@/lib/threadEngagement";
 import { ThreadEngagementBadges } from "@/components/lead-panel/ThreadEngagementBadges";
 import { ThreadAiStrip } from "@/components/lead-panel/ThreadAiStrip";
+import { ExpandedThreadView } from "@/components/lead-panel/ExpandedThreadView";
 
 interface LeadEmail {
   id: string;
@@ -363,6 +364,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
                   key={thread.threadId}
                   thread={thread}
                   leadId={leadId}
+                  lead={lead}
                   expandAllSignal={expandAllSignal}
                   onSuggestResponses={(email, objections) => setResponseDialog({ email, objections })}
                   onReply={onReply}
@@ -440,7 +442,7 @@ function ScheduledStrip({ scheduled, onCancel }: { scheduled: LeadEmail[]; onCan
   );
 }
 
-function ThreadCard({ thread, leadId, expandAllSignal, onSuggestResponses, onReply, onMarkRead, leadName, showMailbox }: { thread: ThreadGroup; leadId: string; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; leadName?: string; showMailbox?: boolean }) {
+function ThreadCard({ thread, leadId, lead, expandAllSignal, onSuggestResponses, onReply, onMarkRead, leadName, showMailbox }: { thread: ThreadGroup; leadId: string; lead?: Lead; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; leadName?: string; showMailbox?: boolean }) {
   const isSingleEmail = thread.emails.length === 1;
   const unreadCount = thread.emails.filter(e => e.direction === "inbound" && !e.is_read).length;
   const [open, setOpen] = useState(false);
@@ -560,20 +562,15 @@ function ThreadCard({ thread, leadId, expandAllSignal, onSuggestResponses, onRep
         </div>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="pl-4 space-y-1 border-l-2 border-border ml-3 mt-1 mb-2">
-          {/* AI thread analysis */}
-          <ThreadAiStrip
-            threadId={thread.threadId}
-            leadId={leadId}
-            threadEmailCount={thread.emails.length}
-            threadLatestDate={thread.latestDate}
-            onUseDraft={handleAiDraft}
-            replyAnchor={replyAnchor}
-          />
-          {thread.emails.map((email) => (
-            <EmailRow key={email.id} email={email} compact expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} showMailbox={showMailbox} />
-          ))}
-        </div>
+        <ExpandedThreadView
+          lead={lead}
+          threadId={thread.threadId}
+          threadSubject={thread.subject}
+          emails={thread.emails as any}
+          threadLatestDate={thread.latestDate}
+          onReply={onReply}
+          onMarkRead={onMarkRead}
+        />
       </CollapsibleContent>
     </Collapsible>
   );
