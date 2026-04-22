@@ -1122,6 +1122,8 @@ export type Database = {
           fireflies_transcript: string
           fireflies_url: string
           firm_aum: string
+          first_email_fact: string
+          first_email_fact_source: string
           forecast_category: string
           forecasted_close_date: string
           geography: string
@@ -1238,6 +1240,8 @@ export type Database = {
           fireflies_transcript?: string
           fireflies_url?: string
           firm_aum?: string
+          first_email_fact?: string
+          first_email_fact_source?: string
           forecast_category?: string
           forecasted_close_date?: string
           geography?: string
@@ -1354,6 +1358,8 @@ export type Database = {
           fireflies_transcript?: string
           fireflies_url?: string
           firm_aum?: string
+          first_email_fact?: string
+          first_email_fact_source?: string
           forecast_category?: string
           forecasted_close_date?: string
           geography?: string
