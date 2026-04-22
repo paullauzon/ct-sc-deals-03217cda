@@ -385,8 +385,43 @@ export function CompanyInboxView() {
               </button>
               {isOpen && (
                 <ul className="divide-y divide-border border-t border-border bg-secondary/10">
-                  {g.emails.map((e) => (
+                  {g.emails.map((e) => {
+                    const senderKey = (e.from_address || "").toLowerCase();
+                    const intermediary = intermediaryCandidates.get(senderKey);
+                    return (
                     <li key={e.id} className="px-3 py-2.5">
+                      {intermediary && (
+                        <div className="mb-2 flex items-start gap-2 rounded-md border border-border bg-background px-2.5 py-2">
+                          <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium">
+                              {intermediary.flagged
+                                ? `${e.from_address} is flagged as an intermediary`
+                                : `${e.from_address} appears on ${intermediary.dealCount} deals`}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground mt-0.5">
+                              {intermediary.flagged
+                                ? "Future emails from this sender won't auto-route by sender match — only by thread continuity."
+                                : "Likely an M&A banker, broker, or referral source pitching multiple sellers. Flagging prevents auto-attribution chaos."}
+                            </div>
+                          </div>
+                          {!intermediary.flagged && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-xs shrink-0"
+                              disabled={busy === `int:${senderKey}`}
+                              onClick={() => markAsIntermediary(senderKey, intermediary.stakeholderIds)}
+                            >
+                              {busy === `int:${senderKey}` ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                "Mark as intermediary"
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                       <div className="flex items-baseline gap-2">
                         <span className="text-sm font-medium truncate">{e.from_name || e.from_address}</span>
                         {e.from_name && (
@@ -442,7 +477,7 @@ export function CompanyInboxView() {
                         </Button>
                       </div>
                     </li>
-                  ))}
+                  );})}
                 </ul>
               )}
             </li>
