@@ -1,87 +1,137 @@
 
+# Outlook connect failure — root cause and fix plan
 
-# Outlook end-to-end verification — audit complete
+## What is actually happening
 
-## Verdict: production-ready, parity with Gmail achieved, plus 3 enhancements
+The screenshot is not a frontend crash. It is Microsoft explicitly blocking the OAuth consent flow at the identity layer.
 
-I audited every layer end-to-end against the live database and deployed functions. **All 7 Outlook edge functions are tenant-scoped, the cron is firing, the matching logic is identical to Gmail's battle-tested 4-tier system, and three Outlook-only enhancements actually put it ahead of Gmail.** One mailbox connection step remains in your hands.
+`Approval required` means the request is reaching Microsoft correctly, but the tenant is refusing end-user consent for this app + scope combination.
 
-## Audit scorecard
+## Deep diagnosis
 
-| Layer | Status | Evidence |
-|---|---|---|
-| `MICROSOFT_TENANT_ID` secret set | ✅ | Confirmed in secrets list |
-| `outlook-oauth-start` — tenant URL | ✅ | Line 52 uses `/${TENANT_ID}/` |
-| `outlook-oauth-callback` — tenant URL | ✅ | Line 76 uses `/${TENANT_ID}/` |
-| `refresh-outlook-token` — tenant URL | ✅ | Line 34 uses `/${TENANT_ID}/` |
-| `sync-outlook-emails` — tenant URL | ✅ | Line 80 patched |
-| `send-outlook-email` — tenant URL | ✅ | Line 47 patched |
-| `backfill-discover` Outlook path — tenant URL | ✅ | Line 73 patched |
-| `backfill-hydrate` Outlook path — tenant URL | ✅ | Line 124 patched |
-| `sync-outlook-emails-5min` cron active | ✅ | Confirmed in `cron.job` |
-| Live test of `sync-outlook-emails` | ✅ | Returns `200 OK` "No active Outlook connections" |
-| Auto-90d backfill on connect | ✅ | Callback line 169 fires `start-email-backfill` |
-| Auto-enroll legacy connections | ✅ | `maybeAutoEnrollBackfill()` at line 536 |
-| Outlook connections in DB | ❌ | Zero — Adam has not connected |
+### 1. The tenant-scoped URL did not solve the real blocker
+The code now correctly uses:
 
-## Lead-matching logic — IDENTICAL to Gmail
+- `outlook-oauth-start` → `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize`
+- `outlook-oauth-callback` and token refresh paths → tenant-specific token endpoints
 
-Outlook uses the same 4-tier `findLeadIdByEmail()` pipeline:
+That fixed the wrong-tenant problem, but it does **not** bypass tenant consent policy.
 
-1. **Primary email** match — canonical (non-duplicate, non-archived) wins
-2. **Secondary contacts** — only if no primary match (primary always wins)
-3. **Stakeholders table** — `lead_stakeholders.email` lookup
-4. **Strict domain fallback** — excludes `gmail.com`, `outlook.com`, etc.; requires confirmed-participant; refuses ambiguous (>1 hit)
+### 2. The previous assumption was wrong
+The memory and earlier audit claimed tenant scoping would bypass the admin-consent problem. The screenshot disproves that.
 
-System-noise filter blocks `noreply@`, `mailer-daemon@`, `notifications@`, etc. Internal domains (`captarget.com`, `sourcecodeals.com`) excluded from external participant set. Canonical resolution follows `duplicate_of` chain up to 3 hops.
+For the requested delegated scopes:
 
-## Outlook-only enhancements (better than Gmail)
+- `Mail.Read`
+- `Mail.Send`
+- `User.Read`
+- `offline_access`
 
-1. **Native conversation IDs** — Microsoft Graph returns `conversationId` directly per message; no synthesis from headers needed. More reliable threading than Gmail's RFC `Message-ID`/`References` parsing.
-2. **`hasAttachments` flag in metadata** — Outlook surfaces attachment presence without a separate API call; Gmail requires walking MIME parts.
-3. **Loop protection has two checks** — `X-CRM-Source: lovable-crm` header AND `<crm-...@...>` Message-ID prefix. Defense-in-depth vs. Gmail's single check.
+many Microsoft tenants still require admin approval, depending on tenant consent policy. So the current blocker is not missing code in sync/send/backfill anymore — it is tenant permission governance.
 
-## Reply intelligence — full parity
+### 3. The code is also making the consent UX worse
+`supabase/functions/outlook-oauth-start/index.ts` still forces:
 
-Inbound matched reply triggers, in order:
-1. Stamps `replied_at` on the matched outbound row in same `conversationId`
-2. If outbound carried a `sequence_step`, logs `sequence_paused` to `lead_activity_log`
-3. Auto-supersedes pending stage-stall drafts
-4. For active selling stages (Proposal Sent, Negotiating, Sample Sent, Meeting Held, Discovery Completed) — fires `generate-stage-draft` with `trigger: "reply"` to queue a contextual reply draft
+- `prompt=consent`
 
-## Send pipeline — full parity + tracking
+Microsoft docs note this can keep re-triggering consent flows and surface consent errors repeatedly. Even after approval, this is the wrong default for a production mailbox connect flow.
 
-`send-outlook-email` already includes:
-- Pre-insert into `lead_emails` so tracking pixel + link rewrite have an `eid`
-- Conditional pixel injection based on `mailbox_preferences.tracking_enabled`
-- Per-link rewrite to `/track-email-click?eid=...&url=...`
-- Attachment fetch + base64 + Graph `fileAttachment` payload (up to ~25MB per Graph limit)
-- `ai_drafted` flag and `source_draft_id` mark on lead_drafts when sent
+### 4. Current product gap
+The app has no graceful handling for this exact Microsoft response:
+- user gets bounced to Microsoft's approval screen
+- no in-app explanation of what failed
+- no admin-specific recovery path
+- no generated admin-consent URL
+- no structured diagnostics for tenant policy vs misconfiguration
 
-## What you do now
+So the integration is technically wired, but operationally incomplete.
 
-1. **Settings → Mailboxes → Connect Outlook**
-2. Label: `Adam — SourceCo`
-3. Approve consent on Microsoft's tenant-scoped screen (one-click per-user, no admin block thanks to single-tenant scoping)
-4. 90-day backfill auto-dispatches; watch live progress in `BackfillProgressPanel`
+## Most likely actual causes inside Microsoft
 
-## Validation I'll run after you connect
+Based on the screenshot and Microsoft consent docs, one of these tenant-side conditions is true:
 
-I'll automatically check:
-- `user_email_connections` row appears with `provider = 'outlook'` and a `refresh_token`
-- `email_backfill_jobs` row transitions `queued → discovering → hydrating → done`
-- `lead_emails` rows land with `source = 'outlook'`, correct `conversationId` threading, populated `from_address`/`to_addresses`
-- 3 spot-checked matched leads have correct `lead_id` (no false positives, no missed matches)
-- `replied_at` stamping fires on a real reply
-- Auto-stakeholder discovery adds same-domain colleagues
-- Next 5-min cron tick logs to `cron_run_log` with `job_name = 'sync-outlook-emails'`
-- Token refresh round-trip works (force expire `token_expires_at` and trigger sync)
-- `EmailMetricsCard` populates Outlook lead's KPI tile
-- `lead_email_metrics` trigger fires correctly (open/click/reply/bounce counters)
+1. **User consent is disabled** for apps in the SourceCo tenant
+2. **The enterprise app exists but lacks granted permissions** for the requested scopes
+3. **Assignment required** is enabled on the enterprise app
+4. The tenant allows only low-risk consent, and `Mail.Read` / `Mail.Send` are blocked for self-consent
 
-## Out of scope (already correct, no work needed)
+The screenshot strongly points to 1 or 4.
 
-- Memory file `mem://integrations/email-sync-status` — already says "live", accurate as of OAuth fix
-- `/common/` fallback in code — intentional safety net if `MICROSOFT_TENANT_ID` is ever unset
-- No Outlook-specific token refresh cron needed — lazy refresh on every 5-min sync keeps tokens warm (same model as Gmail)
+## What I will build
 
+### A. Remove forced re-consent
+Update `supabase/functions/outlook-oauth-start/index.ts` to stop sending `prompt=consent` by default.
+
+Result:
+- existing approved users won’t be forced through consent every time
+- we stop inflaming consent-policy failures
+
+### B. Add explicit Microsoft admin-approval handling
+Upgrade the Outlook auth flow so Microsoft consent denials are handled intentionally, not as a dead-end.
+
+#### In `outlook-oauth-callback`
+Detect Microsoft approval-related responses and render a proper outcome page that explains:
+- this is a tenant approval block, not a CRM bug
+- the requested permissions
+- what the tenant admin must do
+- how the user should retry after approval
+
+### C. Add an admin-consent path
+Create a dedicated Outlook admin-consent start flow that generates the proper Microsoft admin-consent URL for the tenant.
+
+This gives you something actionable to send to Josh / tenant admin instead of telling reps to keep retrying.
+
+### D. Add structured diagnostics
+Return predictable JSON payloads from the Outlook auth edge functions for machine-readable failure states, including:
+- `error_stage`
+- `tenant_id`
+- `requested_scopes`
+- `microsoft_error`
+- `microsoft_error_description`
+- whether this is likely `admin_approval_required`
+
+This prevents another vague “it should work” loop.
+
+### E. Improve frontend handling in `MailboxSettings.tsx`
+When Outlook connect fails or approval is required, show a clean in-app explanation instead of silently handing everything to Microsoft.
+
+Planned UX:
+- “Your organization requires admin approval before Outlook can be connected.”
+- copyable justification text
+- button or instructions for admin approval flow
+- clearer distinction between:
+  - config error
+  - user cancelled
+  - admin approval required
+  - token exchange failed
+
+## Files to update
+
+- `supabase/functions/outlook-oauth-start/index.ts`
+- `supabase/functions/outlook-oauth-callback/index.ts`
+- `src/components/MailboxSettings.tsx`
+
+Likely add:
+- `supabase/functions/outlook-admin-consent-start/index.ts`
+
+## Validation after the fix
+
+Once the admin has approved the app, I’ll verify the full chain:
+
+1. Outlook connect completes without the approval wall
+2. `user_email_connections` gets an active Outlook row
+3. auto 90-day backfill starts
+4. `email_backfill_jobs` advances correctly
+5. `lead_emails` rows land with `source = 'outlook'`
+6. lead matching assigns emails to the correct leads
+7. threading uses `conversationId` correctly
+8. 5-minute sync cron runs successfully
+9. send flow works and does not re-ingest CRM-sent emails
+
+## Expected outcome
+
+After this work:
+- the app will correctly explain the real blocker
+- you’ll have an admin-approval path instead of a dead-end
+- the Outlook flow will stop forcing unnecessary re-consent
+- once tenant approval is granted, the existing sync/send/backfill pipeline can actually go live cleanly
