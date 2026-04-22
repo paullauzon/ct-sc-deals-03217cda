@@ -442,7 +442,7 @@ function ScheduledStrip({ scheduled, onCancel }: { scheduled: LeadEmail[]; onCan
   );
 }
 
-function ThreadCard({ thread, leadId, expandAllSignal, onSuggestResponses, onReply, onMarkRead, leadName, showMailbox }: { thread: ThreadGroup; leadId: string; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; leadName?: string; showMailbox?: boolean }) {
+function ThreadCard({ thread, leadId, lead, expandAllSignal, onSuggestResponses, onReply, onMarkRead, leadName, showMailbox }: { thread: ThreadGroup; leadId: string; lead?: Lead; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; leadName?: string; showMailbox?: boolean }) {
   const isSingleEmail = thread.emails.length === 1;
   const unreadCount = thread.emails.filter(e => e.direction === "inbound" && !e.is_read).length;
   const [open, setOpen] = useState(false);
