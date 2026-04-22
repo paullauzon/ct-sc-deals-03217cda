@@ -107,7 +107,7 @@ function detectMissingVariables(text: string, vars: Record<string, string>): str
 }
 
 function defaultRecommendedApproach(lead: ComposeRequest["lead"], purpose?: string): Approach {
-  // Heuristic-only first cut (Phase 6 will replace this with learned per-firm/stage stats):
+  // Heuristic fallback when no learned signal is available yet.
   // - Stall/no response → question_led (gets a reply)
   // - Sample/Proposal stage → data_led (proves value)
   // - Otherwise → direct
@@ -118,6 +118,81 @@ function defaultRecommendedApproach(lead: ComposeRequest["lead"], purpose?: stri
     return "data_led";
   }
   return "direct";
+}
+
+/**
+ * Phase 6 — read learned patterns for this brand × stage × purpose and pick
+ * the approach with the strongest combined pickRate × replyRate signal.
+ * Returns null when there isn't enough data (require ≥ 5 picks for a single
+ * approach before overriding the heuristic).
+ */
+async function learnedRecommendedApproach(
+  brand: string, stage: string, purpose: string,
+): Promise<{ approach: Approach; basis: string } | null> {
+  try {
+    const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const since = new Date();
+    since.setDate(since.getDate() - 60);
+
+    let q = sb.from("email_compose_events")
+      .select("draft_picked, email_id, brand, stage, purpose")
+      .eq("sent", true)
+      .eq("do_not_train", false)
+      .gte("created_at", since.toISOString())
+      .limit(500);
+    if (brand) q = q.eq("brand", brand);
+    if (purpose) q = q.eq("purpose", purpose);
+    if (stage) q = q.eq("stage", stage);
+    const { data: events } = await q;
+    const rows: any[] = events || [];
+    if (rows.length < 8) return null;
+
+    // Pull outcomes for these emails
+    const ids = rows.map(r => r.email_id).filter(Boolean);
+    let replied: Record<string, boolean> = {};
+    if (ids.length > 0) {
+      const { data: outRows } = await sb.from("email_compose_outcomes")
+        .select("email_id, replied").in("email_id", ids);
+      for (const o of outRows || []) replied[(o as any).email_id] = (o as any).replied;
+    }
+
+    type Stat = { picks: number; replies: number; outcomeCount: number };
+    const stats: Record<Approach, Stat> = {
+      direct: { picks: 0, replies: 0, outcomeCount: 0 },
+      data_led: { picks: 0, replies: 0, outcomeCount: 0 },
+      question_led: { picks: 0, replies: 0, outcomeCount: 0 },
+    };
+    for (const r of rows) {
+      const ap = r.draft_picked as Approach;
+      if (!stats[ap]) continue;
+      stats[ap].picks += 1;
+      if (r.email_id && r.email_id in replied) {
+        stats[ap].outcomeCount += 1;
+        if (replied[r.email_id]) stats[ap].replies += 1;
+      }
+    }
+
+    let best: Approach | null = null;
+    let bestScore = -1;
+    let bestBasis = "";
+    for (const [ap, s] of Object.entries(stats) as [Approach, Stat][]) {
+      if (s.picks < 5) continue;
+      const replyRate = s.outcomeCount > 0 ? s.replies / s.outcomeCount : 0;
+      const pickRate = s.picks / Math.max(rows.length, 1);
+      // Weighted: reply outcome dominates, pick rate breaks ties
+      const score = replyRate * 100 + pickRate * 20;
+      if (score > bestScore) {
+        bestScore = score;
+        best = ap;
+        bestBasis = `${s.picks} picks · ${Math.round(replyRate * 100)}% reply rate`;
+      }
+    }
+    if (!best) return null;
+    return { approach: best, basis: bestBasis };
+  } catch (e) {
+    console.warn("learnedRecommendedApproach failed", e);
+    return null;
+  }
 }
 
 Deno.serve(async (req) => {
