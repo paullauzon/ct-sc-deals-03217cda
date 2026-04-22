@@ -797,65 +797,17 @@ export function EmailComposerV2({
                 {sending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
                 {sending ? "Sending…" : "Send now"}
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="sm"
-                    className="rounded-l-none border-l border-primary-foreground/20 px-2"
-                    disabled={!canSend || sending || scheduling}
-                    title="Schedule send"
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                    Send later
-                  </DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => scheduleSend(inOneHour)}>
-                    <Clock className="h-3.5 w-3.5 mr-2" /> In 1 hour
-                    <span className="ml-auto text-[10px] text-muted-foreground">{format(inOneHour, "h:mm a")}</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => scheduleSend(tomorrow8)}>
-                    <Clock className="h-3.5 w-3.5 mr-2" /> Tomorrow 8 AM
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => scheduleSend(tomorrow1)}>
-                    <Clock className="h-3.5 w-3.5 mr-2" /> Tomorrow 1 PM
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={(e) => { e.preventDefault(); setPickTimeOpen(true); }}>
-                    <CalendarIcon className="h-3.5 w-3.5 mr-2" /> Pick date & time…
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <SmartScheduler
+                leadId={lead.id}
+                recipientEmail={primaryRecipient}
+                fromConnectionId={fromConnectionId}
+                disabled={!canSend || sending}
+                scheduling={scheduling}
+                onSchedule={scheduleSend}
+              />
             </div>
           </div>
         </div>
-
-        {/* Pick date & time */}
-        <Popover open={pickTimeOpen} onOpenChange={setPickTimeOpen}>
-          <PopoverTrigger asChild><span className="hidden" /></PopoverTrigger>
-          <PopoverContent align="end" side="top" className="w-auto p-3 space-y-2">
-            <Calendar
-              mode="single"
-              selected={pickedDate}
-              onSelect={setPickedDate}
-              initialFocus
-              disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
-              className={cn("p-0 pointer-events-auto")}
-            />
-            <div className="flex items-center gap-2">
-              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Time</Label>
-              <Input type="time" value={pickedTime} onChange={(e) => setPickedTime(e.target.value)} className="h-8 text-xs w-32" />
-            </div>
-            <div className="flex justify-end gap-1.5">
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setPickTimeOpen(false)}>Cancel</Button>
-              <Button size="sm" className="h-7 text-xs" onClick={handlePickTimeConfirm} disabled={!pickedDate || scheduling}>
-                {scheduling ? "Scheduling…" : "Schedule"}
-              </Button>
-            </div>
-          </PopoverContent>
-        </Popover>
       </SheetContent>
     </Sheet>
   );
