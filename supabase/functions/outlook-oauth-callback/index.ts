@@ -100,7 +100,60 @@ Deno.serve(async (req) => {
     const error = url.searchParams.get("error");
     const errorDesc = url.searchParams.get("error_description") || "";
 
+    // Build the admin-consent URL up front so any approval-related branch can offer it.
+    const adminConsentScopes = [
+      "https://graph.microsoft.com/Mail.Read",
+      "https://graph.microsoft.com/Mail.Send",
+      "https://graph.microsoft.com/User.Read",
+      "offline_access",
+    ];
+    const callbackRedirectUri = `${Deno.env.get("SUPABASE_URL")}/functions/v1/outlook-oauth-callback`;
+    const adminConsentUrl = new URL(`https://login.microsoftonline.com/${TENANT_ID}/v2.0/adminconsent`);
+    adminConsentUrl.searchParams.set("client_id", CLIENT_ID);
+    adminConsentUrl.searchParams.set("scope", adminConsentScopes.join(" "));
+    adminConsentUrl.searchParams.set("redirect_uri", callbackRedirectUri);
+
+    // Decode state early so the approval page can offer a "Back to CRM" link.
+    let earlyReturnTo = "";
+    if (stateRaw) {
+      try {
+        const decoded = base64UrlDecode(stateRaw);
+        const parsed = JSON.parse(decoded);
+        if (typeof parsed.return_to === "string" && isSafeReturnTo(parsed.return_to)) {
+          earlyReturnTo = parsed.return_to;
+        }
+      } catch { /* ignore — handled again below */ }
+    }
+
     if (error) {
+      // Microsoft surfaces tenant-policy denials as one of these error codes.
+      // See: https://learn.microsoft.com/azure/active-directory/develop/reference-error-codes
+      const approvalErrors = new Set([
+        "consent_required",       // tenant requires admin consent
+        "interaction_required",   // policy needs explicit interaction the user can't provide
+        "admin_consent_required", // explicit admin-consent flag
+        "unauthorized_client",    // sometimes returned when consent policy blocks
+        "access_denied",          // can also be admin-block; we offer the recovery path either way
+      ]);
+      const lowerDesc = errorDesc.toLowerCase();
+      const looksLikeApprovalBlock =
+        approvalErrors.has(error) ||
+        lowerDesc.includes("aadsts65001") || // user/admin has not consented
+        lowerDesc.includes("aadsts900971") ||
+        lowerDesc.includes("approval") ||
+        lowerDesc.includes("admin");
+
+      if (looksLikeApprovalBlock) {
+        console.warn("Outlook approval block:", error, errorDesc);
+        return approvalRequiredHtml({
+          microsoftError: error,
+          microsoftErrorDescription: errorDesc,
+          tenantId: TENANT_ID,
+          scopes: adminConsentScopes,
+          adminConsentUrl: adminConsentUrl.toString(),
+          returnTo: earlyReturnTo,
+        });
+      }
       return htmlResponse("Authorization denied", `Microsoft returned: ${error} — ${errorDesc}`);
     }
     if (!code) return htmlResponse("Missing authorization code", "Microsoft did not return an authorization code.");
