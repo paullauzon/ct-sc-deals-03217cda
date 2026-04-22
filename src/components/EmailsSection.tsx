@@ -592,7 +592,7 @@ function ScheduledStrip({ scheduled, onCancel }: { scheduled: LeadEmail[]; onCan
   );
 }
 
-function ThreadCard({ thread, leadId, lead, expandAllSignal, onSuggestResponses, onReply, onMarkRead, leadName, showMailbox }: { thread: ThreadGroup; leadId: string; lead?: Lead; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; leadName?: string; showMailbox?: boolean }) {
+function ThreadCard({ thread, leadId, lead, expandAllSignal, onSuggestResponses, onReply, onMarkRead, leadName, showMailbox, onOpenFocused }: { thread: ThreadGroup; leadId: string; lead?: Lead; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; leadName?: string; showMailbox?: boolean; onOpenFocused?: () => void }) {
   const isSingleEmail = thread.emails.length === 1;
   const unreadCount = thread.emails.filter(e => e.direction === "inbound" && !e.is_read).length;
   const [open, setOpen] = useState(false);
@@ -708,7 +708,20 @@ function ThreadCard({ thread, leadId, lead, expandAllSignal, onSuggestResponses,
               {formatDate(thread.latestDate)}
             </div>
           </div>
-          <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", open && "rotate-180")} />
+          <div className="flex items-center gap-0.5 shrink-0">
+            {onOpenFocused && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); e.preventDefault(); onOpenFocused(); }}
+                className="h-6 w-6 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                title="Open focused thread view"
+                aria-label="Open focused thread view"
+              >
+                <Maximize2 className="h-3 w-3" />
+              </button>
+            )}
+            <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", open && "rotate-180")} />
+          </div>
         </div>
       </CollapsibleTrigger>
       <CollapsibleContent>
