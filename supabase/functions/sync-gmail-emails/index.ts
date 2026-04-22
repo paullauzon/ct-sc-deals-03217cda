@@ -636,7 +636,19 @@ async function syncOneConnection(
         continue;
       }
 
-      const leadId = await findLeadIdByEmail(supabase, external);
+      let leadId = await findLeadIdByEmail(supabase, external);
+
+      // Round 9 — outbound rep-as-sender repair. The matcher above checks
+      // PRIMARY first; for outbound, the from is internal so the primary tier
+      // returns null. Fall through to recipient-based matching: any to_address
+      // that maps to a known lead wins.
+      if (!leadId && direction === "outbound") {
+        for (const recipient of toList) {
+          const hit = await findLeadIdByEmail(supabase, [recipient]);
+          if (hit) { leadId = hit; break; }
+        }
+      }
+
       if (leadId) {
         stats.matched += 1;
         // Passive coverage expansion: add same-domain colleagues uncovered via this thread.
@@ -646,15 +658,93 @@ async function syncOneConnection(
       const { text, html } = extractBody(msg.payload);
       const preview = (text || html.replace(/<[^>]+>/g, " ")).slice(0, 280).replace(/\s+/g, " ").trim();
 
-      // Round 6 — auto-park noise classes (out-of-office, role-based, calendar)
-      // BEFORE writing as unmatched. We only override when the matcher didn't
-      // already attach the email to a real lead (matched messages always win).
+      // Round 9 — fully wired classification when no lead match.
       let parkedSentinel: string | null = null;
+      let classificationReason = "";
       if (!leadId) {
         const { classifyEmail, sentinelForClass } = await import("../_shared/classify-email.ts");
-        const cls = classifyEmail({ fromAddress: from.address, subject, bodyPreview: preview });
-        parkedSentinel = sentinelForClass(cls);
-        if (parkedSentinel) stats.skipped_internal += 0; // counted via inserted below
+        const { hasListUnsubscribeHeader } = await import("../_shared/classify-email.ts");
+        const { isInternalSender } = await import("../_shared/internal-sender.ts");
+        const { detectFirmUnrelated } = await import("../_shared/firm-unrelated.ts");
+
+        // 1. Memoized noise sender — instant route to role_based.
+        const { data: memo } = await supabase
+          .from("auto_classified_noise_senders")
+          .select("classified_as, reason")
+          .eq("sender", from.address.toLowerCase())
+          .maybeSingle();
+        const memoRow = memo as { classified_as?: string; reason?: string } | null;
+
+        // 2. Noise domain match.
+        let noiseDomainHit = false;
+        const senderDomain = domainOf(from.address);
+        if (senderDomain) {
+          const { data: nd } = await supabase
+            .from("email_noise_domains")
+            .select("domain")
+            .eq("domain", senderDomain)
+            .maybeSingle();
+          noiseDomainHit = !!nd;
+        }
+
+        // 3. Internal sender (rep mailbox forwarding) — route to role_based.
+        const internal = isInternalSender(from.address);
+
+        if (memoRow?.classified_as) {
+          parkedSentinel = memoRow.classified_as;
+          classificationReason = `memoized:${memoRow.reason || "auto_noise"}`;
+        } else if (noiseDomainHit) {
+          parkedSentinel = "role_based";
+          classificationReason = "noise:noise_domain_list";
+        } else if (internal && direction === "inbound") {
+          parkedSentinel = "role_based";
+          classificationReason = "internal:rep_to_rep";
+        } else {
+          // 4. Heuristic classification (calendar / auto-reply / role-based / list-unsubscribe).
+          const cls = classifyEmail({
+            fromAddress: from.address,
+            subject,
+            bodyPreview: preview,
+            hasListUnsubscribeHeader: hasListUnsubscribeHeader(msg),
+          });
+          parkedSentinel = sentinelForClass(cls.class);
+          classificationReason = cls.reason;
+        }
+
+        // 5. Firm-unrelated detection — same-firm-different-person inbound.
+        if (!parkedSentinel && direction === "inbound") {
+          // Build firm domain → lead map (cached per-message; small scan).
+          const { data: firmRows } = await supabase
+            .from("leads")
+            .select("id, email")
+            .is("archived_at", null)
+            .eq("is_duplicate", false)
+            .not("email", "is", null);
+          const firmMap = new Map<string, string>();
+          const knownContacts = new Set<string>();
+          for (const r of (firmRows || []) as Array<{ id: string; email: string | null }>) {
+            const e = (r.email || "").toLowerCase().trim();
+            if (!e || !e.includes("@")) continue;
+            knownContacts.add(e);
+            const d = e.split("@")[1];
+            if (d && !firmMap.has(d)) firmMap.set(d, r.id);
+          }
+          // Augment knownContacts with stakeholders + secondary on the candidate firm
+          const candidateFirmId = firmMap.get(senderDomain);
+          if (candidateFirmId) {
+            const { data: stakes } = await supabase
+              .from("lead_stakeholders").select("email").eq("lead_id", candidateFirmId);
+            for (const s of (stakes || []) as Array<{ email: string | null }>) {
+              const e = (s.email || "").toLowerCase().trim();
+              if (e) knownContacts.add(e);
+            }
+          }
+          const fu = detectFirmUnrelated(from.address, knownContacts, firmMap);
+          if (fu.matched) {
+            parkedSentinel = "firm_unrelated";
+            classificationReason = `firm_unrelated:${fu.firm_domain}`;
+          }
+        }
       }
 
       const emailDate = dateRaw ? new Date(dateRaw).toISOString() :
@@ -687,6 +777,12 @@ async function syncOneConnection(
           if (target.lead_id && target.lead_id !== "unmatched" && (bounceCount ?? 0) >= 2) {
             await supabase.from("lead_email_metrics")
               .upsert({ lead_id: target.lead_id, email_quarantined: true, updated_at: new Date().toISOString() }, { onConflict: "lead_id" });
+            // Round 9 — also add bounce recipient to global send suppression
+            await supabase.from("email_send_suppression").upsert({
+              email: bounce.recipient,
+              reason: `auto:hard_bounce_x${bounceCount}`,
+              source_lead_id: target.lead_id,
+            }, { onConflict: "email" });
           }
         }
       }
@@ -711,6 +807,9 @@ async function syncOneConnection(
         is_read: !(msg.labelIds || []).includes("UNREAD"),
         send_status: bounce ? "failed" : "sent",
         bounce_reason: bounce?.reason ?? "",
+        classification_reason: leadId
+          ? (direction === "outbound" ? "outbound_recipient_match" : "matched_participant")
+          : classificationReason,
         raw_payload: { gmail_label_ids: msg.labelIds ?? [], ...(parkedSentinel ? { auto_parked: parkedSentinel } : {}) },
       };
 

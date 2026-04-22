@@ -226,6 +226,27 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Round 9 — global send-suppression check across every recipient.
+    const allRecipients = [...to, ...cc, ...bcc].map((a) => a.toLowerCase().trim()).filter(Boolean);
+    const forceSuppressed = (body as Record<string, unknown>).force_suppressed === true;
+    if (allRecipients.length > 0 && !forceSuppressed) {
+      const { data: supRows } = await supabase
+        .from("email_send_suppression")
+        .select("email, reason")
+        .in("email", allRecipients);
+      const suppressed = (supRows || []) as Array<{ email: string; reason: string }>;
+      if (suppressed.length > 0) {
+        return new Response(JSON.stringify({
+          ok: false,
+          error: "recipient_suppressed",
+          message: `Recipient suppressed: ${suppressed.map(s => s.email).join(", ")}`,
+          suppressed_recipients: suppressed,
+        }), {
+          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const token = await getValidOutlookToken(connection_id);
 
     const fromAddress = conn.email_address as string;
