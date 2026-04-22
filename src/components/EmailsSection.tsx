@@ -176,6 +176,9 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   const [activeSequenceSteps, setActiveSequenceSteps] = useState<Set<string>>(new Set());
   const [recapOpen, setRecapOpen] = useState(false);
   const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
+  // Round 5 — suppression status + per-lead noise filters
+  const [suppression, setSuppression] = useState<{ quarantined: boolean; unsubscribed: boolean; bounceCount: number; lastBounceAt: string | null } | null>(null);
+  const [hideFilters, setHideFilters] = useState<Array<{ pattern: string; type: string }>>([]);
 
   useEffect(() => {
     let cancelled = false;
