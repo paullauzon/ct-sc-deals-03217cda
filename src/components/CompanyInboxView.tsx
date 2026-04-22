@@ -351,6 +351,17 @@ export function CompanyInboxView() {
                           disabled={busy === e.id}
                           onPick={(leadId) => claim(e.id, leadId, e.from_address, e.from_name)}
                         />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-muted-foreground"
+                          disabled={busy === e.id}
+                          onClick={() => setAside(e.id, e.from_address)}
+                          title="Set aside as firm activity — keeps it visible on related deal-rooms but removes it from unmatched"
+                        >
+                          <Archive className="h-3 w-3 mr-1.5" />
+                          Set aside (firm activity)
+                        </Button>
                       </div>
                     </li>
                   ))}
