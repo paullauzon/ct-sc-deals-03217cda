@@ -560,20 +560,15 @@ function ThreadCard({ thread, leadId, expandAllSignal, onSuggestResponses, onRep
         </div>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="pl-4 space-y-1 border-l-2 border-border ml-3 mt-1 mb-2">
-          {/* AI thread analysis */}
-          <ThreadAiStrip
-            threadId={thread.threadId}
-            leadId={leadId}
-            threadEmailCount={thread.emails.length}
-            threadLatestDate={thread.latestDate}
-            onUseDraft={handleAiDraft}
-            replyAnchor={replyAnchor}
-          />
-          {thread.emails.map((email) => (
-            <EmailRow key={email.id} email={email} compact expandAllSignal={expandAllSignal} onSuggestResponses={onSuggestResponses} onReply={onReply} onMarkRead={onMarkRead} showMailbox={showMailbox} />
-          ))}
-        </div>
+        <ExpandedThreadView
+          lead={(typeof window !== "undefined" ? (window as any).__currentLead : undefined) as Lead | undefined}
+          threadId={thread.threadId}
+          threadSubject={thread.subject}
+          emails={thread.emails as any}
+          threadLatestDate={thread.latestDate}
+          onReply={onReply}
+          onMarkRead={onMarkRead}
+        />
       </CollapsibleContent>
     </Collapsible>
   );
