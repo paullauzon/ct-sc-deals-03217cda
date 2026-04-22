@@ -240,8 +240,6 @@ export function EmailTabHeader({ lead, emails, threadCount, onCompose, onSeeAllS
       {/* KPI strip */}
       <div className="rounded-md border border-border bg-secondary/30 px-1 py-1 flex flex-wrap items-stretch divide-x divide-border">
         <KpiTile label="Threads" value={String(stats.threads)} />
-      <div className="rounded-md border border-border bg-secondary/30 px-1 py-1 flex flex-wrap items-stretch divide-x divide-border">
-        <KpiTile label="Threads" value={String(stats.threads)} />
         <KpiTile label="Emails" value={String(stats.total)} hint={`${stats.sent} sent · ${stats.received} received`} />
         <KpiTile
           label="Open rate"
