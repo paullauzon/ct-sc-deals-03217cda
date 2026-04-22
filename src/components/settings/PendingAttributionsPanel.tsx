@@ -91,6 +91,28 @@ export function PendingAttributionsPanel() {
   const accept = async (s: Suggestion) => {
     setBusy(s.id);
     try {
+      // Round 9 — noise-domain conflict prompt. If the sender's domain is on
+      // the noise list, accepting effectively endorses this sender as real
+      // mail. Confirm and remove the noise rule so future syncs don't keep
+      // routing them away.
+      if (s.reason !== "intermediary_candidate" && s.sender_domain) {
+        const { data: noiseHit } = await supabase
+          .from("email_noise_domains")
+          .select("domain")
+          .eq("domain", s.sender_domain)
+          .maybeSingle();
+        if (noiseHit) {
+          const ok = window.confirm(
+            `@${s.sender_domain} is currently on the noise list. Accepting will REMOVE this domain from noise so future emails route normally. Continue?`
+          );
+          if (!ok) {
+            setBusy(null);
+            return;
+          }
+          await supabase.from("email_noise_domains").delete().eq("domain", s.sender_domain);
+          toast.message(`Removed @${s.sender_domain} from noise list`);
+        }
+      }
       // Round 7 — intermediary candidates flag the sender on every existing
       // stakeholder row instead of routing emails.
       if (s.reason === "intermediary_candidate") {

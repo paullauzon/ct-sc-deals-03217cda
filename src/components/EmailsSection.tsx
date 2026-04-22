@@ -53,7 +53,26 @@ interface LeadEmail {
   ai_drafted?: boolean;
   email_type?: string;
   sequence_step?: string | null;
+  classification_reason?: string | null;
 }
+
+// Round 9 — one-character chip per classification family.
+function classificationChip(reason: string | null | undefined): { letter: string; tone: string; tooltip: string } | null {
+  if (!reason) return null;
+  const r = reason.toLowerCase();
+  if (r.startsWith("matched_participant") || r.startsWith("overlap_tier")) return null; // normal match — no chip
+  if (r.startsWith("outbound_recipient_match")) return null;
+  if (r.startsWith("thread")) return { letter: "T", tone: "text-muted-foreground", tooltip: `Thread continuity · ${reason}` };
+  if (r.startsWith("forward")) return { letter: "F", tone: "text-muted-foreground", tooltip: `Forwarded sender extracted · ${reason}` };
+  if (r.startsWith("internal")) return { letter: "I", tone: "text-muted-foreground", tooltip: `Internal sender · ${reason}` };
+  if (r.startsWith("firm_unrelated")) return { letter: "U", tone: "text-muted-foreground", tooltip: `Firm-unrelated · ${reason}` };
+  if (r.startsWith("noise") || r.startsWith("memoized") || r.startsWith("auto_reply") || r.startsWith("calendar")) {
+    return { letter: "N", tone: "text-muted-foreground", tooltip: `Noise · ${reason}` };
+  }
+  if (r.includes("cc")) return { letter: "C", tone: "text-muted-foreground", tooltip: `CC overlap · ${reason}` };
+  return null;
+}
+
 
 /** Compute thread reply status for the header pill. */
 function getThreadStatus(emails: LeadEmail[], leadName?: string): { label: string; tone: "neutral" | "muted" | "success" | "auto" } | null {
@@ -908,6 +927,18 @@ function EmailRow({ email, compact, expandAllSignal, onSuggestResponses, onReply
                 <ArrowDownLeft className="h-2.5 w-2.5" />Forwarded
               </Badge>
             )}
+            {(() => {
+              const chip = classificationChip(email.classification_reason);
+              if (!chip) return null;
+              return (
+                <span
+                  className={cn("inline-flex items-center justify-center h-4 w-4 rounded border border-border text-[9px] font-mono font-semibold shrink-0", chip.tone)}
+                  title={chip.tooltip}
+                >
+                  {chip.letter}
+                </span>
+              );
+            })()}
           </div>
           {!compact && (
             <div className="text-[10px] text-muted-foreground truncate">
