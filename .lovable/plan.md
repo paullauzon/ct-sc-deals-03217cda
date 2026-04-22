@@ -1,104 +1,125 @@
 
 
-# Round 6 — the deepest layer: noise classes, thread integrity, and the long tail
+# Round 7 — Retroactive cleanup, broader noise detection, and the rep-as-sender loop
 
-The numbers from the live audit show where the remaining 20,992 unmatched emails actually come from. Most aren't "missing rules" — they're **distinct categories of email that need their own handling lane**, not a single "unmatched" bucket.
+The data exposes a hard truth: **every Round 1-6 fix is forward-only.** 22,685 historical messages still rot in `unmatched`. And the noise classifier I shipped catches obvious patterns but misses ~80% of the real-world newsletter traffic.
 
-## What the data says
+## What the live audit reveals
 
-| Category | Count | Today's behavior | Problem |
-|---|---:|---|---|
-| Role-based senders (info@, hello@, no-reply@) | **6,103** | Stuck in unmatched | Will never be claimable; pure noise |
-| Out-of-office auto-replies | **1,097** | Stuck in unmatched | Should auto-park, not pollute |
-| Calendar invites (Google/Outlook) | **470** | Stuck in unmatched | Already handled via Calendly path |
-| CC-only matches to known leads | **994** | Refused (strict participant rule) | Should route, not refuse |
-| Unmatched on a known thread | **132** | Refused | Pure auto-rescue, zero risk |
-| Threads split across 2+ leads | **15 threads, ~80 msgs** | Both leads see partial context | Cross-deal contamination |
-| Forwarded "Fwd:" with original sender | **103** | Attributed to forwarder, not orig | Wrong sender = wrong attribution |
-
-That's **~8,800 unmatched messages** that have a deterministic right answer we're not yet executing.
+| Finding | Count | Root cause |
+|---|---:|---|
+| Still in `unmatched` | **22,685** | Backfill never ran on historical rows — only new sync inserts get classified |
+| Unmatched threads with a known-lead participant | **10,671** | Round 6 thread-continuity helper exists but was never invoked on the backlog |
+| "Genuine unknown" senders that are actually newsletters | **~11,000** | Regex misses `announcements@`, `marketingops@`, `insights@`, `customerservice@`, `preqin.marketing@`, `news.*` subdomains |
+| Internal sender (`adam.haile@sourcecodeals.com` etc.) sitting in unmatched | dozens | Rep-as-sender path only matches via outbound; inbound replies from internal team aren't claimed |
+| `bounce_reason` populated but `email_quarantined` still false | 62 | The metric trigger updates `total_bounces` but never flips the quarantine flag |
+| Stakeholders flagged intermediary | **0** | Round 5 UI shipped, but nobody has used it — auto-suggest never proposes intermediaries |
+| Per-lead noise filters in use | **0** | Built and never adopted — needs a discoverable surface |
+| Firm-activity set-asides | **0** | Same — no in-context prompt to use it |
 
 ## What to build
 
-### 1. Thread-continuity auto-claim (132 messages, zero-risk)
-If an email lands `unmatched` but its `thread_id` already maps to exactly one non-duplicate active lead, claim it to that lead automatically. No human review needed — thread membership IS the proof.
-- Add to `rematch-unmatched-emails`: pre-pass that resolves these BEFORE any sender-domain logic
-- Skip if thread spans 2+ leads (those are case #5 below)
-- Honor `is_intermediary` — never auto-claim if the sender is flagged
+### 1. One-click historical backfill ("Reclaim the unmatched backlog")
+A new admin-only edge function `reclaim-unmatched-backlog` that runs the full Round 6 pipeline against every existing `unmatched` row in chunks of 500:
+- Re-classify with the (newly expanded) noise detector → route to sentinels
+- Run thread-continuity auto-claim → 10,671 threads get resolved
+- Run forwarded-sender extraction → ~108 reattributed
+- Run CC-participant routing → backlog cleared
+- Honor `is_intermediary` skips throughout
+- Emit a single progress row in `cron_run_log` so the UI can poll
+- New "Reclaim backlog" button in `MailboxSettings` showing live counts: "22,685 unmatched → re-process now"
 
-### 2. CC participant routing (994 messages)
-The strict matcher only checks `from_address` overlap. But if a known lead's primary email appears in `cc_addresses`, the email IS about that deal — the rep was looped in.
-- Extend `safe-claim-email` participant logic: CC counts as overlap
-- Add a daily cron pass `auto-attribute-cc-matches` that handles existing backlog
-- Confidence scoring: from-match > to-match > cc-match — log the level used
+### 2. Expanded noise classifier (the 11,000-newsletter problem)
+Today's regex catches `info@`, `sales@`, `noreply@`. Real noise looks like `announcements@news.mcguirewoods.net`, `marketingops@spglobal.com`, `preqin.marketing@preqin.blackrock.com`. Add three additional detection layers:
+- **Marketing subdomain detection**: any sender from `*.news.*`, `*.marketing.*`, `*.email.*`, `*.mail.*`, `newsletter.*`, `mailer.*` subdomains → `role_based`
+- **Marketing-prefix locals**: `announcements@`, `insights@`, `customerservice@`, `preqin.marketing@`, `marketingops@`, `events@`, `webinar@`, `update*@`, `digest@`, `subscriptions@`, `unsubscribe@` → `role_based`
+- **List-Unsubscribe header presence**: any inbound message carrying a `List-Unsubscribe` header in `raw_payload` is by definition bulk mail → `role_based` (this is the most reliable signal RFC 2369 provides)
+- **High-volume sender memory**: once a sender hits the high-volume threshold (already detected in Round 6), a row in a new `auto_classified_noise_senders` table makes the classification permanent for that sender — future messages route to `role_based` without re-checking heuristics
 
-### 3. Auto-park noise classes (8,200 messages combined)
-Three classes need their own non-claimable destinations, not the unmatched queue:
-- **`lead_id='auto_reply'`** sentinel for out-of-office (subject regex match at sync time). Visible in deal-room as a small "1 auto-reply" chip but doesn't pollute metrics.
-- **`lead_id='role_based'`** sentinel for role addresses (info@, sales@, no-reply@, etc.) when no thread continuity exists. Hidden by default in Company Inbox; toggle to view.
-- **Calendar invite handling**: route to `firm_activity` if the firm domain matches an active lead, else `role_based`.
+### 3. Internal-team sender claim path
+When the `from_address` is on an internal domain (`captarget.com`, `sourcecodeals.com`) and the message has a `thread_id` belonging to a known lead, claim it to that lead. When the thread is unknown, fall back to: if `to_addresses` contains a known-lead email, claim it there. If both fail, route to `role_based` (internal newsletter, status updates, etc.) NOT `unmatched`.
+- New helper `is_internal_sender(email)` reads from `internal_domains` config
+- Wire into both `rematch-unmatched-emails` and the sync functions
 
-Sync functions detect at insert time and route directly — no human action required.
+### 4. Quarantine flag auto-flip
+Today's `update_lead_email_metrics` trigger increments `total_bounces` but never flips `email_quarantined`. Add a side-effect:
+- After 2 hard bounces in 30 days → set `email_quarantined=true` automatically
+- After 1 hard bounce + zero opens in 90 days → quarantine
+- After a `complained` event (List-Unsubscribe-Post or reported-as-spam in headers) → quarantine immediately
+- Surface in `EmailsSection` suppression banner with the AUTOMATIC reason: "Quarantined automatically — 2 bounces in 30 days. Review and lift?"
 
-### 4. Forwarded-email original-sender extraction (103 messages)
-When subject starts with `Fwd:` / `Fw:`, parse `body_text` for the standard "From: name <email>" header block and use THAT for participant matching, not the forwarder.
-- New helper `extract-original-sender.ts` shared util
-- Used by both `rematch-unmatched-emails` and the sync functions for inbound only
-- Visible in UI as a small "forwarded by {name}" badge on the email row
+### 5. Auto-suggest intermediaries (the discovery problem)
+Round 5's intermediary flag has zero usage because nobody knows when to apply it. Add a daily cron `auto-suggest-intermediaries` that scans for any sender appearing as a stakeholder (or sender) on **3+ active leads** across **2+ different firm domains** in the last 60 days and creates a row in `pending_attribution_suggestions` with reason `intermediary_candidate`. The existing `PendingAttributionsPanel` already handles UI — just add a new `kind` discriminator so the action routes to "Mark as intermediary" instead of "Promote to stakeholder".
 
-### 5. Split-thread reconciliation (15 threads, the cross-deal contamination)
-The CT-328 / CT-412 / CT-273 cluster shows one Gmail thread carrying messages attributed to 3 different leads. Today both deal-rooms see only their slice. The real fix:
-- New `lead_emails.canonical_thread_lead_id` column — the "primary owner" of the thread
-- Daily cron `consolidate-split-threads`: for each split thread, pick the lead with the most messages OR the earliest message, set `canonical_thread_lead_id` on every message in the thread
-- Deal-room shows the full thread (read-only on non-canonical leads) with a "Thread also seen on CT-XXX" link
-- The split itself is preserved (each message keeps its own `lead_id`) but the **view** is unified
+### 6. Discoverable per-lead noise filters
+Per-lead filters (Round 5) have zero adoption because they're invisible. Add a small inline action on every email row in `EmailsSection`: when a sender contributes ≥3 messages to a lead and is also in unmatched on other leads, show a chevron menu with "Hide all from {sender} on this deal." One click writes a `lead_email_filters` row.
 
-### 6. Sender-promotion guardrail
-Today the Company Inbox "Route to {lead}" button optionally promotes the sender to a stakeholder. Two missing protections:
-- If the sender's domain is on the noise list, refuse promotion
-- If the sender is an `is_intermediary` on ANY other lead, surface a confirmation: "This contact is flagged as an intermediary on CT-XXX — promote anyway?"
+### 7. Discoverable firm-activity set-aside
+Same problem as #6 — `firm_activity_emails` table has 0 rows because the set-aside button is buried. Add a **right-click context menu** on email rows (and a kebab menu for accessibility) with three actions:
+- "Set aside as firm activity" (creates `firm_activity_emails` row, hides from this lead)
+- "Mark as noise — never attribute again" (adds sender to `email_noise_domains` if first time, removes the message)
+- "Move to different deal…" (opens existing routing dialog)
 
-### 7. Lead-deletion cascade for `firm_activity` and the new sentinels
-When a lead is hard-deleted (rare but happens), its `firm_activity_emails` entries become orphans. Same will apply to `auto_reply` and `role_based` once added.
-- Daily janitor extension: also delete `firm_activity_emails` rows whose underlying `lead_emails.id` is gone (currently 0, but the pattern will recur)
+### 8. Quarantine outbound to known-bounced addresses *across* leads
+Today's quarantine is per-lead. If `john@acme.com` hard-bounced on Deal A, and a rep tries to email him on Deal B (he's a stakeholder elsewhere), nothing stops them. Add a global `email_send_suppression` table indexed by lowercase email, populated by:
+- Hard bounce events from any lead
+- Manual additions via "Suppress sender globally" action
+- Have `send-gmail-email` and `send-outlook-email` refuse if the recipient appears in this table (with override for admins)
 
-### 8. Bulk action on pending suggestions
-The `auto-suggest-firm-attributions` job has produced 8 pending suggestions. The panel today only supports single accept/reject. With the daily cron filling it up, reps need:
-- "Accept all from this sender" (one-click clear all 8 from `roman@duedilio.com` if accepted)
-- "Reject all from domain {x}" (mark sender as noise + reject all suggestions in one shot)
+### 9. Show the "set-aside firm activity" inside the deal-room
+The `FirmActivityCard` exists in the right rail. Two missing affordances:
+- An "Undo set-aside" button on each card (returns email to `unmatched` or its prior `lead_id`)
+- A daily count badge on the deal-room header tab so reps see "12 firm activity messages" without scrolling
 
-### 9. Inbound rate-limit early warning
-`lead_email_metrics.email_quarantined` only flips after 2+ bounces. But a sender hitting 50+ unmatched emails in 24h is almost certainly automated — newsletter, monitoring tool, abuse.
-- New view `v_high_volume_unmatched_senders` (count by sender, last 24h)
-- Surface in the Mailboxes screen: "These 4 senders sent 200+ messages in 24h — add to noise list?"
+### 10. Audit log for every classification decision
+Today, when a message gets auto-routed to `role_based` or `firm_activity`, there's no record of WHY. When something is misclassified, debugging is impossible. Add lightweight logging to `cron_run_log` per batch (already exists), and a per-message JSON field `classification_reason` on `lead_emails`:
+- Values like `noise:role_based_local`, `noise:list_unsubscribe_header`, `noise:high_volume_sender`, `thread_continuity:lead_X`, `cc_overlap:lead_X`, `forwarded_sender:lead_X`, `internal_sender:lead_X`
+- Surfaced as a tiny chip on the email row in `CompanyInboxView` for transparency
+- Also appears in the `EmailsSection` for any message flagged `firm_activity` so reps can see why
 
-## What I deliberately do NOT recommend
+### 11. Two-way sync with `email_noise_domains` corrections
+When a rep accepts a routing in `PendingAttributionsPanel`, that sender's domain might be in `email_noise_domains` from a prior bad addition. We should refuse the noise rule conflict and prompt: "This domain was previously marked as noise. Routing this email will remove the domain from the noise list. Continue?" Prevents oscillation.
 
-- **Auto-extracting forwarded original sender for OUTBOUND** — we know who sent it
-- **Auto-merging split threads into one lead** — preserves audit trail to keep messages where they were originally claimed
-- **AI/LLM classification of "is this an auto-reply"** — the regex catches 95%+ for free; not worth API cost
-- **Per-mailbox routing rules** (e.g. "everything from this Gmail account → Captarget")  — the brand inference from lead context already works
+### 12. Daily "attribution health" digest
+A new `daily-attribution-health` cron emits one summary to `cron_run_log` covering:
+- Unmatched count delta (yesterday vs today)
+- Auto-claimed count by tier (thread / from / to / cc)
+- Newly quarantined senders / leads
+- Pending intermediary suggestions awaiting review
+- Top 5 high-volume senders that should probably be marked noise
+
+Surfaced as a single "Attribution health" card in `MailboxSettings` showing the last 7 days as a sparkline. Gives the team observability without needing to read the database.
+
+## What I deliberately do NOT recommend (still)
+
+- **AI-based classification of email purpose** — the rules cover 95%+ at zero cost
+- **Auto-removing leads when a sender is reclassified as intermediary** — would erase audit trail
+- **Auto-merging the `firm_activity` rows back into `unmatched` when a noise domain is removed** — keep the historical decision, just stop applying it forward
+- **Gmail/Outlook label-based filtering** — provider-specific, brittle; semantic detection is better
+- **Per-rep mailbox routing** — already rejected in Round 6, still applies
 
 ## Files
 
 **New:**
-- 1 migration: add `canonical_thread_lead_id` column to `lead_emails`; reserve `auto_reply` and `role_based` as protected lead_id sentinels
-- `supabase/functions/_shared/extract-original-sender.ts` (forwarded-email parser)
-- `supabase/functions/_shared/classify-email.ts` (noise-class detector: role-based, auto-reply, calendar)
-- `supabase/functions/auto-attribute-cc-matches/index.ts` (one-time + daily cron)
-- `supabase/functions/consolidate-split-threads/index.ts` (daily cron)
+- 1 migration: add `classification_reason` text column to `lead_emails`; create `auto_classified_noise_senders` (sender, classified_at, classified_as, message_count) and `email_send_suppression` (email, reason, added_at, added_by) tables; reserve constraints
+- `supabase/functions/reclaim-unmatched-backlog/index.ts` — chunked re-processor (admin-triggered + optional weekly cron)
+- `supabase/functions/auto-suggest-intermediaries/index.ts` — daily cron
+- `supabase/functions/daily-attribution-health/index.ts` — daily digest cron
+- `supabase/functions/_shared/internal-sender.ts` — internal-domain helper
 
 **Edited:**
-- `supabase/functions/rematch-unmatched-emails/index.ts` — thread-continuity pre-pass + forwarded-sender extraction + intermediary skip
-- `supabase/functions/sync-gmail-emails/index.ts` + `sync-outlook-emails/index.ts` — auto-park noise classes at insert time
-- `supabase/functions/_shared/claim-email.ts` — CC overlap counts as match (with logged confidence level)
-- `supabase/functions/safe-claim-email/index.ts` — guardrail: refuse promote if sender is intermediary or noise
-- `supabase/functions/cleanup-unmatched-noise/index.ts` — extend to also clean orphan `firm_activity_emails`
-- `src/components/CompanyInboxView.tsx` — show "auto-reply" / "role-based" filter chips, intermediary confirmation dialog
-- `src/components/settings/PendingAttributionsPanel.tsx` — bulk accept/reject by sender or domain
-- `src/components/MailboxSettings.tsx` — high-volume-sender warning panel
-- `src/components/EmailsSection.tsx` — "forwarded by {name}" badge, "thread also on CT-XXX" disclosure for split threads
-- 2 cron schedules: `auto-attribute-cc-matches-daily` (4:30 AM UTC), `consolidate-split-threads-daily` (4:45 AM UTC)
+- `supabase/functions/_shared/classify-email.ts` — marketing subdomain rules, marketing-prefix locals, List-Unsubscribe header detection
+- `supabase/functions/_shared/claim-email.ts` — checks `email_send_suppression` before allowing outbound; logs `classification_reason` on every claim
+- `supabase/functions/sync-gmail-emails/index.ts` + `sync-outlook-emails/index.ts` — pass List-Unsubscribe header to classifier; route internal-sender messages; check `auto_classified_noise_senders`
+- `supabase/functions/rematch-unmatched-emails/index.ts` — internal-sender pass; quarantine-flag side effects
+- `supabase/functions/send-gmail-email/index.ts` + `send-outlook-email/index.ts` — also check `email_send_suppression` (global) in addition to per-lead quarantine
+- `supabase/functions/auto-suggest-firm-attributions/index.ts` — handle "noise domain conflict" gracefully
+- `src/components/MailboxSettings.tsx` — "Reclaim 22,685 unmatched" button + "Attribution health" 7-day sparkline card
+- `src/components/EmailsSection.tsx` — kebab menu (Set aside / Mark as noise / Move to deal); classification-reason chip on firm-activity rows; auto-quarantine reason in suppression banner
+- `src/components/CompanyInboxView.tsx` — classification-reason chip on every row for transparency
+- `src/components/dealroom/RightRailCards.tsx` — "Undo set-aside" + count badge on FirmActivityCard
+- `src/components/settings/PendingAttributionsPanel.tsx` — handle `intermediary_candidate` kind with "Mark as intermediary" action; noise-conflict prompt on accept
+- 3 cron schedules: `reclaim-unmatched-backlog-weekly` (Sunday 03:00 UTC), `auto-suggest-intermediaries-daily` (05:00 UTC), `daily-attribution-health` (06:00 UTC)
 
-No schema changes to `leads` or `lead_email_metrics`. No backfill of historical metrics — the existing triggers handle reassignments.
+No schema changes to `leads`. No backfill of `lead_email_metrics` totals — they remain accurate via the existing claim trigger that fires when historical rows get reclaimed.
 
