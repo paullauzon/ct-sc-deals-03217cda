@@ -362,6 +362,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
                 <ThreadCard
                   key={thread.threadId}
                   thread={thread}
+                  leadId={leadId}
                   expandAllSignal={expandAllSignal}
                   onSuggestResponses={(email, objections) => setResponseDialog({ email, objections })}
                   onReply={onReply}
