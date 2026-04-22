@@ -348,6 +348,51 @@ export type Database = {
           },
         ]
       }
+      email_field_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          email_id: string
+          field_key: string
+          field_label: string
+          id: string
+          lead_id: string
+          new_value: string
+          previous_value: string
+          quote: string
+          source_excerpt: string
+          thread_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          email_id: string
+          field_key: string
+          field_label?: string
+          id?: string
+          lead_id: string
+          new_value?: string
+          previous_value?: string
+          quote?: string
+          source_excerpt?: string
+          thread_id?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          email_id?: string
+          field_key?: string
+          field_label?: string
+          id?: string
+          lead_id?: string
+          new_value?: string
+          previous_value?: string
+          quote?: string
+          source_excerpt?: string
+          thread_id?: string
+        }
+        Relationships: []
+      }
       email_sync_runs: {
         Row: {
           connection_id: string
