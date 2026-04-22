@@ -6,11 +6,61 @@ function htmlResponse(title: string, detail = "You can close this tab.", redirec
   const safeRedirect = redirect ? `<meta http-equiv="refresh" content="2;url=${redirect}" />` : "";
   return new Response(
     `<!doctype html><html><head><meta charset="utf-8" />${safeRedirect}<title>${title}</title>
-    <style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#0a0a0a;color:#fafafa;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+    <style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#0a0a0a;color:#fafafa;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px}
     .card{max-width:480px;padding:32px;border:1px solid #262626;border-radius:8px;text-align:center}
     h1{font-size:18px;font-weight:600;margin:0 0 8px}p{color:#a3a3a3;font-size:14px;margin:0;line-height:1.5}</style></head>
     <body><div class="card"><h1>${title}</h1><p>${detail}</p></div></body></html>`,
     { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
+  );
+}
+
+function approvalRequiredHtml(opts: {
+  microsoftError: string;
+  microsoftErrorDescription: string;
+  tenantId: string;
+  scopes: string[];
+  adminConsentUrl: string;
+  returnTo: string;
+}) {
+  const scopesList = opts.scopes.map((s) => `<li><code>${s}</code></li>`).join("");
+  return new Response(
+    `<!doctype html><html><head><meta charset="utf-8" /><title>Outlook approval required</title>
+    <style>
+      body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#0a0a0a;color:#fafafa;margin:0;padding:32px;display:flex;align-items:flex-start;justify-content:center;min-height:100vh}
+      .card{max-width:640px;width:100%;padding:32px;border:1px solid #262626;border-radius:12px}
+      h1{font-size:20px;font-weight:600;margin:0 0 12px}
+      h2{font-size:13px;font-weight:600;margin:24px 0 8px;color:#fafafa;text-transform:uppercase;letter-spacing:0.04em}
+      p{color:#a3a3a3;font-size:14px;line-height:1.6;margin:0 0 12px}
+      ul{color:#a3a3a3;font-size:13px;line-height:1.8;padding-left:20px;margin:0}
+      code{background:#171717;padding:2px 6px;border-radius:4px;font-size:12px;color:#fafafa}
+      pre{background:#171717;padding:12px;border-radius:6px;font-size:12px;color:#a3a3a3;overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin:8px 0 0}
+      .actions{display:flex;gap:8px;margin-top:24px;flex-wrap:wrap}
+      a.btn{display:inline-flex;align-items:center;padding:10px 16px;border-radius:6px;font-size:13px;font-weight:500;text-decoration:none;transition:background 0.15s}
+      a.primary{background:#fafafa;color:#0a0a0a}a.primary:hover{background:#e5e5e5}
+      a.secondary{background:transparent;color:#fafafa;border:1px solid #404040}a.secondary:hover{background:#171717}
+      .meta{font-size:11px;color:#525252;margin-top:16px}
+    </style></head>
+    <body><div class="card">
+      <h1>Your organization requires admin approval</h1>
+      <p>Microsoft blocked this connection because the SourceCo tenant doesn't allow individual users to consent to Outlook mailbox access. <strong>This is a tenant policy, not a CRM bug.</strong> A tenant admin needs to approve the app once — then every user can connect normally.</p>
+
+      <h2>What the admin does</h2>
+      <p>Open the admin-consent link below in a browser, sign in as a Microsoft tenant admin (e.g. Josh), review the requested permissions, and click <strong>Accept</strong>.</p>
+
+      <h2>Permissions being requested</h2>
+      <ul>${scopesList}</ul>
+
+      <h2>Microsoft's reason</h2>
+      <pre>${opts.microsoftError}: ${opts.microsoftErrorDescription || "(no description)"}</pre>
+
+      <div class="actions">
+        <a class="btn primary" href="${opts.adminConsentUrl}" target="_blank" rel="noopener">Open admin-consent URL</a>
+        ${opts.returnTo ? `<a class="btn secondary" href="${opts.returnTo}">Back to CRM</a>` : ""}
+      </div>
+
+      <div class="meta">Tenant: ${opts.tenantId}</div>
+    </div></body></html>`,
+    { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } },
   );
 }
 
