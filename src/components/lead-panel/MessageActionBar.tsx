@@ -174,6 +174,23 @@ ${html}</div></body></html>`);
           <Link2 className="h-3 w-3" /> Link to deal field
         </Button>
       )}
+      <Button
+        variant="ghost" size="sm"
+        className="h-7 text-[11px] gap-1.5 text-muted-foreground"
+        onClick={handleViewOriginal}
+        title="Open original HTML in a new tab"
+      >
+        <ExternalLink className="h-3 w-3" /> View original
+      </Button>
+      <Button
+        variant="ghost" size="sm"
+        className="h-7 text-[11px] gap-1.5 text-muted-foreground"
+        onClick={handleCopy}
+        title="Copy plain text"
+      >
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+        {copied ? "Copied" : "Copy content"}
+      </Button>
     </div>
   );
 }
