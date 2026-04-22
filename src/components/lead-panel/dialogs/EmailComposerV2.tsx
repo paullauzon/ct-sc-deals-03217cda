@@ -996,6 +996,23 @@ export function EmailComposerV2({
                 </div>
               </PopoverContent>
             </Popover>
+            {/* Phase 8 — Tracking pill */}
+            <button
+              type="button"
+              onClick={() => toggleTracking(!trackingEnabled)}
+              className={cn(
+                "inline-flex items-center gap-1 text-[10px] px-2 h-6 rounded-full border transition-colors",
+                trackingEnabled
+                  ? "border-foreground/30 bg-foreground/5 text-foreground"
+                  : "border-border bg-background text-muted-foreground"
+              )}
+              title={trackingEnabled
+                ? "Open & click tracking ON for this mailbox — click to disable"
+                : "Open & click tracking OFF — click to enable"}
+            >
+              {trackingEnabled ? <Eye className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
+              Tracking: {trackingEnabled ? "ON" : "OFF"}
+            </button>
             {/* Phase 6 — per-email do-not-train toggle for sensitive content */}
             <label
               className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer select-none"
