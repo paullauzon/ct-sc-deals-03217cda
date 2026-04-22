@@ -3,9 +3,11 @@ import { Lead } from "@/types/lead";
 import { supabase } from "@/integrations/supabase/client";
 import { ACTIVE_STAGES, normalizeStage, isClosedStage, computeDaysInStage } from "@/lib/leadUtils";
 import { computeDealHealthScore } from "@/lib/dealHealthUtils";
+import { useEmailHealthFactors } from "@/lib/emailSignals";
 import { Pin, Mail, Calendar, CheckSquare, TrendingUp, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
+import { EmailHighlightsCard } from "@/components/lead-panel/cards/EmailHighlightsCard";
 
 interface Props {
   lead: Lead;
