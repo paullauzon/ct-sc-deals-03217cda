@@ -23,18 +23,19 @@ import {
 import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
 import {
-  Sparkles, Loader2, Save, Send, Mail, Clock, ChevronDown, BookmarkPlus,
-  CalendarIcon, Wand2, Scissors, Plus, Layers, AlertTriangle, RefreshCw,
+  Sparkles, Loader2, Save, Send, Mail, ChevronDown, BookmarkPlus,
+  Wand2, Scissors, Plus, Layers, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { logActivity, bumpStakeholderContact } from "@/lib/activityLog";
 import { toast } from "sonner";
-import { format, addHours, set, addDays } from "date-fns";
+import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
   buildVariableMap, extractVariables, missingVariables,
   resolveVariables, variableLabel, type VariableMap,
 } from "@/lib/emailVariables";
+import { SmartScheduler } from "@/components/lead-panel/SmartScheduler";
 
 interface ReplyContext {
   to?: string;
