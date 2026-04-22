@@ -322,6 +322,27 @@ export function EmailComposerV2({
       save({ lastContactDate: new Date().toISOString().split("T")[0] });
       await logActivity(lead.id, "field_update", `Email sent: ${resolvedSubject}`);
       if (recipients.length > 0) await bumpStakeholderContact(lead.id, recipients);
+      // Phase 6 — capture compose event for the learning loop
+      await logComposeEvent({
+        leadId: lead.id,
+        emailId: (data as any)?.email_id || (data as any)?.id || null,
+        brand: lead.brand,
+        stage: lead.stage,
+        firmType: (lead as any).buyerType || (lead as any).firmAum || "",
+        purpose,
+        draftsOffered: drafts.map(d => ({ approach: d.approach, label: d.label, subject: d.subject, body: d.body })),
+        recommendedApproach,
+        draftPicked: drafts.length === 0 ? "scratch" : drafts[selectedIdx].approach,
+        pickedIndex: drafts.length === 0 ? -1 : selectedIdx,
+        initialSubject: initialSnapshotRef.current.subject,
+        initialBody: initialSnapshotRef.current.body,
+        finalSubject: subject,
+        finalBody: body,
+        sent: true,
+        scheduled: false,
+        doNotTrain,
+        model: "google/gemini-3-flash-preview",
+      });
       toast.success("Email sent");
       onOpenChange(false);
     } catch (e: any) {
@@ -369,6 +390,27 @@ export function EmailComposerV2({
         .select("id")
         .single();
       if (error) throw error;
+      // Phase 6 — capture compose event for scheduled sends as well
+      await logComposeEvent({
+        leadId: lead.id,
+        emailId: (data as any)?.id || null,
+        brand: lead.brand,
+        stage: lead.stage,
+        firmType: (lead as any).buyerType || "",
+        purpose,
+        draftsOffered: drafts.map(d => ({ approach: d.approach, label: d.label, subject: d.subject, body: d.body })),
+        recommendedApproach,
+        draftPicked: drafts.length === 0 ? "scratch" : drafts[selectedIdx].approach,
+        pickedIndex: drafts.length === 0 ? -1 : selectedIdx,
+        initialSubject: initialSnapshotRef.current.subject,
+        initialBody: initialSnapshotRef.current.body,
+        finalSubject: subject,
+        finalBody: body,
+        sent: true,
+        scheduled: true,
+        doNotTrain,
+        model: "google/gemini-3-flash-preview",
+      });
       toast.success(`Scheduled for ${format(when, "EEE, MMM d 'at' h:mm a")}`, {
         action: {
           label: "Undo",
