@@ -25,6 +25,7 @@ import { Calendar } from "@/components/ui/calendar";
 import {
   Sparkles, Loader2, Save, Send, Mail, ChevronDown, BookmarkPlus,
   Wand2, Scissors, Plus, Layers, AlertTriangle, RefreshCw,
+  Eye, EyeOff, ArrowLeftRight, Paperclip, X as XIcon,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { logActivity, bumpStakeholderContact } from "@/lib/activityLog";
@@ -136,6 +137,14 @@ export function EmailComposerV2({
   // Snapshot of the body/subject as the AI delivered it for the selected draft.
   // Used to compute edit-distance when the user finally sends.
   const initialSnapshotRef = useRef<{ subject: string; body: string }>({ subject: "", body: "" });
+
+  // Phase 8 — tracking pref (per-mailbox), stakeholder popover, attachments
+  const [trackingEnabled, setTrackingEnabled] = useState<boolean>(true);
+  const [stakeholderPopOpen, setStakeholderPopOpen] = useState(false);
+  const [stakeholderQuery, setStakeholderQuery] = useState("");
+  const [attachments, setAttachments] = useState<Array<{ name: string; url: string; size: number }>>([]);
+  const [uploadingAtt, setUploadingAtt] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // ───────── Load on open ─────────
   useEffect(() => {
