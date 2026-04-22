@@ -297,6 +297,32 @@ export function CompanyInboxView() {
     }
   };
 
+  const markAsIntermediary = async (sender: string, stakeholderIds: string[]) => {
+    setBusy(`int:${sender}`);
+    try {
+      if (stakeholderIds.length > 0) {
+        const { error } = await supabase
+          .from("lead_stakeholders")
+          .update({ is_intermediary: true, updated_at: new Date().toISOString() })
+          .in("id", stakeholderIds);
+        if (error) throw error;
+      } else {
+        toast.message("No stakeholder rows for this sender yet — flag will apply once added to a deal.");
+      }
+      toast.success(`${sender} marked as intermediary — future emails won't auto-route by sender`);
+      setIntermediaryCandidates(prev => {
+        const next = new Map(prev);
+        const cur = next.get(sender);
+        if (cur) next.set(sender, { ...cur, flagged: true });
+        return next;
+      });
+    } catch (e: any) {
+      toast.error(e.message || "Could not flag intermediary");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 text-center text-sm text-muted-foreground">
