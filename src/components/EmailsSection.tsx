@@ -452,8 +452,11 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     );
   }
 
-  const threads = groupByThread(delivered);
-  const flatEmails = [...delivered].sort((a, b) => new Date(b.email_date).getTime() - new Date(a.email_date).getTime());
+  // Phase 8 — apply search + sequence filter to delivered list
+  const filteredDelivered = delivered.filter(e => filteredEmails.some(fe => fe.id === e.id));
+  const threads = groupByThread(filteredDelivered);
+  const flatEmailsList = [...filteredDelivered].sort((a, b) => new Date(b.email_date).getTime() - new Date(a.email_date).getTime());
+  const focusedThread = focusedThreadId ? threads.find(t => t.threadId === focusedThreadId) : null;
 
   return (
     <div>
@@ -463,10 +466,15 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
       {scheduled.length > 0 && (
         <ScheduledStrip scheduled={scheduled} onCancel={cancelScheduled} />
       )}
+      {(searchQuery || activeSequenceSteps.size > 0) && filteredDelivered.length === 0 && (
+        <p className="text-xs text-muted-foreground/70 italic text-center py-3">
+          No emails match the current filter.
+        </p>
+      )}
       <ScrollArea className="max-h-[480px]">
         <div className="space-y-1.5">
           {flatten
-            ? flatEmails.map((email) => (
+            ? flatEmailsList.map((email) => (
                 <EmailRow
                   key={email.id}
                   email={email}
@@ -489,6 +497,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
                   onMarkRead={markRead}
                   leadName={lead?.name}
                   showMailbox={multipleMailboxes}
+                  onOpenFocused={() => setFocusedThreadId(thread.threadId)}
                 />
               ))}
         </div>
@@ -501,7 +510,6 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
           lead={lead}
           onClose={() => setResponseDialog(null)}
           onUseDraft={(draft) => {
-            // Copy to clipboard so user can paste in Compose
             navigator.clipboard?.writeText(draft.body).then(
               () => toast.success("Draft copied", { description: "Paste it into Compose to send." }),
               () => toast.info("Draft ready", { description: draft.body.slice(0, 60) + "…" })
@@ -509,6 +517,30 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
             setResponseDialog(null);
             if (onCompose) onCompose();
           }}
+        />
+      )}
+
+      {/* Phase 8 — Deal-wide AI recap slide-over */}
+      <DealEmailRecapDialog
+        open={recapOpen}
+        onOpenChange={setRecapOpen}
+        leadId={leadId}
+        leadName={lead?.name}
+      />
+
+      {/* Phase 8 — Focused thread view (back-to-threads) */}
+      {focusedThread && (
+        <FocusedThreadView
+          open={!!focusedThreadId}
+          onOpenChange={(o) => !o && setFocusedThreadId(null)}
+          lead={lead}
+          threadId={focusedThread.threadId}
+          threadSubject={focusedThread.subject}
+          emails={focusedThread.emails as any}
+          threadLatestDate={focusedThread.latestDate}
+          sequenceStep={focusedThread.emails.find(e => e.sequence_step)?.sequence_step}
+          onReply={onReply}
+          onMarkRead={markRead}
         />
       )}
     </div>
