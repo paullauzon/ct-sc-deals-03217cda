@@ -237,7 +237,7 @@ export function UnmatchedInbox() {
             size="sm"
             variant="ghost"
             className="h-8 text-xs"
-            onClick={rematchAll}
+            onClick={handleRematch}
             disabled={rematching || emails.length === 0}
           >
             Re-run matcher
