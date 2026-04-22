@@ -36,6 +36,9 @@ import {
   resolveVariables, variableLabel, type VariableMap,
 } from "@/lib/emailVariables";
 import { SmartScheduler } from "@/components/lead-panel/SmartScheduler";
+import { logComposeEvent } from "@/lib/composeLearning";
+import { Switch } from "@/components/ui/switch";
+import { ShieldOff } from "lucide-react";
 
 interface ReplyContext {
   to?: string;
@@ -127,6 +130,12 @@ export function EmailComposerV2({
   // Add-proof popover
   const [proofOpen, setProofOpen] = useState(false);
   const [proofText, setProofText] = useState("");
+
+  // Phase 6 — learning loop
+  const [doNotTrain, setDoNotTrain] = useState(false);
+  // Snapshot of the body/subject as the AI delivered it for the selected draft.
+  // Used to compute edit-distance when the user finally sends.
+  const initialSnapshotRef = useRef<{ subject: string; body: string }>({ subject: "", body: "" });
 
   // ───────── Load on open ─────────
   useEffect(() => {
@@ -237,6 +246,7 @@ export function EmailComposerV2({
       setSelectedIdx(0);
       setSubject(list[0].subject);
       setBody(list[0].body);
+      initialSnapshotRef.current = { subject: list[0].subject, body: list[0].body };
       toast.success("3 drafts ready");
     } catch (e: any) {
       toast.error(e.message || "Failed to generate drafts");
@@ -250,6 +260,7 @@ export function EmailComposerV2({
     setSelectedIdx(i);
     setSubject(drafts[i].subject);
     setBody(drafts[i].body);
+    initialSnapshotRef.current = { subject: drafts[i].subject, body: drafts[i].body };
   };
 
   // ───────── Inline writing tools ─────────
@@ -311,6 +322,27 @@ export function EmailComposerV2({
       save({ lastContactDate: new Date().toISOString().split("T")[0] });
       await logActivity(lead.id, "field_update", `Email sent: ${resolvedSubject}`);
       if (recipients.length > 0) await bumpStakeholderContact(lead.id, recipients);
+      // Phase 6 — capture compose event for the learning loop
+      await logComposeEvent({
+        leadId: lead.id,
+        emailId: (data as any)?.email_id || (data as any)?.id || null,
+        brand: lead.brand,
+        stage: lead.stage,
+        firmType: (lead as any).buyerType || (lead as any).firmAum || "",
+        purpose,
+        draftsOffered: drafts.map(d => ({ approach: d.approach, label: d.label, subject: d.subject, body: d.body })),
+        recommendedApproach,
+        draftPicked: drafts.length === 0 ? "scratch" : drafts[selectedIdx].approach,
+        pickedIndex: drafts.length === 0 ? -1 : selectedIdx,
+        initialSubject: initialSnapshotRef.current.subject,
+        initialBody: initialSnapshotRef.current.body,
+        finalSubject: subject,
+        finalBody: body,
+        sent: true,
+        scheduled: false,
+        doNotTrain,
+        model: "google/gemini-3-flash-preview",
+      });
       toast.success("Email sent");
       onOpenChange(false);
     } catch (e: any) {
@@ -358,6 +390,27 @@ export function EmailComposerV2({
         .select("id")
         .single();
       if (error) throw error;
+      // Phase 6 — capture compose event for scheduled sends as well
+      await logComposeEvent({
+        leadId: lead.id,
+        emailId: (data as any)?.id || null,
+        brand: lead.brand,
+        stage: lead.stage,
+        firmType: (lead as any).buyerType || "",
+        purpose,
+        draftsOffered: drafts.map(d => ({ approach: d.approach, label: d.label, subject: d.subject, body: d.body })),
+        recommendedApproach,
+        draftPicked: drafts.length === 0 ? "scratch" : drafts[selectedIdx].approach,
+        pickedIndex: drafts.length === 0 ? -1 : selectedIdx,
+        initialSubject: initialSnapshotRef.current.subject,
+        initialBody: initialSnapshotRef.current.body,
+        finalSubject: subject,
+        finalBody: body,
+        sent: true,
+        scheduled: true,
+        doNotTrain,
+        model: "google/gemini-3-flash-preview",
+      });
       toast.success(`Scheduled for ${format(when, "EEE, MMM d 'at' h:mm a")}`, {
         action: {
           label: "Undo",
@@ -778,6 +831,19 @@ export function EmailComposerV2({
                 </div>
               </PopoverContent>
             </Popover>
+            {/* Phase 6 — per-email do-not-train toggle for sensitive content */}
+            <label
+              className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer select-none"
+              title="When ON, this send is excluded from AI learning and pattern stats."
+            >
+              <ShieldOff className="h-3 w-3" />
+              Don't train
+              <Switch
+                checked={doNotTrain}
+                onCheckedChange={setDoNotTrain}
+                className="scale-75 -ml-0.5"
+              />
+            </label>
           </div>
 
           <div className="flex items-center gap-2">

@@ -25,6 +25,7 @@ import { UnmatchedInbox } from "./UnmatchedInbox";
 import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
 import { AutomationHealthPanel } from "./AutomationHealthPanel";
 import { BackfillProgressPanel } from "./BackfillProgressPanel";
+import { AILearningPanel } from "./settings/AILearningPanel";
 
 interface Connection {
   id: string;
@@ -210,6 +211,7 @@ export function MailboxSettings() {
             <TabsTrigger value="unmatched">Unmatched inbox</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
             <TabsTrigger value="automation">Automation</TabsTrigger>
+            <TabsTrigger value="ai-learning">AI Learning</TabsTrigger>
           </TabsList>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -418,6 +420,10 @@ export function MailboxSettings() {
 
         <TabsContent value="automation">
           <AutomationHealthPanel />
+        </TabsContent>
+
+        <TabsContent value="ai-learning">
+          <AILearningPanel />
         </TabsContent>
       </Tabs>
 
