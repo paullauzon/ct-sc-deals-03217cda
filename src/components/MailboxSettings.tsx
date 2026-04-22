@@ -414,6 +414,8 @@ export function MailboxSettings() {
 
           <NoiseRulesPanel />
 
+          <DuplicateLeadsPanel />
+
           <div className="border border-border rounded-lg overflow-hidden">
             {loading ? (
               <div className="p-8 text-center text-sm text-muted-foreground">
