@@ -59,9 +59,10 @@ export function CompanyInboxView() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
 
+  const [previouslySeen, setPreviouslySeen] = useState<Map<string, { leadId: string; leadName: string; count: number }>>(new Map());
+
   const load = async () => {
     setLoading(true);
-    // Build the lookup of "domain -> owners" from active leads + active clients
     const [leadsRes, clientsRes, emailsRes] = await Promise.all([
       supabase
         .from("leads")
@@ -96,7 +97,6 @@ export function CompanyInboxView() {
       ownersByDomain.set(d, list);
     }
 
-    // Group orphans by sender domain, keep only domains that have a known owner
     const orphans = (emailsRes.data || []) as OrphanEmail[];
     const byDomain = new Map<string, OrphanEmail[]>();
     for (const e of orphans) {
@@ -117,6 +117,41 @@ export function CompanyInboxView() {
       .sort((a, b) => b.emails.length - a.emails.length);
 
     setGroups(groups);
+
+    // Build "previously seen" hint: for each unique sender across orphans, find
+    // the lead that has the most prior emails from this exact address.
+    const senders = Array.from(new Set(orphans.map(o => (o.from_address || "").toLowerCase()).filter(Boolean)));
+    const seen = new Map<string, { leadId: string; leadName: string; count: number }>();
+    if (senders.length > 0) {
+      const { data: priorEmails } = await supabase
+        .from("lead_emails")
+        .select("from_address, lead_id")
+        .in("from_address", senders)
+        .neq("lead_id", "unmatched")
+        .limit(2000);
+      const byLeadCount = new Map<string, Map<string, number>>(); // sender -> lead_id -> count
+      for (const r of (priorEmails || []) as Array<{ from_address: string; lead_id: string }>) {
+        const s = (r.from_address || "").toLowerCase();
+        if (!s) continue;
+        let m = byLeadCount.get(s);
+        if (!m) { m = new Map(); byLeadCount.set(s, m); }
+        m.set(r.lead_id, (m.get(r.lead_id) || 0) + 1);
+      }
+      const leadNameById = new Map<string, string>();
+      for (const l of (leadsRes.data || []) as any[]) {
+        leadNameById.set(l.id, l.name || l.email || l.id);
+      }
+      for (const [sender, counts] of byLeadCount) {
+        let bestLead = "", bestCount = 0;
+        for (const [lid, c] of counts) {
+          if (c > bestCount) { bestCount = c; bestLead = lid; }
+        }
+        if (bestLead) {
+          seen.set(sender, { leadId: bestLead, leadName: leadNameById.get(bestLead) || bestLead, count: bestCount });
+        }
+      }
+    }
+    setPreviouslySeen(seen);
     setLoading(false);
   };
 
