@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 
 type Mode = "improve" | "shorten" | "expand" | "add_proof" | "soften" | "strengthen";
 
@@ -29,8 +29,8 @@ const MODE_INSTRUCTIONS: Record<Mode, string> = {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  if (!LOVABLE_API_KEY) {
-    return new Response(JSON.stringify({ error: "LOVABLE_API_KEY missing" }), {
+  if (!OPENAI_API_KEY) {
+    return new Response(JSON.stringify({ error: "OPENAI_API_KEY missing" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -71,11 +71,11 @@ HARD RULES:
 
   let aiResponse: Response;
   try {
-    aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "gpt-5",
         messages: [
           { role: "system", content: sys },
           { role: "user", content: userPrompt },
@@ -83,21 +83,18 @@ HARD RULES:
       }),
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: `gateway fetch failed: ${e instanceof Error ? e.message : e}` }), {
+    return new Response(JSON.stringify({ error: `OpenAI fetch failed: ${e instanceof Error ? e.message : e}` }), {
       status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
   if (aiResponse.status === 429) {
-    return new Response(JSON.stringify({ error: "Rate limit hit — try again in a moment." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-  if (aiResponse.status === 402) {
-    return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "Rate limited, try again shortly." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
   if (!aiResponse.ok) {
     const t = await aiResponse.text();
-    console.error("AI gateway error", aiResponse.status, t);
-    return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error("OpenAI error", aiResponse.status, t);
+    return new Response(JSON.stringify({ error: "AI provider error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   const aiJson = await aiResponse.json();

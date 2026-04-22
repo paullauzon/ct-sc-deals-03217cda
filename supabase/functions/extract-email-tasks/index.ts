@@ -17,7 +17,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
 const JOB_NAME = "extract-email-tasks";
 
 interface ExtractedTask {
@@ -56,24 +56,23 @@ Email body:
 ${trimmed}
 """`;
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model: "gpt-5-mini",
       messages: [
         { role: "system", content: "You extract structured commitments from emails. Output raw JSON only." },
         { role: "user", content: prompt },
       ],
-      temperature: 0.1,
     }),
   });
 
   if (!res.ok) {
-    console.warn("[extract-email-tasks] AI gateway error", res.status);
+    console.warn("[extract-email-tasks] OpenAI error", res.status);
     return [];
   }
   const json = await res.json();

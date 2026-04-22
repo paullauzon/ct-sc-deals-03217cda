@@ -25,7 +25,7 @@ interface EmailLite {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")!;
 
 const STALE_HOURS = 6;
 
@@ -116,14 +116,14 @@ Return STRUCTURED data via the tool. Rules:
 - "hot_flag" true ONLY if there is fresh strong intent (multiple opens in 48h, click on pricing/proposal, or explicit positive reply).
 - "signal_tags" 1-4 short tags like "opened-3x", "no-reply-12d", "asked-pricing", "introduced-decision-maker".`;
 
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiResp = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "gpt-5",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Thread (${emails.length} messages):\n\n${transcript}` },
@@ -156,18 +156,13 @@ Return STRUCTURED data via the tool. Rules:
 
     if (!aiResp.ok) {
       const t = await aiResp.text();
-      console.error("ai gateway error", aiResp.status, t);
+      console.error("OpenAI error", aiResp.status, t);
       if (aiResp.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit. Try again shortly." }), {
+        return new Response(JSON.stringify({ error: "Rate limited, try again shortly." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (aiResp.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Add credits in Settings → Workspace → Usage." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error(`AI gateway returned ${aiResp.status}`);
+      throw new Error(`OpenAI returned ${aiResp.status}`);
     }
 
     const aiData = await aiResp.json();
