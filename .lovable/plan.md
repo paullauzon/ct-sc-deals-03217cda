@@ -1,81 +1,81 @@
 
 
-# Email-attribution audit + system-wide fixes
+# Make the Mailboxes screen self-explanatory
 
-## What I found across the whole DB
+## What's actually confusing today (screenshot-driven audit)
 
-After scanning every lead-email row I found **only a handful of truly broken cases**, but several **systemic patterns** that need addressing now or they'll bite again. Headline numbers:
+1. **"Where is Re-run matcher?"** — It exists, but it's two clicks away inside `Unmatched inbox` tab → header. There is no entry-point or visibility from the Mailboxes tab. A user who hasn't opened that sub-tab would never know it exists.
 
-- **278 leads** have at least one attached email
-- **107 rows** look "suspicious" at first glance (lead's primary email isn't in the participants), but **104 are legitimately attributed** via a registered secondary contact or stakeholder — the person at the firm we deal with isn't the form-filler
-- **3 rows** are truly misattributed (only Nathan Hendrix CT-079 outbound to a banker — actually legitimate prospecting outreach about his deal; the other 2 are the Boyne billing thread I already moved to CT-369 yesterday)
-- **22 leads** have stale `lead_email_metrics` (drift = 176 inbound, 37 outbound) — the trigger doesn't fire when `lead_id` is updated, only on insert
-- **14 emails** are still attached to **3 duplicate leads** (`SC-I-004`→`CT-012`, `SC-I-013`→`CT-039`, `SC-I-016`→`CT-055`) instead of their canonicals
-- **20,296 emails** sit in `unmatched` — most are noise but a portion are claimable with safe exact-email matching
-- **5 corporate domains** are shared by 2+ active leads (`conniehealth.com`, `queenscourtcap.com`, `alturacap.com`, `teambigtable.com`, `boynecapital.com`) — domain-fallback claims on these would be ambiguous and must be blocked
+2. **The mystery rows ("Last: Last 90 days · 973 imported · 1 minute ago")** — these are `BackfillProgressPanel` recap lines for each connection, but they render as **standalone table rows with no mailbox label and no provider column populated**, so they look orphaned. The user can't tell which mailbox the "973 imported" belongs to.
 
-## Two big architectural insights
+3. **The action icons (cloud-down, refresh, trash)** — pure icons with `title=` tooltips. On macOS hover-tooltips are slow/unreliable. No labels.
 
-### Insight 1 — "Personal-email primary, work-email correspondence" is real but rare
-**CT-283 Philip DeCarlo** signed up with `pmdecarlo@yahoo.com` but actually corresponds from `pmdecarlo@eagle.partners` and his colleague `mdukas@eagle.partners` is on every thread. 13 of his 15 emails look "suspicious" but are 100% his deal. This is exactly the pattern your question anticipates. Solution: register `pmdecarlo@eagle.partners` and `mdukas@eagle.partners` as **secondary contacts** on CT-283 so future Tier-2 matches succeed cleanly. Only one lead in the entire DB has this pattern today.
+4. **Nothing tells the user "what is this screen for"** beyond the one-line subtitle. No mental model of: *Live sync* (5-min cron) vs *Backfill* (one-shot history pull) vs *Matcher* (re-attribution sweep) vs *Unmatched inbox* (manual rescue).
 
-### Insight 2 — "Same firm, unrelated to this prospect" handling is your real question
-You asked: what about emails from the prospect's firm that are **not** about this deal? Example: Boyne's accounts-payable person Jessica Anaya emailing about Rob Regan's invoices — same domain, different person, different deal context. The right behavior is **never auto-claim by domain alone**. The current code already does this correctly (domain match requires a confirmed participant overlap), but I want to formalize a **third lane** between "matched" and "unmatched":
+5. **No surfaced status of the matcher itself**: how many emails sit in unmatched right now? When did the last sweep run? A user has to leave this tab to find out.
 
-- A lightweight **`company_inbox`** view in the UI that surfaces unmatched emails grouped by sender domain when that domain is the primary domain of any active lead/client. Reps can one-click "claim to Lead X" or "leave in firm inbox" without those emails ever auto-attaching to the wrong deal.
+6. **The "in last 24h" number** (e.g., "1006 in last 24h") is unlabeled — could mean fetched, inserted, matched, or unmatched. It actually means "lead_emails rows touching this address created in the last 24h".
 
-This protects against the Boyne-billing failure mode permanently: if Jessica emails again, her email lands in unmatched, the UI surfaces "1 new email from @boynecapital.com — not yet attributed (Rob Regan, Benjamin Parrish are at this firm)", and the rep decides.
+## What I'll build
 
-## The full plan — 6 corrections + 1 new surface
+### 1. Surface the matcher controls at the top of the Mailboxes tab — not buried in a sub-tab
 
-### 1. Backfill secondary contacts for CT-283 (the one lead with the work-email pattern)
-Add `pmdecarlo@eagle.partners` and `mdukas@eagle.partners` as `secondary_contacts` on CT-283 so all 13 currently-stapled emails are now legitimately attributed via Tier 2, and any future Eagle Partners email auto-routes correctly.
+A new compact **"Email matching"** strip sits below the heading, above the connections table. It shows:
 
-### 2. Reassign emails from duplicate leads to their canonicals (14 rows)
-- 8 emails: `SC-I-004` → `CT-012`
-- 3 emails: `SC-I-013` → `CT-039`
-- 3 emails: `SC-I-016` → `CT-055`
+- **Unmatched count** (live, e.g. "20,294 emails not yet linked to a lead") with a "Review →" link that switches to the Unmatched inbox tab
+- **Last matcher run** (e.g. "Last sweep: 2h ago · matched 47 of 312")
+- Two buttons that are currently only inside Unmatched inbox: **Re-run matcher** and **Run cleanup sweep**, each with a one-line tooltip explaining what they do
 
-This is purely "follow the canonical pointer" — these duplicate leads exist but their email rows never got moved.
+Both buttons reuse the exact same edge-function calls already in `UnmatchedInbox.tsx` (`rematch-unmatched-emails` and `unclaim-bad-matches` + rematch). Refactor: pull those handlers into a shared hook `useMatcherControls()` so the Mailboxes strip and the Unmatched inbox header use one source of truth.
 
-### 3. Recompute `lead_email_metrics` for the 22 drifted leads
-Wipe and re-aggregate metrics for every lead whose `lead_email_metrics` row disagrees with the actual count in `lead_emails` (drift was caused by the trigger gap when `lead_id` is UPDATED rather than INSERTED).
+### 2. Fix the orphan-row problem in the table
 
-### 4. Patch the trigger gap permanently (database migration)
-Currently `update_lead_email_metrics_on_claim` only fires when an email moves from `unmatched` → real lead. Add a second branch so it ALSO fires when `lead_id` changes from one real lead to another (which is what happens on manual reassignment, duplicate consolidation, and merges). This eliminates future drift without anyone having to remember to recompute by hand.
+Currently `BackfillProgressPanel` is rendered as a **separate `<tr colSpan={5}>`** under each connection — visually it floats and reads as its own line. Change it to render **inside the connection row**, in the "Last synced" cell, beneath the existing "X in last 24h" line. So each connection becomes one cohesive block:
 
-### 5. Lock down all manual-claim paths to use exact-email match
-The bug from yesterday (broad `ILIKE '%domain%'` claim) shouldn't have been possible. Add a **hard rule documented in the codebase memory** plus a small reusable SQL helper `claim_email_to_lead(email_id, lead_id)` that explicitly verifies at least one participant equals a known contact for the lead. All future manual sweeps go through this — broad domain claims become impossible.
+```text
+adam.haile@sourcecodeals.com   Outlook   Active   Last synced: just now
+Adam — SourceCo                                   1,006 emails in last 24h
+                                                  Backfill: 90d · 973/973 done · 1m ago [Re-backfill ▾]
+                                                  Show recent syncs
+```
 
-### 6. One safe sweep of the unmatched bucket — strict exact-email match only
-Run `rematch-unmatched-emails` once with the existing safe code path (it already enforces exact-email + confirmed-participant + non-personal domains). This will quietly claim the legit subset of those 20K unmatched rows without touching cross-contamination cases. Anything that doesn't pass the strict test stays in unmatched.
+Same for the recent-syncs history — it expands inline beneath the row instead of becoming an extra table row that loses its parent context.
 
-### 7. NEW — "Company Inbox" surface for the shared-domain problem
-A small new section inside the existing Unmatched Inbox view that groups orphan emails by sender domain when that domain matches an active lead or client account's primary domain. Each group shows: domain, lead/client names at that firm, count of orphan emails, with one-click "Claim to {Lead}" or "Dismiss as firm noise" actions. This is the structural answer to your "should we put them somehow aside" question — emails like Boyne's billing dept stay quarantined in this lane until a human routes them, never silently auto-claimed.
+### 3. Label every action button
 
-No changes to live sync code (Gmail / Outlook syncs already implement the correct strict logic). No changes to `rematch-unmatched-emails` (it's already correct). The systemic fixes are: trigger patch + duplicate-email cleanup + 1 lead's secondary contacts + a guard helper + a new UI lane for the domain-ambiguity case.
+Replace the bare icon buttons with **icon + label**:
+- ☁️↓ → "Sync now"
+- ⟳ → "Refresh token"
+- 🗑 → "Disconnect"
 
-## Technical execution (in default mode)
+On narrow viewports keep icon-only with proper accessible labels via `sr-only`. The existing `title=` attributes stay as fallback tooltips.
 
-1. **Data correction (no code) — single SQL batch:**
-   - Update `leads.secondary_contacts` for CT-283 (insert two contact entries)
-   - `UPDATE lead_emails SET lead_id = canonical` for the 14 duplicate-attached rows
-   - `DELETE FROM lead_email_metrics WHERE lead_id IN (drifted_set)` then `INSERT … SELECT COUNT(*)…` per lead
+### 4. Add a "How this works" disclosure
 
-2. **Migration — patch the trigger:**
-   - Modify `update_lead_email_metrics_on_claim` to also handle `lead_id_old <> lead_id_new` when both are real leads (decrement old lead's counters, increment new lead's counters). Keeps single-source-of-truth intact.
-   - Add a second trigger covering DELETE so removed rows decrement metrics.
+A collapsible explainer at the top (closed by default) that defines the four moving parts in plain language:
 
-3. **Code — `claim_email_to_lead` helper:**
-   - New `supabase/functions/_shared/claim-email.ts` exporting one function: `claimEmailToLead(supabase, emailId, leadId)` which verifies participant overlap before issuing the UPDATE. All future ad-hoc claims use this. Add a memory note enforcing the rule.
+- **Live sync** — automatic every 5 minutes, pulls new mail
+- **Backfill** — one-shot pull of historical mail (90d / 1y / 3y / all)
+- **Matcher** — re-runs the routing logic on emails that didn't auto-link to a lead
+- **Unmatched inbox** — emails the matcher couldn't confidently route, awaiting manual claim
 
-4. **Code — Company Inbox UI:**
-   - Extend `src/components/UnmatchedInbox.tsx` with a "By Company" tab that groups unmatched emails by sender domain, joins to active leads/clients sharing that domain, and exposes `Claim to {Lead}` and `Dismiss` actions wired through `claimEmailToLead`.
-   - No new tables — pure read-side aggregation over `lead_emails` + `leads` + `client_accounts`.
+Tied to the four-tab structure so the user can mentally map "this tab does X". One-time-dismissible (localStorage) so power users see it once and move on.
 
-5. **Single safe sweep:**
-   - `curl_edge_functions` POST to `rematch-unmatched-emails` with `{ limit: 5000 }` and report the resulting `matched / skipped / still_unmatched` counts back to you.
+### 5. Clarify the "in last 24h" metric
 
-6. **Verification queries:**
-   - Re-run the 4 probe queries above to confirm: 0 truly-misattributed, 0 metric drift, 0 emails on duplicates, CT-283 now showing 13/15 attributed via secondary.
+Change the label from `1006 in last 24h` to `1,006 emails synced (24h)` — adds the word "synced" and the unit so the number is unambiguous.
+
+## What I will NOT change
+
+- No touch to sync, backfill, or matcher edge functions — they work correctly
+- No new database tables or migrations
+- No change to the auto-enroll-90d behavior on first connect (that's correct)
+- No restructure of the four-tab layout — only additions inside the Mailboxes tab and a refactor of where existing buttons live
+
+## Files
+
+- **Edit** `src/components/MailboxSettings.tsx` — add Email-matching strip, restructure connection row to embed BackfillProgressPanel + history inline, label action buttons, add How-this-works disclosure
+- **Edit** `src/components/UnmatchedInbox.tsx` — replace inline matcher-button handlers with the shared hook (no UX regression — the buttons stay where they are, just sourced from the hook)
+- **New** `src/hooks/useMatcherControls.ts` — shared `rematchAll()` + `cleanupSweep()` + live unmatched-count + last-run-summary
+- **No backend changes**
 
