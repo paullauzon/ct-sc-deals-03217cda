@@ -25,6 +25,7 @@ import { Calendar } from "@/components/ui/calendar";
 import {
   Sparkles, Loader2, Save, Send, Mail, ChevronDown, BookmarkPlus,
   Wand2, Scissors, Plus, Layers, AlertTriangle, RefreshCw,
+  Eye, EyeOff, ArrowLeftRight, Paperclip, X as XIcon,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { logActivity, bumpStakeholderContact } from "@/lib/activityLog";
@@ -137,6 +138,14 @@ export function EmailComposerV2({
   // Used to compute edit-distance when the user finally sends.
   const initialSnapshotRef = useRef<{ subject: string; body: string }>({ subject: "", body: "" });
 
+  // Phase 8 — tracking pref (per-mailbox), stakeholder popover, attachments
+  const [trackingEnabled, setTrackingEnabled] = useState<boolean>(true);
+  const [stakeholderPopOpen, setStakeholderPopOpen] = useState(false);
+  const [stakeholderQuery, setStakeholderQuery] = useState("");
+  const [attachments, setAttachments] = useState<Array<{ name: string; url: string; size: number }>>([]);
+  const [uploadingAtt, setUploadingAtt] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   // ───────── Load on open ─────────
   useEffect(() => {
     if (!open) return;
@@ -169,6 +178,70 @@ export function EmailComposerV2({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead.id, replyContext?.thread_id]);
+
+  // Phase 8 — load tracking preference for the selected mailbox
+  useEffect(() => {
+    if (!fromConnectionId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await (supabase as any)
+        .from("mailbox_preferences")
+        .select("tracking_enabled")
+        .eq("connection_id", fromConnectionId)
+        .maybeSingle();
+      if (!cancelled) setTrackingEnabled(data?.tracking_enabled ?? true);
+    })();
+    return () => { cancelled = true; };
+  }, [fromConnectionId]);
+
+  const toggleTracking = async (next: boolean) => {
+    setTrackingEnabled(next);
+    if (!fromConnectionId) return;
+    const { error } = await (supabase as any)
+      .from("mailbox_preferences")
+      .upsert({ connection_id: fromConnectionId, tracking_enabled: next, updated_at: new Date().toISOString() }, { onConflict: "connection_id" });
+    if (error) toast.error("Could not save tracking preference");
+    else toast.success(`Open/click tracking ${next ? "ON" : "OFF"} for this mailbox`);
+  };
+
+  // Phase 8 — switch sender brand: pick the next mailbox of the other brand if available
+  const currentMailbox = mailboxes.find(m => m.id === fromConnectionId);
+  const isCaptarget = (m: Mailbox) => /captarget/i.test(`${m.email_address} ${m.user_label}`);
+  const isSourceCo = (m: Mailbox) => /source/i.test(`${m.email_address} ${m.user_label}`);
+  const otherBrandMailbox = useMemo(() => {
+    if (!currentMailbox) return null;
+    if (isCaptarget(currentMailbox)) return mailboxes.find(isSourceCo) || null;
+    if (isSourceCo(currentMailbox)) return mailboxes.find(isCaptarget) || null;
+    // Fallback: if labels don't carry brand, just pick any other mailbox
+    return mailboxes.find(m => m.id !== currentMailbox.id) || null;
+  }, [currentMailbox, mailboxes]);
+  const switchSenderBrand = () => {
+    if (!otherBrandMailbox) return;
+    setFromConnectionId(otherBrandMailbox.id);
+    toast.success(`Switched sender to ${otherBrandMailbox.email_address}`);
+  };
+
+  // Phase 8 — attachment upload to email-attachments bucket
+  const handleAttachmentChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setUploadingAtt(true);
+    try {
+      for (const file of files) {
+        if (file.size > 20 * 1024 * 1024) { toast.error(`${file.name} exceeds 20MB`); continue; }
+        const path = `${lead.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+        const { error: upErr } = await supabase.storage.from("email-attachments").upload(path, file, { upsert: false });
+        if (upErr) { toast.error(`Upload failed: ${upErr.message}`); continue; }
+        const { data: pub } = supabase.storage.from("email-attachments").getPublicUrl(path);
+        setAttachments(prev => [...prev, { name: file.name, url: pub.publicUrl, size: file.size }]);
+      }
+      toast.success("Attachment(s) added");
+    } finally {
+      setUploadingAtt(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+  const removeAttachment = (idx: number) => setAttachments(prev => prev.filter((_, i) => i !== idx));
 
   // ───────── Variable resolution ─────────
   const senderName = useMemo(() => {
@@ -315,6 +388,8 @@ export function EmailComposerV2({
           ...(inReplyTo ? { in_reply_to: inReplyTo } : {}),
           ...(drafts.length > 0 ? { ai_drafted: true } : {}),
           ...(sourceDraftId ? { source_draft_id: sourceDraftId } : {}),
+          ...(attachments.length > 0 ? { attachments } : {}),
+          tracking_enabled: trackingEnabled,
         },
       });
       if (error) throw error;
@@ -382,9 +457,12 @@ export function EmailComposerV2({
           source: mailbox?.provider || "gmail",
           thread_id: threadId || null,
           ai_drafted: drafts.length > 0,
+          attachments: attachments.length > 0 ? attachments : [],
+          tracked: trackingEnabled,
           raw_payload: {
             connection_id: fromConnectionId,
             in_reply_to: inReplyTo || null,
+            tracking_enabled: trackingEnabled,
           },
         } as any)
         .select("id")
@@ -501,7 +579,20 @@ export function EmailComposerV2({
           {/* ───────── Metadata bar ───────── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">From</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">From</label>
+                {otherBrandMailbox && (
+                  <button
+                    type="button"
+                    onClick={switchSenderBrand}
+                    title={`Switch sender to ${otherBrandMailbox.email_address}`}
+                    className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    <ArrowLeftRight className="h-2.5 w-2.5" />
+                    Switch to {isCaptarget(otherBrandMailbox) ? "CT" : isSourceCo(otherBrandMailbox) ? "SC" : "other"}
+                  </button>
+                )}
+              </div>
               {hasMailbox ? (
                 <select
                   value={fromConnectionId}
@@ -522,7 +613,62 @@ export function EmailComposerV2({
               )}
             </div>
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">To</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">To</label>
+                <Popover open={stakeholderPopOpen} onOpenChange={setStakeholderPopOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+                      title="Add a stakeholder or new email"
+                    >
+                      <Plus className="h-2.5 w-2.5" /> Stakeholder
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-72 p-2 space-y-2">
+                    <Input
+                      value={stakeholderQuery}
+                      onChange={(e) => setStakeholderQuery(e.target.value)}
+                      placeholder="Search or type email…"
+                      className="h-8 text-xs"
+                      autoFocus
+                    />
+                    <div className="max-h-48 overflow-y-auto space-y-0.5">
+                      {stakeholderOptions
+                        .filter(s => {
+                          const q = stakeholderQuery.toLowerCase().trim();
+                          if (!q) return true;
+                          return `${s.name} ${s.email} ${s.role}`.toLowerCase().includes(q);
+                        })
+                        .map(s => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => { addRecipient(s.email); setStakeholderPopOpen(false); setStakeholderQuery(""); }}
+                            className="w-full text-left px-2 py-1.5 rounded text-[11px] hover:bg-secondary/60"
+                          >
+                            <div className="font-medium text-foreground truncate">{s.name || s.email}</div>
+                            <div className="text-muted-foreground truncate">
+                              {s.email}{s.role ? ` · ${s.role}` : ""}
+                            </div>
+                          </button>
+                        ))}
+                      {stakeholderOptions.length === 0 && (
+                        <p className="text-[10px] text-muted-foreground italic px-2 py-1">No stakeholders yet.</p>
+                      )}
+                    </div>
+                    {stakeholderQuery.includes("@") && (
+                      <button
+                        type="button"
+                        onClick={() => { addRecipient(stakeholderQuery.trim()); setStakeholderPopOpen(false); setStakeholderQuery(""); }}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] border border-dashed border-border hover:bg-secondary/40"
+                      >
+                        Add new: <span className="font-mono">{stakeholderQuery.trim()}</span>
+                      </button>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              </div>
               <Input value={to} onChange={(e) => setTo(e.target.value)} className="h-9 text-sm mt-1" />
             </div>
             <div>
@@ -546,25 +692,44 @@ export function EmailComposerV2({
             </div>
           </div>
 
-          {/* Add stakeholder chips */}
-          {stakeholderOptions.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              <span className="text-[10px] text-muted-foreground/70 self-center mr-0.5">Add recipient:</span>
-              {stakeholderOptions.map(s => (
+          {/* Phase 8 — Attachment chips + picker */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={handleAttachmentChange}
+              className="hidden"
+            />
+            <Button
+              variant="ghost" size="sm"
+              className="h-7 text-[10px] gap-1.5 text-muted-foreground"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingAtt}
+              title="Attach files (max 20MB each)"
+            >
+              {uploadingAtt ? <Loader2 className="h-3 w-3 animate-spin" /> : <Paperclip className="h-3 w-3" />}
+              {uploadingAtt ? "Uploading…" : "Attach"}
+            </Button>
+            {attachments.map((a, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-1 rounded border border-border bg-secondary/40"
+                title={`${(a.size / 1024).toFixed(0)} KB`}
+              >
+                <Paperclip className="h-2.5 w-2.5" />
+                <span className="truncate max-w-[140px]">{a.name}</span>
                 <button
-                  key={s.id}
                   type="button"
-                  onClick={() => addRecipient(s.email)}
-                  className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-secondary text-foreground/80 hover:bg-secondary/80 transition-colors"
-                  title={`Add ${s.email}`}
+                  onClick={() => removeAttachment(i)}
+                  className="ml-0.5 text-muted-foreground hover:text-destructive"
+                  aria-label="Remove attachment"
                 >
-                  <Plus className="h-2.5 w-2.5" />
-                  {s.name || s.email}
-                  {s.role && <span className="text-muted-foreground">· {s.role}</span>}
+                  <XIcon className="h-2.5 w-2.5" />
                 </button>
-              ))}
-            </div>
-          )}
+              </span>
+            ))}
+          </div>
 
           {/* ───────── AI Context Panel ───────── */}
           <div className="rounded-md border border-border bg-secondary/30 p-3 space-y-2">
@@ -831,6 +996,23 @@ export function EmailComposerV2({
                 </div>
               </PopoverContent>
             </Popover>
+            {/* Phase 8 — Tracking pill */}
+            <button
+              type="button"
+              onClick={() => toggleTracking(!trackingEnabled)}
+              className={cn(
+                "inline-flex items-center gap-1 text-[10px] px-2 h-6 rounded-full border transition-colors",
+                trackingEnabled
+                  ? "border-foreground/30 bg-foreground/5 text-foreground"
+                  : "border-border bg-background text-muted-foreground"
+              )}
+              title={trackingEnabled
+                ? "Open & click tracking ON for this mailbox — click to disable"
+                : "Open & click tracking OFF — click to enable"}
+            >
+              {trackingEnabled ? <Eye className="h-2.5 w-2.5" /> : <EyeOff className="h-2.5 w-2.5" />}
+              Tracking: {trackingEnabled ? "ON" : "OFF"}
+            </button>
             {/* Phase 6 — per-email do-not-train toggle for sensitive content */}
             <label
               className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer select-none"

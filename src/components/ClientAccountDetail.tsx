@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ExternalLink, CheckCircle2, Circle, AlertOctagon, PauseCircle } from "lucide-react";
 import { toast } from "sonner";
+import { EmailsAtCompanyCard } from "@/components/ClientAccount/EmailsAtCompanyCard";
 
 interface Props {
   accountId: string | null;
@@ -191,6 +192,10 @@ export function ClientAccountDetail({ accountId, onClose }: Props) {
               </div>
             </section>
 
+            {/* Phase 8 — Aggregate of all emails across all contacts at the company domain */}
+            {merged.contact_email && (
+              <EmailsAtCompanyCard contactEmail={merged.contact_email} company={merged.company} />
+            )}
             {/* Notes */}
             <section>
               <Label className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 block">Notes</Label>

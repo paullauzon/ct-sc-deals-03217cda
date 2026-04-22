@@ -452,8 +452,11 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     );
   }
 
-  const threads = groupByThread(delivered);
-  const flatEmails = [...delivered].sort((a, b) => new Date(b.email_date).getTime() - new Date(a.email_date).getTime());
+  // Phase 8 — apply search + sequence filter to delivered list
+  const filteredDelivered = delivered.filter(e => filteredEmails.some(fe => fe.id === e.id));
+  const threads = groupByThread(filteredDelivered);
+  const flatEmailsList = [...filteredDelivered].sort((a, b) => new Date(b.email_date).getTime() - new Date(a.email_date).getTime());
+  const focusedThread = focusedThreadId ? threads.find(t => t.threadId === focusedThreadId) : null;
 
   return (
     <div>
@@ -463,10 +466,15 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
       {scheduled.length > 0 && (
         <ScheduledStrip scheduled={scheduled} onCancel={cancelScheduled} />
       )}
+      {(searchQuery || activeSequenceSteps.size > 0) && filteredDelivered.length === 0 && (
+        <p className="text-xs text-muted-foreground/70 italic text-center py-3">
+          No emails match the current filter.
+        </p>
+      )}
       <ScrollArea className="max-h-[480px]">
         <div className="space-y-1.5">
           {flatten
-            ? flatEmails.map((email) => (
+            ? flatEmailsList.map((email) => (
                 <EmailRow
                   key={email.id}
                   email={email}
@@ -489,6 +497,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
                   onMarkRead={markRead}
                   leadName={lead?.name}
                   showMailbox={multipleMailboxes}
+                  onOpenFocused={() => setFocusedThreadId(thread.threadId)}
                 />
               ))}
         </div>
@@ -501,7 +510,6 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
           lead={lead}
           onClose={() => setResponseDialog(null)}
           onUseDraft={(draft) => {
-            // Copy to clipboard so user can paste in Compose
             navigator.clipboard?.writeText(draft.body).then(
               () => toast.success("Draft copied", { description: "Paste it into Compose to send." }),
               () => toast.info("Draft ready", { description: draft.body.slice(0, 60) + "…" })
@@ -509,6 +517,30 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
             setResponseDialog(null);
             if (onCompose) onCompose();
           }}
+        />
+      )}
+
+      {/* Phase 8 — Deal-wide AI recap slide-over */}
+      <DealEmailRecapDialog
+        open={recapOpen}
+        onOpenChange={setRecapOpen}
+        leadId={leadId}
+        leadName={lead?.name}
+      />
+
+      {/* Phase 8 — Focused thread view (back-to-threads) */}
+      {focusedThread && (
+        <FocusedThreadView
+          open={!!focusedThreadId}
+          onOpenChange={(o) => !o && setFocusedThreadId(null)}
+          lead={lead}
+          threadId={focusedThread.threadId}
+          threadSubject={focusedThread.subject}
+          emails={focusedThread.emails as any}
+          threadLatestDate={focusedThread.latestDate}
+          sequenceStep={focusedThread.emails.find(e => e.sequence_step)?.sequence_step}
+          onReply={onReply}
+          onMarkRead={markRead}
         />
       )}
     </div>
@@ -560,7 +592,7 @@ function ScheduledStrip({ scheduled, onCancel }: { scheduled: LeadEmail[]; onCan
   );
 }
 
-function ThreadCard({ thread, leadId, lead, expandAllSignal, onSuggestResponses, onReply, onMarkRead, leadName, showMailbox }: { thread: ThreadGroup; leadId: string; lead?: Lead; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; leadName?: string; showMailbox?: boolean }) {
+function ThreadCard({ thread, leadId, lead, expandAllSignal, onSuggestResponses, onReply, onMarkRead, leadName, showMailbox, onOpenFocused }: { thread: ThreadGroup; leadId: string; lead?: Lead; expandAllSignal?: "expand" | "collapse" | null; onSuggestResponses: (email: LeadEmail, objections: DetectedObjection[]) => void; onReply?: (prefill: ReplyPrefill) => void; onMarkRead?: (id: string) => void; leadName?: string; showMailbox?: boolean; onOpenFocused?: () => void }) {
   const isSingleEmail = thread.emails.length === 1;
   const unreadCount = thread.emails.filter(e => e.direction === "inbound" && !e.is_read).length;
   const [open, setOpen] = useState(false);
@@ -676,7 +708,20 @@ function ThreadCard({ thread, leadId, lead, expandAllSignal, onSuggestResponses,
               {formatDate(thread.latestDate)}
             </div>
           </div>
-          <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", open && "rotate-180")} />
+          <div className="flex items-center gap-0.5 shrink-0">
+            {onOpenFocused && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); e.preventDefault(); onOpenFocused(); }}
+                className="h-6 w-6 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                title="Open focused thread view"
+                aria-label="Open focused thread view"
+              >
+                <Maximize2 className="h-3 w-3" />
+              </button>
+            )}
+            <ChevronDown className={cn("h-3 w-3 text-muted-foreground shrink-0 transition-transform", open && "rotate-180")} />
+          </div>
         </div>
       </CollapsibleTrigger>
       <CollapsibleContent>
