@@ -478,6 +478,35 @@ export function MailboxSettings() {
               Convention: <span className="font-mono">First name — Brand</span>. The brand suffix drives the from-name on outbound emails.
             </p>
           </div>
+
+          {connectProvider === "outlook" && (
+            <div className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <ShieldCheck className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+                <div className="space-y-1">
+                  <p className="text-xs font-medium">Hit "Approval required" on Microsoft?</p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Your tenant blocks user self-consent for mailbox access. A Microsoft tenant admin (e.g. Josh) needs to approve the app once — afterwards every user can connect normally.
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full h-7 text-xs"
+                onClick={requestAdminConsent}
+                disabled={requestingAdminConsent}
+              >
+                {requestingAdminConsent ? (
+                  <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-3 w-3 mr-1.5" />
+                )}
+                Open admin-consent link
+              </Button>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setConnectOpen(false)} disabled={connecting}>
               Cancel
