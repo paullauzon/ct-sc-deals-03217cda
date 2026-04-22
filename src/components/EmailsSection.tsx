@@ -12,6 +12,9 @@ import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { EmailTabHeader } from "@/components/lead-panel/EmailTabHeader";
+import { computeThreadEngagement } from "@/lib/threadEngagement";
+import { ThreadEngagementBadges } from "@/components/lead-panel/ThreadEngagementBadges";
+import { ThreadAiStrip } from "@/components/lead-panel/ThreadAiStrip";
 
 interface LeadEmail {
   id: string;
