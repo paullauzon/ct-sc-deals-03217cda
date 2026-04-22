@@ -11,6 +11,7 @@ import { StakeholderCard } from "@/components/lead-panel/cards/StakeholderCard";
 import { FirefliesRecordingsCard } from "@/components/lead-panel/cards/FirefliesRecordingsCard";
 import { AttachmentsCard } from "@/components/lead-panel/cards/AttachmentsCard";
 import { SequenceCard } from "@/components/lead-panel/cards/SequenceCard";
+import { FirmActivityCard } from "@/components/dealroom/FirmActivityCard";
 
 interface LeadPanelRightRailProps {
   lead: Lead;
