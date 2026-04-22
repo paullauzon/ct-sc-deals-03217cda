@@ -172,10 +172,8 @@ async function firecrawlScrape(
   }
 }
 
-// ─── AI Call Helper (OpenAI with Lovable AI Gateway fallback) ───
+// ─── AI Call Helper (OpenAI direct) ───
 
-// Fix 3: Session-level flag — once OpenAI 429s, skip retries for all subsequent calls
-let _openAIExhausted = false;
 
 async function callAI(
   messages: Array<{ role: string; content: string }>,
