@@ -692,7 +692,7 @@ async function syncOneConnection(
       }
 
       const insertRow = {
-        lead_id: leadId ?? "unmatched",
+        lead_id: leadId ?? parkedSentinel ?? "unmatched",
         provider_message_id: mid,
         message_id: rfc822Id || null,
         thread_id: msg.threadId ?? "",
@@ -711,7 +711,7 @@ async function syncOneConnection(
         is_read: !(msg.labelIds || []).includes("UNREAD"),
         send_status: bounce ? "failed" : "sent",
         bounce_reason: bounce?.reason ?? "",
-        raw_payload: { gmail_label_ids: msg.labelIds ?? [] },
+        raw_payload: { gmail_label_ids: msg.labelIds ?? [], ...(parkedSentinel ? { auto_parked: parkedSentinel } : {}) },
       };
 
       const { data: insertedRow, error: insertErr } = await supabase
