@@ -1,49 +1,73 @@
 
 
-# Phase 11 — Activate Outlook deep sync
+# Outlook end-to-end audit — 4 hidden bugs + connect step still pending
 
-You'll add the `MICROSOFT_TENANT_ID` secret (Directory ID Josh sent), and I'll execute the rest end-to-end.
+## Verdict
 
-## What I'll do once you approve
+The Phase 11 OAuth fix is **only 3/7 functions deep**. I found 4 more functions that still hardcode `/common/` and will silently break the moment Outlook tokens need to refresh or send. Plus Adam hasn't connected his mailbox yet, so zero Outlook data has flowed.
 
-### 1. Repoint OAuth to the tenant-scoped endpoint
-Three one-line edits, swapping `/common/` → `/${TENANT_ID}/` (with graceful fallback to `common` if the secret is somehow missing):
-- `supabase/functions/outlook-oauth-start/index.ts` — authorize URL
-- `supabase/functions/outlook-oauth-callback/index.ts` — token URL
-- `supabase/functions/refresh-outlook-token/index.ts` — token URL
+## What I verified
 
-### 2. Deploy the three updated functions
-Via `supabase--deploy_edge_functions` so changes go live immediately.
+| Check | Result |
+|---|---|
+| `MICROSOFT_TENANT_ID` secret | ✅ Set |
+| OAuth start uses tenant URL | ✅ Fixed |
+| OAuth callback uses tenant URL | ✅ Fixed |
+| `refresh-outlook-token` uses tenant URL | ✅ Fixed |
+| `sync-outlook-emails` token refresh | ❌ Still `/common/` (line 79) |
+| `send-outlook-email` token refresh | ❌ Still `/common/` (line 46) |
+| `backfill-discover` Outlook token refresh | ❌ Still `/common/` (line 72) |
+| `backfill-hydrate` Outlook token refresh | ❌ Still `/common/` (line 123) |
+| `sync-outlook-emails-5min` cron scheduled | ✅ Active, every 5 min |
+| Outlook connections in DB | ❌ **Zero** — only 2 Gmail connections exist |
+| Outlook backfill jobs run | ❌ **Zero** — only Gmail backfills |
+| `lead_emails` with `source = 'outlook'` | ❌ **Zero** rows |
 
-### 3. Hand the connect step back to you
-You'll go to **Settings → Mailboxes → Connect mailbox → Connect Outlook**, label it (e.g. "Adam SourceCo"), and approve consent on Microsoft's tenant-scoped screen. The existing callback exchanges the code, fetches `/me`, persists tokens, and **auto-dispatches a 90-day backfill** (already wired).
+## Why the 4 hidden `/common/` URLs matter
 
-### 4. Validate end-to-end on real data
-After backfill completes (live progress in `BackfillProgressPanel`):
-- Query `lead_emails` for `source = 'outlook'` rows landing
-- Spot-check 3 matched leads — threading, `replied_at` stamping, stakeholder discovery
-- Trigger manual **Sync now** to confirm incremental pull works
-- Send one test email from composer → confirm delivery + loop-protection header + no re-ingestion on next sync
-- Confirm `EmailMetricsCard` and Email tab KPIs populate for an Outlook lead
+Each Outlook function has its own inline `getValidOutlookToken()` helper that hits Microsoft's token endpoint directly instead of importing from `refresh-outlook-token`. When Phase 11 patched the shared helper, these 4 inline copies were missed. Symptoms once Adam connects:
 
-### 5. Schedule the 5-minute cron
-Insert a `pg_cron` job for `sync-outlook-emails` every 5 minutes, mirroring Gmail's cadence, with `cron_run_log` entry per run for the existing automation health panel.
+- **First sync:** May appear to work because the access token issued at OAuth time is still valid (~1 hour).
+- **Second sync (after token expires):** All four functions try to refresh against `/common/` — Microsoft returns `AADSTS65001` ("user has not consented to this app") because consent was granted under the tenant-scoped endpoint, not `/common/`. Sync stops, sends fail, backfill stalls.
+- **No DB corruption** — fails loudly with HTTP errors logged to `cron_run_log`.
 
-### 6. Update memory
-Flip `mem://integrations/email-sync-status` to: *Outlook deep sync LIVE in tenant `[id]`, cron active every 5 min.*
+## What I'll fix
 
-## What you need to do right now
+### Edit 1 — `supabase/functions/sync-outlook-emails/index.ts` line 79
+Add `const TENANT_ID = Deno.env.get("MICROSOFT_TENANT_ID") || "common";` and swap `/common/` → `/${TENANT_ID}/`.
 
-Add the secret:
-- **Name:** `MICROSOFT_TENANT_ID`
-- **Value:** the Directory ID GUID Josh sent (format `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
+### Edit 2 — `supabase/functions/send-outlook-email/index.ts` line 46
+Same swap.
 
-Once it's saved, say "go" and I'll execute steps 1–6 in one pass.
+### Edit 3 — `supabase/functions/backfill-discover/index.ts` line 72
+Same swap.
 
-## Risks already mitigated
+### Edit 4 — `supabase/functions/backfill-hydrate/index.ts` line 123
+Same swap.
 
-- **Tenant ID typo** → Microsoft returns `AADSTS90002` immediately, no DB writes.
-- **Redirect URI mismatch** → already verified from Josh's screenshot, matches `outlook-oauth-callback` exactly.
-- **Non-tenant user tries to connect** → Microsoft refuses with `AADSTS50020`. Expected.
-- **Secret missing at runtime** → fallback to `/common/` keeps the old (non-working but non-crashing) behavior; you'd see the same admin-consent screen as before, no silent corruption.
+### Deploy all 4
+Single `supabase--deploy_edge_functions` call.
+
+## What you do after the fix
+
+The tenant scoping and cron are live, but **Adam still has to connect his mailbox**. Until he does, there's nothing for the cron to sync. Steps:
+
+1. Settings → Mailboxes → **Connect Outlook**
+2. Label it (e.g. "Adam SourceCo")
+3. Approve consent on Microsoft's tenant-scoped screen — should be one-click per-user, no global admin block
+4. 90-day backfill auto-starts; watch `BackfillProgressPanel`
+
+## Validation I'll run after Adam connects
+
+- Confirm a row appears in `user_email_connections` with `provider = 'outlook'`
+- Confirm an `email_backfill_jobs` row enters `discovering` → `hydrating` → `done`
+- Confirm `lead_emails` rows land with `source = 'outlook'`
+- Spot-check 3 matched leads for threading + `replied_at` stamping
+- Confirm next 5-min cron tick logs to `cron_run_log` with `job_name = 'sync-outlook-emails'`
+- Confirm token refresh works (force a refresh by waiting >1hr OR by setting `token_expires_at` to past and triggering sync)
+
+## Out of scope
+
+- Email-sync-status memory file already says "live" — accurate after Adam connects, no edit needed now
+- `/common/` fallback in code is intentional — keeps Gmail-only deployments safe if `MICROSOFT_TENANT_ID` is ever cleared
 
