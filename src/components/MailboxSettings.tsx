@@ -415,6 +415,8 @@ export function MailboxSettings() {
 
           <NoiseRulesPanel />
 
+          <PendingAttributionsPanel />
+
           <DuplicateLeadsPanel />
 
           <div className="border border-border rounded-lg overflow-hidden">
