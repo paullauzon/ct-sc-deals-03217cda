@@ -56,7 +56,13 @@ Deno.serve(async (req) => {
     authUrl.searchParams.set("scope", SCOPES);
     authUrl.searchParams.set("response_mode", "query");
     authUrl.searchParams.set("state", state);
-    authUrl.searchParams.set("prompt", "consent");
+    // NOTE: We intentionally do NOT set prompt=consent.
+    // Forcing consent on every connect inflames tenant consent-policy failures
+    // ("Approval required" wall) and bounces already-approved users through
+    // an unnecessary second consent screen. Microsoft will surface its own
+    // consent UI on the first connect; subsequent connects skip it cleanly.
+    // If a tenant blocks user-self consent, the user is routed to the
+    // outlook-admin-consent-start flow instead.
 
     return new Response(JSON.stringify({ url: authUrl.toString() }), {
       status: 200,
