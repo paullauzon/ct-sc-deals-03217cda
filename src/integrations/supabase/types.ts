@@ -932,6 +932,7 @@ export type Database = {
           body_preview: string | null
           body_text: string | null
           bounce_reason: string | null
+          canonical_thread_lead_id: string | null
           cc_addresses: string[] | null
           clicks: Json | null
           created_at: string | null
@@ -966,6 +967,7 @@ export type Database = {
           body_preview?: string | null
           body_text?: string | null
           bounce_reason?: string | null
+          canonical_thread_lead_id?: string | null
           cc_addresses?: string[] | null
           clicks?: Json | null
           created_at?: string | null
@@ -1000,6 +1002,7 @@ export type Database = {
           body_preview?: string | null
           body_text?: string | null
           bounce_reason?: string | null
+          canonical_thread_lead_id?: string | null
           cc_addresses?: string[] | null
           clicks?: Json | null
           created_at?: string | null
