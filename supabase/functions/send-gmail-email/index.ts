@@ -1,26 +1,10 @@
 // Phase 3 — outbound Gmail send.
 // Sends an email via Gmail API users.messages.send for a chosen connection.
 //
-// POST body:
-//   {
-//     connection_id: string,           // which mailbox to send from (required)
-//     lead_id?: string,                // for lead_emails logging + last_contact bump
-//     to: string | string[],
-//     cc?: string | string[],
-//     bcc?: string | string[],
-//     subject: string,
-//     body_text?: string,
-//     body_html?: string,              // if omitted, derived from body_text
-//     in_reply_to?: string,            // RFC822 Message-ID for threading
-//     thread_id?: string,              // Gmail thread id for in-thread reply
-//   }
-//
-// On success:
-//   - sends via Gmail
-//   - inserts a row in lead_emails with source='gmail', direction='outbound',
-//     and a special X-CRM-Source header so the inbound syncer can recognize it
-//   - returns { ok, gmail_message_id, rfc822_message_id, thread_id, lead_email_id }
-
+// Phase 9 additions:
+// - Honors `tracking_enabled` (default true). When false, no pixel + no link rewrite.
+// - Honors `attachments: [{ name, url, size }]` — fetched from public storage URLs,
+//   base64-encoded, attached as multipart/mixed parts. Persisted to lead_emails.attachments.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Inline copy of getValidAccessToken — edge functions can't import across siblings.
@@ -83,6 +67,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface AttachmentInput {
+  name?: string;
+  url?: string;
+  size?: number;
+  mime?: string;
+}
+interface PreparedAttachment {
+  filename: string;
+  mime: string;
+  base64: string;
+}
+
 function asArray(v: string | string[] | undefined): string[] {
   if (!v) return [];
   if (Array.isArray(v)) return v.filter(Boolean);
@@ -97,6 +93,20 @@ function toBase64Url(input: string): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+function chunkBase64(b64: string, lineLen = 76): string {
+  const re = new RegExp(`.{1,${lineLen}}`, "g");
+  return (b64.match(re) || []).join("\r\n");
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -105,8 +115,47 @@ function textToHtml(s: string): string {
   return `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.5;color:#0f172a;white-space:pre-wrap;">${escapeHtml(s)}</div>`;
 }
 
+function mimeFromName(name: string, fallback?: string): string {
+  const ext = name.toLowerCase().split(".").pop() || "";
+  const map: Record<string, string> = {
+    pdf: "application/pdf",
+    png: "image/png",
+    jpg: "image/jpeg", jpeg: "image/jpeg",
+    gif: "image/gif", webp: "image/webp",
+    csv: "text/csv", txt: "text/plain", md: "text/markdown",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    zip: "application/zip", json: "application/json",
+  };
+  return map[ext] || fallback || "application/octet-stream";
+}
+
+async function fetchAttachments(input: AttachmentInput[]): Promise<PreparedAttachment[]> {
+  const out: PreparedAttachment[] = [];
+  for (const a of input) {
+    if (!a?.url) continue;
+    try {
+      const r = await fetch(a.url);
+      if (!r.ok) {
+        console.warn("attachment fetch failed", a.url, r.status);
+        continue;
+      }
+      const buf = new Uint8Array(await r.arrayBuffer());
+      const filename = (a.name || "attachment").replace(/[\r\n"]/g, "_");
+      const mime = a.mime || r.headers.get("content-type") || mimeFromName(filename);
+      out.push({ filename, mime, base64: bytesToBase64(buf) });
+    } catch (e) {
+      console.warn("attachment error", a.url, (e as Error).message);
+    }
+  }
+  return out;
+}
+
 // Rewrite all <a href="X"> links to route through track-email-click.
-// Skips mailto:, tel:, anchor-only, and our own pixel/click endpoints.
 function rewriteLinks(html: string, leadEmailId: string, baseUrl: string): string {
   const trackBase = `${baseUrl}/functions/v1/track-email-click`;
   return html.replace(/(<a\b[^>]*\bhref\s*=\s*)(["'])([^"']+)\2/gi, (m, pre, q, href) => {
@@ -121,14 +170,17 @@ function rewriteLinks(html: string, leadEmailId: string, baseUrl: string): strin
 }
 
 function buildRfc822({
-  fromAddress, fromName, to, cc, bcc, subject, text, html, inReplyTo, messageId,
+  fromAddress, fromName, to, cc, bcc, subject, text, html,
+  inReplyTo, messageId, attachments,
 }: {
   fromAddress: string; fromName?: string;
   to: string[]; cc: string[]; bcc: string[];
   subject: string; text: string; html: string;
   inReplyTo?: string; messageId: string;
+  attachments: PreparedAttachment[];
 }): string {
-  const boundary = `=_crm_${Math.random().toString(36).slice(2)}`;
+  const altBoundary = `=_alt_${Math.random().toString(36).slice(2)}`;
+  const mixedBoundary = `=_mixed_${Math.random().toString(36).slice(2)}`;
   const fromHeader = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
 
   const headers: string[] = [
@@ -145,18 +197,53 @@ function buildRfc822({
   }
   headers.push(`X-CRM-Source: lovable-crm`);
   headers.push(`MIME-Version: 1.0`);
-  headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
 
-  const body =
-    `\r\n--${boundary}\r\n` +
+  const altPart =
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"\r\n\r\n` +
+    `--${altBoundary}\r\n` +
     `Content-Type: text/plain; charset="UTF-8"\r\n` +
     `Content-Transfer-Encoding: 7bit\r\n\r\n` +
     `${text}\r\n` +
-    `--${boundary}\r\n` +
+    `--${altBoundary}\r\n` +
     `Content-Type: text/html; charset="UTF-8"\r\n` +
     `Content-Transfer-Encoding: 7bit\r\n\r\n` +
     `${html}\r\n` +
-    `--${boundary}--`;
+    `--${altBoundary}--`;
+
+  if (attachments.length === 0) {
+    headers.push(`Content-Type: multipart/alternative; boundary="${altBoundary}"`);
+    const body =
+      `\r\n--${altBoundary}\r\n` +
+      `Content-Type: text/plain; charset="UTF-8"\r\n` +
+      `Content-Transfer-Encoding: 7bit\r\n\r\n` +
+      `${text}\r\n` +
+      `--${altBoundary}\r\n` +
+      `Content-Type: text/html; charset="UTF-8"\r\n` +
+      `Content-Transfer-Encoding: 7bit\r\n\r\n` +
+      `${html}\r\n` +
+      `--${altBoundary}--`;
+    return headers.join("\r\n") + "\r\n" + body;
+  }
+
+  // multipart/mixed wrapping the alternative + each attachment
+  headers.push(`Content-Type: multipart/mixed; boundary="${mixedBoundary}"`);
+
+  const attachmentParts = attachments.map(a => {
+    const safeName = a.filename.replace(/"/g, "");
+    return (
+      `--${mixedBoundary}\r\n` +
+      `Content-Type: ${a.mime}; name="${safeName}"\r\n` +
+      `Content-Transfer-Encoding: base64\r\n` +
+      `Content-Disposition: attachment; filename="${safeName}"\r\n\r\n` +
+      `${chunkBase64(a.base64)}\r\n`
+    );
+  }).join("");
+
+  const body =
+    `\r\n--${mixedBoundary}\r\n` +
+    altPart + `\r\n` +
+    attachmentParts +
+    `--${mixedBoundary}--`;
 
   return headers.join("\r\n") + "\r\n" + body;
 }
@@ -178,12 +265,15 @@ Deno.serve(async (req) => {
       subject, body_text, body_html,
       in_reply_to, thread_id,
       ai_drafted, source_draft_id,
+      tracking_enabled, attachments: attachmentsRaw,
     } = body as Record<string, unknown>;
     const isAiDrafted = ai_drafted === true;
     const sourceDraftId = typeof source_draft_id === "string" && source_draft_id ? source_draft_id : null;
+    const trackingEnabled = tracking_enabled !== false; // default true
+    const attachmentInputs: AttachmentInput[] = Array.isArray(attachmentsRaw)
+      ? (attachmentsRaw as AttachmentInput[]).filter(a => a && typeof a === "object" && a.url)
+      : [];
 
-    // If sent from a nurture draft, stamp sequence_step on lead_emails so the
-    // Activity tab "Nx paused on reply" chip + auto-task suffix fire correctly.
     let sequenceStep: string | null = null;
     if (sourceDraftId) {
       const { data: draft } = await supabase
@@ -227,8 +317,17 @@ Deno.serve(async (req) => {
     const fromName = (conn.user_label as string)?.split("—")[0]?.trim() || undefined;
     const rfc822MessageId = `<crm-${crypto.randomUUID()}@${fromAddress.split("@")[1] || "lovable.local"}>`;
 
-    // Pre-insert lead_emails row so we can stamp the pixel URL with its id.
-    // body_html stored without the pixel — pixel only goes in the recipient's copy.
+    // Pre-fetch attachments before pre-insert so we can persist filenames + sizes.
+    const preparedAttachments = attachmentInputs.length > 0
+      ? await fetchAttachments(attachmentInputs)
+      : [];
+    const attachmentsForRow = preparedAttachments.map((a, i) => ({
+      name: a.filename,
+      mime: a.mime,
+      size: attachmentInputs[i]?.size ?? null,
+      url: attachmentInputs[i]?.url ?? null,
+    }));
+
     const preview = text.slice(0, 280).replace(/\s+/g, " ").trim();
     const insertRow = {
       lead_id: typeof lead_id === "string" && lead_id ? lead_id : "unmatched",
@@ -248,12 +347,14 @@ Deno.serve(async (req) => {
       email_date: new Date().toISOString(),
       source: "gmail",
       is_read: true,
-      tracked: true,
+      tracked: trackingEnabled,
       ai_drafted: isAiDrafted,
       sequence_step: sequenceStep,
+      attachments: attachmentsForRow,
       raw_payload: {
         sent_via: "crm",
         x_crm_source: "lovable-crm",
+        tracking_enabled: trackingEnabled,
         ...(sourceDraftId ? { source_draft_id: sourceDraftId } : {}),
       },
     };
@@ -267,20 +368,24 @@ Deno.serve(async (req) => {
     }
     const leadEmailId = inserted.id as string;
 
-    // Inject open-pixel + rewrite links into the recipient HTML.
-    const baseUrl = Deno.env.get("SUPABASE_URL")!;
-    const trackUrl = `${baseUrl}/functions/v1/track-email-open?eid=${leadEmailId}`;
-    const pixelTag = `<img src="${trackUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />`;
-    const rewritten = rewriteLinks(html, leadEmailId, baseUrl);
-    const htmlWithPixel = rewritten.replace(/<\/body>/i, `${pixelTag}</body>`) === rewritten
-      ? `${rewritten}${pixelTag}`
-      : rewritten.replace(/<\/body>/i, `${pixelTag}</body>`);
+    // Conditionally inject pixel + rewrite links.
+    let htmlForSend = html;
+    if (trackingEnabled) {
+      const baseUrl = Deno.env.get("SUPABASE_URL")!;
+      const trackUrl = `${baseUrl}/functions/v1/track-email-open?eid=${leadEmailId}`;
+      const pixelTag = `<img src="${trackUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />`;
+      const rewritten = rewriteLinks(html, leadEmailId, baseUrl);
+      htmlForSend = rewritten.includes("</body>")
+        ? rewritten.replace(/<\/body>/i, `${pixelTag}</body>`)
+        : `${rewritten}${pixelTag}`;
+    }
 
     const raw = buildRfc822({
       fromAddress, fromName, to, cc, bcc,
-      subject: subj, text, html: htmlWithPixel,
+      subject: subj, text, html: htmlForSend,
       inReplyTo: typeof in_reply_to === "string" ? in_reply_to : undefined,
       messageId: rfc822MessageId,
+      attachments: preparedAttachments,
     });
 
     const sendBody: Record<string, unknown> = { raw: toBase64Url(raw) };
@@ -296,19 +401,16 @@ Deno.serve(async (req) => {
     });
     if (!sendRes.ok) {
       const errTxt = await sendRes.text();
-      // Mark the row as failed so it doesn't sit as a phantom sent.
       await supabase.from("lead_emails").delete().eq("id", leadEmailId);
       throw new Error(`Gmail send failed: ${sendRes.status} ${errTxt.slice(0, 200)}`);
     }
     const sent = await sendRes.json() as { id: string; threadId: string };
 
-    // Backfill the gmail provider_message_id + threadId.
     await supabase
       .from("lead_emails")
       .update({ provider_message_id: sent.id, thread_id: sent.threadId ?? "" })
       .eq("id", leadEmailId);
 
-    // Mark source draft as sent so the Actions tab no longer surfaces it.
     if (sourceDraftId) {
       await (supabase as any)
         .from("lead_drafts")
@@ -322,6 +424,8 @@ Deno.serve(async (req) => {
       rfc822_message_id: rfc822MessageId,
       thread_id: sent.threadId,
       lead_email_id: leadEmailId,
+      tracking_enabled: trackingEnabled,
+      attachments_count: preparedAttachments.length,
     }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
