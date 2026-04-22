@@ -177,17 +177,14 @@ Deno.serve(async (req) => {
         }
 
         // 5. Forwarded-sender extraction
-        const subjLow = (r.subject || "").toLowerCase().trim();
-        if (/^\s*(fwd?|fw):/i.test(subjLow)) {
-          const orig = extractOriginalSender(r.body_text || "");
-          if (orig) {
-            const lid = emailToLead.get(orig.toLowerCase().trim());
-            if (lid) {
-              updates.push({ id: r.id, lead_id: lid, classification_reason: `forwarded_sender:${lid}` });
-              totalForwardClaimed++;
-              totalReclassified++;
-              continue;
-            }
+        const orig = extractOriginalSender(r.subject, r.body_text);
+        if (orig?.email) {
+          const lid = emailToLead.get(orig.email);
+          if (lid) {
+            updates.push({ id: r.id, lead_id: lid, classification_reason: `forwarded_sender:${lid}` });
+            totalForwardClaimed++;
+            totalReclassified++;
+            continue;
           }
         }
 

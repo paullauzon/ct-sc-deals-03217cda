@@ -414,6 +414,10 @@ export function MailboxSettings() {
             </div>
           </div>
 
+          <AttributionHealthPanel />
+
+          <ReclaimBacklogPanel onComplete={() => matcher.refresh?.()} />
+
           <NoiseRulesPanel />
 
           <HighVolumeSendersPanel />
