@@ -646,6 +646,17 @@ async function syncOneConnection(
       const { text, html } = extractBody(msg.payload);
       const preview = (text || html.replace(/<[^>]+>/g, " ")).slice(0, 280).replace(/\s+/g, " ").trim();
 
+      // Round 6 — auto-park noise classes (out-of-office, role-based, calendar)
+      // BEFORE writing as unmatched. We only override when the matcher didn't
+      // already attach the email to a real lead (matched messages always win).
+      let parkedSentinel: string | null = null;
+      if (!leadId) {
+        const { classifyEmail, sentinelForClass } = await import("../_shared/classify-email.ts");
+        const cls = classifyEmail({ fromAddress: from.address, subject, bodyPreview: preview });
+        parkedSentinel = sentinelForClass(cls);
+        if (parkedSentinel) stats.skipped_internal += 0; // counted via inserted below
+      }
+
       const emailDate = dateRaw ? new Date(dateRaw).toISOString() :
         msg.internalDate ? new Date(parseInt(msg.internalDate)).toISOString() :
         new Date().toISOString();
