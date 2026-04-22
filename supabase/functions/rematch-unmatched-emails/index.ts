@@ -184,17 +184,22 @@ async function buildLeadIndex(supabase: ReturnType<typeof createClient>): Promis
   }
 
   // PASS 3 — stakeholders fill remaining gaps (lowest priority).
+  // Round 5: senders flagged is_intermediary are NEVER added to byEmail. They
+  // pitch multiple deals (M&A bankers, brokers) so we can't safely route their
+  // mail by sender alone — only by thread continuity, which the matcher above
+  // does not consider. They become "ambiguous" and stay in unmatched/firm-activity.
   from = 0;
   for (;;) {
     const { data, error } = await supabase
       .from("lead_stakeholders")
-      .select("lead_id, email")
+      .select("lead_id, email, is_intermediary")
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`stakeholders page ${from}: ${error.message}`);
     if (!data || data.length === 0) break;
-    for (const s of data as Array<{ lead_id: string; email: string | null }>) {
+    for (const s of data as Array<{ lead_id: string; email: string | null; is_intermediary: boolean | null }>) {
       const e = (s.email || "").toLowerCase();
       if (!e) continue;
+      if (s.is_intermediary) continue; // skip — do not let intermediary auto-claim
       if (!byEmail.has(e)) byEmail.set(e, s.lead_id);
       addContact(s.lead_id, e);
     }
