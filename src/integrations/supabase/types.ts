@@ -348,6 +348,143 @@ export type Database = {
           },
         ]
       }
+      email_compose_events: {
+        Row: {
+          brand: string
+          created_at: string
+          do_not_train: boolean
+          draft_picked: string
+          drafts_offered: Json
+          edit_distance_body: number
+          edit_distance_pct: number
+          edit_distance_subject: number
+          email_id: string | null
+          final_body: string
+          final_subject: string
+          firm_type: string
+          id: string
+          initial_body: string
+          initial_subject: string
+          lead_id: string
+          model: string
+          picked_index: number
+          purpose: string
+          recommended_approach: string
+          scheduled: boolean
+          sent: boolean
+          sent_at: string | null
+          stage: string
+          user_id: string | null
+        }
+        Insert: {
+          brand?: string
+          created_at?: string
+          do_not_train?: boolean
+          draft_picked?: string
+          drafts_offered?: Json
+          edit_distance_body?: number
+          edit_distance_pct?: number
+          edit_distance_subject?: number
+          email_id?: string | null
+          final_body?: string
+          final_subject?: string
+          firm_type?: string
+          id?: string
+          initial_body?: string
+          initial_subject?: string
+          lead_id: string
+          model?: string
+          picked_index?: number
+          purpose?: string
+          recommended_approach?: string
+          scheduled?: boolean
+          sent?: boolean
+          sent_at?: string | null
+          stage?: string
+          user_id?: string | null
+        }
+        Update: {
+          brand?: string
+          created_at?: string
+          do_not_train?: boolean
+          draft_picked?: string
+          drafts_offered?: Json
+          edit_distance_body?: number
+          edit_distance_pct?: number
+          edit_distance_subject?: number
+          email_id?: string | null
+          final_body?: string
+          final_subject?: string
+          firm_type?: string
+          id?: string
+          initial_body?: string
+          initial_subject?: string
+          lead_id?: string
+          model?: string
+          picked_index?: number
+          purpose?: string
+          recommended_approach?: string
+          scheduled?: boolean
+          sent?: boolean
+          sent_at?: string | null
+          stage?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      email_compose_outcomes: {
+        Row: {
+          click_count: number
+          clicked: boolean
+          email_id: string
+          event_id: string
+          measured_at: string
+          open_count: number
+          opened: boolean
+          replied: boolean
+          replied_at: string | null
+          stage_advanced: boolean
+          stage_after: string
+          stage_before: string
+        }
+        Insert: {
+          click_count?: number
+          clicked?: boolean
+          email_id: string
+          event_id: string
+          measured_at?: string
+          open_count?: number
+          opened?: boolean
+          replied?: boolean
+          replied_at?: string | null
+          stage_advanced?: boolean
+          stage_after?: string
+          stage_before?: string
+        }
+        Update: {
+          click_count?: number
+          clicked?: boolean
+          email_id?: string
+          event_id?: string
+          measured_at?: string
+          open_count?: number
+          opened?: boolean
+          replied?: boolean
+          replied_at?: string | null
+          stage_advanced?: boolean
+          stage_after?: string
+          stage_before?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_compose_outcomes_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "email_compose_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_field_links: {
         Row: {
           created_at: string
