@@ -457,9 +457,12 @@ export function EmailComposerV2({
           source: mailbox?.provider || "gmail",
           thread_id: threadId || null,
           ai_drafted: drafts.length > 0,
+          attachments: attachments.length > 0 ? attachments : [],
+          tracked: trackingEnabled,
           raw_payload: {
             connection_id: fromConnectionId,
             in_reply_to: inReplyTo || null,
+            tracking_enabled: trackingEnabled,
           },
         } as any)
         .select("id")
@@ -576,7 +579,20 @@ export function EmailComposerV2({
           {/* ───────── Metadata bar ───────── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">From</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground">From</label>
+                {otherBrandMailbox && (
+                  <button
+                    type="button"
+                    onClick={switchSenderBrand}
+                    title={`Switch sender to ${otherBrandMailbox.email_address}`}
+                    className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    <ArrowLeftRight className="h-2.5 w-2.5" />
+                    Switch to {isCaptarget(otherBrandMailbox) ? "CT" : isSourceCo(otherBrandMailbox) ? "SC" : "other"}
+                  </button>
+                )}
+              </div>
               {hasMailbox ? (
                 <select
                   value={fromConnectionId}
