@@ -26,6 +26,7 @@ import { EmailTemplatesPanel } from "./EmailTemplatesPanel";
 import { AutomationHealthPanel } from "./AutomationHealthPanel";
 import { BackfillProgressPanel } from "./BackfillProgressPanel";
 import { AILearningPanel } from "./settings/AILearningPanel";
+import { NoiseRulesPanel } from "./settings/NoiseRulesPanel";
 import { useMatcherControls } from "@/hooks/useMatcherControls";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -409,6 +410,8 @@ export function MailboxSettings() {
               </Button>
             </div>
           </div>
+
+          <NoiseRulesPanel />
 
           <div className="border border-border rounded-lg overflow-hidden">
             {loading ? (
