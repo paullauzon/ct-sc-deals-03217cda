@@ -13,6 +13,7 @@
 // The existing update_lead_email_metrics_on_claim trigger fires automatically
 // when lead_id flips from 'unmatched' → real id, so metrics stay accurate.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { extractOriginalSender, isForwardedSubject } from "../_shared/extract-original-sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
