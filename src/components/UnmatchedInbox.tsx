@@ -223,7 +223,7 @@ export function UnmatchedInbox() {
             size="sm"
             variant="outline"
             className="h-8 text-xs"
-            onClick={cleanupSweep}
+            onClick={handleCleanup}
             disabled={rematching}
             title="Un-stape wrongly-matched emails and re-run the matcher with strict logic"
           >
