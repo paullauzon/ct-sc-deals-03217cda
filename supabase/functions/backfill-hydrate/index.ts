@@ -120,7 +120,8 @@ async function getValidOutlookToken(supabase: ReturnType<typeof createClient>, c
   const c = conn as { access_token: string; refresh_token: string; token_expires_at: string | null };
   const expiresAt = c.token_expires_at ? new Date(c.token_expires_at).getTime() : 0;
   if (expiresAt > Date.now() + 60_000 && c.access_token) return c.access_token;
-  const res = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+  const TENANT_ID = Deno.env.get("MICROSOFT_TENANT_ID") || "common";
+  const res = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({

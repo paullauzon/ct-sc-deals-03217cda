@@ -41,9 +41,10 @@ async function getValidOutlookToken(connectionId: string): Promise<string> {
 
   const CLIENT_ID = Deno.env.get("MICROSOFT_CLIENT_ID");
   const CLIENT_SECRET = Deno.env.get("MICROSOFT_CLIENT_SECRET");
+  const TENANT_ID = Deno.env.get("MICROSOFT_TENANT_ID") || "common";
   if (!CLIENT_ID || !CLIENT_SECRET) throw new Error("Microsoft OAuth credentials missing");
 
-  const res = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+  const res = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
