@@ -36,6 +36,9 @@ import {
   resolveVariables, variableLabel, type VariableMap,
 } from "@/lib/emailVariables";
 import { SmartScheduler } from "@/components/lead-panel/SmartScheduler";
+import { logComposeEvent } from "@/lib/composeLearning";
+import { Switch } from "@/components/ui/switch";
+import { ShieldOff } from "lucide-react";
 
 interface ReplyContext {
   to?: string;
@@ -127,6 +130,12 @@ export function EmailComposerV2({
   // Add-proof popover
   const [proofOpen, setProofOpen] = useState(false);
   const [proofText, setProofText] = useState("");
+
+  // Phase 6 — learning loop
+  const [doNotTrain, setDoNotTrain] = useState(false);
+  // Snapshot of the body/subject as the AI delivered it for the selected draft.
+  // Used to compute edit-distance when the user finally sends.
+  const initialSnapshotRef = useRef<{ subject: string; body: string }>({ subject: "", body: "" });
 
   // ───────── Load on open ─────────
   useEffect(() => {
