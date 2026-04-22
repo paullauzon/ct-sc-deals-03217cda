@@ -99,6 +99,29 @@ Deno.serve(async (req) => {
     const stateRaw = url.searchParams.get("state") || "";
     const error = url.searchParams.get("error");
     const errorDesc = url.searchParams.get("error_description") || "";
+    const adminConsent = url.searchParams.get("admin_consent");
+    const consentTenant = url.searchParams.get("tenant") || "";
+
+    // Microsoft's adminconsent endpoint redirects here with
+    //   ?tenant={GUID}&admin_consent=True&state={return_to}
+    // (no `code`). Render a clean confirmation page instead of the generic
+    // "Missing authorization code" branch below. Note: `state` for this flow
+    // is a plain return_to URL (we set it that way in outlook-admin-consent-start),
+    // not the base64-encoded JSON used by the user-consent flow.
+    if (adminConsent && !code) {
+      const wasApproved = String(adminConsent).toLowerCase() === "true";
+      const returnHref = stateRaw && isSafeReturnTo(stateRaw) ? stateRaw : "";
+      console.log("Outlook admin-consent callback:", { tenant: consentTenant, approved: wasApproved });
+      if (!wasApproved) {
+        return htmlResponse(
+          "Admin approval not granted",
+          `Microsoft reported admin_consent=${adminConsent}. Have the admin retry and click Accept.`,
+          returnHref || undefined,
+        );
+      }
+      const detail = `Tenant ${consentTenant || "(unknown)"} now allows users to connect Outlook. The person who needed to connect can return to the CRM and click Connect Outlook again — the approval wall is gone.`;
+      return htmlResponse("Tenant admin approval received", detail, returnHref || undefined);
+    }
 
     // Build the admin-consent URL up front so any approval-related branch can offer it.
     const adminConsentScopes = [

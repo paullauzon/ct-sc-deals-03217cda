@@ -18,7 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Mail, Plus, Loader2, Trash2, RefreshCw, CheckCircle2, AlertCircle, DownloadCloud, History, ChevronDown, ShieldCheck } from "lucide-react";
+import { Mail, Plus, Loader2, Trash2, RefreshCw, CheckCircle2, AlertCircle, DownloadCloud, History, ChevronDown, ShieldCheck, Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { UnmatchedInbox } from "./UnmatchedInbox";
@@ -59,6 +59,7 @@ export function MailboxSettings() {
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [requestingAdminConsent, setRequestingAdminConsent] = useState(false);
+  const [adminConsentUrl, setAdminConsentUrl] = useState<string | null>(null);
   
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
 
@@ -148,7 +149,12 @@ export function MailboxSettings() {
   // their first Outlook connect attempt — a tenant admin (e.g. Josh) opens
   // this URL once, approves the app, and afterwards every user can connect
   // through the normal flow without seeing the wall again.
-  const requestAdminConsent = async () => {
+  // Fetches the Microsoft tenant admin-consent URL once and caches it. Used by
+  // both the "Copy link" and "Open in new tab" buttons below — the URL itself
+  // never changes for a given tenant + app, so we only need to fetch it once
+  // per dialog session.
+  const fetchAdminConsentUrl = async (): Promise<string | null> => {
+    if (adminConsentUrl) return adminConsentUrl;
     setRequestingAdminConsent(true);
     try {
       const returnTo = `${window.location.origin}/#sys=crm&view=settings&connected=1`;
@@ -159,15 +165,36 @@ export function MailboxSettings() {
       if (!res.ok || !json.url) {
         throw new Error(json.error || `Could not generate admin-consent link (HTTP ${res.status})`);
       }
-      window.open(json.url, "_blank", "noopener");
-      toast.success("Admin-consent link opened in a new tab", {
-        description: "Have a Microsoft tenant admin sign in and approve. After they accept, retry Connect Outlook.",
-      });
+      setAdminConsentUrl(json.url);
+      return json.url as string;
     } catch (e: any) {
       toast.error(e.message || "Failed to generate admin-consent link");
+      return null;
     } finally {
       setRequestingAdminConsent(false);
     }
+  };
+
+  const copyAdminConsentLink = async () => {
+    const url = await fetchAdminConsentUrl();
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Copied — paste it to your Microsoft tenant admin", {
+        description: "They'll sign in once with their admin account and click Accept.",
+      });
+    } catch {
+      toast.error("Couldn't copy automatically — long-press the link below to copy it manually.");
+    }
+  };
+
+  const openAdminConsentLink = async () => {
+    const url = await fetchAdminConsentUrl();
+    if (!url) return;
+    window.open(url, "_blank", "noopener");
+    toast.success("Admin-consent link opened in a new tab", {
+      description: "Have a Microsoft tenant admin sign in and approve. After they accept, retry Connect Outlook.",
+    });
   };
 
   const disconnect = async (id: string, email: string) => {
@@ -480,31 +507,56 @@ export function MailboxSettings() {
           </div>
 
           {connectProvider === "outlook" && (
-            <div className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2">
+            <div className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-2.5">
               <div className="flex items-start gap-2">
                 <ShieldCheck className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
                 <div className="space-y-1">
                   <p className="text-xs font-medium">Hit "Approval required" on Microsoft?</p>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Your tenant blocks user self-consent for mailbox access. A Microsoft tenant admin (e.g. Josh) needs to approve the app once — afterwards every user can connect normally.
+                    Your tenant blocks user self-consent for mailbox access. Send the link below to a Microsoft tenant admin (e.g. Josh) — they'll sign in once with an account that has <span className="font-medium text-foreground">Global Admin</span>, <span className="font-medium text-foreground">Privileged Role Admin</span>, or <span className="font-medium text-foreground">Cloud App Admin</span> rights and click Accept. Afterwards every user can connect normally.
                   </p>
                 </div>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full h-7 text-xs"
-                onClick={requestAdminConsent}
-                disabled={requestingAdminConsent}
-              >
-                {requestingAdminConsent ? (
-                  <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
-                ) : (
-                  <ShieldCheck className="h-3 w-3 mr-1.5" />
-                )}
-                Open admin-consent link
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={copyAdminConsentLink}
+                  disabled={requestingAdminConsent}
+                >
+                  {requestingAdminConsent && !adminConsentUrl ? (
+                    <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                  ) : (
+                    <Copy className="h-3 w-3 mr-1.5" />
+                  )}
+                  Copy link
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={openAdminConsentLink}
+                  disabled={requestingAdminConsent}
+                >
+                  {requestingAdminConsent && !adminConsentUrl ? (
+                    <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                  ) : (
+                    <ExternalLink className="h-3 w-3 mr-1.5" />
+                  )}
+                  Open in new tab
+                </Button>
+              </div>
+              {adminConsentUrl && (
+                <div className="rounded border border-border/60 bg-background/60 px-2 py-1.5">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Admin-consent URL</p>
+                  <p className="text-[10px] font-mono text-foreground/80 break-all leading-snug select-all">
+                    {adminConsentUrl}
+                  </p>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
