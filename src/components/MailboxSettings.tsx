@@ -30,6 +30,8 @@ import { NoiseRulesPanel } from "./settings/NoiseRulesPanel";
 import { DuplicateLeadsPanel } from "./settings/DuplicateLeadsPanel";
 import { PendingAttributionsPanel } from "./settings/PendingAttributionsPanel";
 import { HighVolumeSendersPanel } from "./settings/HighVolumeSendersPanel";
+import { ReclaimBacklogPanel } from "./settings/ReclaimBacklogPanel";
+import { AttributionHealthPanel } from "./settings/AttributionHealthPanel";
 import { useMatcherControls } from "@/hooks/useMatcherControls";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -416,7 +418,7 @@ export function MailboxSettings() {
 
           <AttributionHealthPanel />
 
-          <ReclaimBacklogPanel onComplete={() => matcher.refresh?.()} />
+          <ReclaimBacklogPanel onComplete={() => matcher.refreshUnmatchedCount?.()} />
 
           <NoiseRulesPanel />
 
