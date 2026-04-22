@@ -1,62 +1,63 @@
 
 
-# Connect your Outlook mailbox now that admin consent is granted
+# Fix Benjamin Parrish's incorrectly attributed emails
 
-## What just changed
+## What I found (deep investigation)
 
-Microsoft sent the "Lovable CRM — Outlook Sync access request **Approved**" notice. That clears the tenant-level wall. The CRM-side infrastructure is already built and waiting:
+Benjamin's deal-room shows "3 emails" with "Last reply 394d ago." That is **wrong on every level**. None of the 3 emails are from or to Benjamin Parrish. They were swept onto his lead because my earlier UPDATE was too aggressive — it grabbed any orphaned `@boynecapital.com` email instead of only emails involving `bparrish@boynecapital.com`.
 
-- `outlook-oauth-start` / `outlook-oauth-callback` — ready
-- `sync-outlook-emails` — deployed, **running every 5 minutes via cron** (`sync-outlook-emails-5min`)
-- `refresh-outlook-token` — deployed (refreshes on demand inside sync)
-- `start-email-backfill` — auto-fires a 90-day backfill the moment the connection is created
-- `sync-watchdog-hourly` — will alert if the new connection ever stalls >30 min
+### The 3 emails currently attached to SC-T-071 (all incorrect)
 
-Database check just now: zero Outlook connections exist yet (`user_email_connections` returns 0 rows for `provider='outlook'`). So nothing is broken — you simply haven't completed your own user-level connect since the wall came down.
+| Date | From | To | Subject | What it actually is |
+|---|---|---|---|---|
+| Mar 24 2025 | **janaya@**boynecapital.com | billing@captarget.com | RE: CAPTARGET Receipts | Jessica Anaya (AP/billing) chasing receipts |
+| Mar 21 2025 | **wguthrie@**boynecapital.com | m.hayes@captarget.com | DealMAX 2025 invitation | William Guthrie marketing blast |
+| Mar 19 2025 | **janaya@**boynecapital.com | m.hayes@captarget.com | RE: CAPTARGET Receipts | Same Jessica receipts thread |
 
-## What you do next (3 minutes)
+Two of these (Jessica/billing) actually belong to **Rob Regan's deal CT-369** — Rob is the Captarget client at Boyne and Jessica is his firm's accounts-payable contact. The third (William Guthrie) is a generic conference invite to Malik that never belonged to any deal.
 
-### Step 1 — Connect your Outlook
-Settings → Mailboxes → **Connect mailbox** → **Connect Outlook** → enter a label like "SourceCo inbox" → Continue.
+### What's also wrong as a side effect
+- "Last reply 394d ago" → it's not a reply, it's Jessica Anaya asking about receipts a year ago
+- `lead_email_metrics` shows `total_received: 3, last_received_date: 2025-03-24` → all garbage
+- The AI Suggests strip ("Benjamin replied 394d ago — awaiting your response") → **fabricated insight** based on Jessica's email being misattributed as Benjamin's reply
+- 2 of these emails (the Jessica/billing thread) actually belong on **CT-369 / Rob Regan** but are now stolen from him
 
-You'll be redirected to Microsoft. Because the tenant is approved:
-- **You will NOT see the red "Approval required" wall**
-- You'll see the standard Microsoft consent screen listing 4 permissions (`Mail.Read`, `Mail.Send`, `User.Read`, `offline_access`)
-- Click **Accept**
-- Microsoft redirects back to the CRM and you'll see "Mailbox connected" toast
+### Ground truth
+- **Zero emails exist anywhere in the database from or to `bparrish@boynecapital.com`.** Confirmed by direct query — no row contains his address in `from_address` or `to_addresses`.
+- This makes sense — Benjamin filled the SourceCo form for the **first time ever** today (Apr 22, 2026). He has never been emailed by us and never emailed us before this submission landed in Outlook 90 minutes ago.
+- The actual Webflow form-submission email (the screenshot you sent at 16:51 today) sits in Outlook but hasn't synced into the CRM yet because **the Outlook deep-sync connection still hasn't been completed in Settings → Mailboxes**.
 
-### Step 2 — What happens automatically
-The instant the callback completes:
+## The plan — three corrections
 
-1. The connection row is written with `is_active=true` and a refresh token
-2. A 90-day backfill kicks off in the background (`start-email-backfill` → `backfill-discover` → `backfill-hydrate`) — this pulls every Inbox + Sent message from the last 90 days, dedupes against existing rows, and matches each one to a lead
-3. From minute 5 onwards, the cron `sync-outlook-emails-5min` keeps it warm — every new inbound/outbound message lands in the CRM within 5 minutes
-4. Auto-stakeholder discovery runs on each matched email — same-domain colleagues uncovered through reply chains get added to the lead's stakeholder list
-5. Reply detection stamps `replied_at` on outbound CRM emails when the prospect replies, which the Pipeline Health and Engagement signals depend on
+### 1. Reverse the bad sweep
+- Move the 2 Jessica Anaya billing emails (`thread_id 195ac33715738718`) **back to CT-369 / Rob Regan** where they correctly belong (Jessica works for Rob's firm and the thread is about Rob's Captarget invoice payments)
+- Move the 1 William Guthrie DealMAX email **back to `unmatched`** (it's a marketing blast to Malik, not a lead-bearing email — leaving it on Benjamin would also be wrong, and putting it on Rob would be wrong since it's addressed to a different person at Boyne)
+- Reset `lead_email_metrics` for SC-T-071 to zero (no real emails yet)
+- Recalculate `lead_email_metrics` for CT-369 to absorb the 2 emails being returned
 
-### Step 3 — How you verify it worked
+### 2. Make Benjamin's panel reflect reality
+After step 1, Benjamin's Emails tab will correctly show: "0 threads, 0 emails — no email history yet with Benjamin Parrish." The bogus AI insight ("Benjamin replied 394d ago") will disappear automatically because it's derived from the email rows.
 
-In Settings → Mailboxes you'll see a row with:
-- Status: **Active** (green check)
-- A live count of "X in last 24h" that climbs as backfill chews through your history
-- A "Show recent syncs" toggle that lists the cron's 5-minute heartbeats
+### 3. Capture the real first email (the Webflow form notification)
+The Webflow form submission email that triggered this whole episode (subject: "New Request - SourceCo", to: `sourceco@…`) is sitting in your Outlook inbox right now. The honest answer is: **we cannot pull it into the CRM until you complete the Outlook connect in Settings → Mailboxes** (which is the exact step that's queued up after Josh's admin approval).
 
-Then jump to a recent deal you've been emailing through Outlook — the email thread should appear in the deal's Emails tab within ~10 minutes (Sent items take one full sync cycle). For a lived-in inbox like SourceCo, the 90-day backfill typically pulls 500–1,500 messages and finishes in 10–30 minutes.
+Once Outlook is connected and the 90-day backfill runs, that form-notification email will sync in and either:
+- Auto-match to SC-T-071 (because Benjamin's email address `bparrish@boynecapital.com` is in the form-submission body), **or**
+- Land in unmatched and get claimed by the next sweep
 
-## Why I'm not making any code changes
+I will **not** try to fabricate or hand-craft a stand-in record for that email — that's how we ended up with the current mess. The right answer is: zero is the truthful number until real sync runs.
 
-Everything required is already deployed and scheduled. The only missing piece was the tenant approval, which is now done. Adding code now would just add risk — there's nothing to build. The plan is purely operational:
+## Why this happened (root cause + guardrail)
 
-1. You click Connect Outlook
-2. You click Accept on Microsoft's consent screen  
-3. Watch the backfill numbers climb in Settings → Mailboxes
+The earlier sweep used the SQL pattern `from_address ILIKE '%boynecapital.com%'` which is too broad — it matches every employee at Boyne, not just Benjamin. The correct pattern would have been `from_address = 'bparrish@boynecapital.com' OR 'bparrish@boynecapital.com' = ANY(to_addresses)`. Going forward, any manual email-claim must use **exact email match** on the lead's `email` field, not domain-level matching, because deal-bearing relationships are person-to-person not firm-to-firm.
 
-## If anything goes wrong on retry (rare, but here's the fallback map)
+## Technical execution (default mode)
 
-| What you see | What it means | What to do |
-|---|---|---|
-| Normal Microsoft consent screen → Accept → "Connected" toast | ✅ Working as expected | Done |
-| "Approval required" wall again | Josh approved a different tenant or the approval didn't propagate yet (Entra can take 2–5 min) | Wait 5 min, retry once. If still blocked, ping me and I'll re-check the tenant ID against the consent record |
-| "Reconnect required" message after Accept | Microsoft didn't return a refresh token (very rare — caused by an existing app authorization on your account) | Go to https://myapps.microsoft.com → Lovable CRM → Remove → retry Connect |
-| Connected but no emails after 15 min | Backfill stuck on discovery | I can re-trigger `start-email-backfill` manually with `target_window: "90d"` |
+1. `UPDATE lead_emails SET lead_id = 'CT-369' WHERE id IN ('7015de25-…', '9ce4ddaa-…')` — return Jessica's billing thread to Rob
+2. `UPDATE lead_emails SET lead_id = 'unmatched' WHERE id = '68071d01-…'` — DealMAX blast back to unmatched
+3. `DELETE FROM lead_email_metrics WHERE lead_id = 'SC-T-071'` — wipe bogus metrics (the trigger will recreate it cleanly when a real email arrives)
+4. Recompute `lead_email_metrics` for CT-369 from scratch by re-aggregating `lead_emails` for that lead (since the trigger only fires on insert/update of the email row, not on lead_id changes — I'll do an explicit UPSERT with the full counts)
+5. Confirm SC-T-071 shows 0 emails and CT-369 shows the corrected count
+
+No code changes — pure data correction.
 
