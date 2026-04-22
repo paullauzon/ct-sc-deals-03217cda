@@ -2,12 +2,15 @@ import { Lead } from "@/types/lead";
 import { CollapsibleCard } from "@/components/dealroom/CollapsibleCard";
 import { Bell } from "lucide-react";
 import { getDealSignals } from "@/components/lead-panel/shared";
+import { useEmailEngagementSignals } from "@/lib/emailSignals";
 import { cn } from "@/lib/utils";
 
 interface Props { lead: Lead }
 
 export function SignalsCard({ lead }: Props) {
-  const signals = getDealSignals(lead);
+  const dealSignals = getDealSignals(lead);
+  const emailSignals = useEmailEngagementSignals(lead.id);
+  const signals = [...dealSignals, ...emailSignals];
   if (signals.length === 0) return null;
 
   const criticals = signals.filter(s => s.severity === "critical").length;

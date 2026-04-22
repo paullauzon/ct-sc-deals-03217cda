@@ -91,7 +91,20 @@ export function LeadOverviewTab({ lead }: Props) {
   const stageLabel = stageIdx >= 0 ? `${stageIdx + 1}/${ACTIVE_STAGES.length}` : "—";
   const daysInStage = computeDaysInStage(lead.stageEnteredDate);
 
-  const health = useMemo(() => computeDealHealthScore(lead), [lead]);
+  const baseHealth = useMemo(() => computeDealHealthScore(lead), [lead]);
+  const emailFactors = useEmailHealthFactors(lead.id);
+  const health = useMemo(() => {
+    if (!baseHealth) return null;
+    if (!emailFactors) return baseHealth;
+    const totalImpact =
+      emailFactors.replyVelocityImpact + emailFactors.engagementImpact + emailFactors.sentimentImpact;
+    if (totalImpact === 0) return baseHealth;
+    const score = Math.max(0, Math.min(100, baseHealth.score + totalImpact));
+    const color: "emerald" | "amber" | "red" =
+      score >= 65 ? "emerald" : score >= 40 ? "amber" : "red";
+    const label = score >= 65 ? "Healthy" : score >= 40 ? "At Risk" : "Critical";
+    return { score, color, label, factors: [...baseHealth.factors, ...emailFactors.factors] };
+  }, [baseHealth, emailFactors]);
   const forecastPct = useMemo(() => {
     const f = lead.forecastCategory?.toLowerCase();
     if (f === "commit") return 90;
@@ -150,6 +163,9 @@ export function LeadOverviewTab({ lead }: Props) {
           </div>
         </div>
       )}
+
+      {/* Email highlights — top 3 important recent emails */}
+      <EmailHighlightsCard lead={lead} />
 
       {/* Upcoming tasks */}
       <div className="border border-border rounded-md">
