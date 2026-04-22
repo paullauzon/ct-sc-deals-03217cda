@@ -143,6 +143,33 @@ export function MailboxSettings() {
     }
   };
 
+  // Tenant admin recovery path: fetches the Microsoft admin-consent URL and
+  // opens it in a new tab. Used when an end-user hits "Approval required" on
+  // their first Outlook connect attempt — a tenant admin (e.g. Josh) opens
+  // this URL once, approves the app, and afterwards every user can connect
+  // through the normal flow without seeing the wall again.
+  const requestAdminConsent = async () => {
+    setRequestingAdminConsent(true);
+    try {
+      const returnTo = `${window.location.origin}/#sys=crm&view=settings&connected=1`;
+      const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/outlook-admin-consent-start`);
+      url.searchParams.set("return_to", returnTo);
+      const res = await fetch(url.toString());
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.url) {
+        throw new Error(json.error || `Could not generate admin-consent link (HTTP ${res.status})`);
+      }
+      window.open(json.url, "_blank", "noopener");
+      toast.success("Admin-consent link opened in a new tab", {
+        description: "Have a Microsoft tenant admin sign in and approve. After they accept, retry Connect Outlook.",
+      });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to generate admin-consent link");
+    } finally {
+      setRequestingAdminConsent(false);
+    }
+  };
+
   const disconnect = async (id: string, email: string) => {
     if (!window.confirm(`Disconnect ${email}? Sync will stop for this mailbox.`)) return;
     const { error } = await supabase.from("user_email_connections").update({ is_active: false }).eq("id", id);
