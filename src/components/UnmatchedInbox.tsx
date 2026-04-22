@@ -15,9 +15,11 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Loader2, Inbox, Link2, Trash2, Check, ChevronsUpDown, Search, Wand2 } from "lucide-react";
+import { Loader2, Inbox, Link2, Trash2, Check, ChevronsUpDown, Search, Wand2, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { CompanyInboxView } from "./CompanyInboxView";
 
 interface UnmatchedEmail {
   id: string;
@@ -294,50 +296,67 @@ export function UnmatchedInbox() {
         </div>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-        <Input
-          placeholder="Search by sender, subject, or content…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-8 h-9"
-        />
-      </div>
+      <Tabs defaultValue="all" className="w-full">
+        <TabsList className="h-9">
+          <TabsTrigger value="all" className="text-xs gap-1.5">
+            <Inbox className="h-3 w-3" /> All unmatched
+          </TabsTrigger>
+          <TabsTrigger value="company" className="text-xs gap-1.5">
+            <Building2 className="h-3 w-3" /> By company
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="border border-border rounded-lg overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-            Loading…
+        <TabsContent value="all" className="space-y-4 mt-4">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Search by sender, subject, or content…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-9"
+            />
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="p-12 text-center">
-            <Inbox className="h-8 w-8 mx-auto text-muted-foreground/50 mb-3" />
-            <p className="text-sm font-medium">
-              {emails.length === 0 ? "No unmatched emails" : "No matches for this search"}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {emails.length === 0
-                ? "Synced emails are linking to leads cleanly."
-                : "Try a different sender or subject keyword."}
-            </p>
+
+          <div className="border border-border rounded-lg overflow-hidden">
+            {loading ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
+                Loading…
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="p-12 text-center">
+                <Inbox className="h-8 w-8 mx-auto text-muted-foreground/50 mb-3" />
+                <p className="text-sm font-medium">
+                  {emails.length === 0 ? "No unmatched emails" : "No matches for this search"}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {emails.length === 0
+                    ? "Synced emails are linking to leads cleanly."
+                    : "Try a different sender or subject keyword."}
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-border">
+                {filtered.map((e) => (
+                  <UnmatchedRow
+                    key={e.id}
+                    email={e}
+                    leads={leads}
+                    busy={busyId === e.id || busyId === e.from_address}
+                    onClaim={(leadId) => claimToLead(e.id, leadId)}
+                    onClaimAll={(leadId) => claimAllFromSender(e.from_address, leadId)}
+                    onDismiss={() => dismiss(e.id)}
+                  />
+                ))}
+              </ul>
+            )}
           </div>
-        ) : (
-          <ul className="divide-y divide-border">
-            {filtered.map((e) => (
-              <UnmatchedRow
-                key={e.id}
-                email={e}
-                leads={leads}
-                busy={busyId === e.id || busyId === e.from_address}
-                onClaim={(leadId) => claimToLead(e.id, leadId)}
-                onClaimAll={(leadId) => claimAllFromSender(e.from_address, leadId)}
-                onDismiss={() => dismiss(e.id)}
-              />
-            ))}
-          </ul>
-        )}
-      </div>
+        </TabsContent>
+
+        <TabsContent value="company" className="mt-4">
+          <CompanyInboxView />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
