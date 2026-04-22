@@ -1778,6 +1778,69 @@ export type Database = {
         }
         Relationships: []
       }
+      reclaim_jobs: {
+        Row: {
+          cc_claimed: number
+          cursor: string | null
+          finished_at: string | null
+          firm_unrelated_routed: number
+          forward_claimed: number
+          id: string
+          internal_claimed: number
+          last_error: string | null
+          last_tick_at: string | null
+          noise_routed: number
+          outbound_claimed: number
+          started_at: string
+          started_by: string | null
+          status: string
+          thread_claimed: number
+          total_reclassified: number
+          total_remaining: number
+          total_scanned: number
+        }
+        Insert: {
+          cc_claimed?: number
+          cursor?: string | null
+          finished_at?: string | null
+          firm_unrelated_routed?: number
+          forward_claimed?: number
+          id?: string
+          internal_claimed?: number
+          last_error?: string | null
+          last_tick_at?: string | null
+          noise_routed?: number
+          outbound_claimed?: number
+          started_at?: string
+          started_by?: string | null
+          status?: string
+          thread_claimed?: number
+          total_reclassified?: number
+          total_remaining?: number
+          total_scanned?: number
+        }
+        Update: {
+          cc_claimed?: number
+          cursor?: string | null
+          finished_at?: string | null
+          firm_unrelated_routed?: number
+          forward_claimed?: number
+          id?: string
+          internal_claimed?: number
+          last_error?: string | null
+          last_tick_at?: string | null
+          noise_routed?: number
+          outbound_claimed?: number
+          started_at?: string
+          started_by?: string | null
+          status?: string
+          thread_claimed?: number
+          total_reclassified?: number
+          total_remaining?: number
+          total_scanned?: number
+        }
+        Relationships: []
+      }
       user_email_connections: {
         Row: {
           access_token: string | null
