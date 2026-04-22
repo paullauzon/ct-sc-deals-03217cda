@@ -530,6 +530,27 @@ export type Database = {
         }
         Relationships: []
       }
+      email_noise_domains: {
+        Row: {
+          added_by: string | null
+          created_at: string
+          domain: string
+          reason: string
+        }
+        Insert: {
+          added_by?: string | null
+          created_at?: string
+          domain: string
+          reason?: string
+        }
+        Update: {
+          added_by?: string | null
+          created_at?: string
+          domain?: string
+          reason?: string
+        }
+        Relationships: []
+      }
       email_sync_runs: {
         Row: {
           connection_id: string
