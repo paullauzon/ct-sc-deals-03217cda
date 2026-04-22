@@ -416,6 +416,46 @@ async function syncOneConnection(
         }
         stats.inserted++;
 
+        // Round 5 — multi-recipient outbound fan-out. Mirror sync-gmail-emails:
+        // when an outbound goes to multiple lead primaries, insert sibling rows
+        // so each deal-room sees the conversation.
+        if (direction === "outbound" && leadId && toList.length > 1) {
+          try {
+            const { data: peerLeads } = await supabase
+              .from("leads")
+              .select("id, email")
+              .in("email", toList)
+              .neq("id", leadId)
+              .is("archived_at", null)
+              .eq("is_duplicate", false);
+            for (const peer of (peerLeads || []) as Array<{ id: string; email: string }>) {
+              await supabase.from("lead_emails").insert({
+                lead_id: peer.id,
+                message_id: internetMsgId || m.id,
+                provider_message_id: `${m.id}#peer-${peer.id}`,
+                thread_id: m.conversationId || "",
+                direction,
+                from_address: fromAddr,
+                from_name: fromName,
+                to_addresses: toList,
+                cc_addresses: ccList,
+                bcc_addresses: bccList,
+                subject: (m.subject || "").substring(0, 500),
+                body_preview: preview,
+                body_html: html,
+                body_text: text,
+                email_date: emailDate,
+                source: "outlook",
+                is_read: !!m.isRead,
+                attachments: m.hasAttachments ? [{ has: true }] : [],
+                raw_payload: { peer_of: (insertedRow as { id: string } | null)?.id },
+              });
+            }
+          } catch (e) {
+            console.warn("multi-recipient dup failed", (e as Error).message);
+          }
+        }
+
         // Reply detection — when an inbound matched to a lead lands in a conversation that
         // already has an outbound, stamp replied_at on that outbound row (parity with Gmail).
         if (direction === "inbound" && leadId && m.conversationId && insertedRow) {
