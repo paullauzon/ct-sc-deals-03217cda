@@ -195,6 +195,39 @@ export function CompanyInboxView() {
     }
   };
 
+  const setAside = async (emailId: string, fromAddress: string) => {
+    const domain = domainOf(fromAddress);
+    if (!domain) {
+      toast.error("Cannot determine firm domain");
+      return;
+    }
+    setBusy(emailId);
+    try {
+      // 1. Flip the email to the firm_activity sentinel so it leaves unmatched
+      const { error: flipErr } = await supabase
+        .from("lead_emails")
+        .update({ lead_id: "firm_activity" })
+        .eq("id", emailId);
+      if (flipErr) throw flipErr;
+
+      // 2. Record it in the sidecar table for the deal-room surface
+      const { error: insErr } = await supabase
+        .from("firm_activity_emails")
+        .insert({ email_id: emailId, firm_domain: domain });
+      if (insErr) throw insErr;
+
+      toast.success(`Set aside as firm activity at @${domain}`);
+      setGroups((prev) => prev.map((g) => ({
+        ...g,
+        emails: g.emails.filter((e) => e.id !== emailId),
+      })).filter((g) => g.emails.length > 0));
+    } catch (e: any) {
+      toast.error(e.message || "Could not set aside");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const dismissAllFromDomain = async (domain: string) => {
     if (!window.confirm(`Permanently delete all ${groups.find(g => g.domain === domain)?.emails.length ?? 0} unmatched emails from @${domain}? This is meant for firm-noise like billing/marketing/no-reply blasts.`)) return;
     setBusy(`dom:${domain}`);
