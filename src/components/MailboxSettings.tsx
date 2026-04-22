@@ -29,6 +29,7 @@ import { AILearningPanel } from "./settings/AILearningPanel";
 import { NoiseRulesPanel } from "./settings/NoiseRulesPanel";
 import { DuplicateLeadsPanel } from "./settings/DuplicateLeadsPanel";
 import { PendingAttributionsPanel } from "./settings/PendingAttributionsPanel";
+import { HighVolumeSendersPanel } from "./settings/HighVolumeSendersPanel";
 import { useMatcherControls } from "@/hooks/useMatcherControls";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -414,6 +415,8 @@ export function MailboxSettings() {
           </div>
 
           <NoiseRulesPanel />
+
+          <HighVolumeSendersPanel />
 
           <PendingAttributionsPanel />
 
