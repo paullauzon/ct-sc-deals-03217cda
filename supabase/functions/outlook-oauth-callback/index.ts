@@ -192,6 +192,22 @@ Deno.serve(async (req) => {
     if (!tokenRes.ok) {
       const errText = await tokenRes.text();
       console.error("Token exchange failed:", errText);
+      const lower = errText.toLowerCase();
+      if (
+        lower.includes("aadsts65001") ||
+        lower.includes("consent_required") ||
+        lower.includes("admin_consent") ||
+        lower.includes("interaction_required")
+      ) {
+        return approvalRequiredHtml({
+          microsoftError: "consent_required",
+          microsoftErrorDescription: errText.slice(0, 400),
+          tenantId: TENANT_ID,
+          scopes: adminConsentScopes,
+          adminConsentUrl: adminConsentUrl.toString(),
+          returnTo: earlyReturnTo,
+        });
+      }
       return htmlResponse("Token exchange failed", "Microsoft rejected the authorization code. Try connecting again.");
     }
 
