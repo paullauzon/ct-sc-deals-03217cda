@@ -713,6 +713,37 @@ async function syncOneConnection(
       } else {
         stats.inserted += 1;
 
+        // Round 5 — multi-recipient outbound fan-out. When a single outbound
+        // message is addressed to MULTIPLE distinct lead primaries, only the
+        // first one is bound to insertRow.lead_id by the matcher above. Insert
+        // sibling rows for any OTHER lead primaries on the same to_addresses
+        // list so each deal-room sees the conversation. Each sibling shares
+        // the rfc822 message_id but gets a synthetic provider_message_id to
+        // avoid the unique constraint.
+        if (direction === "outbound" && leadId && toList.length > 1) {
+          try {
+            const { data: peerLeads } = await supabase
+              .from("leads")
+              .select("id, email")
+              .in("email", toList)
+              .neq("id", leadId)
+              .is("archived_at", null)
+              .eq("is_duplicate", false);
+            for (const peer of (peerLeads || []) as Array<{ id: string; email: string }>) {
+              const peerInsert = {
+                ...insertRow,
+                lead_id: peer.id,
+                provider_message_id: `${mid}#peer-${peer.id}`,
+                raw_payload: { ...(insertRow.raw_payload as Record<string, unknown>), peer_of: (insertedRow as { id: string }).id },
+              };
+              await supabase.from("lead_emails").insert(peerInsert);
+            }
+          } catch (e) {
+            // Non-fatal — primary insert succeeded.
+            console.warn("multi-recipient dup failed", (e as Error).message);
+          }
+        }
+
         // Reply detection — when an inbound matched to a lead lands in a thread that
         // already has an outbound, stamp replied_at on that outbound row.
         if (direction === "inbound" && leadId && msg.threadId && insertedRow) {
