@@ -125,18 +125,18 @@ export function UnmatchedInbox() {
   const claimToLead = async (emailId: string, leadId: string) => {
     setBusyId(emailId);
     const target = emails.find((e) => e.id === emailId);
-    const { error } = await supabase
-      .from("lead_emails")
-      .update({ lead_id: leadId })
-      .eq("id", emailId);
-    if (error) {
-      toast.error(error.message);
+    // Promote the sender to a stakeholder FIRST so the safe-claim helper's
+    // exact-overlap check passes; then call safe-claim-email which is the only
+    // sanctioned path to flip lead_emails.lead_id from a UI.
+    if (target?.from_address) {
+      await ensureStakeholder(leadId, target.from_address, target.from_name || "");
+    }
+    const { data, error } = await supabase.functions.invoke("safe-claim-email", {
+      body: { email_id: emailId, lead_id: leadId },
+    });
+    if (error || !data?.ok) {
+      toast.error((data?.reason as string) || error?.message || "Could not claim email");
     } else {
-      // Auto-promote the sender as a stakeholder so future emails from this
-      // address route correctly via Tier 3 — no need to claim again.
-      if (target?.from_address) {
-        await ensureStakeholder(leadId, target.from_address, target.from_name || "");
-      }
       toast.success("Claimed to lead — sender added as stakeholder for future routing");
       setEmails((prev) => prev.filter((e) => e.id !== emailId));
     }

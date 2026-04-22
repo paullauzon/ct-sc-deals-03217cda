@@ -134,31 +134,20 @@ export function CompanyInboxView() {
 
   const claim = async (emailId: string, leadId: string, fromAddress: string, fromName: string | null) => {
     setBusy(emailId);
-    // Use the same exact-overlap rule that the shared helper enforces server-side:
-    // since this UI is claiming a non-overlapping email by explicit human decision,
-    // we promote the sender to a stakeholder FIRST so the overlap check passes,
-    // then update the row. This makes the routing recoverable for future emails too.
     try {
-      const lower = fromAddress.toLowerCase().trim();
-      const { data: existing } = await supabase
-        .from("lead_stakeholders")
-        .select("id").eq("lead_id", leadId).eq("email", lower).limit(1);
-      if (!existing || existing.length === 0) {
-        await supabase.from("lead_stakeholders").insert({
+      // safe-claim-email is the only sanctioned path. Pass
+      // promote_sender_to_stakeholder=true so it registers the sender first,
+      // making the participant-overlap check pass deterministically.
+      const { data, error } = await supabase.functions.invoke("safe-claim-email", {
+        body: {
+          email_id: emailId,
           lead_id: leadId,
-          email: lower,
-          name: (fromName || "").trim(),
-          role: "Routed from Company Inbox",
-          notes: "Manually attached from same-domain orphan inbox",
-          sentiment: "neutral",
-          last_contacted: new Date().toISOString(),
-        });
+          promote_sender_to_stakeholder: true,
+        },
+      });
+      if (error || !data?.ok) {
+        throw new Error((data?.reason as string) || error?.message || "Could not claim email");
       }
-      const { error } = await supabase
-        .from("lead_emails")
-        .update({ lead_id: leadId })
-        .eq("id", emailId);
-      if (error) throw error;
       toast.success("Email routed — sender promoted to stakeholder");
       setGroups((prev) => prev.map((g) => ({
         ...g,
