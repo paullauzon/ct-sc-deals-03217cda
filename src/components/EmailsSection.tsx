@@ -23,6 +23,7 @@ import { ThreadAiStrip } from "@/components/lead-panel/ThreadAiStrip";
 import { ExpandedThreadView } from "@/components/lead-panel/ExpandedThreadView";
 import { FocusedThreadView } from "@/components/lead-panel/dialogs/FocusedThreadView";
 import { DealEmailRecapDialog } from "@/components/lead-panel/dialogs/DealEmailRecapDialog";
+import { OtherFirmActivityFooter } from "@/components/lead-panel/OtherFirmActivityFooter";
 
 interface LeadEmail {
   id: string;
@@ -582,6 +583,11 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
         leadId={leadId}
         leadName={lead?.name}
       />
+
+      {/* Round 9 — Other firm activity disclosure footer */}
+      {lead?.email && lead.email.includes("@") && (
+        <OtherFirmActivityFooter leadId={leadId} firmDomain={lead.email.split("@")[1].toLowerCase()} />
+      )}
 
       {/* Phase 8 — Focused thread view (back-to-threads) */}
       {focusedThread && (
