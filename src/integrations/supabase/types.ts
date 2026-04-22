@@ -731,6 +731,33 @@ export type Database = {
         }
         Relationships: []
       }
+      firm_activity_emails: {
+        Row: {
+          email_id: string
+          firm_domain: string
+          id: string
+          note: string
+          set_aside_at: string
+          set_aside_by: string | null
+        }
+        Insert: {
+          email_id: string
+          firm_domain: string
+          id?: string
+          note?: string
+          set_aside_at?: string
+          set_aside_by?: string | null
+        }
+        Update: {
+          email_id?: string
+          firm_domain?: string
+          id?: string
+          note?: string
+          set_aside_at?: string
+          set_aside_by?: string | null
+        }
+        Relationships: []
+      }
       lead_activity_log: {
         Row: {
           actor_name: string
@@ -806,6 +833,36 @@ export type Database = {
           lead_id?: string
           status?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      lead_email_filters: {
+        Row: {
+          action: string
+          created_at: string
+          created_by: string | null
+          id: string
+          lead_id: string
+          pattern_type: string
+          sender_pattern: string
+        }
+        Insert: {
+          action?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lead_id: string
+          pattern_type?: string
+          sender_pattern: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lead_id?: string
+          pattern_type?: string
+          sender_pattern?: string
         }
         Relationships: []
       }
@@ -1012,6 +1069,7 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          is_intermediary: boolean
           last_contacted: string | null
           lead_id: string
           linkedin_url: string
@@ -1025,6 +1083,7 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
+          is_intermediary?: boolean
           last_contacted?: string | null
           lead_id: string
           linkedin_url?: string
@@ -1038,6 +1097,7 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
+          is_intermediary?: boolean
           last_contacted?: string | null
           lead_id?: string
           linkedin_url?: string
@@ -1469,6 +1529,48 @@ export type Database = {
           id?: string
           tracking_enabled?: boolean
           updated_at?: string
+        }
+        Relationships: []
+      }
+      pending_attribution_suggestions: {
+        Row: {
+          created_at: string
+          email_count: number
+          id: string
+          reason: string
+          resolved_at: string | null
+          resolved_by: string | null
+          sample_email_id: string | null
+          sender_domain: string
+          sender_email: string
+          status: string
+          suggested_lead_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_count?: number
+          id?: string
+          reason?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          sample_email_id?: string | null
+          sender_domain: string
+          sender_email: string
+          status?: string
+          suggested_lead_id: string
+        }
+        Update: {
+          created_at?: string
+          email_count?: number
+          id?: string
+          reason?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          sample_email_id?: string | null
+          sender_domain?: string
+          sender_email?: string
+          status?: string
+          suggested_lead_id?: string
         }
         Relationships: []
       }
