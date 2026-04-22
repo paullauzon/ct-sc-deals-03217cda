@@ -242,6 +242,41 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
     };
   }, [leadId, showMarketing]);
 
+  // Round 5 — load suppression status and per-lead hide filters
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [metricsRes, filtersRes] = await Promise.all([
+        supabase
+          .from("lead_email_metrics")
+          .select("email_quarantined, unsubscribed_all, total_bounces, last_bounce_date")
+          .eq("lead_id", leadId)
+          .maybeSingle(),
+        supabase
+          .from("lead_email_filters")
+          .select("sender_pattern, pattern_type, action")
+          .eq("lead_id", leadId)
+          .eq("action", "hide"),
+      ]);
+      if (cancelled) return;
+      const m = metricsRes.data as { email_quarantined?: boolean; unsubscribed_all?: boolean; total_bounces?: number; last_bounce_date?: string | null } | null;
+      if (m && (m.email_quarantined || m.unsubscribed_all)) {
+        setSuppression({
+          quarantined: !!m.email_quarantined,
+          unsubscribed: !!m.unsubscribed_all,
+          bounceCount: m.total_bounces ?? 0,
+          lastBounceAt: m.last_bounce_date ?? null,
+        });
+      } else {
+        setSuppression(null);
+      }
+      setHideFilters(((filtersRes.data || []) as Array<{ sender_pattern: string; pattern_type: string }>).map(r => ({
+        pattern: (r.sender_pattern || "").toLowerCase(), type: r.pattern_type || "domain",
+      })));
+    })();
+    return () => { cancelled = true; };
+  }, [leadId]);
+
   const markRead = async (emailId: string) => {
     setEmails((prev) => prev.map(e => e.id === emailId ? { ...e, is_read: true } : e));
     await supabase.from("lead_emails").update({ is_read: true }).eq("id", emailId);
