@@ -1,67 +1,62 @@
 
 
-# Manually ingest the missed Benjamin Parrish lead + diagnose the Zapier silence
+# Connect your Outlook mailbox now that admin consent is granted
 
-## What just happened
+## What just changed
 
-A lead came in to `sourceco@…` at 16:51 (Webflow form, "New Request - SourceCo", `bparrish@boynecapital.com`) and:
-- It is **not** in the database (most recent ingest was yesterday)
-- It did **not** trigger Slack
-- The `ingest-lead` edge function received **zero calls in the last 6 hours** (verified via edge-function logs)
+Microsoft sent the "Lovable CRM — Outlook Sync access request **Approved**" notice. That clears the tenant-level wall. The CRM-side infrastructure is already built and waiting:
 
-This proves the failure is upstream of our system — the **Webflow→Zapier→ingest-lead Zap fired neither here nor to your Slack Zap**, which strongly points to:
-- The SourceCo Zap being turned off / paused / out of tasks, OR
-- Webflow not delivering to Zapier (form-submission webhook detached), OR
-- A Zap error on Zapier's side after a recent edit
+- `outlook-oauth-start` / `outlook-oauth-callback` — ready
+- `sync-outlook-emails` — deployed, **running every 5 minutes via cron** (`sync-outlook-emails-5min`)
+- `refresh-outlook-token` — deployed (refreshes on demand inside sync)
+- `start-email-backfill` — auto-fires a 90-day backfill the moment the connection is created
+- `sync-watchdog-hourly` — will alert if the new connection ever stalls >30 min
 
-Either way, the lead exists only in the inbox screenshot. We need to add it manually now and get the entire enrichment pipeline (scoring, LinkedIn, follow-up task, email sweep) to run on it as if it had ingested normally.
+Database check just now: zero Outlook connections exist yet (`user_email_connections` returns 0 rows for `provider='outlook'`). So nothing is broken — you simply haven't completed your own user-level connect since the wall came down.
 
-## Plan
+## What you do next (3 minutes)
 
-### 1. Inject the lead through `ingest-lead` (not raw SQL)
+### Step 1 — Connect your Outlook
+Settings → Mailboxes → **Connect mailbox** → **Connect Outlook** → enter a label like "SourceCo inbox" → Continue.
 
-Call the edge function directly with the exact payload Zapier would have sent. This is the right path because it runs every downstream automation:
-- Generates the next `SC-T-NNN` ID
-- Creates the lead with full submission record (parses revenue / geography / sector from the message)
-- Auto-flips `pre_screen_completed = true` (PE firm + revenue range + geography all present)
-- Creates the **initial follow-up task** so it appears in Action Queue / Follow-Ups
-- Runs **`score-lead`** (priority + ICP fit + scoring)
-- Runs **`backfill-linkedin`** (finds Benjamin's LinkedIn profile)
-- Runs the **unmatched-email sweep** — claims any prior `bparrish@boynecapital.com` emails sitting in the unmatched bucket and links them to the new lead
+You'll be redirected to Microsoft. Because the tenant is approved:
+- **You will NOT see the red "Approval required" wall**
+- You'll see the standard Microsoft consent screen listing 4 permissions (`Mail.Read`, `Mail.Send`, `User.Read`, `offline_access`)
+- Click **Accept**
+- Microsoft redirects back to the CRM and you'll see "Mailbox connected" toast
 
-Payload extracted from the email body:
-- brand: `SourceCo`
-- source: `SC Free Targets Form` (matches the SourceCo target-sourcing intake pattern)
-- name: `Benjamin Parrish`
-- email: `bparrish@boynecapital.com`
-- phone: `2105017688`
-- companyUrl: `https://boynecapital.com/`
-- role: `Private Equity` → auto-maps to buyerType `PE Firm`
-- targetRevenue: `$10M-$100M`
-- message: full thesis (Fund III, $400mm, North America, $3M-$15M EBITDA, founder-led, industry-agnostic, services / niche manufacturing / infrastructure / private label food)
-- targetCriteria: founder/management-led platforms + add-ons
-- geography: `North American`
+### Step 2 — What happens automatically
+The instant the callback completes:
 
-### 2. Run a follow-up backfill pass
+1. The connection row is written with `is_active=true` and a refresh token
+2. A 90-day backfill kicks off in the background (`start-email-backfill` → `backfill-discover` → `backfill-hydrate`) — this pulls every Inbox + Sent message from the last 90 days, dedupes against existing rows, and matches each one to a lead
+3. From minute 5 onwards, the cron `sync-outlook-emails-5min` keeps it warm — every new inbound/outbound message lands in the CRM within 5 minutes
+4. Auto-stakeholder discovery runs on each matched email — same-domain colleagues uncovered through reply chains get added to the lead's stakeholder list
+5. Reply detection stamps `replied_at` on outbound CRM emails when the prospect replies, which the Pipeline Health and Engagement signals depend on
 
-After ingest returns, immediately invoke `backfill-hydrate` for the new lead ID so company logo / website meta / firmographics populate alongside the LinkedIn enrichment.
+### Step 3 — How you verify it worked
 
-### 3. Surface a diagnostic note in chat (no new code)
+In Settings → Mailboxes you'll see a row with:
+- Status: **Active** (green check)
+- A live count of "X in last 24h" that climbs as backfill chews through your history
+- A "Show recent syncs" toggle that lists the cron's 5-minute heartbeats
 
-Once ingested, give you:
-- The new `SC-T-NNN` ID + a direct link to the deal room
-- A short Zapier-side checklist to find why the Zap is silent (Zap status, last run, task quota, Webflow webhook health)
+Then jump to a recent deal you've been emailing through Outlook — the email thread should appear in the deal's Emails tab within ~10 minutes (Sent items take one full sync cycle). For a lived-in inbox like SourceCo, the 90-day backfill typically pulls 500–1,500 messages and finishes in 10–30 minutes.
 
-### 4. No code changes
+## Why I'm not making any code changes
 
-The `ingest-lead`, `score-lead`, `backfill-linkedin`, `backfill-hydrate` functions are already deployed and working — yesterday's leads went through them cleanly. We only need to invoke them with the missed payload.
+Everything required is already deployed and scheduled. The only missing piece was the tenant approval, which is now done. Adding code now would just add risk — there's nothing to build. The plan is purely operational:
 
-## Technical execution
+1. You click Connect Outlook
+2. You click Accept on Microsoft's consent screen  
+3. Watch the backfill numbers climb in Settings → Mailboxes
 
-In default mode I will:
-1. Call `supabase--curl_edge_functions` → POST to `/functions/v1/ingest-lead` with the JSON payload above + the `INGEST_API_KEY` bearer token
-2. Confirm response shows `status: "created"` and capture the `leadId`
-3. Call `supabase--curl_edge_functions` → POST to `/functions/v1/backfill-hydrate` with `{ leadIds: [<id>] }`
-4. Run a quick `supabase--read_query` to verify the lead exists with scoring fields populated and an initial task was created
-5. Report back with the lead ID, deal-room link, and the Zapier diagnostic checklist
+## If anything goes wrong on retry (rare, but here's the fallback map)
+
+| What you see | What it means | What to do |
+|---|---|---|
+| Normal Microsoft consent screen → Accept → "Connected" toast | ✅ Working as expected | Done |
+| "Approval required" wall again | Josh approved a different tenant or the approval didn't propagate yet (Entra can take 2–5 min) | Wait 5 min, retry once. If still blocked, ping me and I'll re-check the tenant ID against the consent record |
+| "Reconnect required" message after Accept | Microsoft didn't return a refresh token (very rare — caused by an existing app authorization on your account) | Go to https://myapps.microsoft.com → Lovable CRM → Remove → retry Connect |
+| Connected but no emails after 15 min | Backfill stuck on discovery | I can re-trigger `start-email-backfill` manually with `target_window: "90d"` |
 
