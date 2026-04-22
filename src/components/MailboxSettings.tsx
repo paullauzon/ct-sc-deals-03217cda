@@ -62,13 +62,28 @@ export function MailboxSettings() {
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [requestingAdminConsent, setRequestingAdminConsent] = useState(false);
   const [adminConsentUrl, setAdminConsentUrl] = useState<string | null>(null);
-  
+
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (typeof window === "undefined") return "mailboxes";
+    const params = new URLSearchParams(window.location.hash.replace("#", ""));
+    return params.get("tab") === "automation" ? "automation" : "mailboxes";
+  });
+  const [howOpen, setHowOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("lovable.mailboxes.how-dismissed") !== "1";
+  });
+  const matcher = useMatcherControls();
 
   // Connect dialog state
   const [connectOpen, setConnectOpen] = useState(false);
   const [connectProvider, setConnectProvider] = useState<"gmail" | "outlook">("gmail");
   const [labelDraft, setLabelDraft] = useState("");
+
+  const dismissHow = () => {
+    setHowOpen(false);
+    try { localStorage.setItem("lovable.mailboxes.how-dismissed", "1"); } catch { /* ignore */ }
+  };
 
   const load = async () => {
     setLoading(true);
