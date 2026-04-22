@@ -154,6 +154,56 @@ export function CompanyInboxView() {
       }
     }
     setPreviouslySeen(seen);
+
+    // Round 5 — intermediary detection: senders whose address appears on 3+
+    // distinct leads (across prior emails OR active stakeholder rows) are
+    // likely M&A bankers/brokers pitching multiple deals. Surface a one-click
+    // "Mark as intermediary" prompt so future re-attribution skips this sender.
+    if (senders.length > 0) {
+      const dealCountBySender = new Map<string, Set<string>>();
+      const { data: priorAll } = await supabase
+        .from("lead_emails")
+        .select("from_address, lead_id")
+        .in("from_address", senders)
+        .neq("lead_id", "unmatched")
+        .neq("lead_id", "firm_activity")
+        .limit(3000);
+      for (const r of (priorAll || []) as Array<{ from_address: string; lead_id: string }>) {
+        const s = (r.from_address || "").toLowerCase();
+        if (!s || !r.lead_id) continue;
+        let set = dealCountBySender.get(s);
+        if (!set) { set = new Set(); dealCountBySender.set(s, set); }
+        set.add(r.lead_id);
+      }
+      const { data: stakeRows } = await supabase
+        .from("lead_stakeholders")
+        .select("id, email, lead_id, is_intermediary")
+        .in("email", senders);
+      const flaggedBySender = new Map<string, boolean>();
+      const stakeholderIdsBySender = new Map<string, string[]>();
+      for (const r of (stakeRows || []) as Array<{ id: string; email: string; lead_id: string; is_intermediary: boolean }>) {
+        const e = (r.email || "").toLowerCase();
+        if (!e) continue;
+        let set = dealCountBySender.get(e);
+        if (!set) { set = new Set(); dealCountBySender.set(e, set); }
+        set.add(r.lead_id);
+        if (r.is_intermediary) flaggedBySender.set(e, true);
+        const arr = stakeholderIdsBySender.get(e) || [];
+        arr.push(r.id);
+        stakeholderIdsBySender.set(e, arr);
+      }
+      const candidates = new Map<string, { dealCount: number; flagged: boolean; stakeholderIds: string[] }>();
+      for (const [s, set] of dealCountBySender) {
+        if (set.size >= 3) {
+          candidates.set(s, {
+            dealCount: set.size,
+            flagged: flaggedBySender.get(s) === true,
+            stakeholderIds: stakeholderIdsBySender.get(s) || [],
+          });
+        }
+      }
+      setIntermediaryCandidates(candidates);
+    }
     setLoading(false);
   };
 
