@@ -14,7 +14,7 @@ import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from "@/components/ui/command";
 import {
-  Loader2, Building2, ChevronDown, ChevronRight, Link2, Trash2, ChevronsUpDown,
+  Loader2, Building2, ChevronDown, ChevronRight, Link2, Trash2, ChevronsUpDown, Archive, AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
