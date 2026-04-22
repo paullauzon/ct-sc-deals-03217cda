@@ -35,6 +35,7 @@ Deno.serve(async (req) => {
   try {
     const CLIENT_ID = Deno.env.get("MICROSOFT_CLIENT_ID");
     if (!CLIENT_ID) throw new Error("MICROSOFT_CLIENT_ID missing");
+    const TENANT_ID = Deno.env.get("MICROSOFT_TENANT_ID") || "common";
 
     const url = new URL(req.url);
     const rawLabel = url.searchParams.get("user_label") || "Default";
@@ -48,7 +49,7 @@ Deno.serve(async (req) => {
 
     const redirectUri = `${Deno.env.get("SUPABASE_URL")}/functions/v1/outlook-oauth-callback`;
 
-    const authUrl = new URL("https://login.microsoftonline.com/common/oauth2/v2.0/authorize");
+    const authUrl = new URL(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize`);
     authUrl.searchParams.set("client_id", CLIENT_ID);
     authUrl.searchParams.set("redirect_uri", redirectUri);
     authUrl.searchParams.set("response_type", "code");

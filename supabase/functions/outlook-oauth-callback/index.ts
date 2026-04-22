@@ -39,6 +39,7 @@ Deno.serve(async (req) => {
   try {
     const CLIENT_ID = Deno.env.get("MICROSOFT_CLIENT_ID");
     const CLIENT_SECRET = Deno.env.get("MICROSOFT_CLIENT_SECRET");
+    const TENANT_ID = Deno.env.get("MICROSOFT_TENANT_ID") || "common";
     if (!CLIENT_ID || !CLIENT_SECRET) {
       return htmlResponse("Configuration error", "Microsoft OAuth credentials are missing on the server.");
     }
@@ -72,7 +73,7 @@ Deno.serve(async (req) => {
     const redirectUri = `${Deno.env.get("SUPABASE_URL")}/functions/v1/outlook-oauth-callback`;
 
     // Exchange code for tokens
-    const tokenRes = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+    const tokenRes = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
