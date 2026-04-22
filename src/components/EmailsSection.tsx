@@ -11,6 +11,7 @@ import { detectEmailObjections, DetectedObjection } from "@/lib/meetingCoach";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { EmailTabHeader } from "@/components/lead-panel/EmailTabHeader";
 
 interface LeadEmail {
   id: string;
@@ -320,6 +321,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
   if (delivered.length === 0 && scheduled.length === 0) {
     return (
       <div>
+        <EmailTabHeader lead={lead} emails={emails as any} threadCount={0} onCompose={onCompose} />
         {header}
         <p className="text-xs text-muted-foreground/60 text-center py-4">
           No emails yet. {onCompose ? "Click Compose to start a conversation, or " : ""}connect a mailbox in Settings → Mailboxes to see correspondence here.
@@ -333,6 +335,7 @@ export function EmailsSection({ leadId, lead, onCompose, onReply }: { leadId: st
 
   return (
     <div>
+      <EmailTabHeader lead={lead} emails={emails as any} threadCount={threads.length} onCompose={onCompose} />
       <EmailTabIntro leadName={lead?.name} />
       {header}
       {scheduled.length > 0 && (
