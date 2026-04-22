@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Lead } from "@/types/lead";
 import { Button } from "@/components/ui/button";
-import { Sparkles, PenSquare, X, ChevronRight } from "lucide-react";
+import { Sparkles, PenSquare, X, ChevronRight, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getDealSignals } from "@/components/lead-panel/shared";
+import { supabase } from "@/integrations/supabase/client";
 
 interface LeadEmailLite {
   id: string;
