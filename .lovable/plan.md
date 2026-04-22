@@ -1,137 +1,58 @@
 
-# Outlook connect failure — root cause and fix plan
 
-## What is actually happening
+# Add copy-link UX + clean up post-admin-consent landing page
 
-The screenshot is not a frontend crash. It is Microsoft explicitly blocking the OAuth consent flow at the identity layer.
+## What you'll get
 
-`Approval required` means the request is reaching Microsoft correctly, but the tenant is refusing end-user consent for this app + scope combination.
+After this change, the Outlook connect dialog will show two recovery options for the "Approval required" wall — open the link **or** copy it to send to Josh — and Josh will land on a proper "Approval received" confirmation page instead of a confusing "Missing authorization code" error.
 
-## Deep diagnosis
+## Verdict on the URL
 
-### 1. The tenant-scoped URL did not solve the real blocker
-The code now correctly uses:
+The link you pasted is correct and will work. Decoded:
 
-- `outlook-oauth-start` → `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize`
-- `outlook-oauth-callback` and token refresh paths → tenant-specific token endpoints
+- Endpoint: `login.microsoftonline.com/{your-tenant-GUID}/v2.0/adminconsent` — tenant-scoped
+- App: your registered Microsoft app (`client_id` matches)
+- Scopes requested: `Mail.Read`, `Mail.Send`, `User.Read`, `offline_access` — identical to the runtime consent
+- Redirect: your Supabase callback function — identical to runtime, which means Microsoft will accept it (it's already registered in Azure, otherwise normal connect would fail at the `redirect_uri` check, not at consent)
+- State: a harmless return URL back into the CRM
 
-That fixed the wrong-tenant problem, but it does **not** bypass tenant consent policy.
+**Two things Josh needs to know before clicking:**
+1. He must sign in with an account that has **Global Administrator**, **Privileged Role Administrator**, or **Cloud Application Administrator** on the tenant. A plain user account won't be able to grant tenant-wide consent.
+2. After he clicks Accept, Microsoft redirects back to our callback. The current callback shows a benign-but-confusing page because admin-consent returns `tenant=...&admin_consent=True` instead of an authorization `code`. We'll fix this.
 
-### 2. The previous assumption was wrong
-The memory and earlier audit claimed tenant scoping would bypass the admin-consent problem. The screenshot disproves that.
+## Changes
 
-For the requested delegated scopes:
+### 1. `src/components/MailboxSettings.tsx` — add Copy link button + UX polish
 
-- `Mail.Read`
-- `Mail.Send`
-- `User.Read`
-- `offline_access`
+- Add `adminConsentUrl` state. Refactor `requestAdminConsent` to fetch the URL once and store it.
+- Replace the single "Open admin-consent link" button with a two-button row:
+  - **Copy link** — copies the URL to clipboard, shows toast "Copied — paste it to Josh"
+  - **Open in new tab** — opens the URL directly (current behavior)
+- Once the URL is fetched, also render the URL inline (small, monospace, truncated) so the user can see what's being shared and grab it manually if clipboard is blocked.
+- Update the explainer copy to mention the admin must have **Global Admin / Privileged Role Admin / Cloud App Admin** rights, so Josh isn't surprised when he opens it.
 
-many Microsoft tenants still require admin approval, depending on tenant consent policy. So the current blocker is not missing code in sync/send/backfill anymore — it is tenant permission governance.
+### 2. `supabase/functions/outlook-oauth-callback/index.ts` — handle admin-consent redirect
 
-### 3. The code is also making the consent UX worse
-`supabase/functions/outlook-oauth-start/index.ts` still forces:
+Microsoft's adminconsent flow redirects with `?tenant={GUID}&admin_consent=True&state=...` (no `code`). Today this falls into the "Missing authorization code" branch and shows a generic error.
 
-- `prompt=consent`
+Add an early branch at the top of the handler:
+- If `admin_consent === "True"` (or query has `admin_consent` and no `code`), render a clean success page: **"Tenant admin approval received — users in tenant {GUID} can now connect Outlook normally."**
+- If `state` decoded contains a `return_to`, include a "Back to CRM" button that returns to the settings page.
+- Log the admin-consent event so we have an audit trail.
 
-Microsoft docs note this can keep re-triggering consent flows and surface consent errors repeatedly. Even after approval, this is the wrong default for a production mailbox connect flow.
+### 3. No edge function changes for `outlook-admin-consent-start`
 
-### 4. Current product gap
-The app has no graceful handling for this exact Microsoft response:
-- user gets bounced to Microsoft's approval screen
-- no in-app explanation of what failed
-- no admin-specific recovery path
-- no generated admin-consent URL
-- no structured diagnostics for tenant policy vs misconfiguration
+The function already returns the right URL. No change needed there.
 
-So the integration is technically wired, but operationally incomplete.
+## Why I'm not re-asking for tenant admin elevation
 
-## Most likely actual causes inside Microsoft
+The wall you saw is the standard Microsoft tenant policy block, not an Azure misconfiguration. Sending Josh the admin-consent link is the correct, minimal-friction fix. Once he accepts once, the entire SourceCo tenant is approved forever for this app.
 
-Based on the screenshot and Microsoft consent docs, one of these tenant-side conditions is true:
+## After you ship
 
-1. **User consent is disabled** for apps in the SourceCo tenant
-2. **The enterprise app exists but lacks granted permissions** for the requested scopes
-3. **Assignment required** is enabled on the enterprise app
-4. The tenant allows only low-risk consent, and `Mail.Read` / `Mail.Send` are blocked for self-consent
+1. Open Settings → Mailboxes → Connect Outlook
+2. Click **Copy link** in the admin-consent box
+3. Send Josh a message like:
+   > "Need 30 seconds of admin time. Open this link, sign in with your Microsoft admin account, click Accept. One-time setup so the CRM can sync my Outlook. [paste link]"
+4. Once Josh accepts (he'll see a clean confirmation page), come back and click **Connect Outlook** with your own account — the wall is gone, you'll go straight through normal consent and connect.
 
-The screenshot strongly points to 1 or 4.
-
-## What I will build
-
-### A. Remove forced re-consent
-Update `supabase/functions/outlook-oauth-start/index.ts` to stop sending `prompt=consent` by default.
-
-Result:
-- existing approved users won’t be forced through consent every time
-- we stop inflaming consent-policy failures
-
-### B. Add explicit Microsoft admin-approval handling
-Upgrade the Outlook auth flow so Microsoft consent denials are handled intentionally, not as a dead-end.
-
-#### In `outlook-oauth-callback`
-Detect Microsoft approval-related responses and render a proper outcome page that explains:
-- this is a tenant approval block, not a CRM bug
-- the requested permissions
-- what the tenant admin must do
-- how the user should retry after approval
-
-### C. Add an admin-consent path
-Create a dedicated Outlook admin-consent start flow that generates the proper Microsoft admin-consent URL for the tenant.
-
-This gives you something actionable to send to Josh / tenant admin instead of telling reps to keep retrying.
-
-### D. Add structured diagnostics
-Return predictable JSON payloads from the Outlook auth edge functions for machine-readable failure states, including:
-- `error_stage`
-- `tenant_id`
-- `requested_scopes`
-- `microsoft_error`
-- `microsoft_error_description`
-- whether this is likely `admin_approval_required`
-
-This prevents another vague “it should work” loop.
-
-### E. Improve frontend handling in `MailboxSettings.tsx`
-When Outlook connect fails or approval is required, show a clean in-app explanation instead of silently handing everything to Microsoft.
-
-Planned UX:
-- “Your organization requires admin approval before Outlook can be connected.”
-- copyable justification text
-- button or instructions for admin approval flow
-- clearer distinction between:
-  - config error
-  - user cancelled
-  - admin approval required
-  - token exchange failed
-
-## Files to update
-
-- `supabase/functions/outlook-oauth-start/index.ts`
-- `supabase/functions/outlook-oauth-callback/index.ts`
-- `src/components/MailboxSettings.tsx`
-
-Likely add:
-- `supabase/functions/outlook-admin-consent-start/index.ts`
-
-## Validation after the fix
-
-Once the admin has approved the app, I’ll verify the full chain:
-
-1. Outlook connect completes without the approval wall
-2. `user_email_connections` gets an active Outlook row
-3. auto 90-day backfill starts
-4. `email_backfill_jobs` advances correctly
-5. `lead_emails` rows land with `source = 'outlook'`
-6. lead matching assigns emails to the correct leads
-7. threading uses `conversationId` correctly
-8. 5-minute sync cron runs successfully
-9. send flow works and does not re-ingest CRM-sent emails
-
-## Expected outcome
-
-After this work:
-- the app will correctly explain the real blocker
-- you’ll have an admin-approval path instead of a dead-end
-- the Outlook flow will stop forcing unnecessary re-consent
-- once tenant approval is granted, the existing sync/send/backfill pipeline can actually go live cleanly
