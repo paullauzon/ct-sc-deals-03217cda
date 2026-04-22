@@ -1,81 +1,51 @@
 
 
-# Make the Mailboxes screen self-explanatory
+# Finish what we started — 4 loose ends from the email-attribution plan
 
-## What's actually confusing today (screenshot-driven audit)
+I audited what shipped vs. what's still pending. Three real issues remain, plus one I missed entirely the first time around.
 
-1. **"Where is Re-run matcher?"** — It exists, but it's two clicks away inside `Unmatched inbox` tab → header. There is no entry-point or visibility from the Mailboxes tab. A user who hasn't opened that sub-tab would never know it exists.
+## What's done
+- Eagle Partners secondary contacts on CT-283 — applied
+- 14 emails moved off duplicate leads to canonicals — applied
+- Trigger function for claim/delete — written and migrated
+- `claim-email.ts` shared helper — created
+- Company Inbox UI tab in Unmatched Inbox — created
+- Mailboxes "Email matching" strip with Re-run / Cleanup buttons — shipped
 
-2. **The mystery rows ("Last: Last 90 days · 973 imported · 1 minute ago")** — these are `BackfillProgressPanel` recap lines for each connection, but they render as **standalone table rows with no mailbox label and no provider column populated**, so they look orphaned. The user can't tell which mailbox the "973 imported" belongs to.
+## What I found still broken (re-audit just now)
 
-3. **The action icons (cloud-down, refresh, trash)** — pure icons with `title=` tooltips. On macOS hover-tooltips are slow/unreliable. No labels.
+### 1. Duplicate triggers on `lead_emails` — root cause of recurring drift
+`pg_trigger` shows **four triggers where there should be two**:
+- `trg_update_lead_email_metrics` (legacy) AND `trg_lead_emails_metrics_insert` — both fire `update_lead_email_metrics()` on every INSERT
+- `trg_update_lead_email_metrics_on_claim` AND `trg_lead_emails_metrics_claim` — both fire `update_lead_email_metrics_on_claim()` on every UPDATE of `lead_id`
 
-4. **Nothing tells the user "what is this screen for"** beyond the one-line subtitle. No mental model of: *Live sync* (5-min cron) vs *Backfill* (one-shot history pull) vs *Matcher* (re-attribution sweep) vs *Unmatched inbox* (manual rescue).
+Every email Outlook syncs in is being counted **twice**. Every reassignment is being decremented from old / incremented to new **twice**. That's why we cleaned up 25 leads yesterday and already see new drift on CT-013 (`metric_sent=16` vs `actual=15`) and CT-436 (`metric_sent=4` vs `actual=3`).
 
-5. **No surfaced status of the matcher itself**: how many emails sit in unmatched right now? When did the last sweep run? A user has to leave this tab to find out.
+**Fix:** Migration that drops the legacy duplicates `trg_update_lead_email_metrics` and `trg_update_lead_email_metrics_on_claim`. Keep the newer `trg_lead_emails_metrics_*` set. One-line migration.
 
-6. **The "in last 24h" number** (e.g., "1006 in last 24h") is unlabeled — could mean fetched, inserted, matched, or unmatched. It actually means "lead_emails rows touching this address created in the last 24h".
+### 2. Nine orphan metric rows whose emails no longer exist on the lead
+`lead_email_metrics` has rows for SC-I-004, SC-I-013, SC-I-016 (the duplicates whose emails were correctly moved to CT-012/CT-039/CT-055), and CT-228, CT-344, SC-T-034, SC-I-009, CT-070 (leads that have **zero** emails attached but stale counter rows).
 
-## What I'll build
+Symptom in the UI: deal-room "Last reply: Xd ago" or "3 emails" shown on a lead that genuinely has 0 emails — same false-signal class as the original Benjamin Parrish bug.
 
-### 1. Surface the matcher controls at the top of the Mailboxes tab — not buried in a sub-tab
+**Fix:** SQL data correction — delete the 9 orphan/zero rows, then recompute counters for CT-013 and CT-436 from scratch (they got +1 sent each from the double-trigger between yesterday's cleanup and now).
 
-A new compact **"Email matching"** strip sits below the heading, above the connections table. It shows:
+### 3. The safe rematch sweep (step 6) was never executed
+Plan called for one POST to `rematch-unmatched-emails` with `{limit: 5000}`. Was deferred to "click the button when ready" — never clicked. **20,990 emails still in unmatched**, of which a few hundred are likely safely claimable under the strict exact-email rule (especially the new Outlook backfill emails from the past 24h: 13,500 unmatched added since yesterday).
 
-- **Unmatched count** (live, e.g. "20,294 emails not yet linked to a lead") with a "Review →" link that switches to the Unmatched inbox tab
-- **Last matcher run** (e.g. "Last sweep: 2h ago · matched 47 of 312")
-- Two buttons that are currently only inside Unmatched inbox: **Re-run matcher** and **Run cleanup sweep**, each with a one-line tooltip explaining what they do
+**Fix:** I'll call the edge function directly with `curl_edge_functions` (server-side, no UI button needed) and report `{matched, scanned, remaining}` back. If it claims a lot of legit emails cleanly, great — if it claims very few, that confirms the unmatched bucket is mostly genuine noise (newsletters, billing blasts, conference invites) and the Company Inbox is the right surface for the rest.
 
-Both buttons reuse the exact same edge-function calls already in `UnmatchedInbox.tsx` (`rematch-unmatched-emails` and `unclaim-bad-matches` + rematch). Refactor: pull those handlers into a shared hook `useMatcherControls()` so the Mailboxes strip and the Unmatched inbox header use one source of truth.
+### 4. One thing the original plan missed entirely — the legacy `update_lead_email_metrics` function still exists
+The function `update_lead_email_metrics()` (the original INSERT-only handler) is still registered. Even after dropping the duplicate trigger, it remains as dead code. Two functions doing nearly-identical work is exactly how the duplicate-trigger problem snuck in.
 
-### 2. Fix the orphan-row problem in the table
+**Fix:** Drop `update_lead_email_metrics()` after confirming nothing else references it. The `update_lead_email_metrics_on_claim` function already handles the INSERT case correctly (the `lead_changed` flag short-circuits if `OLD` is null, since INSERT has no OLD — wait, it actually doesn't, INSERT path needs its own branch). Cleaner approach: keep `update_lead_email_metrics` for INSERT only, keep `update_lead_email_metrics_on_claim` for UPDATE only, keep `update_lead_email_metrics_on_delete` for DELETE only — three single-purpose functions, three single triggers, zero overlap. That's what step 1 actually delivers once the legacy duplicates are dropped.
 
-Currently `BackfillProgressPanel` is rendered as a **separate `<tr colSpan={5}>`** under each connection — visually it floats and reads as its own line. Change it to render **inside the connection row**, in the "Last synced" cell, beneath the existing "X in last 24h" line. So each connection becomes one cohesive block:
+## Execution (default mode, in order)
 
-```text
-adam.haile@sourcecodeals.com   Outlook   Active   Last synced: just now
-Adam — SourceCo                                   1,006 emails in last 24h
-                                                  Backfill: 90d · 973/973 done · 1m ago [Re-backfill ▾]
-                                                  Show recent syncs
-```
+1. **Migration** — drop the two legacy duplicate triggers `trg_update_lead_email_metrics` + `trg_update_lead_email_metrics_on_claim`. Leaves three clean single-purpose triggers.
+2. **Data correction** — delete 9 orphan/zero `lead_email_metrics` rows; recompute CT-013 and CT-436 from `lead_emails` aggregate.
+3. **Safe sweep** — POST to `rematch-unmatched-emails` `{limit: 5000}` and report numbers.
+4. **Verification** — re-run the drift query and confirm 0 leads with mismatched counters; check that the deal-rooms for CT-228 / CT-344 / SC-T-034 (which currently show phantom email counts) now correctly show 0 emails.
 
-Same for the recent-syncs history — it expands inline beneath the row instead of becoming an extra table row that loses its parent context.
-
-### 3. Label every action button
-
-Replace the bare icon buttons with **icon + label**:
-- ☁️↓ → "Sync now"
-- ⟳ → "Refresh token"
-- 🗑 → "Disconnect"
-
-On narrow viewports keep icon-only with proper accessible labels via `sr-only`. The existing `title=` attributes stay as fallback tooltips.
-
-### 4. Add a "How this works" disclosure
-
-A collapsible explainer at the top (closed by default) that defines the four moving parts in plain language:
-
-- **Live sync** — automatic every 5 minutes, pulls new mail
-- **Backfill** — one-shot pull of historical mail (90d / 1y / 3y / all)
-- **Matcher** — re-runs the routing logic on emails that didn't auto-link to a lead
-- **Unmatched inbox** — emails the matcher couldn't confidently route, awaiting manual claim
-
-Tied to the four-tab structure so the user can mentally map "this tab does X". One-time-dismissible (localStorage) so power users see it once and move on.
-
-### 5. Clarify the "in last 24h" metric
-
-Change the label from `1006 in last 24h` to `1,006 emails synced (24h)` — adds the word "synced" and the unit so the number is unambiguous.
-
-## What I will NOT change
-
-- No touch to sync, backfill, or matcher edge functions — they work correctly
-- No new database tables or migrations
-- No change to the auto-enroll-90d behavior on first connect (that's correct)
-- No restructure of the four-tab layout — only additions inside the Mailboxes tab and a refactor of where existing buttons live
-
-## Files
-
-- **Edit** `src/components/MailboxSettings.tsx` — add Email-matching strip, restructure connection row to embed BackfillProgressPanel + history inline, label action buttons, add How-this-works disclosure
-- **Edit** `src/components/UnmatchedInbox.tsx` — replace inline matcher-button handlers with the shared hook (no UX regression — the buttons stay where they are, just sourced from the hook)
-- **New** `src/hooks/useMatcherControls.ts` — shared `rematchAll()` + `cleanupSweep()` + live unmatched-count + last-run-summary
-- **No backend changes**
+No new files. No code changes outside one short migration. No UI changes — the Mailboxes / Company Inbox / Unmatched Inbox surfaces shipped earlier are correct; this round just removes the under-the-hood duplication that's silently re-creating drift.
 
