@@ -1,51 +1,81 @@
 
 
-# Finish what we started — 4 loose ends from the email-attribution plan
+# What's still missing — deep email-attribution audit (round 3)
 
-I audited what shipped vs. what's still pending. Three real issues remain, plus one I missed entirely the first time around.
+I just re-ran the system-wide probes. Three classes of issues remain that the previous plans never touched, plus one outright **regression I introduced** in the duplicate-cleanup step. Surfacing all of them:
 
-## What's done
-- Eagle Partners secondary contacts on CT-283 — applied
-- 14 emails moved off duplicate leads to canonicals — applied
-- Trigger function for claim/delete — written and migrated
-- `claim-email.ts` shared helper — created
-- Company Inbox UI tab in Unmatched Inbox — created
-- Mailboxes "Email matching" strip with Re-run / Cleanup buttons — shipped
+## Critical — I broke 38 emails yesterday
 
-## What I found still broken (re-audit just now)
+When we "moved emails from duplicates to canonicals", the canonical IDs we wrote were **CT-012 / CT-039 / CT-055 — which don't exist as leads**. The duplicate records (SC-I-004 / SC-I-013 / SC-I-016) had stale `duplicate_of` pointers. So:
 
-### 1. Duplicate triggers on `lead_emails` — root cause of recurring drift
-`pg_trigger` shows **four triggers where there should be two**:
-- `trg_update_lead_email_metrics` (legacy) AND `trg_lead_emails_metrics_insert` — both fire `update_lead_email_metrics()` on every INSERT
-- `trg_update_lead_email_metrics_on_claim` AND `trg_lead_emails_metrics_claim` — both fire `update_lead_email_metrics_on_claim()` on every UPDATE of `lead_id`
+- 14 emails are now attached to lead IDs with no parent row
+- Plus 24 more from earlier merges → 38 total orphan-pointing emails
+- Their metric rows likewise live under nonexistent IDs
+- They show up nowhere in the UI because no deal-room exists
 
-Every email Outlook syncs in is being counted **twice**. Every reassignment is being decremented from old / incremented to new **twice**. That's why we cleaned up 25 leads yesterday and already see new drift on CT-013 (`metric_sent=16` vs `actual=15`) and CT-436 (`metric_sent=4` vs `actual=3`).
+**Fix:** Resolve the real canonical for each source duplicate by `email` (Jay Lax, Vidushi Gupta, Jack Harvey). Re-route the 14 emails. Find the other 24 (probably similar bad pointers) and fix those too. Update the `duplicate_of` columns on SC-I-004/013/016 to the correct IDs so the in-memory matcher's `resolveCanonical()` stops sending future emails to ghost leads.
 
-**Fix:** Migration that drops the legacy duplicates `trg_update_lead_email_metrics` and `trg_update_lead_email_metrics_on_claim`. Keep the newer `trg_lead_emails_metrics_*` set. One-line migration.
+## Real attribution bugs the audit found
 
-### 2. Nine orphan metric rows whose emails no longer exist on the lead
-`lead_email_metrics` has rows for SC-I-004, SC-I-013, SC-I-016 (the duplicates whose emails were correctly moved to CT-012/CT-039/CT-055), and CT-228, CT-344, SC-T-034, SC-I-009, CT-070 (leads that have **zero** emails attached but stale counter rows).
+### A) 16 external-sender misroutes
 
-Symptom in the UI: deal-room "Last reply: Xd ago" or "3 emails" shown on a lead that genuinely has 0 emails — same false-signal class as the original Benjamin Parrish bug.
+Tim Murray (`@conniehealth.com`, his own lead is CT-179) has emails stapled to CT-004. Mahdi (`@tpbooker.com`, his own lead CT-356) is stapled to CT-408. Vanholt → wrong lead. Paneja → wrong lead. These are the classic "person who is their own prospect got grabbed by someone else's secondary contact list."
 
-**Fix:** SQL data correction — delete the 9 orphan/zero rows, then recompute counters for CT-013 and CT-436 from scratch (they got +1 sent each from the double-trigger between yesterday's cleanup and now).
+**Root cause:** the matcher's two-pass primary-vs-secondary logic works correctly for *new* emails, but historical rows that were assigned **before** the primary-precedence fix went in are still misrouted. Same pattern as the Boyne/Benjamin Parrish bug, just spread across 16 emails on 4 senders.
 
-### 3. The safe rematch sweep (step 6) was never executed
-Plan called for one POST to `rematch-unmatched-emails` with `{limit: 5000}`. Was deferred to "click the button when ready" — never clicked. **20,990 emails still in unmatched**, of which a few hundred are likely safely claimable under the strict exact-email rule (especially the new Outlook backfill emails from the past 24h: 13,500 unmatched added since yesterday).
+**Fix:** one-shot SQL — for any `lead_emails` row whose `from_address` exactly equals an active lead's primary `email`, and whose current `lead_id` is a *different* active lead, move it to the sender's own lead. Trigger handles metric reconciliation.
 
-**Fix:** I'll call the edge function directly with `curl_edge_functions` (server-side, no UI button needed) and report `{matched, scanned, remaining}` back. If it claims a lot of legit emails cleanly, great — if it claims very few, that confirms the unmatched bucket is mostly genuine noise (newsletters, billing blasts, conference invites) and the Company Inbox is the right surface for the rest.
+### B) 3 threads split across multiple lead_ids
 
-### 4. One thing the original plan missed entirely — the legacy `update_lead_email_metrics` function still exists
-The function `update_lead_email_metrics()` (the original INSERT-only handler) is still registered. Even after dropping the duplicate trigger, it remains as dead code. Two functions doing nearly-identical work is exactly how the duplicate-trigger problem snuck in.
+Same `thread_id`, different `lead_id`s. Means a Reply-All started a new conversation that the matcher routed to a second deal. The conversation is now visually broken in both deal rooms.
 
-**Fix:** Drop `update_lead_email_metrics()` after confirming nothing else references it. The `update_lead_email_metrics_on_claim` function already handles the INSERT case correctly (the `lead_changed` flag short-circuits if `OLD` is null, since INSERT has no OLD — wait, it actually doesn't, INSERT path needs its own branch). Cleaner approach: keep `update_lead_email_metrics` for INSERT only, keep `update_lead_email_metrics_on_claim` for UPDATE only, keep `update_lead_email_metrics_on_delete` for DELETE only — three single-purpose functions, three single triggers, zero overlap. That's what step 1 actually delivers once the legacy duplicates are dropped.
+**Fix:** for each split thread, count which `lead_id` owns the majority of messages and consolidate. Surface a warning if neither side dominates (rare).
 
-## Execution (default mode, in order)
+### C) 5 shared-firm domains still un-disambiguated
 
-1. **Migration** — drop the two legacy duplicate triggers `trg_update_lead_email_metrics` + `trg_update_lead_email_metrics_on_claim`. Leaves three clean single-purpose triggers.
-2. **Data correction** — delete 9 orphan/zero `lead_email_metrics` rows; recompute CT-013 and CT-436 from `lead_emails` aggregate.
-3. **Safe sweep** — POST to `rematch-unmatched-emails` `{limit: 5000}` and report numbers.
-4. **Verification** — re-run the drift query and confirm 0 leads with mismatched counters; check that the deal-rooms for CT-228 / CT-344 / SC-T-034 (which currently show phantom email counts) now correctly show 0 emails.
+`conniehealth.com` (3 leads), `queenscourtcap.com`, `alturacap.com`, `teambigtable.com`, `boynecapital.com` — all have 2+ active leads. Today's matcher refuses domain fallback when multiple leads share a domain, which is correct *defensively* but means real new emails from these firms will sit in the Company Inbox forever instead of being claimed.
 
-No new files. No code changes outside one short migration. No UI changes — the Mailboxes / Company Inbox / Unmatched Inbox surfaces shipped earlier are correct; this round just removes the under-the-hood duplication that's silently re-creating drift.
+**Fix:** Company Inbox already groups by domain, but it doesn't yet expose **disambiguation hints** — when a sender has been on a thread before, suggest the lead they're already associated with. Add a "previously seen on lead X" hint to each row.
+
+## Architectural gaps that will cause the next bug
+
+### D) The `claim-email.ts` shared helper is unused
+
+I created `supabase/functions/_shared/claim-email.ts` two loops ago to enforce participant-overlap on every claim — but **nothing imports it**. The Unmatched Inbox UI, the Company Inbox UI, and `rematch-unmatched-emails` all still write `lead_emails.lead_id` directly. The guard exists in code but doesn't actually guard anything yet.
+
+**Fix:** Add a tiny Deno-deployed RPC edge function `safe-claim-email` that wraps `claimEmailToLead`. Both client UIs call this function instead of raw `.update()`. Manual SQL claims become structurally impossible from any client path.
+
+### E) The noise list is hardcoded — 12,000+ unmatched will keep growing
+
+The current matcher's `NOISE_DOMAINS` set lists ~17 senders. The actual unmatched bucket shows the real concentration: 4,020 webforms.io, 2,054 pandadoc emails, 804 beehiiv, 657 acg.org, 401 zoom.us, 293 investopedia, 206 webflow… These will accumulate forever. No one can review 21K rows.
+
+**Fix:** Add a lightweight `email_noise_domains` table (just `domain TEXT PRIMARY KEY, reason TEXT, added_by`). The matcher reads it on each invocation. The Mailboxes "Email matching" strip gets a "Noise rules" section listing the top 10 unmatched-by-domain so a rep can one-click "always classify this as noise." Future emails from that domain are auto-deleted on arrival rather than piling up.
+
+### F) Auto-purge for old unmatched noise
+
+Even with rule-based noise classification, the existing 21K rows take up space. Add a daily cron that hard-deletes unmatched rows older than 60 days from any domain in the noise list. Keep the recent 60-day window so a human can still rescue something.
+
+### G) Ghost metric rows for nonexistent leads
+
+`lead_email_metrics` can hold rows whose `lead_id` no longer exists in `leads` (we just created some). Add a check constraint or, more practically, a nightly cleanup that deletes orphan metric rows.
+
+## Things I considered but recommend NOT building
+
+- **Manual email-to-lead linking from the deal room** — already exists via the Unmatched Inbox. Adding a second entry point doubles the surface area for the same-firm-different-deal bug.
+- **A "merge two leads" UI** — the duplicate_of pointer system already handles this. The bug is that the pointers can be stale, which (G) above covers.
+- **Auto-creating a new lead from an unmatched email** — explicitly off-table. Every lead must come through Webflow/Calendly so the qualification fields are populated.
+
+## Execution order (default mode)
+
+1. **Emergency fix** — the 38 orphan-pointing emails. SQL: resolve correct canonical for SC-I-004 / 013 / 016, re-route their 14 emails, find and fix the other 24, repair the `duplicate_of` columns.
+2. **External-sender precedence sweep** — 16 emails moved to their sender's own lead via the `claim-email.ts` helper (proves the helper works end-to-end).
+3. **Thread consolidation** — 3 split threads merged to majority lead_id.
+4. **Wrap claim helper as `safe-claim-email` edge function**, swap both UIs to call it.
+5. **`email_noise_domains` table + matcher integration + Mailboxes UI panel** for one-click rule additions; pre-seed with the top 10 domains from the unmatched bucket.
+6. **Daily cron: `cleanup-unmatched-noise`** — deletes unmatched rows older than 60d on noise domains; deletes orphan `lead_email_metrics` rows.
+7. **Company Inbox enhancement** — add "previously seen on lead X" hint per orphan row to make shared-firm disambiguation a one-glance decision.
+
+Files: 1 new edge function (`safe-claim-email`), 1 new edge function (`cleanup-unmatched-noise`), 1 short migration (new table + cron + RLS), edits to `rematch-unmatched-emails` + `sync-outlook-emails` + `sync-gmail-emails` to read the noise table, edits to `MailboxSettings.tsx` (add noise-rules panel), `UnmatchedInbox.tsx` and `CompanyInboxView.tsx` (call the new safe-claim function), small enhancement to `CompanyInboxView.tsx` for the "previously seen" hint.
+
+No schema changes to `lead_emails` or `leads`. No backfill of historical `lead_email_metrics` beyond the orphan cleanup. The 1,274 internal-sender misroutes are left alone — they're rep emails on legitimately stapled threads.
 
