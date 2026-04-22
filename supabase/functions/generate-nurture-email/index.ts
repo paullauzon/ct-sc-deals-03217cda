@@ -6,9 +6,9 @@
 // Inputs: lead row + day milestone (0 | 30 | 90).
 // Output: { subject: string, body: string } — plain text body, no HTML.
 //
-// Uses Lovable AI Gateway (google/gemini-3-flash-preview default) per project
-// AI rules. Obeys: max 80 words body, no em/en dashes, no banned filler,
-// no "you mentioned", peer-to-peer tone, single-sentence subject.
+// Uses OpenAI gpt-5 directly per project AI rules. Obeys: max 80 words body,
+// no em/en dashes, no banned filler, no "you mentioned", peer-to-peer tone,
+// single-sentence subject.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 

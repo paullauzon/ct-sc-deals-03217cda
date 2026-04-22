@@ -10,7 +10,7 @@
 //   "Closed Won"       → kickoff email copying Valeria
 //   "Negotiating"      → soft follow-up clarifying pricing/terms
 //
-// Uses Lovable AI gateway (google/gemini-3-flash-preview) — no external key needed.
+// Uses OpenAI gpt-5 directly via OPENAI_API_KEY.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 

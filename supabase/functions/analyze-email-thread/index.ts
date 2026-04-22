@@ -184,7 +184,7 @@ Return STRUCTURED data via the tool. Rules:
       email_count: emails.length,
       last_email_at: lastEmailAt,
       generated_at: new Date().toISOString(),
-      model: "google/gemini-3-flash-preview",
+      model: "gpt-5",
     };
 
     const { error: upErr } = await supabase
