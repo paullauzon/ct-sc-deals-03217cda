@@ -950,6 +950,42 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_intelligence_notes: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string | null
+          id: string
+          lead_id: string
+          signal_tags: string[]
+          source: string
+          source_ref: string
+          title: string
+        }
+        Insert: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lead_id: string
+          signal_tags?: string[]
+          source?: string
+          source_ref?: string
+          title?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lead_id?: string
+          signal_tags?: string[]
+          source?: string
+          source_ref?: string
+          title?: string
+        }
+        Relationships: []
+      }
       lead_stakeholders: {
         Row: {
           created_at: string
@@ -1385,6 +1421,27 @@ export type Database = {
           website_score?: number | null
           website_url?: string | null
           won_reason?: string
+        }
+        Relationships: []
+      }
+      mailbox_preferences: {
+        Row: {
+          connection_id: string
+          id: string
+          tracking_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          connection_id: string
+          id?: string
+          tracking_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          connection_id?: string
+          id?: string
+          tracking_enabled?: boolean
+          updated_at?: string
         }
         Relationships: []
       }
